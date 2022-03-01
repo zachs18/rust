@@ -208,14 +208,12 @@ macro_rules! __thread_local_inner {
                 // If a dtor isn't needed we can do something "very raw" and
                 // just get going.
                 if !$crate::mem::needs_drop::<$t>() {
+                    // FIXME: remove the #[allow(...)] marker when macros don't
+                    // raise warning for missing/extraneous unsafe blocks anymore.
+                    // See https://github.com/rust-lang/rust/issues/74838.
+                    #[allow(unused_unsafe)]
                     unsafe {
-                        // FIXME: remove the #[allow(...)] marker when macros don't
-                        // raise warning for missing/extraneous unsafe blocks anymore.
-                        // See https://github.com/rust-lang/rust/issues/74838.
-                        #[allow(unused_unsafe)]
-                        unsafe {
-                            return Some(&VAL);
-                        }
+                        return Some(&VAL);
                     }
                 }
 
