@@ -2,7 +2,7 @@
 /* coroutine_layout = CoroutineLayout {
     field_tys: {
         _0: CoroutineSavedTy {
-            ty: std::string::String,
+            ty: std::string::String<std::alloc::Global>,
             source_info: SourceInfo {
                 span: $DIR/coroutine_drop_cleanup.rs:12:13: 12:15 (#0),
                 scope: scope[0],
