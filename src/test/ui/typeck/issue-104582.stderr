@@ -20,6 +20,16 @@ help: use angle brackets instead
 LL |     let my_var: String<String?>;
    |                       ~       ~
 
-error: aborting due to 2 previous errors
+error[E0658]: use of unstable library feature 'allocator_api'
+  --> $DIR/issue-104582.rs:2:24
+   |
+LL |     let my_var: String(String?);
+   |                        ^^^^^^^
+   |
+   = note: see issue #32838 <https://github.com/rust-lang/rust/issues/32838> for more information
+   = help: add `#![feature(allocator_api)]` to the crate attributes to enable
 
-For more information about this error, try `rustc --explain E0214`.
+error: aborting due to 3 previous errors
+
+Some errors have detailed explanations: E0214, E0658.
+For more information about an error, try `rustc --explain E0214`.

@@ -2,9 +2,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:7:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 
@@ -71,9 +71,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:21:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 
@@ -97,9 +97,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:28:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 
@@ -123,9 +123,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:37:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 
@@ -149,9 +149,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:46:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 
@@ -175,9 +175,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:53:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 
@@ -201,9 +201,9 @@ error[E0283]: type annotations needed
   --> $DIR/issue-72690.rs:62:5
    |
 LL |     String::from("x".as_ref());
-   |     ^^^^^^^^^^^^ cannot infer type for reference `&_`
+   |     ^^^^^^^^^^^^ cannot infer type for struct `String<_>`
    |
-   = note: multiple `impl`s satisfying `String: From<&_>` found in the `alloc` crate:
+   = note: multiple `impl`s satisfying `String<_>: From<&_>` found in the `alloc` crate:
            - impl<> From<&String> for String;
            - impl<> From<&str> for String;
 

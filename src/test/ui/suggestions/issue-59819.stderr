@@ -32,6 +32,9 @@ LL |     let g: String = f;
    |            |        |
    |            |        expected struct `String`, found struct `Bar`
    |            expected due to this
+   |
+   = note: expected struct `String`
+              found struct `Bar`
 
 error: aborting due to 3 previous errors
 
