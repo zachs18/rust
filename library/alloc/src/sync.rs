@@ -542,6 +542,30 @@ impl<T> Arc<T> {
         unsafe { Pin::new_unchecked(Arc::new(data)) }
     }
 
+    /// Converts a `Arc<T>` into a `Pin<Arc<T>>`, if there are no other `Arc` or
+    /// `Weak` pointers to the same allocation.
+    ///
+    /// Otherwise, an `Err` is returned with the same `Arc` that was passed in,
+    /// since it is not safe to pin a shared value.
+    ///
+    /// If `T` does not implement `Unpin`, then
+    /// `value` will be pinned in memory and unable to be moved.
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "rc_try_into_pin", issue = "none")]
+    #[must_use]
+    pub fn try_into_pin(mut this: Self) -> Result<Pin<Arc<T>>, Arc<T>> {
+        if Arc::is_unique(&mut this) {
+            // This unsafety is ok because we're guaranteed that the pointer
+            // returned is the *only* pointer that will ever be returned to T. Our
+            // reference count is guaranteed to be 1 at this point, and we required
+            // the Arc itself to be `mut`, so we're returning the only possible
+            // reference to the inner data.
+            Ok(unsafe { Pin::new_unchecked(this) })
+        } else {
+            Err(this)
+        }
+    }
+
     /// Constructs a new `Pin<Arc<T>>`, return an error if allocation fails.
     #[unstable(feature = "allocator_api", issue = "32838")]
     #[inline]

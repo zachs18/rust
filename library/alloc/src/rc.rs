@@ -633,6 +633,21 @@ impl<T> Rc<T> {
         unsafe { Pin::new_unchecked(Rc::new(value)) }
     }
 
+    /// Converts a `Rc<T>` into a `Pin<Rc<T>>`, if there are no other `Rc` or
+    /// `Weak` pointers to the same allocation.
+    ///
+    /// Otherwise, an `Err` is returned with the same `Rc` that was passed in,
+    /// since it is not safe to pin a shared value.
+    ///
+    /// If `T` does not implement `Unpin`, then
+    /// `value` will be pinned in memory and unable to be moved.
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "rc_try_into_pin", issue = "none")]
+    #[must_use]
+    pub fn try_into_pin(this: Self) -> Result<Pin<Rc<T>>, Rc<T>> {
+        if Rc::is_unique(&this) { Ok(unsafe { Pin::new_unchecked(this) }) } else { Err(this) }
+    }
+
     /// Returns the inner value, if the `Rc` has exactly one strong reference.
     ///
     /// Otherwise, an [`Err`] is returned with the same `Rc` that was
