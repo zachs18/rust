@@ -248,6 +248,11 @@ pub struct Cell<T: ?Sized> {
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: ?Sized> Send for Cell<T> where T: Send {}
 
+//#[unstable(feature = "cell_copy", issue = "none")]
+#[stable(feature = "cell_copy", since = "CURRENT_RUST_VERSION")]
+impl<T: Copy> Copy for Cell<T> {}
+
+
 // Note that this negative impl isn't strictly necessary for correctness,
 // as `Cell` wraps `UnsafeCell`, which is itself `!Sync`.
 // However, given how important `Cell`'s `!Sync`-ness is,
@@ -1931,6 +1936,17 @@ pub struct UnsafeCell<T: ?Sized> {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Sync for UnsafeCell<T> {}
+
+//#[unstable(feature = "cell_copy", issue = "none")]
+#[stable(feature = "cell_copy", since = "CURRENT_RUST_VERSION")]
+impl<T: Copy> Clone for UnsafeCell<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+//#[unstable(feature = "cell_copy", issue = "none")]
+#[stable(feature = "cell_copy", since = "CURRENT_RUST_VERSION")]
+impl<T: Copy> Copy for UnsafeCell<T> {}
 
 impl<T> UnsafeCell<T> {
     /// Constructs a new instance of `UnsafeCell` which will wrap the specified
