@@ -1009,6 +1009,43 @@ impl<T: ?Sized> Arc<T> {
         ptr
     }
 
+    /// Consumes and leaks the `Arc`, returning a shared reference,
+    /// `&'a T`. Note that the type `T` must outlive the chosen lifetime
+    /// `'a`. If the type has only static references, or none at all, then this
+    /// may be chosen to be `'static`.
+    ///
+    /// This function is mainly useful for data that lives for the remainder of
+    /// the program's life. Dropping the returned reference will cause a memory
+    /// leak.
+    ///
+    /// Note: this is an associated function, which means that you have
+    /// to call it as `Arc::leak(arc)` instead of `arc.leak()`. This
+    /// is so that there is no conflict with a method on the inner type.
+    ///
+    /// # Examples
+    ///
+    /// Simple usage:
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// let x = Arc::new(42);
+    /// let static_ref: &'static usize = Arc::leak(x);
+    /// assert_eq!(*static_ref, 42);
+    /// ```
+    ///
+    /// Unsized data:
+    ///
+    /// ```
+    /// let x: Arc<[i32]> = vec![1, 2, 3].into();
+    /// let static_ref = Arc::leak(x);
+    /// assert_eq!(*static_ref, [1, 2, 3]);
+    /// ```
+    #[unstable(feature = "rc_leak", issue = "none")]
+    #[inline]
+    pub fn leak<'a>(this: Self) -> &'a T {
+        unsafe { &*Arc::into_raw(this) }
+    }
+
     /// Provides a raw pointer to the data.
     ///
     /// The counts are not affected in any way and the `Arc` is not consumed. The pointer is valid for
