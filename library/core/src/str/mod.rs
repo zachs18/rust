@@ -715,7 +715,7 @@ impl str {
     ///
     /// # Panics
     ///
-    /// This function will panic if the two string slice do not have the same length.
+    /// This function will panic if the two string slices do not have the same length.
     ///
     /// # Examples
     ///
@@ -778,7 +778,7 @@ impl str {
     ///
     /// # Panics
     ///
-    /// This function will panic if the two string slice do not have the same length.
+    /// This function will panic if the two string slices do not have the same length.
     ///
     /// # Examples
     ///
