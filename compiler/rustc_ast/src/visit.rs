@@ -372,6 +372,10 @@ pub fn walk_item<'a, V: Visitor<'a>>(visitor: &mut V, item: &'a Item) {
         }
         ItemKind::MacCall(mac) => visitor.visit_mac_call(mac),
         ItemKind::MacroDef(ts) => visitor.visit_mac_def(ts, item.id),
+        ItemKind::UnsizedTy(generics) => {
+            visitor.visit_generics(generics);
+            todo!();
+        }
     }
     walk_list!(visitor, visit_attribute, &item.attrs);
 }

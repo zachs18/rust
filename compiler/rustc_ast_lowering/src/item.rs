@@ -493,6 +493,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             ItemKind::MacCall(..) => {
                 panic!("`TyMac` should have been expanded by now")
             }
+            ItemKind::UnsizedTy(_) => todo!(),
         }
     }
 

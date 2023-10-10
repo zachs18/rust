@@ -110,6 +110,7 @@ impl<'a, 'b, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'b, 'tcx> {
             ItemKind::Use(..) => {
                 return visit::walk_item(self, i);
             }
+            ItemKind::UnsizedTy(_) => todo!(),
         };
         let def = self.create_def(i.id, def_data, i.span);
 

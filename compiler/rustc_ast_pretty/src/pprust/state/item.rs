@@ -386,6 +386,7 @@ impl<'a> State<'a> {
                     state.print_visibility(&item.vis)
                 });
             }
+            ast::ItemKind::UnsizedTy(_) => todo!(),
         }
         self.ann.post(self, AnnNode::Item(item))
     }

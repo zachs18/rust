@@ -1108,6 +1108,7 @@ pub fn noop_visit_item_kind<T: MutVisitor>(kind: &mut ItemKind, vis: &mut T) {
         }
         ItemKind::MacCall(m) => vis.visit_mac_call(m),
         ItemKind::MacroDef(def) => vis.visit_macro_def(def),
+        ItemKind::UnsizedTy(_generics) => todo!(),
     }
 }
 

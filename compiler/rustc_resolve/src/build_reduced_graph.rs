@@ -799,6 +799,7 @@ impl<'a, 'b, 'tcx> BuildReducedGraphVisitor<'a, 'b, 'tcx> {
             ItemKind::Impl { .. } | ItemKind::ForeignMod(..) | ItemKind::GlobalAsm(..) => {}
 
             ItemKind::MacroDef(..) | ItemKind::MacCall(_) => unreachable!(),
+            ItemKind::UnsizedTy(_) => todo!(),
         }
     }
 

@@ -277,6 +277,9 @@ impl<'a> Parser<'a> {
             // UNION ITEM
             self.bump(); // `union`
             self.parse_item_union()?
+        } else if self.eat_keyword(kw::Unsized) {
+            // UNSIZED TYPE ITEM
+            self.parse_item_unsized_type()?
         } else if self.is_builtin() {
             // BUILTIN# ITEM
             return self.parse_item_builtin();
@@ -1601,6 +1604,23 @@ impl<'a> Parser<'a> {
         };
 
         Ok((class_name, ItemKind::Union(vdata, generics)))
+    }
+
+    /// Parses `unsized type Foo;`, where `unsized` was already eaten
+    fn parse_item_unsized_type(&mut self) -> PResult<'a, ItemInfo> {
+        self.expect_keyword(kw::Type)?;
+
+        let type_name = self.parse_ident()?;
+
+        let mut generics = self.parse_generics()?;
+
+        if self.token.is_keyword(kw::Where) {
+            generics.where_clause = self.parse_where_clause()?;
+        }
+
+        self.expect_semi()?;
+
+        Ok((type_name, ItemKind::UnsizedTy(generics)))
     }
 
     pub(crate) fn parse_record_struct_body(

@@ -503,7 +503,8 @@ impl<'v> ast_visit::Visitor<'v> for StatCollector<'v> {
                 TraitAlias,
                 Impl,
                 MacCall,
-                MacroDef
+                MacroDef,
+                UnsizedTy
             ]
         );
         ast_visit::walk_item(self, i)

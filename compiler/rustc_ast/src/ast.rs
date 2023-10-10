@@ -3010,6 +3010,11 @@ pub enum ItemKind {
 
     /// A macro definition.
     MacroDef(MacroDef),
+
+    /// Unsized type declaration.
+    ///
+    /// E.g. `unsized type ThinSlice<T>;`
+    UnsizedTy(Generics),
 }
 
 impl ItemKind {
@@ -3017,7 +3022,8 @@ impl ItemKind {
         use ItemKind::*;
         match self {
             Use(..) | Static(..) | Const(..) | Fn(..) | Mod(..) | GlobalAsm(..) | TyAlias(..)
-            | Struct(..) | Union(..) | Trait(..) | TraitAlias(..) | MacroDef(..) => "a",
+            | Struct(..) | Union(..) | Trait(..) | TraitAlias(..) | MacroDef(..)
+            | UnsizedTy(..) => "a",
             ExternCrate(..) | ForeignMod(..) | MacCall(..) | Enum(..) | Impl { .. } => "an",
         }
     }
@@ -3041,6 +3047,7 @@ impl ItemKind {
             ItemKind::MacCall(..) => "item macro invocation",
             ItemKind::MacroDef(..) => "macro definition",
             ItemKind::Impl { .. } => "implementation",
+            ItemKind::UnsizedTy(..) => "custom unsized type",
         }
     }
 
@@ -3054,7 +3061,8 @@ impl ItemKind {
             | Self::Union(_, generics)
             | Self::Trait(box Trait { generics, .. })
             | Self::TraitAlias(generics, _)
-            | Self::Impl(box Impl { generics, .. }) => Some(generics),
+            | Self::Impl(box Impl { generics, .. })
+            | Self::UnsizedTy(generics) => Some(generics),
             _ => None,
         }
     }

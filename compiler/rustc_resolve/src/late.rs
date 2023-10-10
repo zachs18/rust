@@ -2501,6 +2501,7 @@ impl<'a: 'ast, 'b, 'ast, 'tcx> LateResolutionVisitor<'a, 'b, 'ast, 'tcx> {
             ItemKind::ExternCrate(..) => {}
 
             ItemKind::MacCall(_) => panic!("unexpanded macro in resolve!"),
+            ItemKind::UnsizedTy(_) => todo!(),
         }
     }
 
@@ -4545,6 +4546,7 @@ impl<'ast> Visitor<'ast> for LifetimeCountVisitor<'_, '_, '_> {
             | ItemKind::MacroDef(..)
             | ItemKind::GlobalAsm(..)
             | ItemKind::MacCall(..) => {}
+            ItemKind::UnsizedTy(_) => todo!(),
         }
         visit::walk_item(self, item)
     }

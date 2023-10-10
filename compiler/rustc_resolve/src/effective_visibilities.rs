@@ -277,6 +277,7 @@ impl<'r, 'ast, 'tcx> Visitor<'ast> for EffectiveVisibilitiesVisitor<'ast, 'r, 't
             | ast::ItemKind::MacroDef(..)
             | ast::ItemKind::ForeignMod(..)
             | ast::ItemKind::Fn(..) => return,
+            rustc_ast::ItemKind::UnsizedTy(_) => todo!(),
         }
     }
 }
