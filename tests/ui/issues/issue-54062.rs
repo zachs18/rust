@@ -7,6 +7,6 @@ struct Test {
 fn main() {}
 
 fn testing(test: Test) {
-    let _ = test.comps.inner.try_lock();
-    //~^ ERROR: field `inner` of struct `Mutex` is private
+    let _ = test.comps.state.inner.try_lock();
+    //~^ ERROR: field `state` of struct `Mutex` is private
 }
