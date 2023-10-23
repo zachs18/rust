@@ -162,7 +162,7 @@ unsafe impl<T: ?Sized + Sync> Sync for RwLockWriteGuard<'_, T> {}
 #[must_not_suspend = "holding a MappedRwLockReadGuard across suspend \
                       points can cause deadlocks, delays, \
                       and cause Futures to not implement `Send`"]
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 #[clippy::has_significant_drop]
 pub struct MappedRwLockReadGuard<'a, T: ?Sized + 'a> {
     // NB: we use a pointer instead of `&'a T` to avoid `noalias` violations, because a
@@ -173,10 +173,10 @@ pub struct MappedRwLockReadGuard<'a, T: ?Sized + 'a> {
     inner_lock: &'a sys::RwLock,
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedRwLockReadGuard<'_, T> {}
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockReadGuard<'_, T> {}
 
 /// RAII structure used to release the exclusive write access of a lock when
@@ -191,7 +191,7 @@ unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockReadGuard<'_, T> {}
 #[must_not_suspend = "holding a MappedRwLockWriteGuard across suspend \
                       points can cause deadlocks, delays, \
                       and cause Future's to not implement `Send`"]
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 #[clippy::has_significant_drop]
 pub struct MappedRwLockWriteGuard<'a, T: ?Sized + 'a> {
     // NB: we use a pointer instead of `&'a mut T` to avoid `noalias` violations, because a
@@ -204,10 +204,10 @@ pub struct MappedRwLockWriteGuard<'a, T: ?Sized + 'a> {
     _variance: PhantomData<&'a mut T>,
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedRwLockWriteGuard<'_, T> {}
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockWriteGuard<'_, T> {}
 
 impl<T> RwLock<T> {
@@ -631,28 +631,28 @@ impl<T: ?Sized + fmt::Display> fmt::Display for RwLockWriteGuard<'_, T> {
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: fmt::Debug> fmt::Debug for MappedRwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized + fmt::Display> fmt::Display for MappedRwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: fmt::Debug> fmt::Debug for MappedRwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized + fmt::Display> fmt::Display for MappedRwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
@@ -687,7 +687,7 @@ impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> Deref for MappedRwLockReadGuard<'_, T> {
     type Target = T;
 
@@ -698,7 +698,7 @@ impl<T: ?Sized> Deref for MappedRwLockReadGuard<'_, T> {
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> Deref for MappedRwLockWriteGuard<'_, T> {
     type Target = T;
 
@@ -709,7 +709,7 @@ impl<T: ?Sized> Deref for MappedRwLockWriteGuard<'_, T> {
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> DerefMut for MappedRwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
@@ -739,7 +739,7 @@ impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> Drop for MappedRwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
@@ -750,7 +750,7 @@ impl<T: ?Sized> Drop for MappedRwLockReadGuard<'_, T> {
     }
 }
 
-#[unstable(feature = "mapped_lock_guards", issue = "none")]
+#[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> Drop for MappedRwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         self.inner_state.poison.done(&self.poison);
@@ -772,7 +772,7 @@ impl<'a, T: ?Sized> RwLockReadGuard<'a, T> {
     /// `RwLockReadGuard::map(...)`. A method would interfere with methods of
     /// the same name on the contents of the `RwLockReadGuard` used through
     /// `Deref`.
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockReadGuard<'a, U>
     where
         F: FnOnce(&T) -> &U,
@@ -794,7 +794,7 @@ impl<'a, T: ?Sized> RwLockReadGuard<'a, T> {
     /// of the same name on the contents of the `RwLockReadGuard` used through
     /// `Deref`.
     #[doc(alias = "filter_map")]
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn try_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockReadGuard<'a, U>, Self>
     where
         F: FnOnce(&T) -> Option<&U>,
@@ -818,7 +818,7 @@ impl<'a, T: ?Sized> MappedRwLockReadGuard<'a, T> {
     /// `MappedRwLockReadGuard::map(...)`. A method would interfere with
     /// methods of the same name on the contents of the `MappedRwLockReadGuard`
     /// used through `Deref`.
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockReadGuard<'a, U>
     where
         F: FnOnce(&T) -> &U,
@@ -840,7 +840,7 @@ impl<'a, T: ?Sized> MappedRwLockReadGuard<'a, T> {
     /// methods of the same name on the contents of the `MappedRwLockReadGuard`
     /// used through `Deref`.
     #[doc(alias = "filter_map")]
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn try_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockReadGuard<'a, U>, Self>
     where
         F: FnOnce(&T) -> Option<&U>,
@@ -864,7 +864,7 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
     /// `RwLockWriteGuard::map(...)`. A method would interfere with methods of
     /// the same name on the contents of the `RwLockWriteGuard` used through
     /// `Deref`.
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockWriteGuard<'a, U>
     where
         F: FnOnce(&mut T) -> &mut U,
@@ -891,7 +891,7 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
     /// of the same name on the contents of the `RwLockWriteGuard` used through
     /// `Deref`.
     #[doc(alias = "filter_map")]
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn try_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockWriteGuard<'a, U>, Self>
     where
         F: FnOnce(&mut T) -> Option<&mut U>,
@@ -920,7 +920,7 @@ impl<'a, T: ?Sized> MappedRwLockWriteGuard<'a, T> {
     /// `MappedRwLockWriteGuard::map(...)`. A method would interfere with
     /// methods of the same name on the contents of the `MappedRwLockWriteGuard`
     /// used through `Deref`.
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockWriteGuard<'a, U>
     where
         F: FnOnce(&mut T) -> &mut U,
@@ -947,7 +947,7 @@ impl<'a, T: ?Sized> MappedRwLockWriteGuard<'a, T> {
     /// methods of the same name on the contents of the `MappedRwLockWriteGuard`
     /// used through `Deref`.
     #[doc(alias = "filter_map")]
-    #[unstable(feature = "mapped_lock_guards", issue = "none")]
+    #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     pub fn try_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockWriteGuard<'a, U>, Self>
     where
         F: FnOnce(&mut T) -> Option<&mut U>,
