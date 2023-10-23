@@ -194,6 +194,10 @@ unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockReadGuard<'_, T> {}
 #[unstable(feature = "mapped_lock_guards", issue = "none")]
 #[clippy::has_significant_drop]
 pub struct MappedRwLockWriteGuard<'a, T: ?Sized + 'a> {
+    // NB: we use a pointer instead of `&'a mut T` to avoid `noalias` violations, because a
+    // `MappedRwLockWriteGuard` argument doesn't hold uniqueness for its whole scope, only until it drops.
+    // `NonNull` is covariant over `T`, so we add a `PhantomData<&'a mut T>` field
+    // below for the correct variance over `T` (invariance).
     data: NonNull<T>,
     inner_state: &'a RwLockState,
     poison: poison::Guard,
