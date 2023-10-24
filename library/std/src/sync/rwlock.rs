@@ -632,7 +632,7 @@ impl<T: ?Sized + fmt::Display> fmt::Display for RwLockWriteGuard<'_, T> {
 }
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
-impl<T: fmt::Debug> fmt::Debug for MappedRwLockReadGuard<'_, T> {
+impl<T: fmt::Debug + ?Sized> fmt::Debug for MappedRwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
@@ -646,7 +646,7 @@ impl<T: ?Sized + fmt::Display> fmt::Display for MappedRwLockReadGuard<'_, T> {
 }
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
-impl<T: fmt::Debug> fmt::Debug for MappedRwLockWriteGuard<'_, T> {
+impl<T: fmt::Debug + ?Sized> fmt::Debug for MappedRwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
