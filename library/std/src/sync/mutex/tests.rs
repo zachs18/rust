@@ -1,6 +1,6 @@
 use crate::sync::atomic::{AtomicUsize, Ordering};
 use crate::sync::mpsc::channel;
-use crate::sync::{Arc, Condvar, Mutex, MutexGuard, MappedMutexGuard};
+use crate::sync::{Arc, Condvar, MappedMutexGuard, Mutex, MutexGuard};
 use crate::thread;
 
 struct Packet<T>(Arc<(Mutex<T>, Condvar)>);
@@ -251,7 +251,6 @@ fn test_mutex_unsized() {
     let comp: &[i32] = &[4, 2, 5];
     assert_eq!(&*mutex.lock().unwrap(), comp);
 }
-
 
 #[test]
 fn test_mapping_mapped_guard() {

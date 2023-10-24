@@ -1,6 +1,9 @@
 use crate::sync::atomic::{AtomicUsize, Ordering};
 use crate::sync::mpsc::channel;
-use crate::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, MappedRwLockReadGuard, MappedRwLockWriteGuard, TryLockError};
+use crate::sync::{
+    Arc, MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    TryLockError,
+};
 use crate::thread;
 use rand::Rng;
 
