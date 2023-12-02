@@ -526,6 +526,7 @@ symbols! {
         compare_exchange,
         compare_exchange_weak,
         compile_error,
+        compile_warning,
         compiler,
         compiler_builtins,
         compiler_fence,

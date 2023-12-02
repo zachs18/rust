@@ -924,6 +924,49 @@ pub(crate) mod builtin {
         ($msg:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
+    /// FIXME(zachs18): documentation for compile_warning
+    /// 
+    /// Causes compilation to fail with the given warning message when encountered.
+    ///
+    /// This macro should be used when a crate uses a conditional compilation strategy to provide
+    /// better warning messages for erroneous conditions. It's the compiler-level form of [`panic!`],
+    /// but emits an warning during *compilation* rather than at *runtime*.
+    ///
+    /// # Examples
+    ///
+    /// Two such examples are macros and `#[cfg]` environments.
+    ///
+    /// Emit a better compiler warning if a macro is passed invalid values. Without the final branch,
+    /// the compiler would still emit an warning, but the warning's message would not mention the two
+    /// valid values.
+    ///
+    /// ```compile_fail
+    /// macro_rules! give_me_foo_or_bar {
+    ///     (foo) => {};
+    ///     (bar) => {};
+    ///     ($x:ident) => {
+    ///         compile_warning!("This macro only accepts `foo` or `bar`");
+    ///     }
+    /// }
+    ///
+    /// give_me_foo_or_bar!(neither);
+    /// // ^ will fail at compile time with message "This macro only accepts `foo` or `bar`"
+    /// ```
+    ///
+    /// Emit a compiler warning if one of a number of features isn't available.
+    ///
+    /// ```compile_fail
+    /// #[cfg(not(any(feature = "foo", feature = "bar")))]
+    /// compile_warning!("Either feature \"foo\" or \"bar\" must be enabled for this crate.");
+    /// ```
+    #[cfg(not(bootstrap))]
+    #[unstable(feature = "compile_warning_macro", issue = "none")]
+    #[rustc_builtin_macro]
+    #[macro_export]
+    macro_rules! compile_warning {
+        ($msg:expr $(,)?) => {{ /* compiler built-in */ }};
+    }
+
     /// Constructs parameters for the other string-formatting macros.
     ///
     /// This macro functions by taking a formatting string literal containing

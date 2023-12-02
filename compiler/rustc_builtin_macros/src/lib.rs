@@ -33,6 +33,7 @@ mod cfg;
 mod cfg_accessible;
 mod cfg_eval;
 mod compile_error;
+mod compile_warning;
 mod concat;
 mod concat_bytes;
 mod concat_idents;
@@ -78,6 +79,7 @@ pub fn register_builtin_macros(resolver: &mut dyn ResolverExpand) {
         cfg: cfg::expand_cfg,
         column: source_util::expand_column,
         compile_error: compile_error::expand_compile_error,
+        compile_warning: compile_warning::expand_compile_warning,
         concat: concat::expand_concat,
         concat_bytes: concat_bytes::expand_concat_bytes,
         concat_idents: concat_idents::expand_concat_idents,

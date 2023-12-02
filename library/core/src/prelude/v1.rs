@@ -103,3 +103,7 @@ pub use crate::macros::builtin::cfg_eval;
     reason = "placeholder syntax for type ascription"
 )]
 pub use crate::macros::builtin::type_ascribe;
+
+#[cfg(not(bootstrap))]
+#[unstable(feature = "compile_warning_macro", issue = "none")]
+pub use crate::compile_warning;

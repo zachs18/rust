@@ -386,6 +386,8 @@ declare_features! (
     (unstable, cmse_nonsecure_entry, "1.48.0", Some(75835), None),
     /// Allows use of the `#[collapse_debuginfo]` attribute.
     (unstable, collapse_debuginfo, "1.65.0", Some(100758), None),
+    /// Allows use of the `compile_warning!` macro.
+    (unstable, compile_warning, "CURRENT_RUSTC_VERSION", None, None),
     /// Allows `async {}` expressions in const contexts.
     (unstable, const_async_blocks, "1.53.0", Some(85368), None),
     /// Allows `const || {}` closures in const contexts.
