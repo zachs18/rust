@@ -156,7 +156,7 @@ where
             if base.layout().is_sized() {
                 // An unsized field of a sized type? Sure...
                 // But const-prop actually feeds us such nonsense MIR! (see test `const_prop/issue-86351.rs`)
-                throw_inval!(ConstPropNonsense);
+                throw_inval!(ConstPropNonsense(std::panic::Location::caller()));
             }
             let base_meta = base.meta();
             // Re-use parent metadata to determine dynamic field layout.
@@ -205,7 +205,7 @@ where
         if layout.abi.is_uninhabited() {
             // `read_discriminant` should have excluded uninhabited variants... but ConstProp calls
             // us on dead code.
-            throw_inval!(ConstPropNonsense)
+            throw_inval!(ConstPropNonsense(std::panic::Location::caller()))
         }
         // This cannot be `transmute` as variants *can* have a smaller size than the entire enum.
         base.offset(Size::ZERO, layout, self)

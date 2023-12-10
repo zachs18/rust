@@ -857,8 +857,8 @@ impl<'tcx> ReportErrorExt for InvalidProgramInfo<'tcx> {
             InvalidProgramInfo::FnAbiAdjustForForeignAbi(_) => {
                 rustc_middle::error::middle_adjust_for_foreign_abi_error
             }
-            InvalidProgramInfo::ConstPropNonsense => {
-                panic!("We had const-prop nonsense, this should never be printed")
+            InvalidProgramInfo::ConstPropNonsense(loc) => {
+                panic!("We had const-prop nonsense, this should never be printed. {loc:?}")
             }
         }
     }
@@ -870,7 +870,7 @@ impl<'tcx> ReportErrorExt for InvalidProgramInfo<'tcx> {
         match self {
             InvalidProgramInfo::TooGeneric
             | InvalidProgramInfo::AlreadyReported(_)
-            | InvalidProgramInfo::ConstPropNonsense => {}
+            | InvalidProgramInfo::ConstPropNonsense(_) => {}
             InvalidProgramInfo::Layout(e) => {
                 let diag: DiagnosticBuilder<'_, ()> = e.into_diagnostic().into_diagnostic(handler);
                 for (name, val) in diag.args() {

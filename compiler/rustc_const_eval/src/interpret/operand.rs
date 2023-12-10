@@ -635,7 +635,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             if layout.is_unsized() {
                 // ConstProp marks *all* locals as `Immediate::Uninit` since it cannot
                 // efficiently check whether they are sized. We have to catch that case here.
-                throw_inval!(ConstPropNonsense);
+                throw_inval!(ConstPropNonsense(std::panic::Location::caller()));
             }
         }
         Ok(OpTy { op, layout })

@@ -212,7 +212,7 @@ pub enum InvalidProgramInfo<'tcx> {
     /// Not using `FnAbiError` as that contains a nested `LayoutError`.
     FnAbiAdjustForForeignAbi(call::AdjustForForeignAbiError),
     /// We are runnning into a nonsense situation due to ConstProp violating our invariants.
-    ConstPropNonsense,
+    ConstPropNonsense(&'static std::panic::Location<'static>),
 }
 
 /// Details of why a pointer had to be in-bounds.

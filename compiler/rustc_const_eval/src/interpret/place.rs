@@ -526,7 +526,7 @@ where
                 Operand::Immediate(_) => {
                     // ConstProp marks *all* locals as `Immediate::Uninit` since it cannot
                     // efficiently check whether they are sized. We have to catch that case here.
-                    throw_inval!(ConstPropNonsense);
+                    throw_inval!(ConstPropNonsense(std::panic::Location::caller()));
                 }
                 Operand::Indirect(mplace) => Place::Ptr(*mplace),
             }
@@ -826,10 +826,10 @@ where
                 // predicate like `where Self: Sized` with `Self = dyn Trait`.
                 // See #102553 for an example of such a predicate.
                 if src.layout().is_unsized() {
-                    throw_inval!(ConstPropNonsense);
+                    throw_inval!(ConstPropNonsense(std::panic::Location::caller()));
                 }
                 if dest.layout().is_unsized() {
-                    throw_inval!(ConstPropNonsense);
+                    throw_inval!(ConstPropNonsense(std::panic::Location::caller()));
                 }
                 assert_eq!(src.layout().size, dest.layout().size);
                 // Yay, we got a value that we can write directly.
