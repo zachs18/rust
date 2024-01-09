@@ -1123,12 +1123,9 @@ impl<T, A: Allocator> Rc<mem::MaybeUninit<T>, A> {
     /// ```
     #[unstable(feature = "new_uninit", issue = "63291")]
     #[inline]
-    pub unsafe fn assume_init(self) -> Rc<T, A>
-    where
-        A: Clone,
-    {
-        let md_self = mem::ManuallyDrop::new(self);
-        unsafe { Rc::from_inner_in(md_self.ptr.cast(), md_self.alloc.clone()) }
+    pub unsafe fn assume_init(self) -> Rc<T, A> {
+        let (ptr, alloc) = Self::into_raw_with_allocator(self);
+        unsafe { Rc::from_raw_in(ptr.cast(), alloc) }
     }
 }
 
@@ -1167,12 +1164,9 @@ impl<T, A: Allocator> Rc<[mem::MaybeUninit<T>], A> {
     /// ```
     #[unstable(feature = "new_uninit", issue = "63291")]
     #[inline]
-    pub unsafe fn assume_init(self) -> Rc<[T], A>
-    where
-        A: Clone,
-    {
-        let md_self = mem::ManuallyDrop::new(self);
-        unsafe { Rc::from_ptr_in(md_self.ptr.as_ptr() as _, md_self.alloc.clone()) }
+    pub unsafe fn assume_init(self) -> Rc<[T], A> {
+        let (ptr, alloc) = Self::into_raw_with_allocator(self);
+        unsafe { Rc::from_raw_in(ptr as *const [T], alloc) }
     }
 }
 

@@ -1271,12 +1271,9 @@ impl<T, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
     #[unstable(feature = "new_uninit", issue = "63291")]
     #[must_use = "`self` will be dropped if the result is not used"]
     #[inline]
-    pub unsafe fn assume_init(self) -> Arc<T, A>
-    where
-        A: Clone,
-    {
-        let md_self = mem::ManuallyDrop::new(self);
-        unsafe { Arc::from_inner_in(md_self.ptr.cast(), md_self.alloc.clone()) }
+    pub unsafe fn assume_init(self) -> Arc<T, A> {
+        let (ptr, alloc) = Self::into_raw_with_allocator(self);
+        unsafe { Arc::from_raw_in(ptr.cast(), alloc) }
     }
 }
 
@@ -1316,12 +1313,9 @@ impl<T, A: Allocator> Arc<[mem::MaybeUninit<T>], A> {
     #[unstable(feature = "new_uninit", issue = "63291")]
     #[must_use = "`self` will be dropped if the result is not used"]
     #[inline]
-    pub unsafe fn assume_init(self) -> Arc<[T], A>
-    where
-        A: Clone,
-    {
-        let md_self = mem::ManuallyDrop::new(self);
-        unsafe { Arc::from_ptr_in(md_self.ptr.as_ptr() as _, md_self.alloc.clone()) }
+    pub unsafe fn assume_init(self) -> Arc<[T], A> {
+        let (ptr, alloc) = Self::into_raw_with_allocator(self);
+        unsafe { Arc::from_raw_in(ptr as *const [T], alloc) }
     }
 }
 
