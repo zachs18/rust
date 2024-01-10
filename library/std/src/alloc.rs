@@ -126,6 +126,12 @@ pub use alloc_crate::alloc::*;
 /// global allocator has been selected for a Rust program. For example if a Rust
 /// program opts in to using jemalloc as the global allocator, `System` will
 /// still allocate memory using `malloc` and `HeapAlloc`.
+///
+/// ### Compatible allocators
+///
+/// See the [`Allocator`] trait for the definition of [compatible allocators][core::alloc::Allocator#compatible-allocators].
+///
+/// All instances of `System` are compatible with each other.
 #[stable(feature = "alloc_system_type", since = "1.28.0")]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct System;

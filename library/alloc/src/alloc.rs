@@ -47,6 +47,12 @@ extern "Rust" {
 ///
 /// Note: while this type is unstable, the functionality it provides can be
 /// accessed through the [free functions in `alloc`](self#functions).
+///
+/// ### Comptaible allocators
+///
+/// See the [`Allocator`] trait for the definition of [compatible allocators][core::alloc::Allocator#compatible-allocators].
+///
+/// All instances of `Global` are compatible with each other.
 #[unstable(feature = "allocator_api", issue = "32838")]
 #[derive(Copy, Clone, Default, Debug)]
 #[cfg(not(test))]

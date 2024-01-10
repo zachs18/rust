@@ -77,6 +77,22 @@ impl fmt::Display for AllocError {
 /// [`shrink`]: Allocator::shrink
 /// [`deallocate`]: Allocator::deallocate
 ///
+/// ### Compatible allocators
+///
+/// Comptaible allocators are allocators who share their set of [*currently allocated*] memory blocks.
+/// Calling a method on one allocator has the same effect on the set of [*currently allocated*] blocks
+/// of all compatible allocators.
+///
+/// In general, what allocator instances are "compatible" with a particular allocator instance of are defined by
+/// that allocator's type, however there are some minimal requirements:
+///
+/// - Compatibility is reflexive, i.e. if `a` is comptaible with `b`, then `b` is comtapible with `a`.
+/// - Compatibility is transitive, i.e. if `a` is comptaible with `b` and `b` is comptaible with `c`, then `a` is compatible with `c`.
+/// - References to a particular instance of allocator (which implement `Allocator` via `impl<A> Allocator for &A where A: Allocator + ?Sized`) are comptaible with that allocator instance.
+/// - If an allocator type implements `Clone`, then all clones of an allocator instance are comptaible with that allocator instance. Cloning such an allocator instance must not invalidate any [*currently allocated*] memory blocks.
+/// - If an allocator type implements `Copy`, then all copies of an allocator instance are comptaible with that allocator instance. Copying such an allocator instance must not invalidate any [*currently allocated*] memory blocks.
+/// - Moving an allocator instance must not invalidate any [*currently allocated*] memory blocks or change the set of comptaible allocators.
+///
 /// ### Memory fitting
 ///
 /// Some of the methods require that a layout *fit* a memory block. What it means for a layout to
@@ -96,13 +112,13 @@ impl fmt::Display for AllocError {
 ///
 /// * Memory blocks returned from an allocator that are [*currently allocated*] must point to
 ///   valid memory and retain their validity while they are [*currently allocated*] and at
-///   least one of the instance and all of its clones has not been dropped.
+///   least one of the instance and all of its compatible allocators still exists or can be created.
 ///
 /// * copying, cloning, or moving the allocator must not invalidate memory blocks returned from this
 ///   allocator. A copied or cloned allocator must behave like the same allocator, and
 ///
 /// * any pointer to a memory block which is [*currently allocated*] may be passed to any other
-///   method of the allocator.
+///   method of the allocator, or a compatible allocator.
 ///
 /// [*currently allocated*]: #currently-allocated-memory
 #[unstable(feature = "allocator_api", issue = "32838")]
