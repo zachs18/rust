@@ -234,8 +234,10 @@ impl<A: Allocator> String<A> {
     /// Basic usage:
     ///
     /// ```
+    /// #![feature(string_allocator_api)]
     /// #![feature(allocator_api)]
     ///
+    /// use std::string::string::String;
     /// use std::alloc::System;
     ///
     /// let s = String::new_in(System);
@@ -268,8 +270,10 @@ impl<A: Allocator> String<A> {
     /// Basic usage:
     ///
     /// ```
+    /// #![feature(string_allocator_api)]
     /// #![feature(allocator_api)]
     ///
+    /// use std::string::string::String;
     /// use std::alloc::System;
     ///
     /// let mut s = String::with_capacity_in(10, System);
@@ -394,7 +398,9 @@ impl<A: Allocator> String<A> {
     ///
     /// ```
     /// #![feature(vec_into_raw_parts)]
+    /// #![feature(string_allocator_api)]
     /// #![feature(allocator_api)]
+    /// use std::string::string::String;
     /// use std::alloc::System;
     /// let mut s = String::new_in(System);
     /// s.push_str("hello");
@@ -440,8 +446,10 @@ impl<A: Allocator> String<A> {
     /// Basic usage:
     ///
     /// ```
+    /// #![feature(string_allocator_api)]
     /// #![feature(allocator_api)]
     ///
+    /// use std::string::string::String;
     /// use std::mem;
     /// use std::alloc::System;
     ///
