@@ -18,7 +18,7 @@ use crate::alloc::{Allocator, Global};
 use crate::borrow::ToOwned;
 use crate::boxed::Box;
 use crate::slice::{Concat, Join, SliceIndex};
-use crate::string::String;
+use crate::string::string::String;
 use crate::vec::Vec;
 
 #[stable(feature = "rust1", since = "1.0.0")]

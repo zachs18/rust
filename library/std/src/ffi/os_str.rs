@@ -11,6 +11,7 @@ use crate::ops::{self, Range};
 use crate::rc::Rc;
 use crate::slice;
 use crate::str::{from_utf8 as str_from_utf8, FromStr};
+use crate::string::string::String;
 use crate::sync::Arc;
 
 use crate::sys::os_str::{Buf, Slice};
