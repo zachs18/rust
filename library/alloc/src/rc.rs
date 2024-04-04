@@ -1196,6 +1196,29 @@ impl<T, A: Allocator> Rc<[mem::MaybeUninit<T>], A> {
 }
 
 impl<T: ?Sized> Rc<T> {
+    /// Consumes the `Rc`, returning the wrapped pointer.
+    ///
+    /// To avoid a memory leak the pointer must be converted back to an `Rc` using
+    /// [`Rc::from_raw`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    ///
+    /// let x = Rc::new("hello".to_owned());
+    /// let x_ptr = Rc::into_raw(x);
+    /// assert_eq!(unsafe { &*x_ptr }, "hello");
+    /// ```
+    #[must_use = "losing the pointer will leak memory"]
+    #[stable(feature = "rc_raw", since = "1.17.0")]
+    #[rustc_never_returns_null_ptr]
+    pub fn into_raw(this: Self) -> *const T {
+        let ptr = Self::as_ptr(&this);
+        mem::forget(this);
+        ptr
+    }
+
     /// Constructs an `Rc<T>` from a raw pointer.
     ///
     /// The raw pointer must have been previously returned by a call to
@@ -1330,29 +1353,6 @@ impl<T: ?Sized> Rc<T> {
 }
 
 impl<T: ?Sized, A: Allocator> Rc<T, A> {
-    /// Consumes the `Rc`, returning the wrapped pointer.
-    ///
-    /// To avoid a memory leak the pointer must be converted back to an `Rc` using
-    /// [`Rc::from_raw`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::rc::Rc;
-    ///
-    /// let x = Rc::new("hello".to_owned());
-    /// let x_ptr = Rc::into_raw(x);
-    /// assert_eq!(unsafe { &*x_ptr }, "hello");
-    /// ```
-    #[must_use = "losing the pointer will leak memory"]
-    #[stable(feature = "rc_raw", since = "1.17.0")]
-    #[rustc_never_returns_null_ptr]
-    pub fn into_raw(this: Self) -> *const T {
-        let ptr = Self::as_ptr(&this);
-        mem::forget(this);
-        ptr
-    }
-
     /// Provides a raw pointer to the data.
     ///
     /// The counts are not affected in any way and the `Rc` is not consumed. The pointer is valid
@@ -2870,6 +2870,41 @@ struct WeakInner<'a> {
 }
 
 impl<T: ?Sized> Weak<T> {
+    /// Consumes the `Weak<T>` and turns it into a raw pointer.
+    ///
+    /// This converts the weak pointer into a raw pointer, while still preserving the ownership of
+    /// one weak reference (the weak count is not modified by this operation). It can be turned
+    /// back into the `Weak<T>` with [`from_raw`].
+    ///
+    /// The same restrictions of accessing the target of the pointer as with
+    /// [`as_ptr`] apply.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::rc::{Rc, Weak};
+    ///
+    /// let strong = Rc::new("hello".to_owned());
+    /// let weak = Rc::downgrade(&strong);
+    /// let raw = weak.into_raw();
+    ///
+    /// assert_eq!(1, Rc::weak_count(&strong));
+    /// assert_eq!("hello", unsafe { &*raw });
+    ///
+    /// drop(unsafe { Weak::from_raw(raw) });
+    /// assert_eq!(0, Rc::weak_count(&strong));
+    /// ```
+    ///
+    /// [`from_raw`]: Weak::from_raw
+    /// [`as_ptr`]: Weak::as_ptr
+    #[must_use = "losing the pointer will leak memory"]
+    #[stable(feature = "weak_into_raw", since = "1.45.0")]
+    pub fn into_raw(self) -> *const T {
+        let result = self.as_ptr();
+        mem::forget(self);
+        result
+    }
+
     /// Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>`.
     ///
     /// This can be used to safely get a strong reference (by calling [`upgrade`]
@@ -2960,41 +2995,6 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
             // so use raw pointer manipulation.
             unsafe { ptr::addr_of_mut!((*ptr).value) }
         }
-    }
-
-    /// Consumes the `Weak<T>` and turns it into a raw pointer.
-    ///
-    /// This converts the weak pointer into a raw pointer, while still preserving the ownership of
-    /// one weak reference (the weak count is not modified by this operation). It can be turned
-    /// back into the `Weak<T>` with [`from_raw`].
-    ///
-    /// The same restrictions of accessing the target of the pointer as with
-    /// [`as_ptr`] apply.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::rc::{Rc, Weak};
-    ///
-    /// let strong = Rc::new("hello".to_owned());
-    /// let weak = Rc::downgrade(&strong);
-    /// let raw = weak.into_raw();
-    ///
-    /// assert_eq!(1, Rc::weak_count(&strong));
-    /// assert_eq!("hello", unsafe { &*raw });
-    ///
-    /// drop(unsafe { Weak::from_raw(raw) });
-    /// assert_eq!(0, Rc::weak_count(&strong));
-    /// ```
-    ///
-    /// [`from_raw`]: Weak::from_raw
-    /// [`as_ptr`]: Weak::as_ptr
-    #[must_use = "losing the pointer will leak memory"]
-    #[stable(feature = "weak_into_raw", since = "1.45.0")]
-    pub fn into_raw(self) -> *const T {
-        let result = self.as_ptr();
-        mem::forget(self);
-        result
     }
 
     /// Consumes the `Weak<T>` and turns it into a raw pointer.

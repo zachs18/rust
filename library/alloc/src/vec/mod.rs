@@ -497,6 +497,44 @@ impl<T> Vec<T> {
         Self::try_with_capacity_in(capacity, Global)
     }
 
+    /// Decomposes a `Vec<T>` into its raw components: `(pointer, length, capacity)`.
+    ///
+    /// Returns the raw pointer to the underlying data, the length of
+    /// the vector (in elements), and the allocated capacity of the
+    /// data (in elements). These are the same arguments in the same
+    /// order as the arguments to [`from_raw_parts`].
+    ///
+    /// After calling this function, the caller is responsible for the
+    /// memory previously managed by the `Vec`. The only way to do
+    /// this is to convert the raw pointer, length, and capacity back
+    /// into a `Vec` with the [`from_raw_parts`] function, allowing
+    /// the destructor to perform the cleanup.
+    ///
+    /// [`from_raw_parts`]: Vec::from_raw_parts
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(vec_into_raw_parts)]
+    /// let v: Vec<i32> = vec![-1, 0, 1];
+    ///
+    /// let (ptr, len, cap) = v.into_raw_parts();
+    ///
+    /// let rebuilt = unsafe {
+    ///     // We can now make changes to the components, such as
+    ///     // transmuting the raw pointer to a compatible type.
+    ///     let ptr = ptr as *mut u32;
+    ///
+    ///     Vec::from_raw_parts(ptr, len, cap)
+    /// };
+    /// assert_eq!(rebuilt, [4294967295, 0, 1]);
+    /// ```
+    #[unstable(feature = "vec_into_raw_parts", reason = "new API", issue = "65816")]
+    pub fn into_raw_parts(self) -> (*mut T, usize, usize) {
+        let mut me = ManuallyDrop::new(self);
+        (me.as_mut_ptr(), me.len(), me.capacity())
+    }
+
     /// Creates a `Vec<T>` directly from a pointer, a length, and a capacity.
     ///
     /// # Safety
@@ -818,44 +856,6 @@ impl<T, A: Allocator> Vec<T, A> {
     #[unstable(feature = "allocator_api", issue = "32838")]
     pub unsafe fn from_raw_parts_in(ptr: *mut T, length: usize, capacity: usize, alloc: A) -> Self {
         unsafe { Vec { buf: RawVec::from_raw_parts_in(ptr, capacity, alloc), len: length } }
-    }
-
-    /// Decomposes a `Vec<T>` into its raw components: `(pointer, length, capacity)`.
-    ///
-    /// Returns the raw pointer to the underlying data, the length of
-    /// the vector (in elements), and the allocated capacity of the
-    /// data (in elements). These are the same arguments in the same
-    /// order as the arguments to [`from_raw_parts`].
-    ///
-    /// After calling this function, the caller is responsible for the
-    /// memory previously managed by the `Vec`. The only way to do
-    /// this is to convert the raw pointer, length, and capacity back
-    /// into a `Vec` with the [`from_raw_parts`] function, allowing
-    /// the destructor to perform the cleanup.
-    ///
-    /// [`from_raw_parts`]: Vec::from_raw_parts
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(vec_into_raw_parts)]
-    /// let v: Vec<i32> = vec![-1, 0, 1];
-    ///
-    /// let (ptr, len, cap) = v.into_raw_parts();
-    ///
-    /// let rebuilt = unsafe {
-    ///     // We can now make changes to the components, such as
-    ///     // transmuting the raw pointer to a compatible type.
-    ///     let ptr = ptr as *mut u32;
-    ///
-    ///     Vec::from_raw_parts(ptr, len, cap)
-    /// };
-    /// assert_eq!(rebuilt, [4294967295, 0, 1]);
-    /// ```
-    #[unstable(feature = "vec_into_raw_parts", reason = "new API", issue = "65816")]
-    pub fn into_raw_parts(self) -> (*mut T, usize, usize) {
-        let mut me = ManuallyDrop::new(self);
-        (me.as_mut_ptr(), me.len(), me.capacity())
     }
 
     /// Decomposes a `Vec<T>` into its raw components: `(pointer, length, capacity, allocator)`.

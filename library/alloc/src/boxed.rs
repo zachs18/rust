@@ -904,6 +904,59 @@ impl<T, A: Allocator> Box<[mem::MaybeUninit<T>], A> {
 }
 
 impl<T: ?Sized> Box<T> {
+    /// Consumes the `Box`, returning a wrapped raw pointer.
+    ///
+    /// The pointer will be properly aligned and non-null.
+    ///
+    /// After calling this function, the caller is responsible for the
+    /// memory previously managed by the `Box`. In particular, the
+    /// caller should properly destroy `T` and release the memory, taking
+    /// into account the [memory layout] used by `Box`. The easiest way to
+    /// do this is to convert the raw pointer back into a `Box` with the
+    /// [`Box::from_raw`] function, allowing the `Box` destructor to perform
+    /// the cleanup.
+    ///
+    /// Note: this is an associated function, which means that you have
+    /// to call it as `Box::into_raw(b)` instead of `b.into_raw()`. This
+    /// is so that there is no conflict with a method on the inner type.
+    ///
+    /// # Examples
+    /// Converting the raw pointer back into a `Box` with [`Box::from_raw`]
+    /// for automatic cleanup:
+    /// ```
+    /// let x = Box::new(String::from("Hello"));
+    /// let ptr = Box::into_raw(x);
+    /// let x = unsafe { Box::from_raw(ptr) };
+    /// ```
+    /// Manual cleanup by explicitly running the destructor and deallocating
+    /// the memory:
+    /// ```
+    /// use std::alloc::{dealloc, Layout};
+    /// use std::ptr;
+    ///
+    /// let x = Box::new(String::from("Hello"));
+    /// let ptr = Box::into_raw(x);
+    /// unsafe {
+    ///     ptr::drop_in_place(ptr);
+    ///     dealloc(ptr as *mut u8, Layout::new::<String>());
+    /// }
+    /// ```
+    /// Note: This is equivalent to the following:
+    /// ```
+    /// let x = Box::new(String::from("Hello"));
+    /// let ptr = Box::into_raw(x);
+    /// unsafe {
+    ///     drop(Box::from_raw(ptr));
+    /// }
+    /// ```
+    ///
+    /// [memory layout]: self#memory-layout
+    #[stable(feature = "box_raw", since = "1.4.0")]
+    #[inline]
+    pub fn into_raw(b: Self) -> *mut T {
+        Self::into_raw_with_allocator(b).0
+    }
+
     /// Constructs a box from a raw pointer.
     ///
     /// After calling this function, the raw pointer is owned by the
@@ -1006,59 +1059,6 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     #[inline]
     pub const unsafe fn from_raw_in(raw: *mut T, alloc: A) -> Self {
         Box(unsafe { Unique::new_unchecked(raw) }, alloc)
-    }
-
-    /// Consumes the `Box`, returning a wrapped raw pointer.
-    ///
-    /// The pointer will be properly aligned and non-null.
-    ///
-    /// After calling this function, the caller is responsible for the
-    /// memory previously managed by the `Box`. In particular, the
-    /// caller should properly destroy `T` and release the memory, taking
-    /// into account the [memory layout] used by `Box`. The easiest way to
-    /// do this is to convert the raw pointer back into a `Box` with the
-    /// [`Box::from_raw`] function, allowing the `Box` destructor to perform
-    /// the cleanup.
-    ///
-    /// Note: this is an associated function, which means that you have
-    /// to call it as `Box::into_raw(b)` instead of `b.into_raw()`. This
-    /// is so that there is no conflict with a method on the inner type.
-    ///
-    /// # Examples
-    /// Converting the raw pointer back into a `Box` with [`Box::from_raw`]
-    /// for automatic cleanup:
-    /// ```
-    /// let x = Box::new(String::from("Hello"));
-    /// let ptr = Box::into_raw(x);
-    /// let x = unsafe { Box::from_raw(ptr) };
-    /// ```
-    /// Manual cleanup by explicitly running the destructor and deallocating
-    /// the memory:
-    /// ```
-    /// use std::alloc::{dealloc, Layout};
-    /// use std::ptr;
-    ///
-    /// let x = Box::new(String::from("Hello"));
-    /// let ptr = Box::into_raw(x);
-    /// unsafe {
-    ///     ptr::drop_in_place(ptr);
-    ///     dealloc(ptr as *mut u8, Layout::new::<String>());
-    /// }
-    /// ```
-    /// Note: This is equivalent to the following:
-    /// ```
-    /// let x = Box::new(String::from("Hello"));
-    /// let ptr = Box::into_raw(x);
-    /// unsafe {
-    ///     drop(Box::from_raw(ptr));
-    /// }
-    /// ```
-    ///
-    /// [memory layout]: self#memory-layout
-    #[stable(feature = "box_raw", since = "1.4.0")]
-    #[inline]
-    pub fn into_raw(b: Self) -> *mut T {
-        Self::into_raw_with_allocator(b).0
     }
 
     /// Consumes the `Box`, returning a wrapped raw pointer and the allocator.
@@ -1183,7 +1183,9 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     where
         A: 'a,
     {
-        unsafe { &mut *Box::into_raw(b) }
+        let (ptr, alloc) = Box::into_raw_with_allocator(b);
+        core::mem::forget(alloc);
+        unsafe { &mut *ptr }
     }
 
     /// Converts a `Box<T>` into a `Pin<Box<T>>`. If `T` does not implement [`Unpin`], then
