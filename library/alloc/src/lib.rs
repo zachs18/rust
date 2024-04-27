@@ -124,6 +124,8 @@
 #![feature(error_in_core)]
 #![feature(exact_size_is_empty)]
 #![feature(extend_one)]
+#![feature(f128)]
+#![feature(f16)]
 #![feature(fmt_internals)]
 #![feature(fn_traits)]
 #![feature(hasher_prefixfree_extras)]
@@ -258,6 +260,13 @@ pub mod task;
 #[cfg(test)]
 mod tests;
 pub mod vec;
+
+#[allow(unused_imports)]
+use core::{convert, f128, f16, f32, f64, hash, iter, mem, ops, option, panic, ptr};
+// Include a number of private modules that exist solely to provide
+// the rustdoc documentation for primitive types. Using `include!`
+// because rustdoc only looks for these modules at the crate level.
+include!("../../core/src/primitive_docs.rs");
 
 #[doc(hidden)]
 #[unstable(feature = "liballoc_internals", issue = "none", reason = "implementation detail")]
