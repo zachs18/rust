@@ -2005,7 +2005,9 @@ impl String {
 
     /// Replaces the leftmost occurrence of a pattern with another string, in-place.
     ///
-    /// This method should be preferred over [`String::replacen(..., 1)`](str::replacen) as it can use the `String`'s existing capacity to prevent a reallocation if sufficient space is available.
+    /// This method should be preferred over [`String::replacen(..., 1)`][replacen]
+    /// as it can use the `String`'s existing capacity to prevent a reallocation if
+    /// sufficient space is available.
     ///
     /// # Examples
     ///
@@ -2020,6 +2022,8 @@ impl String {
     /// s.replace_first('❌', "✅");
     /// assert_eq!(s, "Test Results: ✅❌❌");
     /// ```
+    ///
+    /// [replacen]: ../../std/primitive.str.html#method.replacen
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "string_replace_in_place", issue = "none")]
     pub fn replace_first<P: Pattern>(&mut self, from: P, to: &str) {
