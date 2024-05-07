@@ -3086,6 +3086,7 @@ impl<'hir> Item<'hir> {
 #[derive(Encodable, Decodable, HashStable_Generic)]
 pub enum Unsafety {
     Unsafe,
+    DeprecatedSafe,
     Normal,
 }
 
@@ -3094,6 +3095,7 @@ impl Unsafety {
         match self {
             Self::Unsafe => "unsafe ",
             Self::Normal => "",
+            Self::DeprecatedSafe => todo!(),
         }
     }
 }
@@ -3103,6 +3105,7 @@ impl fmt::Display for Unsafety {
         f.write_str(match *self {
             Self::Unsafe => "unsafe",
             Self::Normal => "normal",
+            Self::DeprecatedSafe => "deprecated-safe",
         })
     }
 }

@@ -2281,6 +2281,7 @@ impl<'a> State<'a> {
         match s {
             hir::Unsafety::Normal => {}
             hir::Unsafety::Unsafe => self.word_nbsp("unsafe"),
+            hir::Unsafety::DeprecatedSafe => self.word_nbsp("deprecated-safe"),
         }
     }
 

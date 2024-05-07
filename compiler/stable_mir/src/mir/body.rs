@@ -940,6 +940,7 @@ pub enum Mutability {
 pub enum Safety {
     Unsafe,
     Normal,
+    DeprecatedSafe,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

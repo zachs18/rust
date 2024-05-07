@@ -205,6 +205,7 @@ impl<'tcx> TypeErrCtxt<'_, 'tcx> {
                 let shortname = match fn_sig.unsafety() {
                     hir::Unsafety::Normal => "fn",
                     hir::Unsafety::Unsafe => "unsafe fn",
+                    hir::Unsafety::DeprecatedSafe => todo!(),
                 };
                 flags.push((sym::_Self, Some(shortname.to_owned())));
             }

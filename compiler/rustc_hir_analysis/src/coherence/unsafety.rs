@@ -93,5 +93,6 @@ pub(super) fn check_item(
         | (Unsafety::Unsafe, _, Unsafety::Unsafe, Positive | Reservation)
         | (Unsafety::Normal, Some(_), Unsafety::Unsafe, Positive | Reservation)
         | (Unsafety::Normal, None, Unsafety::Normal, _) => Ok(()),
+        (Unsafety::DeprecatedSafe, _, _, _) | (_, _, Unsafety::DeprecatedSafe, _) => todo!(),
     }
 }

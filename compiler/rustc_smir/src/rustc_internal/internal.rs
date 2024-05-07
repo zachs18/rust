@@ -471,6 +471,7 @@ impl RustcInternal for Safety {
         match self {
             Safety::Unsafe => rustc_hir::Unsafety::Unsafe,
             Safety::Normal => rustc_hir::Unsafety::Normal,
+            Safety::DeprecatedSafe => rustc_hir::Unsafety::DeprecatedSafe,
         }
     }
 }

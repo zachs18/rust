@@ -15,6 +15,7 @@ impl<'tcx> Stable<'tcx> for rustc_hir::Unsafety {
         match self {
             rustc_hir::Unsafety::Unsafe => stable_mir::mir::Safety::Unsafe,
             rustc_hir::Unsafety::Normal => stable_mir::mir::Safety::Normal,
+            rustc_hir::Unsafety::DeprecatedSafe => stable_mir::mir::Safety::DeprecatedSafe,
         }
     }
 }
