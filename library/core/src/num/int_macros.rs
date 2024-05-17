@@ -2023,6 +2023,84 @@ macro_rules! int_impl {
             }
         }
 
+        /// Infinite-precision bitwise shift-left; yields the mathematical result of `self << rhs`, i.e.
+        /// if `rhs` is greater than or equal to the bitwidth of the type, all bits are shifted out and `0`
+        /// is returned.
+        ///
+        /// Note that this is *not* the same as a rotate-left; the bit shifted out of the LHS are discarded,
+        /// rather than the bits shifted out of the LHS being returned to the other end.
+        /// The primitive integer types all implement a [`rotate_left`](Self::rotate_left) function,
+        /// which may be what you want instead.
+        ///
+        /// # Examples
+        ///
+        /// Basic usage:
+        ///
+        /// ```
+        /// #![feature(mathematical_bit_shifts)]
+        #[doc = concat!("assert_eq!((-1", stringify!($SelfT), ").shift_left(7), -128);")]
+        #[doc = concat!("assert_eq!((-1", stringify!($SelfT), ").shift_left(128), 0);")]
+        /// ```
+        #[unstable(feature = "mathematical_bit_shifts", issue = "none")]
+        #[rustc_const_unstable(feature = "mathematical_bit_shifts", issue = "none")]
+        #[must_use = "this returns the result of the operation, \
+                      without modifying the original"]
+        #[inline(always)]
+        #[rustc_allow_const_fn_unstable(unchecked_shifts)]
+        pub const fn shift_left(self, rhs: u32) -> Self {
+            if rhs < Self::BITS {
+                // SAFETY: rhs is nonnegative and less than the bitsize of the type, which
+                // ensures that we do not shift out of bounds
+                unsafe {
+                    self.unchecked_shl(rhs)
+                }
+            } else {
+                // Left-shift shifts in zeros, so saturate to 0 regardless of sign of self
+                0
+            }
+        }
+
+        /// Infinite-precision bitwise shift-right; yields the mathematical result of `self >> rhs`, i.e.
+        /// if `rhs` is greater than or equal to the bitwidth of the type, all bits are shifted out and
+        /// replaced with copies of the sign bit (if `self >= 0`, `0` is returned. If `self < 0`, `-1`
+        /// is returned).
+        ///
+        /// Note that this is *not* the same as a rotate-right; the bits shifted out of the LHS are discarded,
+        /// rather than the bits shifted out of the LHS being returned to the other end.
+        /// The primitive integer types all implement a [`rotate_right`](Self::rotate_right) function,
+        /// which may be what you want instead.
+        ///
+        /// # Examples
+        ///
+        /// Basic usage:
+        ///
+        /// ```
+        /// #![feature(mathematical_bit_shifts)]
+        #[doc = concat!("assert_eq!((-128", stringify!($SelfT), ").shift_right(7), -1);")]
+        #[doc = concat!("assert_eq!((-128", stringify!($SelfT), ").shift_right(128), -1);")]
+        /// ```
+        #[unstable(feature = "mathematical_bit_shifts", issue = "none")]
+        #[rustc_const_unstable(feature = "mathematical_bit_shifts", issue = "none")]
+        #[must_use = "this returns the result of the operation, \
+                      without modifying the original"]
+        #[inline(always)]
+        #[rustc_allow_const_fn_unstable(unchecked_shifts)]
+        pub const fn shift_right(self, rhs: u32) -> Self {
+            if rhs < Self::BITS {
+                // SAFETY: rhs is nonnegative and less than the bitsize of the type, which
+                // ensures that we do not shift out of bounds
+                unsafe {
+                    self.unchecked_shr(rhs)
+                }
+            } else if self < 0 {
+                // Right-shift shifts in copies of sign bit, so saturate to -1 for negative self
+                -1
+            } else {
+                // Right-shift shifts in copies of sign bit, so saturate to 0 for non-negative self
+                0
+            }
+        }
+
         /// Wrapping (modular) absolute value. Computes `self.abs()`, wrapping around at
         /// the boundary of the type.
         ///
