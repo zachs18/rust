@@ -340,7 +340,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         ty::TyVar(_) => self.next_ty_var(DUMMY_SP),
                         ty::IntVar(_) => self.next_int_var(),
                         ty::FloatVar(_) => self.next_float_var(),
-                        ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_) => {
+                        ty::FloatVar2021(_) => self.next_float_var_2021(),
+                        ty::FreshTy(_)
+                        | ty::FreshIntTy(_)
+                        | ty::FreshFloatTy2021(_)
+                        | ty::FreshFloatTy(_) => {
                             bug!("unexpected fresh ty outside of the trait solver")
                         }
                     }

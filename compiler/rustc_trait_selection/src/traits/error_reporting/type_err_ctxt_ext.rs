@@ -1771,7 +1771,7 @@ impl<'tcx> TypeErrCtxt<'_, 'tcx> {
                 ty::Int(..)
                 | ty::Uint(..)
                 | ty::Float(..)
-                | ty::Infer(ty::IntVar(..) | ty::FloatVar(..)) => Some(4),
+                | ty::Infer(ty::IntVar(..) | ty::FloatVar2021(..) | ty::FloatVar(..)) => Some(4),
                 ty::Ref(..) | ty::RawPtr(..) => Some(5),
                 ty::Array(..) | ty::Slice(..) => Some(6),
                 ty::FnDef(..) | ty::FnPtr(..) => Some(7),

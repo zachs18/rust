@@ -544,7 +544,7 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
                 | ty::FnPtr(..)
                 | ty::Closure(..)
                 | ty::CoroutineClosure(..)
-                | ty::Infer(ty::IntVar(..) | ty::FloatVar(..))
+                | ty::Infer(ty::IntVar(..) | ty::FloatVar2021(..) | ty::FloatVar(..))
                 | ty::Coroutine(..)
                 | ty::CoroutineWitness(..)
                 | ty::Never
@@ -591,7 +591,11 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
                 },
 
                 ty::Infer(
-                    ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_),
+                    ty::TyVar(_)
+                    | ty::FreshTy(_)
+                    | ty::FreshIntTy(_)
+                    | ty::FreshFloatTy2021(_)
+                    | ty::FreshFloatTy(_),
                 )
                 | ty::Bound(..) => bug!(
                     "unexpected self ty `{:?}` when normalizing `<T as Pointee>::Metadata`",
@@ -782,7 +786,7 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
             | ty::FnPtr(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
-            | ty::Infer(ty::IntVar(..) | ty::FloatVar(..))
+            | ty::Infer(ty::IntVar(..) | ty::FloatVar2021(..) | ty::FloatVar(..))
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
             | ty::Never
@@ -802,7 +806,13 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
                 return Err(NoSolution);
             }
 
-            ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_))
+            ty::Infer(
+                ty::TyVar(_)
+                | ty::FreshTy(_)
+                | ty::FreshIntTy(_)
+                | ty::FreshFloatTy2021(_)
+                | ty::FreshFloatTy(_),
+            )
             | ty::Bound(..) => bug!(
                 "unexpected self ty `{:?}` when normalizing `<T as DiscriminantKind>::Discriminant`",
                 goal.predicate.self_ty()
@@ -833,7 +843,7 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
             | ty::FnPtr(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
-            | ty::Infer(ty::IntVar(..) | ty::FloatVar(..))
+            | ty::Infer(ty::IntVar(..) | ty::FloatVar2021(..) | ty::FloatVar(..))
             | ty::Never
             | ty::Adt(_, _)
             | ty::Str
@@ -849,7 +859,13 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
                 return Err(NoSolution);
             }
 
-            ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_))
+            ty::Infer(
+                ty::TyVar(_)
+                | ty::FreshTy(_)
+                | ty::FreshIntTy(_)
+                | ty::FreshFloatTy2021(_)
+                | ty::FreshFloatTy(_),
+            )
             | ty::Foreign(..)
             | ty::Bound(..) => bug!(
                 "unexpected self ty `{:?}` when normalizing `<T as AsyncDestruct>::AsyncDestructor`",

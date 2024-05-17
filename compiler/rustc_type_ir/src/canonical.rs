@@ -202,9 +202,9 @@ impl<I: Interner> CanonicalVarKind<I> {
             CanonicalVarKind::PlaceholderTy(placeholder) => placeholder.universe(),
             CanonicalVarKind::PlaceholderRegion(placeholder) => placeholder.universe(),
             CanonicalVarKind::PlaceholderConst(placeholder, _) => placeholder.universe(),
-            CanonicalVarKind::Ty(CanonicalTyVarKind::Float | CanonicalTyVarKind::Int) => {
-                UniverseIndex::ROOT
-            }
+            CanonicalVarKind::Ty(
+                CanonicalTyVarKind::Float2021 | CanonicalTyVarKind::Float | CanonicalTyVarKind::Int,
+            ) => UniverseIndex::ROOT,
             CanonicalVarKind::Effect => UniverseIndex::ROOT,
         }
     }
@@ -230,7 +230,9 @@ impl<I: Interner> CanonicalVarKind<I> {
             CanonicalVarKind::PlaceholderConst(placeholder, ty) => {
                 CanonicalVarKind::PlaceholderConst(placeholder.with_updated_universe(ui), ty)
             }
-            CanonicalVarKind::Ty(CanonicalTyVarKind::Int | CanonicalTyVarKind::Float)
+            CanonicalVarKind::Ty(
+                CanonicalTyVarKind::Int | CanonicalTyVarKind::Float2021 | CanonicalTyVarKind::Float,
+            )
             | CanonicalVarKind::Effect => {
                 assert_eq!(ui, UniverseIndex::ROOT);
                 self
@@ -253,6 +255,9 @@ pub enum CanonicalTyVarKind {
 
     /// Integral type variable `?I` (that can only be unified with integral types).
     Int,
+
+    /// Floating-point type variable `?F2021` (that can only be unified with `f32` and `f64` types).
+    Float2021,
 
     /// Floating-point type variable `?F` (that can only be unified with float types).
     Float,

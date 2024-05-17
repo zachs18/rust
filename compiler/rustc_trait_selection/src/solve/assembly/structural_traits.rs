@@ -105,7 +105,7 @@ pub(in crate::solve) fn instantiate_constituent_tys_for_sized_trait<'tcx>(
     match *ty.kind() {
         // impl Sized for u*, i*, bool, f*, FnDef, FnPtr, *(const/mut) T, char, &mut? T, [T; N], dyn* Trait, !
         // impl Sized for Coroutine, CoroutineWitness, Closure, CoroutineClosure
-        ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+        ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
         | ty::Uint(_)
         | ty::Int(_)
         | ty::Bool
@@ -134,7 +134,13 @@ pub(in crate::solve) fn instantiate_constituent_tys_for_sized_trait<'tcx>(
         | ty::Placeholder(..) => Err(NoSolution),
 
         ty::Bound(..)
-        | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+        | ty::Infer(
+            ty::TyVar(_)
+            | ty::FreshTy(_)
+            | ty::FreshIntTy(_)
+            | ty::FreshFloatTy2021(_)
+            | ty::FreshFloatTy(_),
+        ) => {
             bug!("unexpected type `{ty}`")
         }
 
@@ -173,7 +179,7 @@ pub(in crate::solve) fn instantiate_constituent_tys_for_copy_clone_trait<'tcx>(
         // Implementations are provided in core
         ty::Uint(_)
         | ty::Int(_)
-        | ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+        | ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
         | ty::Bool
         | ty::Float(_)
         | ty::Char
@@ -197,7 +203,13 @@ pub(in crate::solve) fn instantiate_constituent_tys_for_copy_clone_trait<'tcx>(
         | ty::Placeholder(..) => Err(NoSolution),
 
         ty::Bound(..)
-        | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+        | ty::Infer(
+            ty::TyVar(_)
+            | ty::FreshTy(_)
+            | ty::FreshIntTy(_)
+            | ty::FreshFloatTy2021(_)
+            | ty::FreshFloatTy(_),
+        ) => {
             bug!("unexpected type `{ty}`")
         }
 
@@ -362,11 +374,17 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<'tcx>(
         | ty::Alias(_, _)
         | ty::Param(_)
         | ty::Placeholder(..)
-        | ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+        | ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
         | ty::Error(_) => Err(NoSolution),
 
         ty::Bound(..)
-        | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+        | ty::Infer(
+            ty::TyVar(_)
+            | ty::FreshTy(_)
+            | ty::FreshIntTy(_)
+            | ty::FreshFloatTy2021(_)
+            | ty::FreshFloatTy(_),
+        ) => {
             bug!("unexpected type `{self_ty}`")
         }
     }
@@ -552,11 +570,17 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_async_callable<'tc
         | ty::Alias(_, _)
         | ty::Param(_)
         | ty::Placeholder(..)
-        | ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+        | ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
         | ty::Error(_) => Err(NoSolution),
 
         ty::Bound(..)
-        | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+        | ty::Infer(
+            ty::TyVar(_)
+            | ty::FreshTy(_)
+            | ty::FreshIntTy(_)
+            | ty::FreshFloatTy2021(_)
+            | ty::FreshFloatTy(_),
+        ) => {
             bug!("unexpected type `{self_ty}`")
         }
     }

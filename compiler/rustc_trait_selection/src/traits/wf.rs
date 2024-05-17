@@ -674,7 +674,7 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
             ty::Infer(ty::IntVar(_)) => {}
 
             // Can only infer to `ty::Float(_)`.
-            ty::Infer(ty::FloatVar(_)) => {}
+            ty::Infer(ty::FloatVar2021(_)) | ty::Infer(ty::FloatVar(_)) => {}
 
             ty::Slice(subty) => {
                 self.require_sized(subty, ObligationCauseCode::SliceOrArrayElem);

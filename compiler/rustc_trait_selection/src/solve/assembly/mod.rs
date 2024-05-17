@@ -414,6 +414,18 @@ impl<'tcx> EvalCtxt<'_, 'tcx> {
                 }
             }
 
+            ty::Infer(ty::FloatVar2021(_)) => {
+                // 2021 edition float literals only resolve to f32 or f64.
+                let possible_floats = [
+                    SimplifiedType::Float(ty::FloatTy::F32),
+                    SimplifiedType::Float(ty::FloatTy::F64),
+                ];
+
+                for simp in possible_floats {
+                    consider_impls_for_simplified_type(simp);
+                }
+            }
+
             ty::Infer(ty::FloatVar(_)) => {
                 // This causes a compiler error if any new float kinds are added.
                 let (ty::FloatTy::F16 | ty::FloatTy::F32 | ty::FloatTy::F64 | ty::FloatTy::F128);
@@ -441,7 +453,13 @@ impl<'tcx> EvalCtxt<'_, 'tcx> {
             ty::CoroutineWitness(..) => (),
 
             // These variants should not exist as a self type.
-            ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_))
+            ty::Infer(
+                ty::TyVar(_)
+                | ty::FreshTy(_)
+                | ty::FreshIntTy(_)
+                | ty::FreshFloatTy2021(_)
+                | ty::FreshFloatTy(_),
+            )
             | ty::Param(_)
             | ty::Bound(_, _) => bug!("unexpected self type: {self_ty}"),
         }
@@ -612,9 +630,12 @@ impl<'tcx> EvalCtxt<'_, 'tcx> {
             | ty::Tuple(_)
             | ty::Param(_)
             | ty::Placeholder(..)
-            | ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+            | ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
             | ty::Error(_) => return,
-            ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) | ty::Bound(..) => {
+            ty::Infer(
+                ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy2021(_) | ty::FreshFloatTy(_),
+            )
+            | ty::Bound(..) => {
                 bug!("unexpected self type for `{goal:?}`")
             }
 
@@ -702,9 +723,15 @@ impl<'tcx> EvalCtxt<'_, 'tcx> {
             | ty::Tuple(_)
             | ty::Param(_)
             | ty::Placeholder(..)
-            | ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+            | ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
             | ty::Error(_) => return,
-            ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_))
+            ty::Infer(
+                ty::TyVar(_)
+                | ty::FreshTy(_)
+                | ty::FreshIntTy(_)
+                | ty::FreshFloatTy2021(_)
+                | ty::FreshFloatTy(_),
+            )
             | ty::Bound(..) => bug!("unexpected self type for `{goal:?}`"),
             ty::Dynamic(bounds, ..) => bounds,
         };

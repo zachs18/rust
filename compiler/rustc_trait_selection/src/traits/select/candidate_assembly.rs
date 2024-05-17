@@ -759,7 +759,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // for an example of a test case that exercises
                     // this path.
                 }
-                ty::Infer(ty::TyVar(_) | ty::IntVar(_) | ty::FloatVar(_)) => {
+                ty::Infer(ty::TyVar(_) | ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_)) => {
                     // The auto impl might apply; we don't know.
                     candidates.ambiguous = true;
                 }
@@ -779,7 +779,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     }
                 }
 
-                ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+                ty::Infer(
+                    ty::FreshTy(_)
+                    | ty::FreshIntTy(_)
+                    | ty::FreshFloatTy2021(_)
+                    | ty::FreshFloatTy(_),
+                ) => {
                     bug!(
                         "asked to assemble auto trait candidates of unexpected type: {:?}",
                         self_ty
@@ -1361,8 +1366,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Error(_)
             | ty::Infer(
                 ty::InferTy::IntVar(_)
+                | ty::InferTy::FloatVar2021(_)
                 | ty::InferTy::FloatVar(_)
                 | ty::InferTy::FreshIntTy(_)
+                | ty::InferTy::FreshFloatTy2021(_)
                 | ty::InferTy::FreshFloatTy(_),
             ) => {}
             ty::Infer(ty::InferTy::TyVar(_) | ty::InferTy::FreshTy(_)) => {

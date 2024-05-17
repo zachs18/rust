@@ -213,6 +213,17 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
                 Some(self.freshen_ty(input, |n| Ty::new_fresh_int(self.infcx.tcx, n)))
             }
 
+            ty::FloatVar2021(v) => {
+                let mut inner = self.infcx.inner.borrow_mut();
+                let input = inner
+                    .float_unification_table()
+                    .probe_value(v)
+                    .map(|v| v.to_type(self.infcx.tcx))
+                    .ok_or_else(|| ty::FloatVar2021(inner.float_unification_table().find(v)));
+                drop(inner);
+                Some(self.freshen_ty(input, |n| Ty::new_fresh_float_2021(self.infcx.tcx, n)))
+            }
+
             ty::FloatVar(v) => {
                 let mut inner = self.infcx.inner.borrow_mut();
                 let input = inner
@@ -224,7 +235,10 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
                 Some(self.freshen_ty(input, |n| Ty::new_fresh_float(self.infcx.tcx, n)))
             }
 
-            ty::FreshTy(ct) | ty::FreshIntTy(ct) | ty::FreshFloatTy(ct) => {
+            ty::FreshTy(ct)
+            | ty::FreshIntTy(ct)
+            | ty::FreshFloatTy2021(ct)
+            | ty::FreshFloatTy(ct) => {
                 if ct >= self.ty_freshen_count {
                     bug!(
                         "Encountered a freshend type with id {} \

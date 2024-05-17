@@ -1048,6 +1048,11 @@ impl<'tcx> InferCtxt<'tcx> {
         Ty::new_int_var(self.tcx, vid)
     }
 
+    pub fn next_float_var_2021(&self) -> Ty<'tcx> {
+        let vid = self.inner.borrow_mut().float_unification_table().new_key(None);
+        Ty::new_float_var_2021(self.tcx, vid)
+    }
+
     pub fn next_float_var(&self) -> Ty<'tcx> {
         let vid = self.inner.borrow_mut().float_unification_table().new_key(None);
         Ty::new_float_var(self.tcx, vid)
@@ -1290,7 +1295,17 @@ impl<'tcx> InferCtxt<'tcx> {
                 .probe_value(v)
                 .map(|v| v.to_type(self.tcx)),
 
-            ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_) => None,
+            // FIXME(zachs18): is this right?
+            ty::FloatVar2021(v) => self
+                .inner
+                .borrow_mut()
+                .float_unification_table()
+                .probe_value(v)
+                .map(|v| v.to_type(self.tcx)),
+
+            ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy2021(_) | ty::FreshFloatTy(_) => {
+                None
+            }
         }
     }
 

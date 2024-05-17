@@ -386,6 +386,19 @@ impl<'cx, 'tcx> TypeFolder<TyCtxt<'tcx>> for Canonicalizer<'cx, 'tcx> {
                     )
                 }
             }
+            ty::Infer(ty::FloatVar2021(vid)) => {
+                let nt = self.infcx.unwrap().opportunistic_resolve_float_var(vid);
+                if nt != t {
+                    return self.fold_ty(nt);
+                } else {
+                    self.canonicalize_ty_var(
+                        CanonicalVarInfo {
+                            kind: CanonicalVarKind::Ty(CanonicalTyVarKind::Float2021),
+                        },
+                        t,
+                    )
+                }
+            }
             ty::Infer(ty::FloatVar(vid)) => {
                 let nt = self.infcx.unwrap().opportunistic_resolve_float_var(vid);
                 if nt != t {
@@ -398,7 +411,9 @@ impl<'cx, 'tcx> TypeFolder<TyCtxt<'tcx>> for Canonicalizer<'cx, 'tcx> {
                 }
             }
 
-            ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+            ty::Infer(
+                ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy2021(_) | ty::FreshFloatTy(_),
+            ) => {
                 bug!("encountered a fresh type during canonicalization")
             }
 
@@ -709,7 +724,11 @@ impl<'cx, 'tcx> Canonicalizer<'cx, 'tcx> {
             .iter()
             .map(|v| CanonicalVarInfo {
                 kind: match v.kind {
-                    CanonicalVarKind::Ty(CanonicalTyVarKind::Int | CanonicalTyVarKind::Float)
+                    CanonicalVarKind::Ty(
+                        CanonicalTyVarKind::Int
+                        | CanonicalTyVarKind::Float2021
+                        | CanonicalTyVarKind::Float,
+                    )
                     | CanonicalVarKind::Effect => {
                         return *v;
                     }

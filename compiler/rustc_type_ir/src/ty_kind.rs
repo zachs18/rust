@@ -743,7 +743,7 @@ rustc_index::newtype_index! {
 }
 
 rustc_index::newtype_index! {
-    /// A **float**ing-point (`f32` or `f64`) type **v**ariable **ID**.
+    /// A **float**ing-point (`f16`, `f32`, `f64`, or `f128`) type **v**ariable **ID**.
     #[encodable]
     #[orderable]
     #[debug_format = "?{}f"]
@@ -770,8 +770,15 @@ pub enum InferTy {
     IntVar(IntVid),
     /// A floating-point type variable (`{float}`).
     ///
-    /// These are created when the compiler sees an float literal like
+    /// These are created when the compiler sees an float literal in edition <= 2021 code like
     /// `1.0` that could be either an `f32` or an `f64`.
+    /// We don't know until it's used what type it's supposed to be, so
+    /// we create a fresh type variable.
+    FloatVar2021(FloatVid),
+    /// A floating-point type variable (`{float}`).
+    ///
+    /// These are created when the compiler sees an float literal in edition >= 2024 code like
+    /// `1.0` that could be either an `f16`, `f32`, `f64`, or `f128`.
     /// We don't know until it's used what type it's supposed to be, so
     /// we create a fresh type variable.
     FloatVar(FloatVid),
@@ -784,6 +791,8 @@ pub enum InferTy {
     FreshTy(u32),
     /// Like [`FreshTy`][Self::FreshTy], but as a replacement for [`IntVar`][Self::IntVar].
     FreshIntTy(u32),
+    /// Like [`FreshTy`][Self::FreshTy], but as a replacement for [`FloatVar`][Self::FloatVar].
+    FreshFloatTy2021(u32),
     /// Like [`FreshTy`][Self::FreshTy], but as a replacement for [`FloatVar`][Self::FloatVar].
     FreshFloatTy(u32),
 }
@@ -850,10 +859,12 @@ impl<CTX> HashStable<CTX> for InferTy {
         use InferTy::*;
         std::mem::discriminant(self).hash_stable(ctx, hasher);
         match self {
-            TyVar(_) | IntVar(_) | FloatVar(_) => {
+            TyVar(_) | IntVar(_) | FloatVar2021(_) | FloatVar(_) => {
                 panic!("type variables should not be hashed: {self:?}")
             }
-            FreshTy(v) | FreshIntTy(v) | FreshFloatTy(v) => v.hash_stable(ctx, hasher),
+            FreshTy(v) | FreshIntTy(v) | FreshFloatTy2021(v) | FreshFloatTy(v) => {
+                v.hash_stable(ctx, hasher)
+            }
         }
     }
 }
@@ -879,9 +890,11 @@ impl fmt::Display for InferTy {
         match *self {
             TyVar(_) => write!(f, "_"),
             IntVar(_) => write!(f, "{}", "{integer}"),
+            FloatVar2021(_) => write!(f, "{}", "{float2021}"),
             FloatVar(_) => write!(f, "{}", "{float}"),
             FreshTy(v) => write!(f, "FreshTy({v})"),
             FreshIntTy(v) => write!(f, "FreshIntTy({v})"),
+            FreshFloatTy2021(v) => write!(f, "FreshFloatTy2021({v})"),
             FreshFloatTy(v) => write!(f, "FreshFloatTy({v})"),
         }
     }
@@ -911,9 +924,11 @@ impl fmt::Debug for InferTy {
         match *self {
             TyVar(ref v) => v.fmt(f),
             IntVar(ref v) => v.fmt(f),
+            FloatVar2021(ref v) => v.fmt(f),
             FloatVar(ref v) => v.fmt(f),
             FreshTy(v) => write!(f, "FreshTy({v:?})"),
             FreshIntTy(v) => write!(f, "FreshIntTy({v:?})"),
+            FreshFloatTy2021(v) => write!(f, "FreshFloatTy2021({v:?})"),
             FreshFloatTy(v) => write!(f, "FreshFloatTy({v:?})"),
         }
     }

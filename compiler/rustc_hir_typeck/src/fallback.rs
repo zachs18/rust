@@ -166,6 +166,7 @@ impl<'tcx> FnCtxt<'_, 'tcx> {
         let fallback = match ty.kind() {
             _ if let Some(e) = self.tainted_by_errors() => Ty::new_error(self.tcx, e),
             ty::Infer(ty::IntVar(_)) => self.tcx.types.i32,
+            ty::Infer(ty::FloatVar2021(_)) => self.tcx.types.f64,
             ty::Infer(ty::FloatVar(_)) => self.tcx.types.f64,
             _ => match diverging_fallback.get(&ty) {
                 Some(&fallback_ty) => fallback_ty,

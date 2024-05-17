@@ -174,11 +174,12 @@ impl FlagComputation {
             &ty::Infer(infer) => {
                 self.add_flags(TypeFlags::STILL_FURTHER_SPECIALIZABLE);
                 match infer {
-                    ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_) => {
-                        self.add_flags(TypeFlags::HAS_TY_FRESH)
-                    }
+                    ty::FreshTy(_)
+                    | ty::FreshIntTy(_)
+                    | ty::FreshFloatTy2021(_)
+                    | ty::FreshFloatTy(_) => self.add_flags(TypeFlags::HAS_TY_FRESH),
 
-                    ty::TyVar(_) | ty::IntVar(_) | ty::FloatVar(_) => {
+                    ty::TyVar(_) | ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_) => {
                         self.add_flags(TypeFlags::HAS_TY_INFER)
                     }
                 }

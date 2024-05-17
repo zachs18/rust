@@ -1037,7 +1037,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         // We avoid `ty.is_trivially_sized` since that does something expensive for ADTs.
         fn is_very_trivially_sized(ty: Ty<'_>) -> bool {
             match ty.kind() {
-                ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+                ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
                 | ty::Uint(_)
                 | ty::Int(_)
                 | ty::Bool
@@ -1070,7 +1070,12 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 ty::Infer(ty::TyVar(_)) => false,
 
                 ty::Bound(..)
-                | ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+                | ty::Infer(
+                    ty::FreshTy(_)
+                    | ty::FreshIntTy(_)
+                    | ty::FreshFloatTy2021(_)
+                    | ty::FreshFloatTy(_),
+                ) => {
                     bug!("`is_very_trivially_sized` applied to unexpected type: {}", ty)
                 }
             }

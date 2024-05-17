@@ -1291,6 +1291,11 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_float_var_2021(tcx: TyCtxt<'tcx>, v: ty::FloatVid) -> Ty<'tcx> {
+        Ty::new_infer(tcx, FloatVar2021(v))
+    }
+
+    #[inline]
     pub fn new_float_var(tcx: TyCtxt<'tcx>, v: ty::FloatVid) -> Ty<'tcx> {
         Ty::new_infer(tcx, FloatVar(v))
     }
@@ -1313,6 +1318,16 @@ impl<'tcx> Ty<'tcx> {
             .get(n as usize)
             .copied()
             .unwrap_or_else(|| Ty::new_infer(tcx, ty::FreshIntTy(n)))
+    }
+
+    #[inline]
+    pub fn new_fresh_float_2021(tcx: TyCtxt<'tcx>, n: u32) -> Ty<'tcx> {
+        // Use a pre-interned one when possible.
+        tcx.types
+            .fresh_float_tys
+            .get(n as usize)
+            .copied()
+            .unwrap_or_else(|| Ty::new_infer(tcx, ty::FreshFloatTy2021(n)))
     }
 
     #[inline]
@@ -2144,11 +2159,13 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Tuple(_)
             | ty::Error(_)
-            | ty::Infer(IntVar(_) | FloatVar(_)) => tcx.types.u8,
+            | ty::Infer(IntVar(_) | FloatVar2021(_) | FloatVar(_)) => tcx.types.u8,
 
             ty::Bound(..)
             | ty::Placeholder(_)
-            | ty::Infer(FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+            | ty::Infer(
+                FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy2021(_) | ty::FreshFloatTy(_),
+            ) => {
                 bug!("`discriminant_ty` applied to unexpected type: {:?}", self)
             }
         }
@@ -2291,7 +2308,7 @@ impl<'tcx> Ty<'tcx> {
         let tail = tcx.struct_tail_with_normalize(self, normalize, || {});
         match tail.kind() {
             // Sized types
-            ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+            ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
             | ty::Uint(_)
             | ty::Int(_)
             | ty::Bool
@@ -2334,7 +2351,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Pat(..)
             | ty::Bound(..)
             | ty::Placeholder(..)
-            | ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => bug!(
+            | ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy2021(_) | ty::FreshFloatTy(_)) => bug!(
                 "`ptr_metadata_ty_or_tail` applied to unexpected type: {self:?} (tail = {tail:?})"
             ),
         }
@@ -2455,7 +2472,7 @@ impl<'tcx> Ty<'tcx> {
     /// this method doesn't return `Option<bool>`.
     pub fn is_trivially_sized(self, tcx: TyCtxt<'tcx>) -> bool {
         match self.kind() {
-            ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+            ty::Infer(ty::IntVar(_) | ty::FloatVar2021(_) | ty::FloatVar(_))
             | ty::Uint(_)
             | ty::Int(_)
             | ty::Bool
@@ -2487,7 +2504,9 @@ impl<'tcx> Ty<'tcx> {
 
             ty::Infer(ty::TyVar(_)) => false,
 
-            ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+            ty::Infer(
+                ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy2021(_) | ty::FreshFloatTy(_),
+            ) => {
                 bug!("`is_trivially_sized` applied to unexpected type: {:?}", self)
             }
         }

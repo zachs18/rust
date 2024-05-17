@@ -319,8 +319,12 @@ impl<Infcx: InferCtxtLike<Interner = I>, I: Interner> TypeFolder<I>
                     ))
                 }
                 ty::IntVar(_) => CanonicalVarKind::Ty(CanonicalTyVarKind::Int),
+                ty::FloatVar2021(_) => CanonicalVarKind::Ty(CanonicalTyVarKind::Float2021),
                 ty::FloatVar(_) => CanonicalVarKind::Ty(CanonicalTyVarKind::Float),
-                ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_) => {
+                ty::FreshTy(_)
+                | ty::FreshIntTy(_)
+                | ty::FreshFloatTy2021(_)
+                | ty::FreshFloatTy(_) => {
                     todo!()
                 }
             },
