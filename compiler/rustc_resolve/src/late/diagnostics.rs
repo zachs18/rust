@@ -3197,7 +3197,9 @@ impl<'a: 'ast, 'ast, 'tcx> LateResolutionVisitor<'a, '_, 'ast, 'tcx> {
                                 sugg = vec![(span.with_hi(mut_ty.ty.span.lo()), String::new())];
                                 owned_sugg = true;
                             }
+                            dbg!(&lt_finder);
                             if let Some(ty) = lt_finder.found {
+                                dbg!(&ty.kind);
                                 if let TyKind::Path(None, path) = &ty.kind {
                                     // Check if the path being borrowed is likely to be owned.
                                     let path: Vec<_> = Segment::from_path(path);
@@ -3269,6 +3271,7 @@ impl<'a: 'ast, 'ast, 'tcx> LateResolutionVisitor<'a, '_, 'ast, 'tcx> {
                                 }
                             }
                         }
+                        dbg!(owned_sugg, &sugg);
                         if owned_sugg {
                             err.multipart_suggestion_verbose(
                                 format!("{pre} to return an owned value"),
@@ -3384,6 +3387,7 @@ pub(super) fn signal_lifetime_shadowing(sess: &Session, orig: Ident, shadower: I
     .emit();
 }
 
+#[derive(Debug)]
 struct LifetimeFinder<'ast> {
     lifetime: Span,
     found: Option<&'ast Ty>,
@@ -3392,9 +3396,12 @@ struct LifetimeFinder<'ast> {
 
 impl<'ast> Visitor<'ast> for LifetimeFinder<'ast> {
     fn visit_ty(&mut self, t: &'ast Ty) {
-        if let TyKind::Ref(_, mut_ty) = &t.kind {
+        if let TyKind::Ref(lt, mut_ty) = &t.kind {
+            dbg!(&t.span, &self.lifetime);
             self.seen.push(t);
-            if t.span.lo() == self.lifetime.lo() {
+            if t.span.lo() == self.lifetime.lo()
+                || lt.is_some_and(|lt| lt.ident.span.lo() == self.lifetime.lo())
+            {
                 self.found = Some(&mut_ty.ty);
             }
         }
