@@ -1287,6 +1287,16 @@ impl<'tcx> Ty<'tcx> {
         self.is_trivially_sized(tcx) || tcx.is_sized_raw(param_env.and(self))
     }
 
+    /// Checks whether values of this type `T` have an alignment known at
+    /// compile time (i.e., whether `T: Aligned`). Lifetimes are ignored
+    /// for the purposes of this check, so it can be an
+    /// over-approximation in generic contexts, where one can have
+    /// strange rules like `<T as Foo<'static>>::Bar: Aligned` that
+    /// actually carry lifetime requirements.
+    pub fn is_aligned(self, tcx: TyCtxt<'tcx>, param_env: ty::ParamEnv<'tcx>) -> bool {
+        self.is_trivially_aligned(tcx) || tcx.is_aligned_raw(param_env.and(self))
+    }
+
     /// Checks whether values of this type `T` implement the `Freeze`
     /// trait -- frozen types are those that do not contain an
     /// `UnsafeCell` anywhere. This is a language concept used to

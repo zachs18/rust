@@ -1760,6 +1760,58 @@ impl<'tcx> Ty<'tcx> {
         }
     }
 
+    /// Fast path helper for testing if a type is `Aligned`.
+    ///
+    /// Returning true means the type is known to be aligned. Returning
+    /// `false` means nothing -- could be aligned, might not be.
+    ///
+    /// Note that we could never rely on the fact that a type such as `dyn Trait` is
+    /// trivially `!Aligned` because we could be in a type environment with a
+    /// bound such as `[_]: Copy`. A function with such a bound obviously never
+    /// can be called, but that doesn't mean it shouldn't typecheck. This is why
+    /// this method doesn't return `Option<bool>`.
+    pub fn is_trivially_aligned(self, tcx: TyCtxt<'tcx>) -> bool {
+        match self.kind() {
+            ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+            | ty::Uint(_)
+            | ty::Int(_)
+            | ty::Bool
+            | ty::Float(_)
+            | ty::FnDef(..)
+            | ty::FnPtr(_)
+            | ty::RawPtr(..)
+            | ty::Char
+            | ty::Ref(..)
+            | ty::Coroutine(..)
+            | ty::CoroutineWitness(..)
+            | ty::Array(..)
+            | ty::Pat(..)
+            | ty::Closure(..)
+            | ty::CoroutineClosure(..)
+            | ty::Never
+            | ty::Error(_)
+            | ty::Dynamic(_, _, ty::DynStar)
+            | ty::Str
+            | ty::Slice(_) => true,
+
+            ty::Dynamic(_, _, ty::Dyn) | ty::Foreign(..) => false,
+
+            ty::Tuple(tys) => tys.last().map_or(true, |ty| ty.is_trivially_aligned(tcx)),
+
+            ty::Adt(def, args) => def
+                .aligned_constraint(tcx)
+                .map_or(true, |ty| ty.instantiate(tcx, args).is_trivially_aligned(tcx)),
+
+            ty::Alias(..) | ty::Param(_) | ty::Placeholder(..) | ty::Bound(..) => false,
+
+            ty::Infer(ty::TyVar(_)) => false,
+
+            ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+                bug!("`is_trivially_aligned` applied to unexpected type: {:?}", self)
+            }
+        }
+    }
+
     /// Fast path helper for primitives which are always `Copy` and which
     /// have a side-effect-free `Clone` impl.
     ///

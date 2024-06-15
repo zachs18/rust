@@ -386,6 +386,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
+    // FIXME(zachs18): use is_trivially_aligned here maybe
     pub fn require_type_has_static_alignment(
         &self,
         ty: Ty<'tcx>,
