@@ -714,6 +714,10 @@ rustc_queries! {
         desc { |tcx| "computing the `Sized` constraint for `{}`", tcx.def_path_str(key) }
     }
 
+    query adt_aligned_constraint(key: DefId) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
+        desc { |tcx| "computing the `Aligned` constraint for `{}`", tcx.def_path_str(key) }
+    }
+
     query adt_dtorck_constraint(
         key: DefId
     ) -> Result<&'tcx DropckConstraint<'tcx>, NoSolution> {
@@ -1344,6 +1348,10 @@ rustc_queries! {
     /// Query backing `Ty::is_sized`.
     query is_sized_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is `Sized`", env.value }
+    }
+    /// Query backing `Ty::is_aligned`.
+    query is_aligned_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
+        desc { "computing whether `{}` is `Aligned`", env.value }
     }
     /// Query backing `Ty::is_freeze`.
     query is_freeze_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {

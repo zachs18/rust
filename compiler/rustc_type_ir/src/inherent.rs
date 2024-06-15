@@ -356,6 +356,8 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn all_field_tys(self, interner: I) -> ty::EarlyBinder<I, impl Iterator<Item = I::Ty>>;
 
     fn sized_constraint(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
+
+    fn aligned_constraint(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
 }
 
 pub trait Features<I: Interner>: Copy {

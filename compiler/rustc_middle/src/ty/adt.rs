@@ -221,6 +221,10 @@ impl<'tcx> rustc_type_ir::inherent::AdtDef<TyCtxt<'tcx>> for AdtDef<'tcx> {
     fn sized_constraint(self, tcx: TyCtxt<'tcx>) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
         self.sized_constraint(tcx)
     }
+
+    fn aligned_constraint(self, tcx: TyCtxt<'tcx>) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
+        self.aligned_constraint(tcx)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, HashStable, TyEncodable, TyDecodable)]
@@ -612,6 +616,12 @@ impl<'tcx> AdtDef<'tcx> {
     /// or `None` if the type is always sized.
     pub fn sized_constraint(self, tcx: TyCtxt<'tcx>) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
         if self.is_struct() { tcx.adt_sized_constraint(self.did()) } else { None }
+    }
+
+    /// Returns a type such that `Self: Aligned` if and only if that type is `Aligned`,
+    /// or `None` if the type is always aligned.
+    pub fn aligned_constraint(self, tcx: TyCtxt<'tcx>) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
+        if self.is_struct() { tcx.adt_aligned_constraint(self.did()) } else { None }
     }
 }
 
