@@ -146,6 +146,63 @@ pub trait Sized {
     // Empty.
 }
 
+/// Types with a constant alignment known at compile time.
+///
+/// All type parameters have an implicit bound of `Sized`, which has a supertrait
+/// bound of `Aligned`. The special syntax `?Sized` can be used to remove this
+/// bound if it's not appropriate, and `?Sized + Aligned` can be used to bound on
+/// `Aligned` but not `Sized`.
+///
+/// FIZME(zachs18): docs for Aligned
+///
+/// ```
+/// # #![allow(dead_code)]
+/// struct Foo<T>(T);
+/// struct Bar<T: ?Sized>(T);
+///
+/// // struct FooUse(Foo<[i32]>); // error: Sized is not implemented for [i32]
+/// struct BarUse(Bar<[i32]>); // OK
+/// ```
+///
+/// The one exception is the implicit `Self` type of a trait. A trait does not
+/// have an implicit `Sized` bound as this is incompatible with [trait object]s
+/// where, by definition, the trait needs to work with all possible implementors,
+/// and thus could be any size.
+///
+/// Although Rust will let you bind `Sized` to a trait, you won't
+/// be able to use it to form a trait object later:
+///
+/// ```
+/// # #![allow(unused_variables)]
+/// trait Foo { }
+/// trait Bar: Sized { }
+///
+/// struct Impl;
+/// impl Foo for Impl { }
+/// impl Bar for Impl { }
+///
+/// let x: &dyn Foo = &Impl;    // OK
+/// // let y: &dyn Bar = &Impl; // error: the trait `Bar` cannot
+///                             // be made into an object
+/// ```
+///
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+#[cfg(not(bootstrap))]
+#[unstable(feature = "dyn_sized", issue = "none")]
+#[lang = "aligned"]
+#[diagnostic::on_unimplemented(
+    message = "the alignment for values of type `{Self}` cannot be known at compilation time",
+    label = "doesn't have an alignment known at compile-time"
+)]
+#[fundamental]
+#[rustc_specialization_trait]
+#[rustc_deny_explicit_impl(implement_via_object = true)]
+#[rustc_coinductive]
+pub trait Aligned {
+    /// The compile-time-known alignment of the type.
+    const ALIGNMENT: crate::ptr::Alignment;
+}
+
 /// Types that can be "unsized" to a dynamically-sized type.
 ///
 /// For example, the sized array type `[i8; 2]` implements `Unsize<[i8]>` and
