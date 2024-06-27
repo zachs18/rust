@@ -296,6 +296,16 @@ impl<'tcx> assembly::GoalKind<'tcx> for NormalizesTo<'tcx> {
         bug!("`Sized` does not have an associated type: {:?}", goal);
     }
 
+    fn consider_builtin_aligned_candidate(
+        _ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
+        goal: Goal<'tcx, Self>,
+    ) -> Result<Candidate<TyCtxt<'tcx>>, NoSolution> {
+        bug!(
+            "`Aligned` does not have an associated type: {:?} (but it does have an associated const..., does this use that?)",
+            goal
+        );
+    }
+
     fn consider_builtin_copy_clone_candidate(
         _ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
         goal: Goal<'tcx, Self>,

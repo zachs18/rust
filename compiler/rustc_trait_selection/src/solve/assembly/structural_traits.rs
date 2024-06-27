@@ -171,6 +171,76 @@ where
 }
 
 #[instrument(level = "trace", skip(ecx), ret)]
+pub(in crate::solve) fn instantiate_constituent_tys_for_aligned_trait<Infcx, I>(
+    ecx: &EvalCtxt<'_, Infcx>,
+    ty: I::Ty,
+) -> Result<Vec<ty::Binder<I, I::Ty>>, NoSolution>
+where
+    Infcx: InferCtxtLike<Interner = I>,
+    I: Interner,
+{
+    match ty.kind() {
+        // impl Aligned for u*, i*, bool, f*, FnDef, FnPtr, *(const/mut) T, char, &mut? T, [T; N], dyn* Trait, !
+        // impl Aligned for Coroutine, CoroutineWitness, Closure, CoroutineClosure
+        ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+        | ty::Uint(_)
+        | ty::Int(_)
+        | ty::Bool
+        | ty::Float(_)
+        | ty::FnDef(..)
+        | ty::FnPtr(_)
+        | ty::RawPtr(..)
+        | ty::Char
+        | ty::Ref(..)
+        | ty::Coroutine(..)
+        | ty::CoroutineWitness(..)
+        | ty::Array(..)
+        | ty::Pat(..)
+        | ty::Closure(..)
+        | ty::CoroutineClosure(..)
+        | ty::Never
+        | ty::Dynamic(_, _, ty::DynStar)
+        | ty::Error(_) => Ok(vec![]),
+
+        ty::Str
+        | ty::Dynamic(..)
+        | ty::Foreign(..)
+        | ty::Alias(..)
+        | ty::Param(_)
+        | ty::Placeholder(..) => Err(NoSolution),
+
+        ty::Bound(..)
+        | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+            panic!("unexpected type `{ty:?}`")
+        }
+
+        // impl<T> Aligned for [T] where T: Aligned
+        ty::Slice(ty) => Ok(vec![ty::Binder::dummy(ty)]),
+
+        // impl Aligned for ()
+        // impl Aligned for (T1, T2, .., Tn) where Tn: Aligned if n >= 1
+        ty::Tuple(tys) => Ok(tys.last().map_or_else(Vec::new, |&ty| vec![ty::Binder::dummy(ty)])),
+
+        // impl Aligned for Adt<Args...> where aligned_constraint(Adt)<Args...>: Aligned
+        //   `aligned_constraint(Adt)` is the deepest struct trail that can be determined
+        //   by the definition of `Adt`, independent of the generic args.
+        // impl Aligned for Adt<Args...> if aligned_constraint(Adt) == None
+        //   As a performance optimization, `aligned_constraint(Adt)` can return `None`
+        //   if the ADTs definition implies that it is aligned by for all possible args.
+        //   In this case, the builtin impl will have no nested subgoals. This is a
+        //   "best effort" optimization and `aligned_constraint` may return `Some`, even
+        //   if the ADT is aligned for all possible args.
+        ty::Adt(def, args) => {
+            if let Some(aligned_crit) = def.aligned_constraint(ecx.interner()) {
+                Ok(vec![ty::Binder::dummy(aligned_crit.instantiate(ecx.interner(), &args))])
+            } else {
+                Ok(vec![])
+            }
+        }
+    }
+}
+
+#[instrument(level = "trace", skip(ecx), ret)]
 pub(in crate::solve) fn instantiate_constituent_tys_for_copy_clone_trait<Infcx, I>(
     ecx: &EvalCtxt<'_, Infcx>,
     ty: I::Ty,

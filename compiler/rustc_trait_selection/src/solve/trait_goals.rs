@@ -210,6 +210,21 @@ impl<'tcx> assembly::GoalKind<'tcx> for TraitPredicate<'tcx> {
         )
     }
 
+    fn consider_builtin_aligned_candidate(
+        ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
+        goal: Goal<'tcx, Self>,
+    ) -> Result<Candidate<TyCtxt<'tcx>>, NoSolution> {
+        if goal.predicate.polarity != ty::PredicatePolarity::Positive {
+            return Err(NoSolution);
+        }
+
+        ecx.probe_and_evaluate_goal_for_constituent_tys(
+            CandidateSource::BuiltinImpl(BuiltinImplSource::Misc),
+            goal,
+            structural_traits::instantiate_constituent_tys_for_aligned_trait,
+        )
+    }
+
     fn consider_builtin_copy_clone_candidate(
         ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
         goal: Goal<'tcx, Self>,

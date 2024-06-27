@@ -144,6 +144,15 @@ pub(super) trait GoalKind<'tcx>:
         goal: Goal<'tcx, Self>,
     ) -> Result<Candidate<TyCtxt<'tcx>>, NoSolution>;
 
+    /// A type is `Aligned` if its tail component is `Aligned`.
+    ///
+    /// These components are given by built-in rules from
+    /// [`structural_traits::instantiate_constituent_tys_for_aligned_trait`].
+    fn consider_builtin_aligned_candidate(
+        ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
+        goal: Goal<'tcx, Self>,
+    ) -> Result<Candidate<TyCtxt<'tcx>>, NoSolution>;
+
     /// A type is `Copy` or `Clone` if its components are `Copy` or `Clone`.
     ///
     /// These components are given by built-in rules from
@@ -501,6 +510,9 @@ impl<'tcx> EvalCtxt<'_, InferCtxt<'tcx>> {
             G::consider_trait_alias_candidate(self, goal)
         } else if tcx.is_lang_item(trait_def_id, LangItem::Sized) {
             G::consider_builtin_sized_candidate(self, goal)
+        } else if tcx.is_lang_item(trait_def_id, LangItem::Aligned) {
+            dbg!("hello");
+            G::consider_builtin_aligned_candidate(self, goal)
         } else if tcx.is_lang_item(trait_def_id, LangItem::Copy)
             || tcx.is_lang_item(trait_def_id, LangItem::Clone)
         {
