@@ -175,6 +175,16 @@ use crate::sys::sync as sys;
 ///
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg_attr(not(test), rustc_diagnostic_item = "Mutex")]
+// `MappedMutexGuard` current implementation relies on `Mutex`'s `inner` and
+// `poison` fields being at the same offset for `Mutex<()>` and `Mutex<T>`
+// for any `T`.
+// However, `Mutex` layout is considered an implementation detail and must not
+// be relied upon. We want roughly `repr(C)` but we don't want it to show up
+// in rustdoc, so we hide it under `cfg(doc)`. This is an ad-hoc
+// implementation of attribute privacy.
+// FIXME(zachs18): After https://github.com/rust-lang/rust/pull/116882 is merged,
+// this can be make unconditionally `#[repr(C)]`.
+#[cfg_attr(not(doc), repr(C))]
 pub struct Mutex<T: ?Sized> {
     inner: sys::Mutex,
     poison: poison::Flag,
@@ -246,8 +256,7 @@ pub struct MappedMutexGuard<'a, T: ?Sized + 'a> {
     // `NonNull` is covariant over `T`, so we add a `PhantomData<&'a mut T>` field
     // below for the correct variance over `T` (invariance).
     data: NonNull<T>,
-    inner: &'a sys::Mutex,
-    poison_flag: &'a poison::Flag,
+    lock: &'a Mutex<()>,
     poison: poison::Guard,
     _variance: PhantomData<&'a mut T>,
 }
@@ -590,6 +599,8 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
+        // SAFETY: Mutex is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`.
+        let lock: &'a Mutex<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
         // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
@@ -598,8 +609,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
         let orig = ManuallyDrop::new(orig);
         MappedMutexGuard {
             data,
-            inner: &orig.lock.inner,
-            poison_flag: &orig.lock.poison,
+            lock,
             poison: orig.poison.clone(),
             _variance: PhantomData,
         }
@@ -621,6 +631,8 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
+        // SAFETY: Mutex is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`.
+        let lock: &'a Mutex<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
         // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
@@ -631,8 +643,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
                 let orig = ManuallyDrop::new(orig);
                 Ok(MappedMutexGuard {
                     data,
-                    inner: &orig.lock.inner,
-                    poison_flag: &orig.lock.poison,
+                    lock,
                     poison: orig.poison.clone(),
                     _variance: PhantomData,
                 })
@@ -663,8 +674,8 @@ impl<T: ?Sized> Drop for MappedMutexGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            self.poison_flag.done(&self.poison);
-            self.inner.unlock();
+            self.lock.poison.done(&self.poison);
+            self.lock.inner.unlock();
         }
     }
 }
@@ -706,8 +717,7 @@ impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
         let orig = ManuallyDrop::new(orig);
         MappedMutexGuard {
             data,
-            inner: orig.inner,
-            poison_flag: orig.poison_flag,
+            lock: orig.lock,
             poison: orig.poison.clone(),
             _variance: PhantomData,
         }
@@ -739,8 +749,7 @@ impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
                 let orig = ManuallyDrop::new(orig);
                 Ok(MappedMutexGuard {
                     data,
-                    inner: orig.inner,
-                    poison_flag: orig.poison_flag,
+                    lock: orig.lock,
                     poison: orig.poison.clone(),
                     _variance: PhantomData,
                 })
