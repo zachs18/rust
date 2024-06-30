@@ -80,6 +80,16 @@ use crate::sys::sync as sys;
 /// [`Mutex`]: super::Mutex
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg_attr(not(test), rustc_diagnostic_item = "RwLock")]
+// `MappedRwLockWriteGuard` current implementation relies on `RwLock`'s `inner` and
+// `poison` fields being at the same offset for `RwLock<()>` and `RwLock<T>`
+// for any `T`.
+// However, `RwLock` layout is considered an implementation detail and must not
+// be relied upon. We want roughly `repr(C)` but we don't want it to show up
+// in rustdoc, so we hide it under `cfg(doc)`. This is an ad-hoc
+// implementation of attribute privacy.
+// FIXME(zachs18): After https://github.com/rust-lang/rust/pull/116882 is merged,
+// this can be make unconditionally `#[repr(C)]`.
+#[cfg_attr(not(doc), repr(C))]
 pub struct RwLock<T: ?Sized> {
     inner: sys::RwLock,
     poison: poison::Flag,
@@ -196,8 +206,7 @@ pub struct MappedRwLockWriteGuard<'a, T: ?Sized + 'a> {
     // `NonNull` is covariant over `T`, so we add a `PhantomData<&'a mut T>` field
     // below for the correct variance over `T` (invariance).
     data: NonNull<T>,
-    inner_lock: &'a sys::RwLock,
-    poison_flag: &'a poison::Flag,
+    lock: &'a RwLock<()>,
     poison: poison::Guard,
     _variance: PhantomData<&'a mut T>,
 }
@@ -743,11 +752,11 @@ impl<T: ?Sized> Drop for MappedRwLockReadGuard<'_, T> {
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> Drop for MappedRwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
-        self.poison_flag.done(&self.poison);
+        self.lock.poison.done(&self.poison);
         // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         unsafe {
-            self.inner_lock.write_unlock();
+            self.lock.inner.write_unlock();
         }
     }
 }
@@ -902,6 +911,8 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
+        // SAFETY: RwLock is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`.
+        let lock: &'a RwLock<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
         // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
@@ -910,8 +921,7 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
         let orig = ManuallyDrop::new(orig);
         MappedRwLockWriteGuard {
             data,
-            inner_lock: &orig.lock.inner,
-            poison_flag: &orig.lock.poison,
+            lock,
             poison: orig.poison.clone(),
             _variance: PhantomData,
         }
@@ -938,6 +948,8 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
+        // SAFETY: RwLock is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`.
+        let lock: &'a RwLock<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
         // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
@@ -948,8 +960,7 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
                 let orig = ManuallyDrop::new(orig);
                 Ok(MappedRwLockWriteGuard {
                     data,
-                    inner_lock: &orig.lock.inner,
-                    poison_flag: &orig.lock.poison,
+                    lock,
                     poison: orig.poison.clone(),
                     _variance: PhantomData,
                 })
@@ -987,8 +998,7 @@ impl<'a, T: ?Sized> MappedRwLockWriteGuard<'a, T> {
         let orig = ManuallyDrop::new(orig);
         MappedRwLockWriteGuard {
             data,
-            inner_lock: orig.inner_lock,
-            poison_flag: orig.poison_flag,
+            lock: orig.lock,
             poison: orig.poison.clone(),
             _variance: PhantomData,
         }
@@ -1025,8 +1035,7 @@ impl<'a, T: ?Sized> MappedRwLockWriteGuard<'a, T> {
                 let orig = ManuallyDrop::new(orig);
                 Ok(MappedRwLockWriteGuard {
                     data,
-                    inner_lock: orig.inner_lock,
-                    poison_flag: orig.poison_flag,
+                    lock: orig.lock,
                     poison: orig.poison.clone(),
                     _variance: PhantomData,
                 })
