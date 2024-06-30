@@ -911,7 +911,8 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
-        // SAFETY: RwLock is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`.
+        // SAFETY: RwLock is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`,
+        // as long as we don't access any tail padding which may overlap with the `T`.
         let lock: &'a RwLock<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
         // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
@@ -948,7 +949,8 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
-        // SAFETY: RwLock is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`.
+        // SAFETY: RwLock is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`,
+        // as long as we don't access any tail padding which may overlap with the `T`.
         let lock: &'a RwLock<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
         // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
