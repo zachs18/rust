@@ -920,12 +920,7 @@ impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
         // passed to it. If the closure panics, the guard will be dropped.
         let data = NonNull::from(f(unsafe { &mut *orig.lock.data.get() }));
         let orig = ManuallyDrop::new(orig);
-        MappedRwLockWriteGuard {
-            data,
-            lock,
-            poison: orig.poison.clone(),
-            _variance: PhantomData,
-        }
+        MappedRwLockWriteGuard { data, lock, poison: orig.poison.clone(), _variance: PhantomData }
     }
 
     /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data. The

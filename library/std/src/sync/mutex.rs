@@ -608,12 +608,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
         // passed to it. If the closure panics, the guard will be dropped.
         let data = NonNull::from(f(unsafe { &mut *orig.lock.data.get() }));
         let orig = ManuallyDrop::new(orig);
-        MappedMutexGuard {
-            data,
-            lock,
-            poison: orig.poison.clone(),
-            _variance: PhantomData,
-        }
+        MappedMutexGuard { data, lock, poison: orig.poison.clone(), _variance: PhantomData }
     }
 
     /// Makes a [`MappedMutexGuard`] for a component of the borrowed data. The
