@@ -1257,7 +1257,9 @@ impl<T, A: Allocator> Arc<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
+impl<#[cfg(bootstrap)] T, #[cfg(not(bootstrap))] T: ?Sized, A: Allocator>
+    Arc<mem::MaybeUninit<T>, A>
+{
     /// Converts to `Arc<T>`.
     ///
     /// # Safety

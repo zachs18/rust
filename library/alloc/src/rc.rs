@@ -1117,7 +1117,9 @@ impl<T, A: Allocator> Rc<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Rc<mem::MaybeUninit<T>, A> {
+impl<#[cfg(bootstrap)] T, #[cfg(not(bootstrap))] T: ?Sized, A: Allocator>
+    Rc<mem::MaybeUninit<T>, A>
+{
     /// Converts to `Rc<T>`.
     ///
     /// # Safety

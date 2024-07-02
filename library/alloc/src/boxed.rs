@@ -833,7 +833,9 @@ impl<T, A: Allocator> Box<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
+impl<#[cfg(bootstrap)] T, #[cfg(not(bootstrap))] T: ?Sized, A: Allocator>
+    Box<mem::MaybeUninit<T>, A>
+{
     /// Converts to `Box<T, A>`.
     ///
     /// # Safety
@@ -868,7 +870,9 @@ impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
         let (raw, alloc) = Box::into_raw_with_allocator(self);
         unsafe { Box::from_raw_in(raw as *mut T, alloc) }
     }
+}
 
+impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
     /// Writes the value and converts to `Box<T, A>`.
     ///
     /// This method converts the box similarly to [`Box::assume_init`] but

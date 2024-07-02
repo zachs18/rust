@@ -2,6 +2,8 @@ use crate::any::type_name;
 use crate::fmt;
 use crate::intrinsics;
 use crate::mem::{self, ManuallyDrop};
+#[cfg(not(bootstrap))]
+use crate::ops;
 use crate::ptr;
 use crate::slice;
 
@@ -1441,6 +1443,22 @@ impl<T, const N: usize> [MaybeUninit<T>; N] {
     }
 }
 
+#[cfg(not(bootstrap))]
+impl<T> MaybeUninit<[T]> {
+    /// Return the number of elements in the maybe-uninitialized slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x: MaybeUninit<[u8; 3]> = MaybeUninit::uninit();
+    /// let y: &MaybeUninit<[u8]> = &x;
+    /// assert_eq!(y.len(), 3);
+    /// ```
+    pub const fn len(&self) -> usize {
+        ptr::metadata(self)
+    }
+}
+
 struct Guard<'a, T> {
     slice: &'a mut [MaybeUninit<T>],
     initialized: usize,
@@ -1479,5 +1497,49 @@ impl<T: Clone> SpecFill<T> for [MaybeUninit<T>] {
 impl<T: Copy> SpecFill<T> for [MaybeUninit<T>] {
     fn spec_fill(&mut self, value: T) {
         self.fill(MaybeUninit::new(value));
+    }
+}
+
+#[cfg(not(bootstrap))]
+impl<T, const N: usize, I> ops::Index<I> for MaybeUninit<[T; N]>
+where
+    I: SliceIndex<MaybeUninit<[T]>>,
+{
+    type Output = <I as SliceIndex<MaybeUninit<[T]>>>::Output;
+
+    fn index(&self, idx: I) -> &Self::Output {
+        I::index(idx, self)
+    }
+}
+
+#[cfg(not(bootstrap))]
+impl<T, const N: usize, I> ops::IndexMut<I> for MaybeUninit<[T; N]>
+where
+    I: SliceIndex<MaybeUninit<[T]>>,
+{
+    fn index_mut(&mut self, idx: I) -> &Self::Output {
+        I::index_mut(idx, self)
+    }
+}
+
+#[cfg(not(bootstrap))]
+impl<T, I> ops::Index<I> for MaybeUninit<[T]>
+where
+    I: SliceIndex<MaybeUninit<[T]>>,
+{
+    type Output = <I as SliceIndex<MaybeUninit<[T]>>>::Output;
+
+    fn index(&self, idx: I) -> &Self::Output {
+        I::index(idx, self)
+    }
+}
+
+#[cfg(not(bootstrap))]
+impl<T, I> ops::IndexMut<I> for MaybeUninit<[T]>
+where
+    I: SliceIndex<MaybeUninit<[T]>>,
+{
+    fn index_mut(&mut self, idx: I) -> &Self::Output {
+        I::index_mut(idx, self)
     }
 }
