@@ -1102,7 +1102,7 @@ extern "rust-intrinsic" {
     #[rustc_const_stable(feature = "const_assert_type", since = "1.59.0")]
     #[rustc_safe_intrinsic]
     #[rustc_nounwind]
-    pub fn assert_inhabited<T>();
+    pub fn assert_inhabited<T: ?Sized>();
 
     /// A guard for unsafe functions that cannot ever be executed if `T` does not permit
     /// zero-initialization: This will statically either panic, or do nothing.
