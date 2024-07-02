@@ -85,8 +85,8 @@ fn adt_sized_constraint<'tcx>(
     }
     let def = tcx.adt_def(def_id);
 
-    if !def.is_struct() {
-        bug!("`adt_sized_constraint` called on non-struct type: {def:?}");
+    if !def.is_struct() && !def.is_union() {
+        bug!("`adt_sized_constraint` called on non-struct non-union type: {def:?}");
     }
 
     let tail_def = def.non_enum_variant().tail_opt()?;

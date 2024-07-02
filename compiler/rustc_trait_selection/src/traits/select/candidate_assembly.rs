@@ -1075,7 +1075,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             }
 
             // `Struct<T>` -> `Struct<U>`
-            (&ty::Adt(def_id_a, _), &ty::Adt(def_id_b, _)) if def_id_a.is_struct() => {
+            // `Union<T>` -> `Union<U>`
+            (&ty::Adt(def_id_a, _), &ty::Adt(def_id_b, _))
+                if def_id_a.is_struct() || def_id_a.is_union() => {
                 if def_id_a == def_id_b {
                     candidates.vec.push(BuiltinUnsizeCandidate);
                 }

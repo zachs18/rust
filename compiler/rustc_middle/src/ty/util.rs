@@ -227,7 +227,7 @@ impl<'tcx> TyCtxt<'tcx> {
             }
             match *ty.kind() {
                 ty::Adt(def, args) => {
-                    if !def.is_struct() {
+                    if !def.is_struct() && !def.is_union() {
                         break;
                     }
                     match def.non_enum_variant().tail_opt() {
@@ -307,7 +307,7 @@ impl<'tcx> TyCtxt<'tcx> {
         loop {
             match (&a.kind(), &b.kind()) {
                 (&ty::Adt(a_def, a_args), &ty::Adt(b_def, b_args))
-                    if a_def == b_def && a_def.is_struct() =>
+                    if a_def == b_def && (a_def.is_struct() || a_def.is_union()) =>
                 {
                     if let Some(f) = a_def.non_enum_variant().tail_opt() {
                         a = f.ty(self, a_args);

@@ -305,7 +305,7 @@ fn check_item<'tcx>(tcx: TyCtxt<'tcx>, item: &'tcx hir::Item<'tcx>) -> Result<()
             res
         }
         hir::ItemKind::Union(_, hir_generics) => {
-            let res = check_type_defn(tcx, item, true);
+            let res = check_type_defn(tcx, item, false);
             check_variances_for_type_defn(tcx, item, hir_generics);
             res
         }

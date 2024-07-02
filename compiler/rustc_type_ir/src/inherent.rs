@@ -487,10 +487,12 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
 
     fn is_struct(self) -> bool;
 
-    /// Returns the type of the struct tail.
+    fn is_union(self) -> bool;
+
+    /// Returns the type of the struct/union tail.
     ///
-    /// Expects the `AdtDef` to be a struct. If it is not, then this will panic.
-    fn struct_tail_ty(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
+    /// Expects the `AdtDef` to be a struct or union. If it is not, then this will panic.
+    fn struct_or_union_tail_ty(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
 
     fn is_phantom_data(self) -> bool;
 

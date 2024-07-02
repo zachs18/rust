@@ -563,7 +563,7 @@ fn layout_of_uncached<'tcx>(
                 }
             };
 
-            if def.is_struct() {
+            if def.is_struct() || def.is_union() {
                 if let Some((_, fields_except_last)) =
                     def.non_enum_variant().fields.raw.split_last()
                 {
@@ -593,7 +593,7 @@ fn layout_of_uncached<'tcx>(
                     .iter_enumerated()
                     .any(|(i, v)| v.discr != ty::VariantDiscr::Relative(i.as_u32()));
 
-            let maybe_unsized = def.is_struct()
+            let maybe_unsized = (def.is_struct() || def.is_union())
                 && def.non_enum_variant().tail_opt().is_some_and(|last_field| {
                     let param_env = tcx.param_env(def.did());
                     !tcx.type_of(last_field.did).instantiate_identity().is_sized(tcx, param_env)

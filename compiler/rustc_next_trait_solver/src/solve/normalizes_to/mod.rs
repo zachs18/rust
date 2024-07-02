@@ -560,7 +560,7 @@ where
                     Ty::new_unit(cx)
                 }
 
-                ty::Adt(def, args) if def.is_struct() => match def.struct_tail_ty(cx) {
+                ty::Adt(def, args) if def.is_struct() || def.is_union() => match def.struct_or_union_tail_ty(cx) {
                     None => Ty::new_unit(cx),
                     Some(tail_ty) => {
                         Ty::new_projection(cx, metadata_def_id, [tail_ty.instantiate(cx, args)])
