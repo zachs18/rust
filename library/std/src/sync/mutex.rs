@@ -256,7 +256,7 @@ pub struct MappedMutexGuard<'a, T: ?Sized + 'a> {
     // `NonNull` is covariant over `T`, so we add a `PhantomData<&'a mut T>` field
     // below for the correct variance over `T` (invariance).
     data: NonNull<T>,
-    lock: &'a Mutex<()>,
+    lock: NonNull<Mutex<()>>,
     poison: poison::Guard,
     _variance: PhantomData<&'a mut T>,
 }
@@ -601,7 +601,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
     {
         // SAFETY: Mutex is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`,
         // as long as we don't access any tail padding which may overlap with the `T`.
-        let lock: &'a Mutex<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
+        let lock: NonNull<Mutex<()>> = NonNull::from(orig.lock).cast();
         // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
@@ -629,7 +629,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
     {
         // SAFETY: Mutex is (privately) `repr(C)`, so it is sound to "shrink" the tail from `T` to `()`,
         // as long as we don't access any tail padding which may overlap with the `T`.
-        let lock: &'a Mutex<()> = unsafe { NonNull::from(orig.lock).cast().as_ref() };
+        let lock: NonNull<Mutex<()>> = NonNull::from(orig.lock).cast();
         // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
         // was created, and have been upheld throughout `map` and/or `try_map`.
         // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
@@ -671,8 +671,9 @@ impl<T: ?Sized> Drop for MappedMutexGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            self.lock.poison.done(&self.poison);
-            self.lock.inner.unlock();
+            let lock: *const Mutex<()> = self.lock.as_ptr();
+            (*lock).poison.done(&self.poison);
+            (*lock).inner.unlock();
         }
     }
 }
