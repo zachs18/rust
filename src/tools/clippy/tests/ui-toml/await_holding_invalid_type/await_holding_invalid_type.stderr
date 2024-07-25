@@ -1,4 +1,4 @@
-error: `std::string::String` may not be held across an `await` point per `clippy.toml`
+error: `std::string::string::String` may not be held across an `await` point per `clippy.toml`
   --> $DIR/await_holding_invalid_type.rs:5:9
    |
 LL |     let _x = String::from("hello");
@@ -14,7 +14,7 @@ error: `std::net::Ipv4Addr` may not be held across an `await` point per `clippy.
 LL |     let x = Ipv4Addr::new(127, 0, 0, 1);
    |         ^
 
-error: `std::string::String` may not be held across an `await` point per `clippy.toml`
+error: `std::string::string::String` may not be held across an `await` point per `clippy.toml`
   --> $DIR/await_holding_invalid_type.rs:33:13
    |
 LL |         let _x = String::from("hi!");
