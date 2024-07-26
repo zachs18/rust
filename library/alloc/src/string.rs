@@ -360,7 +360,7 @@ pub type String = string::String<Global>;
 /// an analogue to `FromUtf8Error`, and you can get one from a `FromUtf8Error`
 /// through the [`utf8_error`] method.
 ///
-/// [`Utf8Error`]: str::Utf8Error "std::str::Utf8Error"
+/// [`Utf8Error`]: core::str::Utf8Error "std::str::Utf8Error"
 /// [`std::str`]: core::str "std::str"
 /// [`&str`]: prim@str "&str"
 /// [`utf8_error`]: FromUtf8Error::utf8_error
