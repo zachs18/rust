@@ -70,6 +70,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::alloc::Allocator;
 use crate::borrow::{Borrow, Cow};
 use crate::cmp;
 use crate::collections::TryReserveError;
@@ -3292,7 +3293,7 @@ impl AsRef<Path> for str {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl AsRef<Path> for String {
+impl<A: Allocator> AsRef<Path> for String<A> {
     #[inline]
     fn as_ref(&self) -> &Path {
         Path::new(self)
