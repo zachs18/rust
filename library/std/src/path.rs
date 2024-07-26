@@ -83,6 +83,7 @@ use crate::iter::FusedIterator;
 use crate::ops::{self, Deref};
 use crate::rc::Rc;
 use crate::str::FromStr;
+use crate::string::string::String;
 use crate::sync::Arc;
 
 use crate::ffi::{os_str, OsStr, OsString};
