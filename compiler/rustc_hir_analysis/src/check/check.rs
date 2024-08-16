@@ -1150,14 +1150,12 @@ pub(super) fn check_packed(tcx: TyCtxt<'_>, sp: Span, def: ty::AdtDef<'_>) {
             .emit();
         } else {
             if let Some(def_spans) = check_packed_inner(tcx, def.did(), &mut vec![]) {
-                let mut err = struct_span_code_err!(
-                    tcx.dcx(),
+                let mut diag = tcx.dcx().struct_span_warn(
                     sp,
-                    E0588,
-                    "packed type cannot transitively contain a `#[repr(align)]` type"
+                    "packed type transitively containing a `#[repr(align)]` type will not respect alignment of that type"
                 );
 
-                err.span_note(
+                diag.span_note(
                     tcx.def_span(def_spans[0].0),
                     format!("`{}` has a `#[repr(align)]` attribute", tcx.item_name(def_spans[0].0)),
                 );
@@ -1166,7 +1164,7 @@ pub(super) fn check_packed(tcx: TyCtxt<'_>, sp: Span, def: ty::AdtDef<'_>) {
                     let mut first = true;
                     for (adt_def, span) in def_spans.iter().skip(1).rev() {
                         let ident = tcx.item_name(*adt_def);
-                        err.span_note(
+                        diag.span_note(
                             *span,
                             if first {
                                 format!(
@@ -1182,7 +1180,7 @@ pub(super) fn check_packed(tcx: TyCtxt<'_>, sp: Span, def: ty::AdtDef<'_>) {
                     }
                 }
 
-                err.emit();
+                diag.emit();
             }
         }
     }
