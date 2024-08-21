@@ -1153,7 +1153,7 @@ pub(super) fn check_packed(tcx: TyCtxt<'_>, sp: Span, def: ty::AdtDef<'_>) {
                 let mut diag = tcx.dcx().struct_span_warn(
                     sp,
                     "packed type transitively containing a `#[repr(align)]` type will not respect alignment of that type"
-                );
+                ).with_code(E0588);
 
                 diag.span_note(
                     tcx.def_span(def_spans[0].0),
