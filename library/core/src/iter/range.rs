@@ -2,6 +2,7 @@ use super::{
     FusedIterator, TrustedLen, TrustedRandomAccess, TrustedRandomAccessNoCoerce, TrustedStep,
 };
 use crate::ascii::Char as AsciiChar;
+use crate::cmp::Reverse;
 use crate::mem;
 use crate::net::{Ipv4Addr, Ipv6Addr};
 use crate::num::NonZero;
@@ -15,6 +16,9 @@ macro_rules! unsafe_impl_trusted_step {
     )*};
 }
 unsafe_impl_trusted_step![AsciiChar char i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize Ipv4Addr Ipv6Addr];
+
+#[unstable(feature = "trusted_step", issue = "85731")]
+unsafe impl<T: TrustedStep> TrustedStep for Reverse<T> {}
 
 /// Objects that have a notion of *successor* and *predecessor* operations.
 ///
@@ -612,6 +616,50 @@ impl Step for Ipv6Addr {
         // SAFETY: Since u128 and Ipv6Addr are losslessly convertible,
         //   this is as safe as the u128 version.
         Ipv6Addr::from_bits(unsafe { u128::backward_unchecked(start.to_bits(), count) })
+    }
+}
+
+#[unstable(feature = "step_trait", reason = "recently redesigned", issue = "42168")]
+impl<T: Step> Step for Reverse<T> {
+    #[inline]
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        T::steps_between(&end.0, &start.0)
+    }
+
+    #[inline]
+    #[rustc_inherit_overflow_checks]
+    fn forward(start: Self, count: usize) -> Self {
+        Self(T::backward(start.0, count))
+    }
+
+    #[inline]
+    #[rustc_inherit_overflow_checks]
+    fn backward(start: Self, count: usize) -> Self {
+        Self(T::forward(start.0, count))
+    }
+
+    #[inline]
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        Some(Self(T::backward_checked(start.0, count)?))
+    }
+
+    #[inline]
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        Some(Self(T::forward_checked(start.0, count)?))
+    }
+
+    #[inline]
+    unsafe fn forward_unchecked(start: Self, count: usize) -> Self {
+        // Safety: discharged to caller; going forward `count` from a `Reverse<T>`
+        // is equivalent to going backward `count` from the inner `T`.
+        Self(unsafe { T::backward_unchecked(start.0, count) })
+    }
+
+    #[inline]
+    unsafe fn backward_unchecked(start: Self, count: usize) -> Self {
+        // Safety: discharged to caller; going backward `count` from a `Reverse<T>`
+        // is equivalent to going forward `count` from the inner `T`.
+        Self(unsafe { T::forward_unchecked(start.0, count) })
     }
 }
 
