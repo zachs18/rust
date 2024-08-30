@@ -650,14 +650,14 @@ impl<T: Step> Step for Reverse<T> {
 
     #[inline]
     unsafe fn forward_unchecked(start: Self, count: usize) -> Self {
-        // Safety: discharged to caller; going forward `count` from a `Reverse<T>`
+        // SAFETY: discharged to caller; going forward `count` from a `Reverse<T>`
         // is equivalent to going backward `count` from the inner `T`.
         Self(unsafe { T::backward_unchecked(start.0, count) })
     }
 
     #[inline]
     unsafe fn backward_unchecked(start: Self, count: usize) -> Self {
-        // Safety: discharged to caller; going backward `count` from a `Reverse<T>`
+        // SAFETY: discharged to caller; going backward `count` from a `Reverse<T>`
         // is equivalent to going forward `count` from the inner `T`.
         Self(unsafe { T::forward_unchecked(start.0, count) })
     }
