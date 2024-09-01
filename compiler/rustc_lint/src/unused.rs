@@ -814,7 +814,12 @@ trait UnusedDelimLint {
                 .map(|span| (value.span.with_hi(span.lo()), value.span.with_lo(span.hi()))),
             ast::ExprKind::Paren(ref expr) => {
                 expr.span.find_ancestor_inside(value.span).map(|expr_span| {
-                    (value.span.with_hi(expr_span.lo()), value.span.with_lo(expr_span.hi()))
+                    (
+                        value.span.with_hi(
+                            expr.attrs.first().map_or(expr_span.lo(), |attr| attr.span.lo()),
+                        ),
+                        value.span.with_lo(expr_span.hi()),
+                    )
                 })
             }
             _ => return,
