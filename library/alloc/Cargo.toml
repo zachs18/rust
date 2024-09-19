@@ -9,7 +9,7 @@ autobenches = false
 edition = "2021"
 
 [dependencies]
-core = { path = "../core" }
+core = { path = "../core", default-features = false }
 compiler_builtins = { version = "0.1.125", features = ['rustc-dep-of-std'] }
 
 [dev-dependencies]

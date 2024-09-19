@@ -65,7 +65,7 @@
 #![doc(rust_logo)]
 #![doc(cfg_hide(
     not(test),
-    no_fp_fmt_parse,
+    feature = "fp_fmt_parse",
     target_pointer_width = "16",
     target_pointer_width = "32",
     target_pointer_width = "64",
