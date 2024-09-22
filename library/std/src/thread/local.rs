@@ -8,7 +8,7 @@ mod tests;
 #[cfg(test)]
 mod dynamic_tests;
 
-use crate::cell::{Cell, RefCell};
+use crate::cell::{Cell, OnceCell, RefCell};
 use crate::error::Error;
 use crate::fmt;
 
@@ -608,5 +608,48 @@ impl<T: 'static> LocalKey<RefCell<T>> {
     #[rustc_confusables("swap")]
     pub fn replace(&'static self, value: T) -> T {
         self.with(|cell| cell.replace(value))
+    }
+}
+
+impl<T: 'static> LocalKey<OnceCell<T>> {
+    /// Initializes the contained value.
+    ///
+    /// Unlike the other methods, this will *not* run the lazy initializer of
+    /// the thread local. Instead, it will be directly initialized with the
+    /// given value if it wasn't initialized yet.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the key currently has its destructor running,
+    /// and it **may** panic if the destructor has previously been run for this thread.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(local_key_once_cell_methods)]
+    /// use std::cell::OnceCell;
+    ///
+    /// thread_local! {
+    ///     static X: OnceCell<i32> = panic!("!");
+    /// }
+    ///
+    /// // Calling X.with() here would result in a panic.
+    ///
+    /// X.set(123).expect("not initialized yet"); // But X.set() is fine, as it skips the initializer above.
+    ///
+    /// X.with(|x| assert_eq!(*x, 123));
+    /// ```
+    #[unstable(feature = "local_key_once_cell_methods", issue = "none")]
+    pub fn set(&'static self, value: T) -> Result<(), T> {
+        self.initialize_with(OnceCell::from(value), |value, cell| {
+            if let Some(value) = value {
+                // The cell was already initialized, so `value` wasn't used to
+                // initialize it. So we overwrite the current value with the
+                // new one instead.
+                cell.set(value.into_inner().expect("initialized with OnceCell::from"))
+            } else {
+                Ok(())
+            }
+        })
     }
 }
