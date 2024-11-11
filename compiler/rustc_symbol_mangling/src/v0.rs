@@ -379,6 +379,8 @@ impl<'tcx> Printer<'tcx> for SymbolMangler<'tcx> {
                 ty.print(self)?;
             }
 
+            ty::PtrMetadata(_ty) => todo!(),
+
             ty::Pat(ty, pat) => match *pat {
                 ty::PatternKind::Range { start, end, include_end } => {
                     let consts = [

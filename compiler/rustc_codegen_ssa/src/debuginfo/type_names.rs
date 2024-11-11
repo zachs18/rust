@@ -161,6 +161,17 @@ fn push_debuginfo_type_name<'tcx>(
                 push_close_angle_bracket(cpp_like_debuginfo, output);
             }
         }
+        ty::PtrMetadata(inner_type) => {
+            if cpp_like_debuginfo {
+                output.push_str("ptr_metadata$<")
+            } else {
+                output.push_str("ptr_metadata<")
+            }
+
+            push_debuginfo_type_name(tcx, inner_type, qualified, output, visited);
+
+            push_close_angle_bracket(cpp_like_debuginfo, output);
+        }
         ty::Ref(_, inner_type, mutbl) => {
             if cpp_like_debuginfo {
                 match mutbl {

@@ -733,6 +733,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 self.check_safe_pointer(value, PointerKind::Ref(*mutbl))?;
                 interp_ok(true)
             }
+            ty::PtrMetadata(_) => todo!(),
             ty::FnPtr(..) => {
                 let scalar = self.read_scalar(value, ExpectedKind::FnPtr)?;
 

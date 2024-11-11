@@ -1114,6 +1114,7 @@ where
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::PtrMetadata(_)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::Closure(..)

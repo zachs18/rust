@@ -747,6 +747,12 @@ fn test_ty() {
     // TyKind::CVarArgs
     // FIXME: todo
 
+    // TyKind::Pat
+    // FIXME: todo
+
+    // TyKind::PtrMetadata
+    // FIXME: todo
+
     // Attributes are not allowed on types.
 }
 

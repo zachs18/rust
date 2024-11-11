@@ -33,8 +33,8 @@ use {rustc_ast as ast, rustc_hir as hir};
 
 pub(crate) use self::ItemKind::*;
 pub(crate) use self::Type::{
-    Array, BareFunction, BorrowedRef, DynTrait, Generic, ImplTrait, Infer, Primitive, QPath,
-    RawPointer, SelfTy, Slice, Tuple,
+    Array, BareFunction, BorrowedRef, DynTrait, Generic, ImplTrait, Infer, PointerMetadata,
+    Primitive, QPath, RawPointer, SelfTy, Slice, Tuple,
 };
 use crate::clean::cfg::Cfg;
 use crate::clean::clean_middle_path;
@@ -1503,6 +1503,8 @@ pub(crate) enum Type {
         mutability: Mutability,
         type_: Box<Type>,
     },
+    /// A pointer metadata type: `metadata_type!(str)`
+    PointerMetadata(Box<Type>),
 
     /// A qualified path to an associated item: `<Type as Trait>::Name`
     QPath(Box<QPathData>),
@@ -1703,6 +1705,7 @@ impl Type {
             Array(..) => PrimitiveType::Array,
             Type::Pat(..) => PrimitiveType::Pat,
             RawPointer(..) => PrimitiveType::RawPointer,
+            PointerMetadata(..) => PrimitiveType::PointerMetadata,
             QPath(box QPathData { ref self_type, .. }) => return self_type.def_id(cache),
             Generic(_) | SelfTy | Infer | ImplTrait(_) => return None,
         };
@@ -1752,6 +1755,7 @@ pub(crate) enum PrimitiveType {
     Tuple,
     Unit,
     RawPointer,
+    PointerMetadata,
     Reference,
     Fn,
     Never,
@@ -1909,6 +1913,7 @@ impl PrimitiveType {
             Unit => sym::unit,
             RawPointer => sym::pointer,
             Reference => sym::reference,
+            PointerMetadata => todo!(),
             Fn => kw::Fn,
             Never => sym::never,
         }

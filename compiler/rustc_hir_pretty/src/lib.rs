@@ -279,6 +279,11 @@ impl<'a> State<'a> {
                 self.print_opt_lifetime(lifetime);
                 self.print_mt(mt, false);
             }
+            hir::TyKind::PtrMetadata(ref ty) => {
+                self.word("metadata_type!(");
+                self.print_type(ty);
+                self.word(")");
+            }
             hir::TyKind::Never => {
                 self.word("!");
             }

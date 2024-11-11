@@ -600,6 +600,10 @@ impl FromClean<clean::Type> for Type {
                 is_mutable: mutability == ast::Mutability::Mut,
                 type_: Box::new((*type_).into_json(renderer)),
             },
+            clean::Type::PointerMetadata(_type_) => {
+                //Type::PointerMetadata { type_: Box::new((*type_).into_json(renderer)) }
+                todo!()
+            }
             BorrowedRef { lifetime, mutability, type_ } => Type::BorrowedRef {
                 lifetime: lifetime.map(convert_lifetime),
                 is_mutable: mutability == ast::Mutability::Mut,

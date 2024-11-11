@@ -315,6 +315,7 @@ impl<'a, D: SolverDelegate<Interner = I>, I: Interner> Canonicalizer<'a, D, I> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::PtrMetadata(_)
             | ty::Pat(_, _)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)

@@ -283,6 +283,7 @@ where
             | ty::Slice(..)
             | ty::Tuple(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Ref(..)
             | ty::Pat(..)
             | ty::FnPtr(..)

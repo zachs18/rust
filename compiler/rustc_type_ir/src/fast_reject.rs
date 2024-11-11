@@ -31,6 +31,7 @@ pub enum SimplifiedType<DefId> {
     Slice,
     Ref(Mutability),
     Ptr(Mutability),
+    PointerMetadata,
     Never,
     Tuple(usize),
     /// A trait object, all of whose components are markers
@@ -121,6 +122,7 @@ pub fn simplify_type<I: Interner>(
         ty::Slice(..) => Some(SimplifiedType::Slice),
         ty::Pat(ty, ..) => simplify_type(cx, ty, treat_params),
         ty::RawPtr(_, mutbl) => Some(SimplifiedType::Ptr(mutbl)),
+        ty::PtrMetadata(_) => Some(SimplifiedType::PointerMetadata),
         ty::Dynamic(trait_info, ..) => match trait_info.principal_def_id() {
             Some(principal_def_id) if !cx.trait_is_auto(principal_def_id) => {
                 Some(SimplifiedType::Trait(principal_def_id))
@@ -258,6 +260,7 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
             | ty::Array(..)
             | ty::Slice(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Dynamic(..)
             | ty::Pat(..)
             | ty::Ref(..)
@@ -344,6 +347,10 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
                 }
                 _ => false,
             },
+
+            ty::PtrMetadata(lhs_ty) => {
+                matches!(rhs.kind(), ty::PtrMetadata(rhs_ty) if self.types_may_unify(lhs_ty, rhs_ty))
+            }
 
             ty::Slice(lhs_ty) => {
                 matches!(rhs.kind(), ty::Slice(rhs_ty) if self.types_may_unify(lhs_ty, rhs_ty))

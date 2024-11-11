@@ -866,6 +866,7 @@ fn get_index_type_id(
         clean::Primitive(p) => Some(RenderTypeId::Primitive(p)),
         clean::BorrowedRef { .. } => Some(RenderTypeId::Primitive(clean::PrimitiveType::Reference)),
         clean::RawPointer(_, ref type_) => get_index_type_id(type_, rgen),
+        clean::PointerMetadata(ref _ty) => todo!(),
         // The type parameters are converted to generics in `simplify_fn_type`
         clean::Slice(_) => Some(RenderTypeId::Primitive(clean::PrimitiveType::Slice)),
         clean::Array(_, _) => Some(RenderTypeId::Primitive(clean::PrimitiveType::Array)),

@@ -305,6 +305,8 @@ fn layout_of_uncached<'tcx>(
             tcx.mk_layout(cx.calc.scalar_pair(data_ptr, metadata))
         }
 
+        ty::PtrMetadata(_) => todo!(),
+
         ty::Dynamic(_, _, ty::DynStar) => {
             let mut data = scalar_unit(Pointer(AddressSpace::DATA));
             data.valid_range_mut().start = 0;

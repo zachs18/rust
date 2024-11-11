@@ -485,6 +485,7 @@ pub fn walk_ty<T: MutVisitor>(vis: &mut T, ty: &mut P<Ty>) {
         }
         TyKind::Slice(ty) => vis.visit_ty(ty),
         TyKind::Ptr(mt) => vis.visit_mt(mt),
+        TyKind::PtrMetadata(ty) => vis.visit_ty(ty),
         TyKind::Ref(lt, mt) | TyKind::PinnedRef(lt, mt) => {
             visit_opt(lt, |lt| vis.visit_lifetime(lt));
             vis.visit_mt(mt);

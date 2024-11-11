@@ -47,6 +47,7 @@ mod format;
 mod format_foreign;
 mod global_allocator;
 mod log_syntax;
+mod metadata_type;
 mod pattern_type;
 mod source_util;
 mod test;
@@ -95,6 +96,7 @@ pub fn register_builtin_macros(resolver: &mut dyn ResolverExpand) {
         include_str: source_util::expand_include_str,
         line: source_util::expand_line,
         log_syntax: log_syntax::expand_log_syntax,
+        metadata_type: metadata_type::expand,
         module_path: source_util::expand_mod,
         naked_asm: asm::expand_naked_asm,
         option_env: env::expand_option_env,

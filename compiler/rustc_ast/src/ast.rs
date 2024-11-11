@@ -2169,6 +2169,8 @@ pub enum TyKind {
     Ptr(MutTy),
     /// A reference (`&'a T` or `&'a mut T`).
     Ref(Option<Lifetime>, MutTy),
+    /// Pointer metadata (`metadata_type!(str)`).
+    PtrMetadata(P<Ty>),
     /// A pinned reference (`&'a pin const T` or `&'a pin mut T`).
     ///
     /// Desugars into `Pin<&'a T>` or `Pin<&'a mut T>`.

@@ -807,6 +807,8 @@ where
                     bug!("TyAndLayout::field({:?}): not applicable", this)
                 }
 
+                ty::PtrMetadata(_pointee) => todo!(),
+
                 // Potentially-wide pointers.
                 ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {
                     assert!(i < this.fields.count());

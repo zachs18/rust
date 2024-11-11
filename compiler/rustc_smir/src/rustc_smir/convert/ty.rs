@@ -345,6 +345,7 @@ impl<'tcx> Stable<'tcx> for ty::TyKind<'tcx> {
             ty::RawPtr(ty, mutbl) => {
                 TyKind::RigidTy(RigidTy::RawPtr(ty.stable(tables), mutbl.stable(tables)))
             }
+            ty::PtrMetadata(ty) => TyKind::RigidTy(RigidTy::PtrMetadata(ty.stable(tables))),
             ty::Ref(region, ty, mutbl) => TyKind::RigidTy(RigidTy::Ref(
                 region.stable(tables),
                 ty.stable(tables),

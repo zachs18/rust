@@ -1637,6 +1637,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::Placeholder(_) => {
                         bug!("When Place is Deref it's type shouldn't be {place_ty:#?}")
                     }
+                    ty::PtrMetadata(_) => todo!("probably should be in bug! arm"),
                 },
                 ProjectionElem::Field(_, _) => match place_ty.ty.kind() {
                     ty::Adt(adt, _) => {
@@ -1649,6 +1650,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                             return;
                         }
                     }
+                    ty::PtrMetadata(_) => todo!("handle metadata fields"),
                     ty::Closure(..)
                     | ty::CoroutineClosure(..)
                     | ty::Coroutine(_, _)
