@@ -130,6 +130,8 @@ fn const_to_valtree_inner<'tcx>(
             Ok(ty::ValTree::Leaf(val))
         }
 
+        ty::PtrMetadata(_) => todo!(),
+
         // Technically we could allow function pointers (represented as `ty::Instance`), but this is not guaranteed to
         // agree with runtime equality tests.
         ty::FnPtr(..) => Err(ValTreeCreationError::NonSupportedType(ty)),
@@ -289,6 +291,7 @@ pub fn valtree_to_const_value<'tcx>(
             assert!(valtree.unwrap_branch().is_empty());
             mir::ConstValue::ZeroSized
         }
+        ty::PtrMetadata(_) => todo!(),
         ty::Bool | ty::Int(_) | ty::Uint(_) | ty::Float(_) | ty::Char | ty::RawPtr(_, _) => {
             match valtree {
                 ty::ValTree::Leaf(scalar_int) => mir::ConstValue::Scalar(Scalar::Int(scalar_int)),

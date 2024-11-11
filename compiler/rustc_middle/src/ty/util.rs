@@ -1215,6 +1215,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Ref(..)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::FnDef(..)
             | ty::Error(_)
             | ty::FnPtr(..) => true,
@@ -1255,6 +1256,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Ref(..)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::FnDef(..)
             | ty::Error(_)
             | ty::FnPtr(..) => true,
@@ -1295,6 +1297,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Ref(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::Infer(ty::FreshIntTy(_))
@@ -1479,7 +1482,7 @@ impl<'tcx> Ty<'tcx> {
             ty::Pat(..) | ty::Ref(..) | ty::Array(..) | ty::Slice(_) | ty::Tuple(..) => true,
 
             // Raw pointers use bitwise comparison.
-            ty::RawPtr(_, _) | ty::FnPtr(..) => true,
+            ty::RawPtr(_, _) | ty::FnPtr(..) | ty::PtrMetadata(_) => true,
 
             // Floating point numbers are not `Eq`.
             ty::Float(_) => false,
@@ -1613,6 +1616,7 @@ pub fn needs_drop_components_with_async<'tcx>(
         | ty::FnPtr(..)
         | ty::Char
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(..)
         | ty::Str => Ok(SmallVec::new()),
 
@@ -1675,6 +1679,7 @@ pub fn is_trivially_const_drop(ty: Ty<'_>) -> bool {
         | ty::Infer(ty::FloatVar(_))
         | ty::Str
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)

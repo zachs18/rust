@@ -414,6 +414,9 @@ pub use crate::intrinsics::write_bytes;
 
 mod metadata;
 #[unstable(feature = "ptr_metadata", issue = "81513")]
+#[cfg(not(bootstrap))]
+pub use metadata::Metadata;
+#[unstable(feature = "ptr_metadata", issue = "81513")]
 pub use metadata::{DynMetadata, Pointee, Thin, from_raw_parts, from_raw_parts_mut, metadata};
 
 mod non_null;

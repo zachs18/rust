@@ -49,7 +49,7 @@ where
             panic!("unexpected type `{ty:?}`")
         }
 
-        ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) => {
+        ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) | ty::PtrMetadata(element_ty) => {
             Ok(vec![ty::Binder::dummy(element_ty)])
         }
 
@@ -119,6 +119,7 @@ where
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::RawPtr(..)
+        | ty::PtrMetadata(..)
         | ty::Char
         | ty::Ref(..)
         | ty::Coroutine(..)
@@ -188,6 +189,7 @@ where
         | ty::Float(_)
         | ty::Char
         | ty::RawPtr(..)
+        | ty::PtrMetadata(..)
         | ty::Never
         | ty::Ref(_, _, Mutability::Not)
         | ty::Array(..) => Err(NoSolution),
@@ -367,6 +369,7 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<I: Intern
         | ty::Array(_, _)
         | ty::Slice(_)
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(_, _, _)
         | ty::Dynamic(_, _, _)
         | ty::Coroutine(_, _)
@@ -539,6 +542,7 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_async_callable<I: 
         | ty::Pat(_, _)
         | ty::Slice(_)
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(_, _, _)
         | ty::Dynamic(_, _, _)
         | ty::Coroutine(_, _)

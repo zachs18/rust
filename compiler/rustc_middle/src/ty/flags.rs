@@ -233,7 +233,7 @@ impl FlagComputation {
 
             &ty::Slice(tt) => self.add_ty(tt),
 
-            &ty::RawPtr(ty, _) => {
+            &ty::RawPtr(ty, _) | &ty::PtrMetadata(ty) => {
                 self.add_ty(ty);
             }
 

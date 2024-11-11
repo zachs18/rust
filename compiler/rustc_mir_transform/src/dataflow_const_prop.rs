@@ -935,6 +935,8 @@ fn try_write_constant<'tcx>(
         | ty::Coroutine(..)
         | ty::Dynamic(..) => throw_machine_stop_str!("unsupported type"),
 
+        ty::PtrMetadata(_) => todo!(),
+
         ty::Error(_) | ty::Infer(..) | ty::CoroutineWitness(..) => bug!(),
     }
 

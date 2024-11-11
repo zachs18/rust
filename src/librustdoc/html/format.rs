@@ -1174,6 +1174,7 @@ fn fmt_type(
             }
             Ok(())
         }
+        clean::PointerMetadata(_) => todo!(),
         clean::ImplTrait(ref bounds) => {
             f.write_str("impl ")?;
             print_generic_bounds(bounds, cx).fmt(f)

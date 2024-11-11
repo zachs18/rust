@@ -2837,6 +2837,8 @@ pub enum TyKind<'hir> {
     Ptr(MutTy<'hir>),
     /// A reference (i.e., `&'a T` or `&'a mut T`).
     Ref(&'hir Lifetime, MutTy<'hir>),
+    /// Pointer metadata (i.e., `metadata_type!(str)`).
+    PtrMetadata(&'hir Ty<'hir>),
     /// A bare function (e.g., `fn(usize) -> bool`).
     BareFn(&'hir BareFnTy<'hir>),
     /// The never type (`!`).

@@ -63,6 +63,19 @@ pub trait Pointee {
     type Metadata: fmt::Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze;
 }
 
+/// Pointer metadata type.
+#[cfg(not(bootstrap))]
+#[rustc_builtin_macro(metadata_type)]
+#[unstable(feature = "ptr_metadata", issue = "81513")]
+macro metadata_type($($arg:tt)*) {
+    /* compiler built-in */
+}
+
+/// Pointer metadata type.
+#[cfg(not(bootstrap))]
+#[unstable(feature = "ptr_metadata", issue = "81513")]
+pub type Metadata<T> = metadata_type!(T);
+
 /// Pointers to types implementing this trait alias are “thin”.
 ///
 /// This includes statically-`Sized` types and `extern` types.

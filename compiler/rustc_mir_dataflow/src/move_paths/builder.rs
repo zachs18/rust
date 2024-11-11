@@ -169,6 +169,7 @@ impl<'a, 'tcx, F: Fn(Ty<'tcx>) -> bool> MoveDataBuilder<'a, 'tcx, F> {
                     | ty::Placeholder(_) => {
                         bug!("When Place is Deref it's type shouldn't be {place_ty:#?}")
                     }
+                    ty::PtrMetadata(_) => todo!("I think it should be in the bug! arm"),
                 },
                 ProjectionElem::Field(_, _) => match place_ty.kind() {
                     ty::Adt(adt, _) => {
@@ -179,6 +180,7 @@ impl<'a, 'tcx, F: Fn(Ty<'tcx>) -> bool> MoveDataBuilder<'a, 'tcx, F> {
                             union_path.get_or_insert(base);
                         }
                     }
+                    ty::PtrMetadata(_) => todo!("Maybe Metadata should just be an ADT?"),
                     ty::Closure(..)
                     | ty::CoroutineClosure(..)
                     | ty::Coroutine(_, _)

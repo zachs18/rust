@@ -608,6 +608,8 @@ pub(crate) fn encode_ty<'tcx>(
             typeid.push_str(&s);
         }
 
+        ty::PtrMetadata(_) => todo!("vendor-extended type qualifier, see Ref"),
+
         ty::FnPtr(sig_tys, hdr) => {
             // PF<return-type><parameter-type1..parameter-typeN>E
             let mut s = String::from("P");

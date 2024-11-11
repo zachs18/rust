@@ -602,6 +602,11 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_ptr_metadata(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
+        Ty::new(tcx, ty::PtrMetadata(ty))
+    }
+
+    #[inline]
     pub fn new_mut_ptr(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
         Ty::new_ptr(tcx, ty, hir::Mutability::Mut)
     }
@@ -1468,6 +1473,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Array(..)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::Ref(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
@@ -1627,6 +1633,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::RawPtr(..)
             | ty::Char
             | ty::Ref(..)
+            | ty::PtrMetadata(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
             | ty::Array(..)
@@ -1817,6 +1824,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Char
             | ty::Ref(..)
             | ty::Coroutine(..)
@@ -1889,6 +1897,9 @@ impl<'tcx> Ty<'tcx> {
             // The standard library has a blanket Copy impl for shared references and raw pointers,
             // for all unsized types.
             ty::Ref(_, _, hir::Mutability::Not) | ty::RawPtr(..) => true,
+
+            // Pointers are Copy, so pointer metadata is Copy.
+            ty::PtrMetadata(_) => true,
 
             ty::Coroutine(..) | ty::CoroutineWitness(..) => false,
 
@@ -1965,6 +1976,7 @@ impl<'tcx> Ty<'tcx> {
             | Slice(_)
             | RawPtr(_, _)
             | Ref(_, _, _)
+            | PtrMetadata(_)
             | FnDef(_, _)
             | FnPtr(..)
             | Dynamic(_, _, _)

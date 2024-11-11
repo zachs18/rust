@@ -338,6 +338,7 @@ where
             | ty::Array(..)
             | ty::Slice(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Tuple(..) => self.found_non_local_ty(ty),
 

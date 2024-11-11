@@ -34,6 +34,7 @@ impl<'tcx> Printer<'tcx> for AbsolutePathPrinter<'tcx> {
             | ty::Array(_, _)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::Ref(_, _, _)
             | ty::FnPtr(..)
             | ty::Never

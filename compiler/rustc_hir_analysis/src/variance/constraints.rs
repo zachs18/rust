@@ -272,6 +272,10 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 self.add_constraints_from_mt(current, &ty::TypeAndMut { ty, mutbl }, variance);
             }
 
+            ty::PtrMetadata(ty) => {
+                self.add_constraints_from_ty(current, ty, variance);
+            }
+
             ty::Tuple(subtys) => {
                 for subty in subtys {
                     self.add_constraints_from_ty(current, subty, variance);

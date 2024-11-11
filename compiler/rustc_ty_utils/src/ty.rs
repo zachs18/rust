@@ -26,6 +26,7 @@ fn sized_constraint_for_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Ty<'
         | Uint(..)
         | Float(..)
         | RawPtr(..)
+        | PtrMetadata(..)
         | Ref(..)
         | FnDef(..)
         | FnPtr(..)
