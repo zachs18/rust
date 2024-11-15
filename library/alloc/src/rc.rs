@@ -1250,7 +1250,6 @@ impl<'a, A: Allocator> Drop for Guard<'a, A> {
     }
 }
 
-
 impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
     /// Constructs a new `Rc<T>` with a clone of `value` in the provided allocator.
     ///
@@ -2207,7 +2206,10 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     ///
     /// Safety:
     /// * `ptr` must be valid to pass to [`Layout::for_value_raw`]
-    unsafe fn try_allocate_for_ptr_in(ptr: *const T, alloc: &A) -> Result<*mut RcInner<T>, AllocError> {
+    unsafe fn try_allocate_for_ptr_in(
+        ptr: *const T,
+        alloc: &A,
+    ) -> Result<*mut RcInner<T>, AllocError> {
         // Allocate for the `RcInner<T>` using the given value.
         unsafe {
             Rc::<T>::try_allocate_for_layout(

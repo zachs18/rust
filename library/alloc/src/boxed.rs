@@ -708,7 +708,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
         let layout = Layout::for_value::<T>(src);
         match Box::try_new_from_ref_in(src, alloc) {
             Ok(bx) => bx,
-            Err(_) => handle_alloc_error(layout)
+            Err(_) => handle_alloc_error(layout),
         }
     }
 
@@ -737,7 +737,9 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
             fn drop(&mut self) {
                 let &mut DeallocDropGuard(layout, alloc, ptr) = self;
                 // Safety: `ptr` was allocated by `*alloc` with layout `layout`
-                unsafe { alloc.deallocate(ptr, layout); }
+                unsafe {
+                    alloc.deallocate(ptr, layout);
+                }
             }
         }
         let layout = Layout::for_value::<T>(src);
@@ -752,15 +754,15 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
         // Safety: `*ptr` is newly allocated, correctly aligned to `align_of_val(src)`,
         // and is valid for writes for `size_of_val(src)`.
         // If this panics, then `guard` will deallocate for us (if allocation occuured)
-        unsafe { <T as CloneToUninit>::clone_to_uninit(src, ptr); }
+        unsafe {
+            <T as CloneToUninit>::clone_to_uninit(src, ptr);
+        }
         // Defuse the deallocate guard
         core::mem::forget(guard);
         // Safety: We just initialized `*ptr` as a clone of `src`
         Ok(unsafe { Box::from_raw_in(ptr.with_metadata_of(src), alloc) })
     }
 }
-
-
 
 impl<T> Box<[T]> {
     /// Constructs a new boxed slice with uninitialized contents.

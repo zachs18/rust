@@ -1,9 +1,9 @@
 use core::any::Any;
 use core::error::Error;
-use core::mem;
-use core::pin::Pin;
 #[cfg(not(no_global_oom_handling))]
 use core::fmt;
+use core::mem;
+use core::pin::Pin;
 
 use crate::alloc::Allocator;
 #[cfg(not(no_global_oom_handling))]
