@@ -479,6 +479,14 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             Ok(Ty::new_ptr(cx, ty, a_mutbl))
         }
 
+        (ty::PtrMetadata(a_ty), ty::PtrMetadata(b_ty)) => {
+            let (variance, info) = (ty::Covariant, VarianceDiagInfo::None);
+
+            let ty = relation.relate_with_variance(variance, info, a_ty, b_ty)?;
+
+            Ok(Ty::new_ptr_metadata(cx, ty))
+        }
+
         (ty::Ref(a_r, a_ty, a_mutbl), ty::Ref(b_r, b_ty, b_mutbl)) => {
             if a_mutbl != b_mutbl {
                 return Err(TypeError::Mutability);
