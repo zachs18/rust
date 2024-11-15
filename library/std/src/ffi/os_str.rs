@@ -1220,8 +1220,7 @@ impl From<&OsStr> for Box<OsStr> {
     /// Copies the string into a newly allocated <code>[Box]&lt;[OsStr]&gt;</code>.
     #[inline]
     fn from(s: &OsStr) -> Box<OsStr> {
-        let rw = Box::into_raw(s.inner.into_box()) as *mut OsStr;
-        unsafe { Box::from_raw(rw) }
+        Box::new_from_ref(s)
     }
 }
 

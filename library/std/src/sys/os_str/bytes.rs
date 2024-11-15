@@ -294,12 +294,6 @@ impl Slice {
         self.inner.clone_into(&mut buf.inner)
     }
 
-    #[inline]
-    pub fn into_box(&self) -> Box<Slice> {
-        let boxed: Box<[u8]> = self.inner.into();
-        unsafe { mem::transmute(boxed) }
-    }
-
     pub fn empty_box() -> Box<Slice> {
         let boxed: Box<[u8]> = Default::default();
         unsafe { mem::transmute(boxed) }
