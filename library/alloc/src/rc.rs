@@ -1198,6 +1198,122 @@ impl<T, A: Allocator> Rc<mem::MaybeUninit<T>, A> {
     }
 }
 
+impl<T: ?Sized + CloneToUninit> Rc<T> {
+    /// Constructs a new `Rc<T>` with a clone of `value`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// use std::rc::Rc;
+    ///
+    /// let hello: Rc<str> = Rc::new_from_ref("hello");
+    /// ```
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "new_from_ref", issue = "none")]
+    pub fn new_from_ref(value: &T) -> Rc<T> {
+        Rc::new_from_ref_in(value, Global)
+    }
+
+    /// Constructs a new `Rc<T>` with a clone of `value`, returning an error if allocation fails
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// #![feature(allocator_api)]
+    /// use std::rc::Rc;
+    ///
+    /// let hello: Rc<str> = Rc::try_new_from_ref("hello")?;
+    /// # Ok::<(), std::alloc::AllocError>(())
+    /// ```
+    #[unstable(feature = "allocator_api", issue = "32838")]
+    //#[unstable(feature = "new_from_ref", issue = "none")]
+    pub fn try_new_from_ref(value: &T) -> Result<Rc<T>, AllocError> {
+        Rc::try_new_from_ref_in(value, Global)
+    }
+}
+
+// Panic guard while cloning T in `new_from_ref_in` and `try_new_from_ref_in`.
+// In the event of a panic in `T::clone_to_uninit`, the memory will be freed.
+struct Guard<'a, A: Allocator> {
+    alloc: &'a A,
+    ptr: NonNull<u8>,
+    layout: Layout,
+}
+
+impl<'a, A: Allocator> Drop for Guard<'a, A> {
+    fn drop(&mut self) {
+        unsafe {
+            self.alloc.deallocate(self.ptr, self.layout);
+        }
+    }
+}
+
+
+impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
+    /// Constructs a new `Rc<T>` with a clone of `value` in the provided allocator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// #![feature(allocator_api)]
+    /// use std::rc::Rc;
+    /// use std::alloc::System;
+    ///
+    /// let hello: Rc<str, System> = Rc::new_from_ref_in("hello", System);
+    /// ```
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "allocator_api", issue = "32838")]
+    //#[unstable(feature = "new_from_ref", issue = "none")]
+    pub fn new_from_ref_in(value: &T, alloc: A) -> Rc<T, A> {
+        let ptr = unsafe { Rc::allocate_for_ptr_in(value, &alloc) };
+
+        let layout = unsafe { Layout::for_value_raw(ptr) };
+        let guard = Guard { alloc: &alloc, ptr: NonNull::new(ptr).unwrap().cast(), layout };
+
+        unsafe {
+            value.clone_to_uninit((&raw mut (*ptr).value).cast());
+        }
+
+        // All clear, forget the guard so it doesn't free the new RcInner
+        core::mem::forget(guard);
+
+        unsafe { Rc::from_ptr_in(ptr, alloc) }
+    }
+
+    /// Constructs a new `Rc<T>` with a clone of `value` in the provided allocator, returning an error if allocation fails
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// #![feature(allocator_api)]
+    /// use std::rc::Rc;
+    /// use std::alloc::System;
+    ///
+    /// let hello: Rc<str> = Rc::try_new_from_ref_in("hello", System)?;
+    /// # Ok::<(), std::alloc::AllocError>(())
+    /// ```
+    #[unstable(feature = "new_from_ref", issue = "none")]
+    pub fn try_new_from_ref_in(value: &T, alloc: A) -> Result<Rc<T, A>, AllocError> {
+        let ptr = unsafe { Rc::try_allocate_for_ptr_in(value, &alloc)? };
+
+        let layout = unsafe { Layout::for_value_raw(ptr) };
+        let guard = Guard { alloc: &alloc, ptr: NonNull::new(ptr).unwrap().cast(), layout };
+
+        unsafe {
+            value.clone_to_uninit((&raw mut (*ptr).value).cast());
+        }
+
+        // All clear, forget the guard so it doesn't free the new RcInner
+        core::mem::forget(guard);
+
+        Ok(unsafe { Rc::from_ptr_in(ptr, alloc) })
+    }
+}
+
 impl<T, A: Allocator> Rc<[mem::MaybeUninit<T>], A> {
     /// Converts to `Rc<[T]>`.
     ///
@@ -2072,11 +2188,29 @@ impl<T: ?Sized> Rc<T> {
 
 impl<T: ?Sized, A: Allocator> Rc<T, A> {
     /// Allocates an `RcInner<T>` with sufficient space for an unsized inner value
+    ///
+    /// Safety:
+    /// * `ptr` must be valid to pass to [`Layout::for_value_raw`]
     #[cfg(not(no_global_oom_handling))]
     unsafe fn allocate_for_ptr_in(ptr: *const T, alloc: &A) -> *mut RcInner<T> {
         // Allocate for the `RcInner<T>` using the given value.
         unsafe {
             Rc::<T>::allocate_for_layout(
+                Layout::for_value_raw(ptr),
+                |layout| alloc.allocate(layout),
+                |mem| mem.with_metadata_of(ptr as *const RcInner<T>),
+            )
+        }
+    }
+
+    /// Allocates an `RcInner<T>` with sufficient space for an unsized inner value, returning an error if allocation fails.
+    ///
+    /// Safety:
+    /// * `ptr` must be valid to pass to [`Layout::for_value_raw`]
+    unsafe fn try_allocate_for_ptr_in(ptr: *const T, alloc: &A) -> Result<*mut RcInner<T>, AllocError> {
+        // Allocate for the `RcInner<T>` using the given value.
+        unsafe {
+            Rc::<T>::try_allocate_for_layout(
                 Layout::for_value_raw(ptr),
                 |layout| alloc.allocate(layout),
                 |mem| mem.with_metadata_of(ptr as *const RcInner<T>),
