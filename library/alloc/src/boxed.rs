@@ -662,6 +662,126 @@ impl<T, A: Allocator> Box<T, A> {
     }
 }
 
+impl<T: ?Sized + CloneUnsized> Box<T> {
+    /// Allocates memory on the heap then clones `src` into it.
+    ///
+    /// This doesn't actually allocate if `src` is zero-sized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    ///
+    /// let hello: Box<str> = Box::new_from_ref("hello");
+    /// ```
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "new_from_ref", issue = "none")]
+    #[must_use]
+    #[inline]
+    pub fn new_from_ref(src: &T) -> Box<T> {
+        Box::new_from_ref_in(src, Global)
+    }
+
+    /// Allocates memory on the heap then clones `src` into it, returning an error if allocation fails.
+    ///
+    /// This doesn't actually allocate if `src` is zero-sized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// #![feature(allocator_api)]
+    ///
+    /// let hello: Box<str> = Box::try_new_from_ref("hello")?;
+    /// # Ok::<(), std::alloc::AllocError>(())
+    /// ```
+    #[unstable(feature = "new_from_ref", issue = "none")]
+    //#[unstable(feature = "allocator_api", issue = "32838")]
+    #[must_use]
+    #[inline]
+    pub fn try_new_from_ref(src: &T) -> Result<Box<T>, AllocError> {
+        Box::try_new_from_ref_in(src, Global)
+    }
+}
+
+impl<T: ?Sized + CloneUnsized, A: Allocator> Box<T, A> {
+    /// Allocates memory in the given allocator then clones `src` into it.
+    ///
+    /// This doesn't actually allocate if `src` is zero-sized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// #![feature(allocator_api)]
+    ///
+    /// use std::alloc::System;
+    ///
+    /// let hello: Box<str, System> = Box::new_from_ref_in("hello", System);
+    /// ```
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "new_from_ref", issue = "none")]
+    //#[unstable(feature = "allocator_api", issue = "32838")]
+    #[must_use]
+    #[inline]
+    pub fn new_from_ref_in(src: &T, alloc: A) -> Box<T, A> {
+        let layout = Layout::for_value::<T>(src);
+        match Box::try_new_from_ref_in(src, alloc) {
+            Ok(bx) => bx,
+            Err(_) => handle_alloc_error(layout)
+        }
+    }
+
+    /// Allocates memory in the given allocator then clones `src` into it, returning an error if allocation fails.
+    ///
+    /// This doesn't actually allocate if `src` is zero-sized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(new_from_ref)]
+    /// #![feature(allocator_api)]
+    ///
+    /// use std::alloc::System;
+    ///
+    /// let hello: Box<str, System> = Box::try_new_from_ref_in("hello", System)?;
+    /// # Ok::<(), std::alloc::AllocError>(())
+    /// ```
+    #[unstable(feature = "new_from_ref", issue = "none")]
+    //#[unstable(feature = "allocator_api", issue = "32838")]
+    #[must_use]
+    #[inline]
+    pub fn try_new_from_ref_in(src: &T, alloc: A) -> Result<Box<T, A>, AllocError> {
+        struct DeallocDropGuard<'a, A: Allocator>(Layout, &'a A, NonNull<u8>);
+        impl<'a, A: Allocator> Drop for DeallocDropGuard<'a, A> {
+            fn drop(&mut self) {
+                let &mut DeallocDropGuard(layout, alloc, ptr) = self;
+                // Safety: `ptr` was allocated by `*alloc` with layout `layout`
+                unsafe { alloc.deallocate(ptr, layout); }
+            }
+        }
+        let layout = Layout::for_value::<T>(src);
+        let (ptr, guard) = if layout.size() == 0 {
+            (layout.dangling(), None)
+        } else {
+            // Safety: layout is non-zero-sized
+            let ptr = alloc.allocate(layout)?.cast();
+            (ptr, Some(DeallocDropGuard(layout, &alloc, ptr)))
+        };
+        let ptr = ptr.as_ptr();
+        // Safety: `*ptr` is newly allocated, correctly aligned to `align_of_val(src)`,
+        // and is valid for writes for `size_of_val(src)`.
+        // If this panics, then `guard` will deallocate for us (if allocation occuured)
+        unsafe { <T as CloneUnsized>::clone_to_uninit(src, ptr); }
+        // Defuse the deallocate guard
+        core::mem::forget(guard);
+        // Safety: We just initialized `*ptr` as a clone of `src`
+        Ok(unsafe { Box::from_raw_in(ptr.with_metadata_of(src), alloc) })
+    }
+}
+
+
+
 impl<T> Box<[T]> {
     /// Constructs a new boxed slice with uninitialized contents.
     ///
