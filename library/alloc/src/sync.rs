@@ -10,7 +10,7 @@
 
 use core::any::Any;
 #[cfg(not(no_global_oom_handling))]
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use core::intrinsics::abort;
@@ -2215,7 +2215,7 @@ unsafe impl<T: ?Sized, A: Allocator> DerefPure for Arc<T, A> {}
 impl<T: ?Sized> LegacyReceiver for Arc<T> {}
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Arc<T, A> {
+impl<T: ?Sized + CloneUnsized, A: Allocator + Clone> Arc<T, A> {
     /// Makes a mutable reference into the given `Arc`.
     ///
     /// If there are other `Arc` pointers to the same allocation, then `make_mut` will

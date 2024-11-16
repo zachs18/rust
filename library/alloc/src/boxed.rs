@@ -185,7 +185,7 @@
 
 use core::borrow::{Borrow, BorrowMut};
 #[cfg(not(no_global_oom_handling))]
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 use core::cmp::Ordering;
 use core::error::{self, Error};
 use core::fmt;

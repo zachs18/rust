@@ -1,4 +1,4 @@
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 use core::ffi::CStr;
 use core::mem::MaybeUninit;
 use core::ptr;

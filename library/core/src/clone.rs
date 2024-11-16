@@ -229,7 +229,7 @@ pub struct AssertParamIsCopy<T: Copy + ?Sized> {
 ///
 /// [`ToOwned`]: ../../std/borrow/trait.ToOwned.html
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-pub unsafe trait CloneToUninit {
+pub unsafe trait CloneUnsized {
     /// Performs copy-assignment from `self` to `dst`.
     ///
     /// This is analogous to `std::ptr::write(dst.cast(), self.clone())`,
@@ -270,7 +270,7 @@ pub unsafe trait CloneToUninit {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl<T: Clone> CloneToUninit for T {
+unsafe impl<T: Clone> CloneUnsized for T {
     #[inline]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
         // SAFETY: we're calling a specialization with the same contract
@@ -279,7 +279,7 @@ unsafe impl<T: Clone> CloneToUninit for T {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl<T: Clone> CloneToUninit for [T] {
+unsafe impl<T: Clone> CloneUnsized for [T] {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
@@ -290,7 +290,7 @@ unsafe impl<T: Clone> CloneToUninit for [T] {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneToUninit for str {
+unsafe impl CloneUnsized for str {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
@@ -300,7 +300,7 @@ unsafe impl CloneToUninit for str {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneToUninit for crate::ffi::CStr {
+unsafe impl CloneUnsized for crate::ffi::CStr {
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
         // SAFETY: For now, CStr is just a #[repr(trasnsparent)] [c_char] with some invariants.

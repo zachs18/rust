@@ -1,7 +1,7 @@
 //! The underlying OsString/OsStr implementation on Unix and many other
 //! systems: just a `Vec<u8>`/`[u8]`.
 
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 
 use crate::borrow::Cow;
 use crate::collections::TryReserveError;
@@ -349,7 +349,7 @@ impl Slice {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneToUninit for Slice {
+unsafe impl CloneUnsized for Slice {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {

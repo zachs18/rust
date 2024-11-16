@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 
 use crate::borrow::{Borrow, Cow};
 use crate::collections::TryReserveError;
@@ -112,7 +112,7 @@ impl crate::sealed::Sealed for OsString {}
 /// [conversions]: super#conversions
 #[cfg_attr(not(test), rustc_diagnostic_item = "OsStr")]
 #[stable(feature = "rust1", since = "1.0.0")]
-// `OsStr::from_inner` and `impl CloneToUninit for OsStr` current implementation relies
+// `OsStr::from_inner` and `impl CloneUnsized for OsStr` current implementation relies
 // on `OsStr` being layout-compatible with `Slice`.
 // However, `OsStr` layout is considered an implementation detail and must not be relied upon.
 #[repr(transparent)]
@@ -1279,7 +1279,7 @@ impl Clone for Box<OsStr> {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneToUninit for OsStr {
+unsafe impl CloneUnsized for OsStr {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {

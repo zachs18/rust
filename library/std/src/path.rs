@@ -70,7 +70,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 
 use crate::borrow::{Borrow, Cow};
 use crate::collections::TryReserveError;
@@ -2130,7 +2130,7 @@ impl AsRef<OsStr> for PathBuf {
 /// ```
 #[cfg_attr(not(test), rustc_diagnostic_item = "Path")]
 #[stable(feature = "rust1", since = "1.0.0")]
-// `Path::new` and `impl CloneToUninit for Path` current implementation relies
+// `Path::new` and `impl CloneUnsized for Path` current implementation relies
 // on `Path` being layout-compatible with `OsStr`.
 // However, `Path` layout is considered an implementation detail and must not be relied upon.
 #[repr(transparent)]
@@ -3172,7 +3172,7 @@ impl Path {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneToUninit for Path {
+unsafe impl CloneUnsized for Path {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {

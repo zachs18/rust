@@ -1,7 +1,7 @@
 use crate::mem::{self, MaybeUninit};
 use crate::ptr;
 
-/// Private specialization trait used by CloneToUninit, as per
+/// Private specialization trait used by CloneUnsized, as per
 /// [the dev guide](https://std-dev-guide.rust-lang.org/policy/specialization.html).
 pub(super) unsafe trait CopySpec: Clone {
     unsafe fn clone_one(src: &Self, dst: *mut Self);
@@ -85,7 +85,7 @@ unsafe impl<T: Copy> CopySpec for T {
 /// Its responsibility is to provide cleanup on unwind by dropping the values that *are*
 /// initialized, unless disarmed by forgetting.
 ///
-/// This is a helper for `impl<T: Clone> CloneToUninit for [T]`.
+/// This is a helper for `impl<T: Clone> CloneUnsized for [T]`.
 struct InitializingSlice<'a, T> {
     data: &'a mut [MaybeUninit<T>],
     /// Number of elements of `*self.data` that are initialized.

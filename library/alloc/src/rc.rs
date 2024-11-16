@@ -244,7 +244,7 @@
 use core::any::Any;
 use core::cell::Cell;
 #[cfg(not(no_global_oom_handling))]
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use core::intrinsics::abort;
@@ -1829,7 +1829,7 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Rc<T, A> {
+impl<T: ?Sized + CloneUnsized, A: Allocator + Clone> Rc<T, A> {
     /// Makes a mutable reference into the given `Rc`.
     ///
     /// If there are other `Rc` pointers to the same allocation, then `make_mut` will

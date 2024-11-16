@@ -1,6 +1,6 @@
 //! The underlying OsString/OsStr implementation on Windows is a
 //! wrapper around the "WTF-8" encoding; see the `wtf8` module for more.
-use core::clone::CloneToUninit;
+use core::clone::CloneUnsized;
 
 use crate::borrow::Cow;
 use crate::collections::TryReserveError;
@@ -272,7 +272,7 @@ impl Slice {
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneToUninit for Slice {
+unsafe impl CloneUnsized for Slice {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
