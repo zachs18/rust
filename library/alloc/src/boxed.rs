@@ -726,7 +726,7 @@ impl<T: ?Sized + CloneUnsized, A: Allocator> Box<T, A> {
         let layout = Layout::for_value::<T>(src);
         match Box::try_new_from_ref_in(src, alloc) {
             Ok(bx) => bx,
-            Err(_) => handle_alloc_error(layout)
+            Err(_) => handle_alloc_error(layout),
         }
     }
 
@@ -755,7 +755,9 @@ impl<T: ?Sized + CloneUnsized, A: Allocator> Box<T, A> {
             fn drop(&mut self) {
                 let &mut DeallocDropGuard(layout, alloc, ptr) = self;
                 // Safety: `ptr` was allocated by `*alloc` with layout `layout`
-                unsafe { alloc.deallocate(ptr, layout); }
+                unsafe {
+                    alloc.deallocate(ptr, layout);
+                }
             }
         }
         let layout = Layout::for_value::<T>(src);
@@ -770,15 +772,15 @@ impl<T: ?Sized + CloneUnsized, A: Allocator> Box<T, A> {
         // Safety: `*ptr` is newly allocated, correctly aligned to `align_of_val(src)`,
         // and is valid for writes for `size_of_val(src)`.
         // If this panics, then `guard` will deallocate for us (if allocation occuured)
-        unsafe { <T as CloneUnsized>::clone_to_uninit(src, ptr); }
+        unsafe {
+            <T as CloneUnsized>::clone_to_uninit(src, ptr);
+        }
         // Defuse the deallocate guard
         core::mem::forget(guard);
         // Safety: We just initialized `*ptr` as a clone of `src`
         Ok(unsafe { Box::from_raw_in(ptr.with_metadata_of(src), alloc) })
     }
 }
-
-
 
 impl<T> Box<[T]> {
     /// Constructs a new boxed slice with uninitialized contents.
@@ -1916,14 +1918,16 @@ impl<T: ?Sized + CloneUnsized, A: Allocator + Clone> Clone for Box<T, A> {
     /// assert_eq!(yp, &*y);
     ///
     /// # Allocation reuse
-    /// 
+    ///
     /// The `Box`'s allocation will always be reused for `Box<T> where T: Sized`, and for `Box<[T]>`
     /// or `Box<str>` where `source` is the same length as `self`. For other types, allocation reuse is
     /// is not guaranteed.
     /// ```
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        if core::ptr::metadata(self) == core::ptr::metadata(source) && Layout::for_value(self) == Layout::for_value(source) {
+        if core::ptr::metadata(self) == core::ptr::metadata(source)
+            && Layout::for_value(self) == Layout::for_value(source)
+        {
             // Safety: We have met the preconditions for clone_from_unsized: same metadata and layout.
             unsafe {
                 <T as CloneUnsized>::clone_from_unsized(&mut **self, Box::as_ptr(source).cast());
