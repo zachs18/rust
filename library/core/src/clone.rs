@@ -267,6 +267,40 @@ pub unsafe trait CloneUnsized {
     /// cloned, and the second of the three calls to `Foo::clone()` unwinds, then the first `Foo`
     /// cloned should be dropped.)
     unsafe fn clone_to_uninit(&self, dst: *mut u8);
+
+    /// Performs copy-assignment from `src` to `self`.
+    ///
+    /// This is analogous to `self.clone_from(src)`
+    /// except that `self` may be a dynamically-sized type ([`!Sized`](Sized)).
+    ///
+    /// Before this function is called, `src` must point to a valid instance of `Self` when given
+    /// the metadata of `self`. After this function is called, `self` will point to a clone of `src`
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if any of the following condition is violated:
+    ///
+    /// * `&*src.with_metadata_of(self)` must be [valid] (For later rules, we call the resulting reference `src_ref`)
+    ///   This is trivially true if `src` came from a `&Self` with the same [pointer metadata] as `self`.
+    /// * `std::mem::size_of_val(self) == std::mem::size_of_val(src_ref)`
+    /// * `std::mem::align_of_val(self) == std::mem::align_of_val(src_ref)`
+    ///
+    /// In particular, this means that it is unosund to call this function where `self` is a `&mut [u8]`
+    /// with length 3, and `src` comes from a `&[u8]` with length 2.
+    ///
+    /// The second and third rules are currently redundant with the first rule, as for all exising
+    /// unsized types, the pointer metadata uniquely determines the layout of the pointee, but this
+    /// may not be true for possible future unsized types, like a hypothetical `ThinCStr`.
+    ///
+    /// [valid]: crate::ptr#safety
+    /// [pointer metadata]: crate::ptr::metadata()
+    ///
+    /// # Panics
+    ///
+    /// This function may panic. (For example, it might panic if memory allocation for a clone
+    /// of a value owned by `src` fails.)
+    /// If the call panics, then `*self` may have changed, but will still represent a valid value of `Self` with its [poiinter metadata].
+    unsafe fn clone_from_unsized(&mut self, src: *const u8);
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
@@ -275,6 +309,13 @@ unsafe impl<T: Clone> CloneUnsized for T {
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
         // SAFETY: we're calling a specialization with the same contract
         unsafe { <T as self::uninit::CopySpec>::clone_one(self, dst.cast::<T>()) }
+    }
+
+    #[inline]
+    unsafe fn clone_from_unsized(&mut self, src: *const u8) {
+        // SAFETY: `src` points to a valid value of `Self`.
+        let src: &T = unsafe { &*src.cast::<T>() };
+        <T as Clone>::clone_from(self, src);
     }
 }
 
@@ -287,6 +328,13 @@ unsafe impl<T: Clone> CloneUnsized for [T] {
         // SAFETY: we're calling a specialization with the same contract
         unsafe { <T as self::uninit::CopySpec>::clone_slice(self, dst) }
     }
+
+    #[inline]
+    unsafe fn clone_from_unsized(&mut self, src: *const u8) {
+        // SAFETY: `src` points to a valid value of `[T]` with the same length as `self`.
+        let src: &[T] = unsafe { &*src.with_metadata_of(self) };
+        <[T]>::clone_from_slice(self, src);
+    }
 }
 
 #[unstable(feature = "clone_to_uninit", issue = "126799")]
@@ -297,17 +345,11 @@ unsafe impl CloneUnsized for str {
         // SAFETY: str is just a [u8] with UTF-8 invariant
         unsafe { self.as_bytes().clone_to_uninit(dst) }
     }
-}
 
-#[unstable(feature = "clone_to_uninit", issue = "126799")]
-unsafe impl CloneUnsized for crate::ffi::CStr {
-    #[cfg_attr(debug_assertions, track_caller)]
-    unsafe fn clone_to_uninit(&self, dst: *mut u8) {
-        // SAFETY: For now, CStr is just a #[repr(trasnsparent)] [c_char] with some invariants.
-        // And we can cast [c_char] to [u8] on all supported platforms (see: to_bytes_with_nul).
-        // The pointer metadata properly preserves the length (so NUL is also copied).
-        // See: `cstr_metadata_is_length_with_nul` in tests.
-        unsafe { self.to_bytes_with_nul().clone_to_uninit(dst) }
+    #[inline]
+    unsafe fn clone_from_unsized(&mut self, src: *const u8) {
+        // SAFETY: str is just a [u8] with UTF-8 invariant, and `src` points to a valid `str` with the same length as `self`
+        unsafe { self.as_bytes_mut().clone_from_unsized(src) }
     }
 }
 

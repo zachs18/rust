@@ -1056,4 +1056,11 @@ unsafe impl CloneUnsized for Wtf8 {
         // SAFETY: we're just a transparent wrapper around [u8]
         unsafe { self.bytes.clone_to_uninit(dst) }
     }
+
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    unsafe fn clone_from_unsized(&mut self, src: *const u8) {
+        // SAFETY: we're just a transparent wrapper around [u8]
+        unsafe { self.bytes.clone_from_unsized(src) }
+    }
 }

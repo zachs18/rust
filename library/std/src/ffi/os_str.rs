@@ -1286,6 +1286,13 @@ unsafe impl CloneUnsized for OsStr {
         // SAFETY: we're just a transparent wrapper around a platform-specific Slice
         unsafe { self.inner.clone_to_uninit(dst) }
     }
+
+    #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
+    unsafe fn clone_from_unsized(&mut self, src: *const u8) {
+        // SAFETY: we're just a transparent wrapper around a platform-specific Slice
+        unsafe { self.inner.clone_from_unsized(src) }
+    }
 }
 
 #[stable(feature = "shared_from_slice2", since = "1.24.0")]

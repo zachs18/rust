@@ -1,5 +1,6 @@
 //! [`CStr`] and its related types.
 
+use crate::clone::CloneUnsized;
 use crate::cmp::Ordering;
 use crate::error::Error;
 use crate::ffi::c_char;
@@ -95,11 +96,11 @@ use crate::{fmt, ops, slice, str};
 #[rustc_diagnostic_item = "cstr_type"]
 #[rustc_has_incoherent_inherent_impls]
 #[lang = "CStr"]
-// `fn from` in `impl From<&CStr> for Box<CStr>` current implementation relies
-// on `CStr` being layout-compatible with `[u8]`.
-// However, `CStr` layout is considered an implementation detail and must not be relied upon. We
-// want `repr(transparent)` but we don't want it to show up in rustdoc, so we hide it under
-// `cfg(doc)`. This is an ad-hoc implementation of attribute privacy.
+// `fn from` in `impl From<&CStr> for Box<CStr>` and `impl CloneToUninit for CStr`
+// current implementations rely on `CStr` being layout-compatible with `[u8]`.
+// However, `CStr` layout is considered an implementation detail and must not be relied upon.
+// Rustdoc hides `repr(transparent)` when the field is private, like it is here:
+// https://github.com/rust-lang/rust/issues/90435
 #[repr(transparent)]
 pub struct CStr {
     // FIXME: this should not be represented with a DST slice but rather with
@@ -191,6 +192,23 @@ impl Default for &CStr {
         const SLICE: &[c_char] = &[0];
         // SAFETY: `SLICE` is indeed pointing to a valid nul-terminated string.
         unsafe { CStr::from_ptr(SLICE.as_ptr()) }
+    }
+}
+
+#[unstable(feature = "clone_to_uninit", issue = "126799")]
+unsafe impl CloneUnsized for CStr {
+    #[cfg_attr(debug_assertions, track_caller)]
+    unsafe fn clone_to_uninit(&self, dst: *mut u8) {
+        // SAFETY: For now, CStr is just a #[repr(trasnsparent)] [c_char] with some invariants.
+        unsafe { self.inner.clone_to_uninit(dst) }
+    }
+
+    #[cfg_attr(debug_assertions, track_caller)]
+    unsafe fn clone_from_unsized(&mut self, src: *const u8) {
+        // SAFETY: For now, CStr is just a #[repr(trasnsparent)] [c_char] with some invariants.
+        // `src` points to a valid `CStr` with the same length as `self`, so this will not
+        // introduce intermediate NULs or change the terminating NUL.
+        unsafe { self.inner.clone_from_unsized(src) }
     }
 }
 
