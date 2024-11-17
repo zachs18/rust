@@ -205,8 +205,6 @@ use core::task::{Context, Poll};
 use crate::alloc::handle_alloc_error;
 use crate::alloc::{AllocError, Allocator, Global, Layout};
 use crate::raw_vec::RawVec;
-#[cfg(not(no_global_oom_handling))]
-use crate::str::from_boxed_utf8_unchecked;
 
 /// Conversion related impls for `Box<_>` (`From`, `downcast`, etc)
 mod convert;
@@ -1880,8 +1878,8 @@ impl Default for Box<str> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: Clone, A: Allocator + Clone> Clone for Box<T, A> {
-    /// Returns a new box with a `clone()` of this box's contents.
+impl<T: ?Sized + CloneUnsized, A: Allocator + Clone> Clone for Box<T, A> {
+    /// Returns a new box with a clone of this box's contents.
     ///
     /// # Examples
     ///
@@ -1897,15 +1895,10 @@ impl<T: Clone, A: Allocator + Clone> Clone for Box<T, A> {
     /// ```
     #[inline]
     fn clone(&self) -> Self {
-        // Pre-allocate memory to allow writing the cloned value directly.
-        let mut boxed = Self::new_uninit_in(self.1.clone());
-        unsafe {
-            (**self).clone_to_uninit(boxed.as_mut_ptr().cast());
-            boxed.assume_init()
-        }
+        Self::new_from_ref_in(&**self, Self::allocator(self).clone())
     }
 
-    /// Copies `source`'s contents into `self` without creating a new allocation.
+    /// Copies `source`'s contents into `self`, reusing `self`'s allocation if possible.
     ///
     /// # Examples
     ///
@@ -1921,55 +1914,24 @@ impl<T: Clone, A: Allocator + Clone> Clone for Box<T, A> {
     ///
     /// // And no allocation occurred
     /// assert_eq!(yp, &*y);
+    ///
+    /// # Allocation reuse
+    /// 
+    /// The `Box`'s allocation will always be reused for `Box<T> where T: Sized`, and for `Box<[T]>`
+    /// or `Box<str>` where `source` is the same length as `self`. For other types, allocation reuse is
+    /// is not guaranteed.
     /// ```
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        (**self).clone_from(&(**source));
-    }
-}
-
-#[cfg(not(no_global_oom_handling))]
-#[stable(feature = "box_slice_clone", since = "1.3.0")]
-impl<T: Clone, A: Allocator + Clone> Clone for Box<[T], A> {
-    fn clone(&self) -> Self {
-        let alloc = Box::allocator(self).clone();
-        self.to_vec_in(alloc).into_boxed_slice()
-    }
-
-    /// Copies `source`'s contents into `self` without creating a new allocation,
-    /// so long as the two are of the same length.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let x = Box::new([5, 6, 7]);
-    /// let mut y = Box::new([8, 9, 10]);
-    /// let yp: *const [i32] = &*y;
-    ///
-    /// y.clone_from(&x);
-    ///
-    /// // The value is the same
-    /// assert_eq!(x, y);
-    ///
-    /// // And no allocation occurred
-    /// assert_eq!(yp, &*y);
-    /// ```
-    fn clone_from(&mut self, source: &Self) {
-        if self.len() == source.len() {
-            self.clone_from_slice(&source);
+        if core::ptr::metadata(self) == core::ptr::metadata(source) && Layout::for_value(self) == Layout::for_value(source) {
+            // Safety: We have met the preconditions for clone_from_unsized: same metadata and layout.
+            unsafe {
+                <T as CloneUnsized>::clone_from_unsized(&mut **self, Box::as_ptr(source).cast());
+            }
         } else {
+            // Cannot use clone_from_unsized; make a new allocation
             *self = source.clone();
         }
-    }
-}
-
-#[cfg(not(no_global_oom_handling))]
-#[stable(feature = "box_slice_clone", since = "1.3.0")]
-impl Clone for Box<str> {
-    fn clone(&self) -> Self {
-        // this makes a copy of the data
-        let buf: Box<[u8]> = self.as_bytes().into();
-        unsafe { from_boxed_utf8_unchecked(buf) }
     }
 }
 
