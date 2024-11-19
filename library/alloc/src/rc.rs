@@ -3684,7 +3684,6 @@ fn data_offset_align(align: usize) -> usize {
 /// previous example, `UniqueRc` allows for more flexibility in the construction of cyclic data,
 /// including fallible or async constructors.
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-#[derive(Debug)]
 pub struct UniqueRc<
     T: ?Sized,
     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
@@ -3698,6 +3697,27 @@ pub struct UniqueRc<
 impl<T: ?Sized + Unsize<U>, U: ?Sized, A: Allocator> CoerceUnsized<UniqueRc<U, A>>
     for UniqueRc<T, A>
 {
+}
+
+#[unstable(feature = "unique_rc_arc", issue = "112566")]
+impl<T: ?Sized + fmt::Display, A: Allocator> fmt::Display for UniqueRc<T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+#[unstable(feature = "unique_rc_arc", issue = "112566")]
+impl<T: ?Sized + fmt::Debug, A: Allocator> fmt::Debug for UniqueRc<T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+#[unstable(feature = "unique_rc_arc", issue = "112566")]
+impl<T: ?Sized, A: Allocator> fmt::Pointer for UniqueRc<T, A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Pointer::fmt(&(&raw const **self), f)
+    }
 }
 
 // Depends on A = Global
