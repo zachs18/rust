@@ -1375,13 +1375,13 @@ pub unsafe fn prefetch_write_instruction<T>(_data: *const T, _locality: i32) {
     unreachable!()
 }
 
-/// Executes a breakpoint trap, for inspection by a debugger.
+/// Compiles to a target-specific software breakpoint instruction or equivalent.
 ///
-/// This intrinsic does not have a stable counterpart.
+/// The (future) stabilized version of this intrinsic is [`core::arch::breakpoint`].
 #[rustc_intrinsic]
 #[rustc_intrinsic_must_be_overridden]
 #[rustc_nounwind]
-pub unsafe fn breakpoint() {
+pub fn breakpoint() {
     unreachable!()
 }
 
