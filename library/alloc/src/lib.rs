@@ -92,6 +92,7 @@
 // Library features:
 // tidy-alphabetical-start
 #![cfg_attr(bootstrap, feature(async_closure))]
+#![cfg_attr(not(no_global_oom_handling), feature(string_replace_in_place))]
 #![cfg_attr(test, feature(str_as_str))]
 #![feature(alloc_layout_extra)]
 #![feature(allocator_api)]
@@ -143,7 +144,6 @@
 #![feature(slice_range)]
 #![feature(std_internals)]
 #![feature(str_internals)]
-#![feature(string_replace_in_place)]
 #![feature(trusted_fused)]
 #![feature(trusted_len)]
 #![feature(trusted_random_access)]
