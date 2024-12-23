@@ -746,8 +746,7 @@ impl Iterator for ReadDir {
                 // being referenced.
                 macro_rules! entry_field_ptr {
                     ($field:ident) => {{
-                        // To make sure the field actually exists and is visible,
-                        // and we aren't silently doing any Deref coercion.
+                        // To make sure we aren't silently doing any Deref coercion.
                         const _: usize = mem::offset_of!(dirent64, $field);
                         &raw const (*entry_ptr).$field
                     }};
