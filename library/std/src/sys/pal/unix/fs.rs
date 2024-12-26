@@ -761,14 +761,14 @@ impl Iterator for ReadDir {
 
                 #[cfg(not(target_os = "vita"))]
                 let entry = dirent64_min {
-                    d_ino: *entry_field_ptr!(d_ino) as u64,
+                    d_ino: *entry_field_ptr!(d_ino),
                     #[cfg(not(any(
                         target_os = "solaris",
                         target_os = "illumos",
                         target_os = "aix",
                         target_os = "nto",
                     )))]
-                    d_type: *entry_field_ptr!(d_type) as u8,
+                    d_type: *entry_field_ptr!(d_type),
                 };
 
                 #[cfg(target_os = "vita")]
