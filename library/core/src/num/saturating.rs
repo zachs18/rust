@@ -83,6 +83,36 @@ impl<T: fmt::UpperHex> fmt::UpperHex for Saturating<T> {
     }
 }
 
+impl<T> Saturating<T> {
+    /// Converts from `&mut T` to `&mut Saturating<T>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::Saturating;
+    ///
+    /// let mut val = 42_u8;
+    ///
+    /// let wr = Saturating::from_mut(&mut val);
+    /// *wr -= 43;
+    ///
+    /// assert_eq!(val, 0);
+    /// ```
+    #[inline(always)]
+    #[unstable(feature = "wrapping_saturating_from_mut", issue = "none")]
+    pub const fn from_mut(value: &mut T) -> &mut Saturating<T> {
+        // SAFETY: `Saturating<T>` has the same memory layout as `T` due to #[repr(transparent)].
+        unsafe { &mut *(value as *mut T as *mut Saturating<T>) }
+    }
+}
+
+#[stable(feature = "wrapping_saturating_as_mut", since = "CURRENT_RUSTC_VERSION")]
+impl<T> AsMut<T> for Saturating<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 // FIXME the correct implementation is not clear. Waiting for a real world use case at https://github.com/rust-lang/libs-team/issues/230
 //
 // #[allow(unused_macros)]

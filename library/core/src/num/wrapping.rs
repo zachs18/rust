@@ -84,6 +84,36 @@ impl<T: fmt::UpperHex> fmt::UpperHex for Wrapping<T> {
     }
 }
 
+impl<T> Wrapping<T> {
+    /// Converts from `&mut T` to `&mut Wrapping<T>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::Wrapping;
+    ///
+    /// let mut val = 42_u8;
+    ///
+    /// let wr = Wrapping::from_mut(&mut val);
+    /// *wr -= 43;
+    ///
+    /// assert_eq!(val, 255);
+    /// ```
+    #[inline(always)]
+    #[unstable(feature = "wrapping_saturating_from_mut", issue = "none")]
+    pub const fn from_mut(value: &mut T) -> &mut Wrapping<T> {
+        // SAFETY: `Wrapping<T>` has the same memory layout as `T` due to #[repr(transparent)].
+        unsafe { &mut *(value as *mut T as *mut Wrapping<T>) }
+    }
+}
+
+#[stable(feature = "wrapping_saturating_as_mut", since = "CURRENT_RUSTC_VERSION")]
+impl<T> AsMut<T> for Wrapping<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 #[allow(unused_macros)]
 macro_rules! sh_impl_signed {
     ($t:ident, $f:ident) => {
