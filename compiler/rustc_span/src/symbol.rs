@@ -1563,6 +1563,7 @@ symbols! {
         ptr_is_null,
         ptr_mask,
         ptr_metadata,
+        ptr_metadata_type,
         ptr_null,
         ptr_null_mut,
         ptr_offset_from,

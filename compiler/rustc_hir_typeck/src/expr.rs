@@ -2786,6 +2786,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         if base_def.is_enum() {
             return None;
         }
+        // PtrMetadata is special
+        if base_def.is_ptr_metadata_type() {
+            tracing::warn!("find_adt_field should not be called for PtrMetadata");
+            return None;
+        }
 
         for (field_idx, field) in base_def.non_enum_variant().fields.iter_enumerated() {
             if field.ident(self.tcx).normalize_to_macros_2_0() == ident {
@@ -2826,6 +2831,71 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         while let Some((deref_base_ty, _)) = autoderef.next() {
             debug!("deref_base_ty: {:?}", deref_base_ty);
             match deref_base_ty.kind() {
+                ty::Adt(base_def, args) if base_def.is_ptr_metadata_type() => {
+                    let pointee =
+                        args[0].as_type().expect("PtrMetadata should have one generic type arg");
+                    debug!("PtrMetadata of {:?}", pointee);
+
+                    match pointee.kind() {
+                        ty::Adt(base_def, args) => {
+                            debug!("PtrMetadata of adt named {:?}", deref_base_ty);
+
+                            let fn_body_hir_id = self.tcx.local_def_id_to_hir_id(self.body_id);
+                            let (ident, def_scope) = self.tcx.adjust_ident_and_get_scope(
+                                field,
+                                base_def.did(),
+                                fn_body_hir_id,
+                            );
+
+                            if let Some((idx, field)) = self.find_adt_field(*base_def, ident) {
+                                self.write_field_index(expr.hir_id, idx);
+
+                                let adjustments = self.adjust_steps(&autoderef);
+                                if field.vis.is_accessible_from(def_scope, self.tcx) {
+                                    self.apply_adjustments(base, adjustments);
+                                    self.register_predicates(autoderef.into_obligations());
+
+                                    self.tcx.check_stability(
+                                        field.did,
+                                        Some(expr.hir_id),
+                                        expr.span,
+                                        None,
+                                    );
+                                    let pointee_field_ty = self.field_ty(expr.span, field, args);
+                                    let tcx = self.tcx();
+                                    return Ty::new_adt(
+                                        tcx,
+                                        tcx.adt_def(
+                                            tcx.lang_items()
+                                                .ptr_metadata_type()
+                                                .expect("PtrMetadata exists"),
+                                        ),
+                                        tcx.mk_args_from_iter(
+                                            [ty::GenericArg::from(pointee_field_ty)].into_iter(),
+                                        ),
+                                    );
+                                }
+
+                                // The field is not accessible, fall through to error reporting.
+                                private_candidate = Some((adjustments, base_def.did()));
+                            }
+                        }
+                        ty::Tuple(_) => todo!(),
+
+                        // `.length: usize`
+                        ty::Str => todo!(),
+
+                        // `.length: usize`, `.elem: PtrMetadata<T>`
+                        ty::Slice(_) => todo!(),
+
+                        // `.elem: PtrMetadata<T>`
+                        ty::Array(_, _) => todo!(),
+
+                        // `.vtable: DynMetadata<..>`
+                        ty::Dynamic(_, _, _) => todo!(),
+                        _ => {}
+                    }
+                }
                 ty::Adt(base_def, args) if !base_def.is_enum() => {
                     debug!("struct named {:?}", deref_base_ty);
                     // we don't care to report errors for a struct if the struct itself is tainted
@@ -3788,6 +3858,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             let container = self.structurally_resolve_type(expr.span, current_container);
 
             match container.kind() {
+                ty::Adt(container_def, _args) if container_def.is_ptr_metadata_type() => {
+                    todo!("offset_of for PtrMetadata")
+                }
                 ty::Adt(container_def, args) if container_def.is_enum() => {
                     let block = self.tcx.local_def_id_to_hir_id(self.body_id);
                     let (ident, _def_scope) =

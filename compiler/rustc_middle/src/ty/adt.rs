@@ -56,6 +56,8 @@ bitflags::bitflags! {
         const IS_UNSAFE_CELL              = 1 << 9;
         /// Indicates whether the type is anonymous.
         const IS_ANONYMOUS                = 1 << 10;
+        /// Indicates whether the type is `PtrMetadata`.
+        const IS_PTR_METADATA             = 1 << 11;
     }
 }
 rustc_data_structures::external_bitflags_debug! { AdtFlags }
@@ -301,6 +303,9 @@ impl AdtDefData {
         if tcx.is_lang_item(did, LangItem::UnsafeCell) {
             flags |= AdtFlags::IS_UNSAFE_CELL;
         }
+        if tcx.is_lang_item(did, LangItem::PtrMetadata) {
+            flags |= AdtFlags::IS_PTR_METADATA;
+        }
 
         AdtDefData { did, variants, flags, repr }
     }
@@ -379,6 +384,12 @@ impl<'tcx> AdtDef<'tcx> {
     #[inline]
     pub fn is_phantom_data(self) -> bool {
         self.flags().contains(AdtFlags::IS_PHANTOM_DATA)
+    }
+
+    /// Returns `true` if this is `PtrMetadata<T>`.
+    #[inline]
+    pub fn is_ptr_metadata_type(self) -> bool {
+        self.flags().contains(AdtFlags::IS_PTR_METADATA)
     }
 
     /// Returns `true` if this is `Box<T>`.

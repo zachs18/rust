@@ -6,6 +6,48 @@ use crate::intrinsics::{aggregate_raw_ptr, ptr_metadata};
 use crate::marker::Freeze;
 use crate::ptr::NonNull;
 
+/// The pointer metadata type for pointers to `T`.
+#[cfg(bootstrap)]
+#[unstable(feature = "ptr_metadata_type", issue = "none")]
+pub struct PtrMetadata<T: ?Sized>(crate::marker::PhantomData<T>);
+
+/// The pointer metadata type for pointers to `T`.
+///
+/// For Sized primitive `T`, this is a fieldless ZST struct.
+///
+/// For `str`, this is a struct with one field `length: usize`.
+///
+/// For `[T]`, this is a struct with two fields `length: usize` and
+/// `elem: PtrMetadata<T>`.
+///
+/// For `[T; N]`, this is a struct with one field `elem: PtrMetadata<T>`.
+///
+/// For a `struct` or `union` `T`, this is a struct with same-name fields
+/// as `T`, where the type of each field is `PtrMetadata<T's field>`.
+///
+/// FIXME: describe `enum`.
+#[cfg(not(bootstrap))]
+#[lang = "ptr_metadata_type"]
+#[unstable(feature = "ptr_metadata_type", issue = "none")]
+pub struct PtrMetadata<T: ?Sized>;
+
+#[unstable(feature = "ptr_metadata_type", issue = "none")]
+impl<T: ?Sized> Copy for PtrMetadata<T> {}
+
+#[unstable(feature = "ptr_metadata_type", issue = "none")]
+impl<T: ?Sized> Clone for PtrMetadata<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[unstable(feature = "ptr_metadata_type", issue = "none")]
+impl<T: ?Sized> fmt::Debug for PtrMetadata<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PtrMetadata<{}>", crate::any::type_name::<T>())
+    }
+}
+
 /// Provides the pointer metadata type of any pointed-to type.
 ///
 /// # Pointer metadata

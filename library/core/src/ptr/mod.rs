@@ -415,6 +415,9 @@ pub use crate::intrinsics::copy_nonoverlapping;
 pub use crate::intrinsics::write_bytes;
 
 mod metadata;
+#[cfg(not(bootstrap))]
+#[unstable(feature = "ptr_metadata_type", issue = "none")]
+pub use metadata::PtrMetadata;
 #[unstable(feature = "ptr_metadata", issue = "81513")]
 pub use metadata::{DynMetadata, Pointee, Thin, from_raw_parts, from_raw_parts_mut, metadata};
 

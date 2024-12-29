@@ -113,6 +113,7 @@ fn lang_items(tcx: TyCtxt<'_>) -> Vec<(LocalDefId, Vec<ty::Variance>)> {
     let lang_items = tcx.lang_items();
     let all = [
         (lang_items.phantom_data(), vec![ty::Covariant]),
+        (lang_items.ptr_metadata_type(), vec![ty::Covariant]),
         (lang_items.unsafe_cell_type(), vec![ty::Invariant]),
     ];
 

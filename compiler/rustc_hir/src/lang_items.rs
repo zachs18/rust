@@ -180,6 +180,8 @@ language_item_table! {
     Metadata,                sym::metadata_type,       metadata_type,              Target::AssocTy,        GenericRequirement::None;
     DynMetadata,             sym::dyn_metadata,        dyn_metadata,               Target::Struct,         GenericRequirement::None;
 
+    PtrMetadata,             sym::ptr_metadata_type,   ptr_metadata_type,          Target::Struct,         GenericRequirement::Exact(1);
+
     Freeze,                  sym::freeze,              freeze_trait,               Target::Trait,          GenericRequirement::Exact(0);
 
     FnPtrTrait,              sym::fn_ptr_trait,        fn_ptr_trait,               Target::Trait,          GenericRequirement::Exact(0);

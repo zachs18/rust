@@ -54,6 +54,17 @@ impl<'tcx> PlaceTy<'tcx> {
             }
         } else {
             match self.ty.kind() {
+                ty::Adt(adt_def, args) if adt_def.is_ptr_metadata_type() => {
+                    let pointee_ty = args[0].as_type().expect("PtrMetata must have 1 type generic");
+                    let pointee_field_ty = Self::from_ty(pointee_ty).field_ty(tcx, f);
+                    return Ty::new_adt(
+                        tcx,
+                        tcx.adt_def(
+                            tcx.lang_items().ptr_metadata_type().expect("PtrMetadata exists"),
+                        ),
+                        tcx.mk_args_from_iter([ty::GenericArg::from(pointee_field_ty)].into_iter()),
+                    );
+                }
                 ty::Adt(adt_def, args) if !adt_def.is_enum() => {
                     adt_def.non_enum_variant().fields[f].ty(tcx, args)
                 }
