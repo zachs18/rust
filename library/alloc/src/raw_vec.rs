@@ -45,7 +45,7 @@ impl Cap {
     /// `Cap(cap)`, except if `T` is a ZST then `Cap::ZERO`.
     ///
     /// # Safety: cap must be <= `isize::MAX`.
-    unsafe fn new<T>(cap: usize) -> Self {
+    const unsafe fn new<T>(cap: usize) -> Self {
         if T::IS_ZST { Cap::ZERO } else { unsafe { Self(cap) } }
     }
 }
@@ -253,7 +253,7 @@ impl<T, A: Allocator> RawVec<T, A> {
     /// If the `ptr` and `capacity` come from a `RawVec` created via `alloc`, then this is
     /// guaranteed.
     #[inline]
-    pub unsafe fn from_raw_parts_in(ptr: *mut T, capacity: usize, alloc: A) -> Self {
+    pub const unsafe fn from_raw_parts_in(ptr: *mut T, capacity: usize, alloc: A) -> Self {
         // SAFETY: Precondition passed to the caller
         unsafe {
             let ptr = ptr.cast();
@@ -487,7 +487,7 @@ impl<A: Allocator> RawVecInner<A> {
     }
 
     #[inline]
-    unsafe fn from_raw_parts_in(ptr: *mut u8, cap: Cap, alloc: A) -> Self {
+    const unsafe fn from_raw_parts_in(ptr: *mut u8, cap: Cap, alloc: A) -> Self {
         Self { ptr: unsafe { Unique::new_unchecked(ptr) }, cap, alloc }
     }
 

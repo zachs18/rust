@@ -125,6 +125,7 @@
 #![feature(layout_for_ptr)]
 #![feature(legacy_receiver_trait)]
 #![feature(local_waker)]
+#![feature(manually_drop_const_access)]
 #![feature(maybe_uninit_slice)]
 #![feature(maybe_uninit_uninit_array_transpose)]
 #![feature(panic_internals)]

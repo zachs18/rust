@@ -255,6 +255,22 @@ impl<T: ?Sized> ManuallyDrop<T> {
         // It is up to the caller to make sure that `slot` isn't dropped again.
         unsafe { ptr::drop_in_place(&mut slot.value) }
     }
+
+    /// Returns a shared reference to the value.
+    ///
+    /// This method is unstable and only exists because `ManuallyDrop::deref` is not yet callable in `const`.
+    #[unstable(feature = "manually_drop_const_access", issue = "none")]
+    pub const fn as_ref(slot: &Self) -> &T {
+        &slot.value
+    }
+
+    /// Returns a mutable reference to the value.
+    ///
+    /// This method is unstable and only exists because `ManuallyDrop::deref_mut` is not yet callable in `const`.
+    #[unstable(feature = "manually_drop_const_access", issue = "none")]
+    pub const fn as_mut(slot: &mut Self) -> &mut T {
+        &mut slot.value
+    }
 }
 
 #[stable(feature = "manually_drop", since = "1.20.0")]

@@ -602,7 +602,8 @@ impl<T> Vec<T> {
     /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
-    pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self {
+    #[rustc_const_unstable(feature = "const_vec", issue = "none")]
+    pub const unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self {
         unsafe { Self::from_raw_parts_in(ptr, length, capacity, Global) }
     }
 
@@ -931,7 +932,13 @@ impl<T, A: Allocator> Vec<T, A> {
     /// ```
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
-    pub unsafe fn from_raw_parts_in(ptr: *mut T, length: usize, capacity: usize, alloc: A) -> Self {
+    #[rustc_const_unstable(feature = "const_vec", issue = "none")]
+    pub const unsafe fn from_raw_parts_in(
+        ptr: *mut T,
+        length: usize,
+        capacity: usize,
+        alloc: A,
+    ) -> Self {
         unsafe { Vec { buf: RawVec::from_raw_parts_in(ptr, capacity, alloc), len: length } }
     }
 
@@ -2465,7 +2472,8 @@ impl<T, A: Allocator> Vec<T, A> {
     /// Takes *O*(1) time.
     #[inline]
     #[unstable(feature = "vec_push_within_capacity", issue = "100486")]
-    pub fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
+    #[rustc_const_unstable(feature = "vec_push_within_capacity", issue = "100486")]
+    pub const fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
         if self.len == self.buf.capacity() {
             return Err(value);
         }
@@ -2836,12 +2844,14 @@ impl<T, A: Allocator> Vec<T, A> {
     /// # drop(unsafe { Box::from_raw(static_ref) });
     /// ```
     #[stable(feature = "vec_leak", since = "1.47.0")]
+    #[rustc_const_unstable(feature = "const_vec", issue = "none")]
     #[inline]
-    pub fn leak<'a>(self) -> &'a mut [T]
+    pub const fn leak<'a>(self) -> &'a mut [T]
     where
         A: 'a,
     {
         let mut me = ManuallyDrop::new(self);
+        let me = ManuallyDrop::as_mut(&mut me);
         unsafe { slice::from_raw_parts_mut(me.as_mut_ptr(), me.len) }
     }
 
