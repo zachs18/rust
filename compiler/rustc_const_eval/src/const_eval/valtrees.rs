@@ -130,6 +130,10 @@ fn const_to_valtree_inner<'tcx>(
             Ok(ty::ValTree::Leaf(val))
         }
 
+        ty::PtrMetadata(_) => {
+            todo!("ptr_metadata const_eval")
+        }
+
         // Technically we could allow function pointers (represented as `ty::Instance`), but this is not guaranteed to
         // agree with runtime equality tests.
         ty::FnPtr(..) => Err(ValTreeCreationError::NonSupportedType(ty)),
@@ -291,14 +295,18 @@ pub fn valtree_to_const_value<'tcx>(
             assert!(valtree.unwrap_branch().is_empty());
             mir::ConstValue::ZeroSized
         }
-        ty::Bool | ty::Int(_) | ty::Uint(_) | ty::Float(_) | ty::Char | ty::RawPtr(_, _) => {
-            match valtree {
-                ty::ValTree::Leaf(scalar_int) => mir::ConstValue::Scalar(Scalar::Int(scalar_int)),
-                ty::ValTree::Branch(_) => bug!(
-                    "ValTrees for Bool, Int, Uint, Float, Char or RawPtr should have the form ValTree::Leaf"
-                ),
-            }
-        }
+        ty::Bool
+        | ty::Int(_)
+        | ty::Uint(_)
+        | ty::Float(_)
+        | ty::Char
+        | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_) => match valtree {
+            ty::ValTree::Leaf(scalar_int) => mir::ConstValue::Scalar(Scalar::Int(scalar_int)),
+            ty::ValTree::Branch(_) => bug!(
+                "ValTrees for Bool, Int, Uint, Float, Char, RawPtr, or PtrMetadata should have the form ValTree::Leaf"
+            ),
+        },
         ty::Pat(ty, _) => valtree_to_const_value(tcx, typing_env, ty, valtree),
         ty::Ref(_, inner_ty, _) => {
             let mut ecx =

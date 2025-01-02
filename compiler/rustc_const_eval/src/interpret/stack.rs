@@ -484,6 +484,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 | ty::Float(_)
                 | ty::FnDef(..)
                 | ty::FnPtr(..)
+                | ty::PtrMetadata(..)
                 | ty::RawPtr(..)
                 | ty::Char
                 | ty::Ref(..)

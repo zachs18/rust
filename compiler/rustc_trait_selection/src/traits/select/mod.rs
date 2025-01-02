@@ -2062,6 +2062,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Char
             | ty::Ref(..)
             | ty::Coroutine(..)
@@ -2129,6 +2130,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::Float(_)
             | ty::Char
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Ref(_, _, hir::Mutability::Not)
             | ty::Array(..) => {
@@ -2308,7 +2310,9 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 bug!("asked to assemble constituent types of unexpected type: {:?}", t);
             }
 
-            ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) => t.rebind(vec![element_ty]),
+            ty::RawPtr(element_ty, _) | ty::PtrMetadata(element_ty) | ty::Ref(_, element_ty, _) => {
+                t.rebind(vec![element_ty])
+            }
 
             ty::Pat(ty, _) | ty::Array(ty, _) | ty::Slice(ty) => t.rebind(vec![ty]),
 

@@ -1254,6 +1254,11 @@ impl<'a> State<'a> {
                 self.word(" is ");
                 self.print_pat(pat);
             }
+            ast::TyKind::PtrMetadata(ty) => {
+                self.word("metadata_type!(");
+                self.print_type(ty);
+                self.word(")");
+            }
         }
         self.end();
     }

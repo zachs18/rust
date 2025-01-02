@@ -408,6 +408,7 @@ impl<'p, 'tcx: 'p> RustcPatCtxt<'p, 'tcx> {
             | ty::Str
             | ty::Foreign(_)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::Pat(_, _)

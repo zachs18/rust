@@ -549,6 +549,7 @@ pub enum RigidTy {
     Pat(Ty, Pattern),
     Slice(Ty),
     RawPtr(Ty, Mutability),
+    PtrMetadata(Ty),
     Ref(Region, Ty, Mutability),
     FnDef(FnDef, GenericArgs),
     FnPtr(PolyFnSig),

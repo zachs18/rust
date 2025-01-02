@@ -53,6 +53,11 @@ where
             Ok(vec![ty::Binder::dummy(element_ty)])
         }
 
+        ty::PtrMetadata(element_ty) => {
+            tracing::warn!("FIXME(ptr_metadata_v2): instantiate_constituent_tys_for_auto_trait?");
+            Ok(vec![ty::Binder::dummy(element_ty)])
+        }
+
         ty::Pat(element_ty, _) | ty::Array(element_ty, _) | ty::Slice(element_ty) => {
             Ok(vec![ty::Binder::dummy(element_ty)])
         }
@@ -121,6 +126,7 @@ where
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::RawPtr(..)
+        | ty::PtrMetadata(..)
         | ty::Char
         | ty::Ref(..)
         | ty::Coroutine(..)
@@ -192,6 +198,7 @@ where
         | ty::Float(_)
         | ty::Char
         | ty::RawPtr(..)
+        | ty::PtrMetadata(..)
         | ty::Never
         | ty::Ref(_, _, Mutability::Not)
         | ty::Array(..) => Err(NoSolution),
@@ -373,6 +380,7 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<I: Intern
         | ty::Array(_, _)
         | ty::Slice(_)
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(_, _, _)
         | ty::Dynamic(_, _, _)
         | ty::Coroutine(_, _)
@@ -546,6 +554,7 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_async_callable<I: 
         | ty::Pat(_, _)
         | ty::Slice(_)
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(_, _, _)
         | ty::Dynamic(_, _, _)
         | ty::Coroutine(_, _)
@@ -691,6 +700,7 @@ pub(in crate::solve) fn extract_fn_def_from_const_callable<I: Interner>(
         | ty::Array(_, _)
         | ty::Slice(_)
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(_, _, _)
         | ty::Dynamic(_, _, _)
         | ty::Coroutine(_, _)
@@ -759,6 +769,7 @@ pub(in crate::solve) fn const_conditions_for_destruct<I: Interner>(
         | ty::Float(..)
         | ty::Str
         | ty::RawPtr(..)
+        | ty::PtrMetadata(..)
         | ty::Ref(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)

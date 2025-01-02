@@ -553,6 +553,7 @@ where
         panic!("`Tuple` does not have an associated type: {:?}", goal);
     }
 
+    // FIXME(ptr_metadata_v2)
     fn consider_builtin_pointee_candidate(
         ecx: &mut EvalCtxt<'_, D>,
         goal: Goal<I, Self>,
@@ -570,6 +571,7 @@ where
                 | ty::Array(..)
                 | ty::Pat(..)
                 | ty::RawPtr(..)
+                | ty::PtrMetadata(..)
                 | ty::Ref(..)
                 | ty::FnDef(..)
                 | ty::FnPtr(..)
@@ -810,6 +812,7 @@ where
             | ty::Array(..)
             | ty::Pat(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Ref(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
@@ -866,6 +869,7 @@ where
             | ty::Float(..)
             | ty::Array(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Ref(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)

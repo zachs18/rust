@@ -374,6 +374,11 @@ impl<'a> State<'a> {
                 self.word("*");
                 self.print_mt(mt, true);
             }
+            hir::TyKind::PtrMetadata(ty) => {
+                self.word("ptr_metadata!(");
+                self.print_type(ty);
+                self.word(")");
+            }
             hir::TyKind::Ref(lifetime, ref mt) => {
                 self.word("&");
                 self.print_opt_lifetime(lifetime);

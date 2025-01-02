@@ -2201,6 +2201,8 @@ pub enum TyKind {
     ///
     /// Desugars into `Pin<&'a T>` or `Pin<&'a mut T>`.
     PinnedRef(Option<Lifetime>, MutTy),
+    /// Pointer metadata (`metadata_type!(str)`).
+    PtrMetadata(P<Ty>),
     /// A bare function (e.g., `fn(usize) -> bool`).
     BareFn(P<BareFnTy>),
     /// An unsafe existential lifetime binder (e.g., `unsafe<'a> &'a ()`).

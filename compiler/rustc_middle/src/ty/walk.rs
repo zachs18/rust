@@ -151,7 +151,7 @@ fn push_inner<'tcx>(stack: &mut TypeWalkerStack<'tcx>, parent: GenericArg<'tcx>)
             ty::Slice(ty) => {
                 stack.push(ty.into());
             }
-            ty::RawPtr(ty, _) => {
+            ty::RawPtr(ty, _) | ty::PtrMetadata(ty) => {
                 stack.push(ty.into());
             }
             ty::Ref(lt, ty, _) => {

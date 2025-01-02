@@ -877,6 +877,7 @@ pub fn walk_ty<'v, V: Visitor<'v>>(visitor: &mut V, typ: &'v Ty<'v>) -> V::Resul
     match typ.kind {
         TyKind::Slice(ref ty) => try_visit!(visitor.visit_ty(ty)),
         TyKind::Ptr(ref mutable_type) => try_visit!(visitor.visit_ty(mutable_type.ty)),
+        TyKind::PtrMetadata(ref ty) => try_visit!(visitor.visit_ty(ty)),
         TyKind::Ref(ref lifetime, ref mutable_type) => {
             try_visit!(visitor.visit_lifetime(lifetime));
             try_visit!(visitor.visit_ty(mutable_type.ty));

@@ -3157,6 +3157,8 @@ pub enum TyKind<'hir> {
     Array(&'hir Ty<'hir>, &'hir ConstArg<'hir>),
     /// A raw pointer (i.e., `*const T` or `*mut T`).
     Ptr(MutTy<'hir>),
+    /// A pointer metadata (i.e., `std::ptr::PtrMetadata<T>`).
+    PtrMetadata(&'hir Ty<'hir>),
     /// A reference (i.e., `&'a T` or `&'a mut T`).
     Ref(&'hir Lifetime, MutTy<'hir>),
     /// A bare function (e.g., `fn(usize) -> bool`).

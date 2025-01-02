@@ -269,6 +269,8 @@ fn characteristic_def_id_of_type_cached<'a>(
 
         ty::RawPtr(ty, _) => characteristic_def_id_of_type_cached(ty, visited),
 
+        ty::PtrMetadata(ty) => characteristic_def_id_of_type_cached(ty, visited),
+
         ty::Ref(_, ty, _) => characteristic_def_id_of_type_cached(ty, visited),
 
         ty::Tuple(tys) => tys.iter().find_map(|ty| {

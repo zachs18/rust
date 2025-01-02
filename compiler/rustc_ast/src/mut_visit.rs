@@ -550,6 +550,7 @@ pub fn walk_ty<T: MutVisitor>(vis: &mut T, ty: &mut P<Ty>) {
             visit_opt(lt, |lt| vis.visit_lifetime(lt));
             vis.visit_mt(mt);
         }
+        TyKind::PtrMetadata(ty) => vis.visit_ty(ty),
         TyKind::BareFn(bft) => {
             let BareFnTy { safety, ext: _, generic_params, decl, decl_span } = bft.deref_mut();
             visit_safety(vis, safety);

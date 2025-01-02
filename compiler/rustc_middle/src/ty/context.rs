@@ -463,6 +463,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
             | ty::Pat(_, _)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::Ref(_, _, _)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
@@ -2293,6 +2294,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     Array,
                     Slice,
                     RawPtr,
+                    PtrMetadata,
                     Ref,
                     FnDef,
                     FnPtr,

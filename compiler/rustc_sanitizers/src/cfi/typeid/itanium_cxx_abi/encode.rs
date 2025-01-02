@@ -608,6 +608,17 @@ pub(crate) fn encode_ty<'tcx>(
             typeid.push_str(&s);
         }
 
+        ty::PtrMetadata(ty0) => {
+            // u8metadataI<element-type>E as vendor extended type qualifier and type
+            tracing::warn!("FIXME(ptr_metadata_v2): figure out mangling");
+            let mut s = String::new();
+            s.push_str("u8metadataI");
+            s.push_str(&encode_ty(tcx, *ty0, dict, options));
+            s.push('E');
+            compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
+            typeid.push_str(&s);
+        }
+
         ty::FnPtr(sig_tys, hdr) => {
             // PF<return-type><parameter-type1..parameter-typeN>E
             let mut s = String::from("P");

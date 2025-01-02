@@ -151,6 +151,7 @@ impl<'a, 'tcx, F: Fn(Ty<'tcx>) -> bool> MoveDataBuilder<'a, 'tcx, F> {
                     | ty::Str
                     | ty::Array(_, _)
                     | ty::Pat(_, _)
+                    | ty::PtrMetadata(_)
                     | ty::Slice(_)
                     | ty::FnDef(_, _)
                     | ty::FnPtr(..)
@@ -183,7 +184,8 @@ impl<'a, 'tcx, F: Fn(Ty<'tcx>) -> bool> MoveDataBuilder<'a, 'tcx, F> {
                     ty::Closure(..)
                     | ty::CoroutineClosure(..)
                     | ty::Coroutine(_, _)
-                    | ty::Tuple(_) => (),
+                    | ty::Tuple(_)
+                    | ty::PtrMetadata(_) => (),
                     ty::Bool
                     | ty::Char
                     | ty::Int(_)

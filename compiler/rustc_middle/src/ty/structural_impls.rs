@@ -382,6 +382,7 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
     ) -> Result<Self, F::Error> {
         let kind = match *self.kind() {
             ty::RawPtr(ty, mutbl) => ty::RawPtr(ty.try_fold_with(folder)?, mutbl),
+            ty::PtrMetadata(ty) => ty::PtrMetadata(ty.try_fold_with(folder)?),
             ty::Array(typ, sz) => ty::Array(typ.try_fold_with(folder)?, sz.try_fold_with(folder)?),
             ty::Slice(typ) => ty::Slice(typ.try_fold_with(folder)?),
             ty::Adt(tid, args) => ty::Adt(tid, args.try_fold_with(folder)?),
@@ -431,6 +432,7 @@ impl<'tcx> TypeSuperVisitable<TyCtxt<'tcx>> for Ty<'tcx> {
     fn super_visit_with<V: TypeVisitor<TyCtxt<'tcx>>>(&self, visitor: &mut V) -> V::Result {
         match self.kind() {
             ty::RawPtr(ty, _mutbl) => ty.visit_with(visitor),
+            ty::PtrMetadata(ty) => ty.visit_with(visitor),
             ty::Array(typ, sz) => {
                 try_visit!(typ.visit_with(visitor));
                 sz.visit_with(visitor)

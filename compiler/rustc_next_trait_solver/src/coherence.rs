@@ -338,6 +338,8 @@ where
             | ty::Array(..)
             | ty::Slice(..)
             | ty::RawPtr(..)
+            // FIXME(ptr_metadata_v2): non-local?
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Tuple(..)
             // FIXME(unsafe_binders): Non-local?

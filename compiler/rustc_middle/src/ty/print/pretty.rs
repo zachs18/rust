@@ -671,6 +671,9 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
                 p!(write("*{} ", mutbl.ptr_str()));
                 p!(print(ty))
             }
+            ty::PtrMetadata(ty) => {
+                p!("ptr_metadata!(", print(ty), ")")
+            }
             ty::Ref(r, ty, mutbl) => {
                 p!("&");
                 if self.should_print_region(r) {

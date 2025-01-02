@@ -2300,6 +2300,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             hir::TyKind::InferDelegation(_, idx) => self.lower_delegation_ty(*idx),
             hir::TyKind::Slice(ty) => Ty::new_slice(tcx, self.lower_ty(ty)),
             hir::TyKind::Ptr(mt) => Ty::new_ptr(tcx, self.lower_ty(mt.ty), mt.mutbl),
+            hir::TyKind::PtrMetadata(ty) => Ty::new_ptr_metadata(tcx, self.lower_ty(ty)),
             hir::TyKind::Ref(region, mt) => {
                 let r = self.lower_lifetime(region, RegionInferReason::Reference);
                 debug!(?r);

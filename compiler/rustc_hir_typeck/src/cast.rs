@@ -134,6 +134,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             | ty::Array(..)
             | ty::CoroutineWitness(..)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::Ref(..)
             | ty::Pat(..)
             | ty::FnDef(..)

@@ -1601,6 +1601,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::Array(_, _)
                     | ty::Pat(_, _)
                     | ty::Slice(_)
+                    | ty::PtrMetadata(_)
                     | ty::FnDef(_, _)
                     | ty::FnPtr(..)
                     | ty::Dynamic(_, _, _)
@@ -1634,6 +1635,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     ty::Closure(..)
                     | ty::CoroutineClosure(..)
                     | ty::Coroutine(_, _)
+                    | ty::PtrMetadata(_)
                     | ty::Tuple(_) => (),
                     ty::Bool
                     | ty::Char

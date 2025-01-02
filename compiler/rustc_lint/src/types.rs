@@ -1240,6 +1240,8 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
 
             ty::RawPtr(ty, _) | ty::Ref(_, ty, _) => self.check_type_for_ffi(acc, ty),
 
+            ty::PtrMetadata(_) => todo!("FIXME(ptr_metadata_v2)"),
+
             ty::Array(inner_ty, _) => self.check_type_for_ffi(acc, inner_ty),
 
             ty::FnPtr(sig_tys, hdr) => {

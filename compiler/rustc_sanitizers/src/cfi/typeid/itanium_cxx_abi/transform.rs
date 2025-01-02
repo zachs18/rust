@@ -202,6 +202,10 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for TransformTy<'tcx> {
                 }
             }
 
+            ty::PtrMetadata(..) => {
+                todo!("FIXME(ptr_metadata_v2)")
+            }
+
             ty::FnPtr(..) => {
                 if self.options.contains(TransformTyOptions::GENERALIZE_POINTERS) {
                     Ty::new_imm_ptr(self.tcx, self.tcx.types.unit)

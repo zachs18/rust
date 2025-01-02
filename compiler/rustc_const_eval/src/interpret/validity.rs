@@ -769,6 +769,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 interp_ok(true)
             }
             ty::UnsafeBinder(_) => todo!("FIXME(unsafe_binder)"),
+            ty::PtrMetadata(_) => todo!("FIXME(ptr_metadata_v2)"),
             // The above should be all the primitive types. The rest is compound, we
             // check them by visiting their fields/variants.
             ty::Adt(..)

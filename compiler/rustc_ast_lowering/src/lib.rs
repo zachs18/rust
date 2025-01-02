@@ -1188,6 +1188,7 @@ impl<'a, 'hir> LoweringContext<'a, 'hir> {
             TyKind::Err(guar) => hir::TyKind::Err(*guar),
             TyKind::Slice(ty) => hir::TyKind::Slice(self.lower_ty(ty, itctx)),
             TyKind::Ptr(mt) => hir::TyKind::Ptr(self.lower_mt(mt, itctx)),
+            TyKind::PtrMetadata(ty) => hir::TyKind::PtrMetadata(self.lower_ty(ty, itctx)),
             TyKind::Ref(region, mt) => {
                 let region = region.unwrap_or_else(|| {
                     let id = if let Some(LifetimeRes::ElidedAnchor { start, end }) =

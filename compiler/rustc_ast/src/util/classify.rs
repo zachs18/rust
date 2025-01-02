@@ -295,6 +295,12 @@ fn type_trailing_braced_mac_call(mut ty: &ast::Ty) -> Option<&ast::MacCall> {
             | ast::TyKind::Pat(..)
             | ast::TyKind::Dummy
             | ast::TyKind::Err(..) => break None,
+
+            ast::TyKind::PtrMetadata(..) => {
+                // FIXME(ptr_metadata_v2): figure this out?
+                tracing::warn!("ptr_metadata_v2: ast type ended with brace?");
+                break None;
+            }
         }
     }
 }

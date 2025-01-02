@@ -379,6 +379,12 @@ impl<'tcx> Printer<'tcx> for SymbolMangler<'tcx> {
                 ty.print(self)?;
             }
 
+            ty::PtrMetadata(ty) => {
+                tracing::warn!("FIXME(ptr_metadata_v2): decide std::ptr::Metadata mangling");
+                self.push("M");
+                ty.print(self)?;
+            }
+
             ty::Pat(ty, pat) => match *pat {
                 ty::PatternKind::Range { start, end, include_end } => {
                     let consts = [

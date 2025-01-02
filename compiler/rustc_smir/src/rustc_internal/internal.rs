@@ -122,6 +122,7 @@ impl RustcInternal for RigidTy {
             RigidTy::RawPtr(ty, mutability) => {
                 rustc_ty::TyKind::RawPtr(ty.internal(tables, tcx), mutability.internal(tables, tcx))
             }
+            RigidTy::PtrMetadata(ty) => rustc_ty::TyKind::PtrMetadata(ty.internal(tables, tcx)),
             RigidTy::Ref(region, ty, mutability) => rustc_ty::TyKind::Ref(
                 region.internal(tables, tcx),
                 ty.internal(tables, tcx),

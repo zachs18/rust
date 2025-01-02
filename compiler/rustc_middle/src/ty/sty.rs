@@ -611,6 +611,11 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_ptr_metadata(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
+        Ty::new(tcx, ty::PtrMetadata(ty))
+    }
+
+    #[inline]
     pub fn new_adt(tcx: TyCtxt<'tcx>, def: AdtDef<'tcx>, args: GenericArgsRef<'tcx>) -> Ty<'tcx> {
         tcx.debug_assert_args_compatible(def.did(), args);
         Ty::new(tcx, Adt(def, args))
@@ -1480,6 +1485,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Array(..)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::PtrMetadata(_)
             | ty::Ref(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
@@ -1622,6 +1628,7 @@ impl<'tcx> Ty<'tcx> {
 
     /// Returns the type of metadata for (potentially wide) pointers to this type,
     /// or the struct tail if the metadata type cannot be determined.
+    // FIXME(ptr_metadata_v2)
     pub fn ptr_metadata_ty_or_tail(
         self,
         tcx: TyCtxt<'tcx>,
@@ -1638,6 +1645,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Char
             | ty::Ref(..)
             | ty::Coroutine(..)
@@ -1833,6 +1841,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)
             | ty::RawPtr(..)
+            | ty::PtrMetadata(..)
             | ty::Char
             | ty::Ref(..)
             | ty::Coroutine(..)
@@ -1904,7 +1913,7 @@ impl<'tcx> Ty<'tcx> {
 
             // The standard library has a blanket Copy impl for shared references and raw pointers,
             // for all unsized types.
-            ty::Ref(_, _, hir::Mutability::Not) | ty::RawPtr(..) => true,
+            ty::Ref(_, _, hir::Mutability::Not) | ty::RawPtr(..) | ty::PtrMetadata(..) => true,
 
             ty::Coroutine(..) | ty::CoroutineWitness(..) => false,
 
@@ -1982,6 +1991,7 @@ impl<'tcx> Ty<'tcx> {
             | Pat(_, _)
             | Slice(_)
             | RawPtr(_, _)
+            | PtrMetadata(_)
             | Ref(_, _, _)
             | FnDef(_, _)
             | FnPtr(..)

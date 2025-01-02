@@ -275,6 +275,7 @@ fn ty_dtor_span<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Span> {
         | ty::Str
         | ty::Never
         | ty::RawPtr(_, _)
+        | ty::PtrMetadata(_)
         | ty::Ref(_, _, _)
         | ty::FnPtr(_, _)
         | ty::Tuple(_)
