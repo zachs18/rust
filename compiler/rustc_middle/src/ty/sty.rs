@@ -921,6 +921,10 @@ impl<'tcx> rustc_type_ir::inherent::Ty<TyCtxt<'tcx>> for Ty<'tcx> {
         Ty::new_ref(interner, region, ty, mutbl)
     }
 
+    fn new_ptr_metadata(interner: TyCtxt<'tcx>, ty: Self) -> Self {
+        Ty::new_ptr_metadata(interner, ty)
+    }
+
     fn new_array_with_const_len(interner: TyCtxt<'tcx>, ty: Self, len: ty::Const<'tcx>) -> Self {
         Ty::new_array_with_const_len(interner, ty, len)
     }

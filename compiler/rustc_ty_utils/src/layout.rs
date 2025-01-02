@@ -227,7 +227,49 @@ fn layout_of_uncached<'tcx>(
         // The never type.
         ty::Never => tcx.mk_layout(cx.calc.layout_of_never_type()),
 
-        ty::PtrMetadata(_) => todo!("FIXME(ptr_metadata_v2)"),
+        ty::PtrMetadata(pointee) => {
+            let pointee = tcx.normalize_erasing_regions(cx.typing_env, pointee);
+
+            let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type()
+                // Projection eagerly bails out when the pointee references errors,
+                // fall back to structurally deducing metadata.
+                && !pointee.references_error()
+            {
+                let pointee_metadata = Ty::new_projection(tcx, metadata_def_id, [pointee]);
+                let metadata_ty =
+                    match tcx.try_normalize_erasing_regions(cx.typing_env, pointee_metadata) {
+                        Ok(metadata_ty) => metadata_ty,
+                        Err(mut err) => {
+                            // Usually `<Ty as Pointee>::Metadata` can't be normalized because
+                            // its struct tail cannot be normalized either, so try to get a
+                            // more descriptive layout error here, which will lead to less confusing
+                            // diagnostics.
+                            //
+                            // We use the raw struct tail function here to get the first tail
+                            // that is an alias, which is likely the cause of the normalization
+                            // error.
+                            match tcx.try_normalize_erasing_regions(
+                                cx.typing_env,
+                                tcx.struct_tail_raw(pointee, |ty| ty, || {}),
+                            ) {
+                                Ok(_) => {}
+                                Err(better_err) => {
+                                    err = better_err;
+                                }
+                            }
+                            return Err(error(cx, LayoutError::NormalizationFailure(pointee, err)));
+                        }
+                    };
+
+                let metadata_layout = cx.layout_of(metadata_ty)?;
+
+                metadata_layout.layout
+            } else {
+                todo!("FIXME(ptr_metadata_v2)");
+            };
+
+            metadata
+        }
 
         // Potentially-wide pointers.
         ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {

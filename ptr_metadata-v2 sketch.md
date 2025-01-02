@@ -73,6 +73,22 @@ struct FooMetadata {
 }
 ```
 
+## BikeshedCustomMetadata
+
+`core::ptr::BikeshedCustomMetadata<M>` is a "magic" type such that `Metadata<BikeshedCustomMetadata>>` is `#[repr(transparent)] struct { pub metadata: M }`.
+
+TODO: variance (probably invariant or covariant)  
+
+### Idea 1: 
+
+`BikeshedCustomMetadata` is `!Sized`, but always has a dynamic size of 0 and align of 1. 
+
+Not great, since it's not actually that useful for custom DSTs then; `Box`, `size_of_val`, etc still won't work right.
+
+### Idea 2:
+
+`BikeshedCustomMetadata` is magic, in that having as a field forces an ADT to manually implement `MetaSized`. Structs containing
+
 ## Trivial metadata
 
 When constructing `Metadata`, fields may be omitted if they are "trivial".

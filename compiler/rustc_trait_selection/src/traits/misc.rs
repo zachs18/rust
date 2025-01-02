@@ -60,6 +60,7 @@ pub fn type_allowed_to_implement_copy<'tcx>(
         | ty::Float(_)
         | ty::Char
         | ty::RawPtr(..)
+        | ty::PtrMetadata(..)
         | ty::Never
         | ty::Ref(_, _, hir::Mutability::Not)
         | ty::Array(..) => return Ok(()),

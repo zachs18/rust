@@ -479,6 +479,11 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             Ok(Ty::new_ptr(cx, ty, a_mutbl))
         }
 
+        (ty::PtrMetadata(a_t), ty::PtrMetadata(b_t)) => {
+            let t = relation.relate(a_t, b_t)?;
+            Ok(Ty::new_ptr_metadata(cx, t))
+        }
+
         (ty::Ref(a_r, a_ty, a_mutbl), ty::Ref(b_r, b_ty, b_mutbl)) => {
             if a_mutbl != b_mutbl {
                 return Err(TypeError::Mutability);

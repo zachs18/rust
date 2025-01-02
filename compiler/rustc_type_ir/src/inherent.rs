@@ -93,6 +93,8 @@ pub trait Ty<I: Interner<Ty = Self>>:
 
     fn new_ptr(interner: I, ty: Self, mutbl: Mutability) -> Self;
 
+    fn new_ptr_metadata(interner: I, ty: Self) -> Self;
+
     fn new_ref(interner: I, region: I::Region, ty: Self, mutbl: Mutability) -> Self;
 
     fn new_array_with_const_len(interner: I, ty: Self, len: I::Const) -> Self;
