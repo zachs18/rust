@@ -7,6 +7,7 @@
 #![stable(feature = "rust1", since = "1.0.0")]
 
 use crate::cell::UnsafeCell;
+use crate::clone::CloneUnsized;
 use crate::cmp;
 use crate::fmt::Debug;
 use crate::hash::{Hash, Hasher};
@@ -417,9 +418,31 @@ marker_impls! {
 // library, and there's no way to safely have this behavior right now.
 #[rustc_unsafe_specialization_marker]
 #[rustc_diagnostic_item = "Copy"]
-pub trait Copy: Clone {
+pub trait Copy: Clone + CopyUnsized {
     // Empty.
 }
+
+/// FIXME(copy_unsized) docs
+#[unstable(feature = "copy_unsized", issue = "none")]
+// FIXME(matthewjasper) This allows copying a type that doesn't implement
+// `Copy` because of unsatisfied lifetime bounds (copying `A<'_>` when only
+// `A<'static>: Copy` and `A<'_>: Clone`).
+// We have this attribute here for now only because there are quite a few
+// existing specializations on `Copy` that already exist in the standard
+// library, and there's no way to safely have this behavior right now.
+#[rustc_unsafe_specialization_marker]
+pub unsafe trait CopyUnsized: CloneUnsized {
+    // Empty.
+}
+
+#[unstable(feature = "copy_unsized", issue = "none")]
+unsafe impl<T: Copy> CopyUnsized for T {}
+
+#[unstable(feature = "copy_unsized", issue = "none")]
+unsafe impl CopyUnsized for str {}
+
+#[unstable(feature = "copy_unsized", issue = "none")]
+unsafe impl<T: Copy> CopyUnsized for [T] {}
 
 /// Derive macro generating an impl of the trait `Copy`.
 #[rustc_builtin_macro]
@@ -443,7 +466,6 @@ marker_impls! {
         bool, char,
         {T: ?Sized} *const T,
         {T: ?Sized} *mut T,
-
 }
 
 #[unstable(feature = "never_type", issue = "35121")]

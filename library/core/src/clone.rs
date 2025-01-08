@@ -146,7 +146,7 @@ mod uninit;
 #[lang = "clone"]
 #[rustc_diagnostic_item = "Clone"]
 #[rustc_trivial_field_reads]
-pub trait Clone: Sized {
+pub trait Clone: Sized + CloneUnsized {
     /// Returns a copy of the value.
     ///
     /// # Examples
