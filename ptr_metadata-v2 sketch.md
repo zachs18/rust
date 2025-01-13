@@ -193,3 +193,34 @@ TODO: flesh this out
 ## Trivial metadata
 
 When constructing `Metadata`, fields may be omitted if they are "trivial".
+
+When `as`-casting pointers, any pointer can be `as`-casted to a pointer whose pointee has trivial metadata.
+
+The following types have trivial metadata:
+
+
+* Primitive thin pointees
+* Arrays whose element type has trivial metadata
+* `struct`s, tuples, `union`s, and `enum`s all of whose fields have trivial metadata
+* (maybe?) `BikeshedCustomMetadata<()>`
+
+
+## Simple metadata
+
+When casting pointers using `as` casts, pointers with simple metadata may be casted between if they have the same bikeshed-underlying metadata type.
+
+The following types have simple metadata (and their underlying metadata type):
+
+* (maybe?) Any type with trivial metadata (the underlying metadata is `()`)
+* String slices (the underlying metadata is the `usize` length)
+* Arrays whose element type has simple metadata (the underlying metadata is the element's underlying metadata)
+* Slices whose element type has *trivial* metadata (the underlying metadata is the `usize` length)
+* `struct`s, tuples, `union`s, and `enum`s where all but one field has trivial metadata, and the remaining field has simple metadata (the underlying metadata is that field's underlying metadata) (TODO: maybe restrict to last field for ease of implementation, and say that non-last fields having non-trivial metadata makes the aggregate have complex metadata)
+* `dyn Trait` (the underlying metadata is the `DynMetadata<dyn Trait>` vtable pointer)
+* (maybe?) `BikeshedCustomMetadata<M>` (the underlying metadata is `M`)
+
+## Complex Metadata
+
+All types that do not have simple metadata have complex metadata.
+
+When `as`-casting pointers, pointees with complex metadata cannot be casted to. Note that coercions (e.g. unsizing) that can happen are still allowed to use `as` keyword as normal (e.g. `*const Struct<u8, [u32]> as *const Struct<dyn Debug, [u32]>` is allowed as an unsising coercion, not a "cast" per se).
