@@ -1,3 +1,9 @@
+type Foo = String;
+enum Bar {
+    A,
+    B(u32),
+}
+
 fn main() {
     let _ = String.new();
     //~^ ERROR expected value, found struct `String`
@@ -9,6 +15,18 @@ fn main() {
 
     let _ = Vec::<()>.with_capacity(1);
     //~^ ERROR expected value, found struct `Vec`
+    //~| HELP use the path separator
+
+    let _ = Foo.default;
+    //~^ ERROR expected value, found type alias `Foo`
+    //~| HELP use the path separator
+
+    let _ = Bar.A;
+    //~^ ERROR expected value, found enum `Bar`
+    //~| HELP use the path separator
+
+    let _ = Bar.B(42);
+    //~^ ERROR expected value, found enum `Bar`
     //~| HELP use the path separator
 }
 

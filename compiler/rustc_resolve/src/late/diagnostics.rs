@@ -1738,7 +1738,10 @@ impl<'ast, 'ra: 'ast, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
                 }
             }
             (
-                Res::Def(kind @ (DefKind::Mod | DefKind::Trait), _),
+                Res::Def(
+                    kind @ (DefKind::Mod | DefKind::Trait | DefKind::TyAlias | DefKind::Enum),
+                    _,
+                ),
                 PathSource::Expr(Some(parent)),
             ) => {
                 if !path_sep(self, err, parent, kind) {
