@@ -2,28 +2,23 @@
 
 `core::ptr::Metadata<T>` is a new "magic" struct-like type that represents the metadata of a pointer to `T`
 
-### `#[repr(transparent_if_possible)]`
-
-This is not a proposal to add this `repr` stably, it is just used as an expository tool. Informally, it is intended to mean that a particular instantiation of the annotated generic struct is laid out the same as a non-generic `#[repr(transparent)]` struct, if such a struct would compile, and otherwise as a `#[repr(Rust)]` struct.
-
-
 ## Primitive Thin Pointees
 
-For integers, `char`, `bool`, floats, never, pointers, references, `fn` pointers, `fn` items, closures,`extern type`s, or `Metadata` itself, `Metadata<T>` is a fieldless 1-ZST, like `struct PrimitiveMetadata {};`. These (like the metadata of all `Thin` types) are "trivial".
+For all Tintegers, `char`, `bool`, floats, never, pointers, references, `fn` pointers, `fn` items, closures,`extern type`s, or `Metadata` itself, `Metadata<T>` is a fieldless 1-ZST, like `struct PrimitiveMetadata {};`. These (like the metadata of all `Thin` types) are "trivial".
 
 ## Arrays and Slices
-* For `str`: `#[repr(transparent)] struct StrMetadata { pub length: usize }`
-* For slices `[T]`: `#[repr(transparent_if_possible)] struct SliceMetadata<T> { pub length: usize, pub elem: Metadata<T> }`
-* For arrays `[T; N]`: `#[repr(transparent)] struct ArrayMetadata<T> { pub elem: Metadata<T> }`. If `Metadata<T>` is trivial, then so is `Metadata<[T; N]>`.
+* For `str`: `struct StrMetadata { pub length: usize }`
+* For slices `[T]`: `struct SliceMetadata<T: ?Sized> { pub length: usize, pub elem: Metadata<T> }`
+* For arrays `[T; N]`: `struct ArrayMetadata<T: ?Sized> { pub elem: Metadata<T> }`. If `Metadata<T>` is trivial, then so is `Metadata<[T; N]>`.
 
 ## Trait objects
 
-For `T = dyn Trait`: `#[repr(transparent)] struct DynTraitMetadata { pub vtable: std::ptr::DynMetadata<dyn Trait> }`
+For `T = dyn Trait`: `struct DynTraitMetadata { pub vtable: std::ptr::DynMetadata<dyn Trait> }`
 
 
 ## Structs and Unions
 
-When `T` is a `struct` or `union`, `Metadata<T>` has fields with the same names and visibilities and `T` does, whose types are `Metadata<F>` where `F` is the corresponding field's type. If `T` is `#[non_exhaustive]`, then so is `Metadata<T>`.
+When `T` is a `struct` or `union`, `Metadata<T>` has fields with the same names and visibilities and `T` does, whose types are `Metadata<F>` where `F` is the corresponding field's type. If `T` is `#[non_exhaustive]`, then so is `Metadata<T>` (TODO: flesh out `#[non_exhaustive]` interaction with default field values).
 
 For example:
 
@@ -34,7 +29,6 @@ pub struct Foo<T: ?Sized> {
 	pub z: T
 }
 // expository
-#[repr(transparent)]
 struct FooMetadata<T> {
 	x: Metadata<u32>,
 	pub(crate) y: Metadata<u32>,
@@ -52,7 +46,6 @@ For example:
 ```Rust
 type Tuple = (u32, u32, [u8]);
 // expository
-#[repr(transparent)]
 struct TupleMetadata(pub Metadata<u32>, pub Metadata<u32>, pub Metadata<[u8]>);
 ```
 
@@ -73,26 +66,6 @@ struct FooMetadata {
 }
 ```
 
-## BikeshedCustomMetadata
-
-`core::ptr::BikeshedCustomMetadata<M>` is a "magic" type such that `Metadata<BikeshedCustomMetadata>>` is `#[repr(transparent)] struct { pub metadata: M }`.
-
-TODO: variance (probably invariant or covariant)  
-
-### Idea 1: 
-
-`BikeshedCustomMetadata` is `!Sized`, but always has a dynamic size of 0 and align of 1. 
-
-Not great, since it's not actually that useful for custom DSTs then; `Box`, `size_of_val`, etc still won't work right.
-
-### Idea 2:
-
-`BikeshedCustomMetadata` is magic, in that having as a field forces an ADT to manually implement `MetaSized`. Structs containing TODO
-
-### Idea 3:
-
-`BikeshedCustomMetadata<M>` is whatever `extern type`s end up being, but has ptr metadata `#[repr(transparent)] struct Metadata { pub metadata: M }` instead of `#[repr(transparent)] struct Metadata;`
-
 ## Alternative Idea to `BikeshedCustomMetadata`: `unsized type Foo;`
 
 `unsized type Foo;` defined a new, local, nominal type `Foo`. The user must implement `std::ptr::BikeshedUnsizedTypeSemantics`, which is a trait that cannt be used in bounds. Like `Drop`, the bounds on its impls must be the same as on the type definition.
@@ -101,7 +74,7 @@ Not great, since it's not actually that useful for custom DSTs then; `Box`, `siz
 pub unsafe trait BikeshedUnsizedTypeSemantics {
 	type Metadata: Sized + Copy + Freeze + etc;
 	/// This should return None if this type's layout cannot be determined statically,
-	/// or if 
+	/// or if  TODO: other semantics
 	const fn layout_for_meta(meta: Self::Metadata) -> Option<Layout>;
 }
 ```
@@ -192,9 +165,11 @@ TODO: flesh this out
 
 ## Trivial metadata
 
-When constructing `Metadata`, fields may be omitted if they are "trivial".
+When constructing `Metadata`, fields may be omitted if they are "trivial", with the same semantics as if they were given a default value under [RFC #3681](https://github.com/rust-lang/rfcs/blob/master/text/3681-default-field-values.md).
 
 When `as`-casting pointers, any pointer can be `as`-casted to a pointer whose pointee has trivial metadata.
+
+Name bikeshedding: same as existing `Thin`.
 
 The following types have trivial metadata:
 
@@ -223,4 +198,4 @@ The following types have simple metadata (and their underlying metadata type):
 
 All types that do not have simple metadata have complex metadata.
 
-When `as`-casting pointers, pointees with complex metadata cannot be casted to. Note that coercions (e.g. unsizing) that can happen are still allowed to use `as` keyword as normal (e.g. `*const Struct<u8, [u32]> as *const Struct<dyn Debug, [u32]>` is allowed as an unsising coercion, not a "cast" per se).
+When `as`-casting pointers, pointees with complex metadata cannot be casted between (identity "casts" are still allowed). Note that coercions (e.g. unsizing) that can happen are still allowed to use `as` keyword as normal (e.g. `*const Struct<u8, [u32]> as *const Struct<dyn Debug, [u32]>` is allowed as an unsising coercion, not a "cast" per se).

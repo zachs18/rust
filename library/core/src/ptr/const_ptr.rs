@@ -242,7 +242,7 @@ impl<T: ?Sized> *const T {
     /// The pointer can be later reconstructed with [`from_raw_parts`].
     #[unstable(feature = "ptr_metadata", issue = "81513")]
     #[inline]
-    pub const fn to_raw_parts(self) -> (*const (), <T as super::Pointee>::Metadata) {
+    pub const fn to_raw_parts(self) -> (*const (), super::SimpleMetadata<T>) {
         (self.cast(), metadata(self))
     }
 

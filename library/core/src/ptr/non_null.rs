@@ -261,7 +261,7 @@ impl<T: ?Sized> NonNull<T> {
     #[inline]
     pub const fn from_raw_parts(
         data_pointer: NonNull<impl super::Thin>,
-        metadata: <T as super::Pointee>::Metadata,
+        metadata: super::SimpleMetadata<T>,
     ) -> NonNull<T> {
         // SAFETY: The result of `ptr::from::raw_parts_mut` is non-null because `data_pointer` is.
         unsafe {
@@ -276,7 +276,7 @@ impl<T: ?Sized> NonNull<T> {
     #[must_use = "this returns the result of the operation, \
                   without modifying the original"]
     #[inline]
-    pub const fn to_raw_parts(self) -> (NonNull<()>, <T as super::Pointee>::Metadata) {
+    pub const fn to_raw_parts(self) -> (NonNull<()>, super::SimpleMetadata<T>) {
         (self.cast(), super::metadata(self.as_ptr()))
     }
 

@@ -4242,10 +4242,10 @@ pub trait AggregateRawPtr<D> {
     type Metadata: Copy;
 }
 impl<P: ?Sized, T: ptr::Thin> AggregateRawPtr<*const T> for *const P {
-    type Metadata = <P as ptr::Pointee>::Metadata;
+    type Metadata = ptr::SimpleMetadata<P>;
 }
 impl<P: ?Sized, T: ptr::Thin> AggregateRawPtr<*mut T> for *mut P {
-    type Metadata = <P as ptr::Pointee>::Metadata;
+    type Metadata = ptr::SimpleMetadata<P>;
 }
 
 /// Lowers in MIR to `Rvalue::UnaryOp` with `UnOp::PtrMetadata`.
@@ -4256,7 +4256,23 @@ impl<P: ?Sized, T: ptr::Thin> AggregateRawPtr<*mut T> for *mut P {
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_intrinsic_must_be_overridden]
+#[cfg(bootstrap)]
 pub const fn ptr_metadata<P: ptr::Pointee<Metadata = M> + ?Sized, M>(_ptr: *const P) -> M {
+    // To implement a fallback we'd have to assume the layout of the pointer,
+    // but the whole point of this intrinsic is that we shouldn't do that.
+    unreachable!()
+}
+
+/// Lowers in MIR to `Rvalue::UnaryOp` with `UnOp::PtrMetadata`.
+///
+/// This is used to implement functions like `ptr::metadata`.
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic_const_stable_indirect]
+#[rustc_intrinsic]
+#[rustc_intrinsic_must_be_overridden]
+#[cfg(not(bootstrap))]
+pub const fn ptr_metadata<P: ?Sized>(_ptr: *const P) -> ptr::Metadata<P> {
     // To implement a fallback we'd have to assume the layout of the pointer,
     // but the whole point of this intrinsic is that we shouldn't do that.
     unreachable!()

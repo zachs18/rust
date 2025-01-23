@@ -228,7 +228,7 @@ impl<T: ?Sized> *mut T {
     /// The pointer can be later reconstructed with [`from_raw_parts_mut`].
     #[unstable(feature = "ptr_metadata", issue = "81513")]
     #[inline]
-    pub const fn to_raw_parts(self) -> (*mut (), <T as super::Pointee>::Metadata) {
+    pub const fn to_raw_parts(self) -> (*mut (), super::SimpleMetadata<T>) {
         (self.cast(), super::metadata(self))
     }
 

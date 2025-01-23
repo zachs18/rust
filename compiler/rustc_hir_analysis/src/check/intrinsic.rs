@@ -602,7 +602,9 @@ pub fn check_intrinsic_type(
             // This type check is not particularly useful, but the `where` bounds
             // on the definition in `core` do the heavy lifting for checking it.
             sym::aggregate_raw_ptr => (3, 0, vec![param(1), param(2)], param(0)),
-            sym::ptr_metadata => (2, 0, vec![Ty::new_imm_ptr(tcx, param(0))], param(1)),
+            sym::ptr_metadata => {
+                (2, 0, vec![Ty::new_imm_ptr(tcx, param(0))], Ty::new_ptr_metadata(tcx, param(0)))
+            }
 
             sym::ub_checks => (0, 0, Vec::new(), tcx.types.bool),
 

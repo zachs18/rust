@@ -176,9 +176,15 @@ language_item_table! {
     /// The associated item of the `DiscriminantKind` trait.
     Discriminant,            sym::discriminant_type,   discriminant_type,          Target::AssocTy,        GenericRequirement::None;
 
+    // ptr_metadata_v1
     PointeeTrait,            sym::pointee_trait,       pointee_trait,              Target::Trait,          GenericRequirement::None;
     Metadata,                sym::metadata_type,       metadata_type,              Target::AssocTy,        GenericRequirement::None;
     DynMetadata,             sym::dyn_metadata,        dyn_metadata,               Target::Struct,         GenericRequirement::None;
+
+    // ptr_metadata_v2
+    TrivialPointeeTrait,     sym::trivial_pointee_trait, trivial_pointee_trait,    Target::Trait,          GenericRequirement::Exact(0);
+    SimplePointeeTrait,      sym::simple_pointee_trait, simple_pointee_trait,      Target::Trait,          GenericRequirement::Exact(0);
+    SimpleMetadataType,      sym::simple_metadata_type, simple_metadata_type,      Target::AssocTy,        GenericRequirement::Exact(0);
 
     Freeze,                  sym::freeze,              freeze_trait,               Target::Trait,          GenericRequirement::Exact(0);
 

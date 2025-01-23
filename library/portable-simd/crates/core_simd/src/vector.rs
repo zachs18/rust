@@ -1,9 +1,7 @@
-use crate::simd::{
-    cmp::SimdPartialOrd,
-    num::SimdUint,
-    ptr::{SimdConstPtr, SimdMutPtr},
-    LaneCount, Mask, MaskElement, SupportedLaneCount, Swizzle,
-};
+use crate::simd::cmp::SimdPartialOrd;
+use crate::simd::num::SimdUint;
+use crate::simd::ptr::{SimdConstPtr, SimdMutPtr};
+use crate::simd::{LaneCount, Mask, MaskElement, SupportedLaneCount, Swizzle};
 
 /// A SIMD vector with the shape of `[T; N]` but the operations of `T`.
 ///
@@ -277,10 +275,7 @@ where
     #[inline]
     #[track_caller]
     pub const fn from_slice(slice: &[T]) -> Self {
-        assert!(
-            slice.len() >= Self::LEN,
-            "slice length must be at least the number of elements"
-        );
+        assert!(slice.len() >= Self::LEN, "slice length must be at least the number of elements");
         // SAFETY: We just checked that the slice contains
         // at least `N` elements.
         unsafe { Self::load(slice.as_ptr().cast()) }
@@ -307,10 +302,7 @@ where
     #[inline]
     #[track_caller]
     pub fn copy_to_slice(self, slice: &mut [T]) {
-        assert!(
-            slice.len() >= Self::LEN,
-            "slice length must be at least the number of elements"
-        );
+        assert!(slice.len() >= Self::LEN, "slice length must be at least the number of elements");
         // SAFETY: We just checked that the slice contains
         // at least `N` elements.
         unsafe { self.store(slice.as_mut_ptr().cast()) }
@@ -1173,7 +1165,7 @@ impl<T> Sealed for *const T {}
 // Fat pointers may be supported in the future.
 unsafe impl<T> SimdElement for *const T
 where
-    T: core::ptr::Pointee<Metadata = ()>,
+    T: core::ptr::Thin,
 {
     type Mask = isize;
 }
@@ -1185,7 +1177,7 @@ impl<T> Sealed for *mut T {}
 // Fat pointers may be supported in the future.
 unsafe impl<T> SimdElement for *mut T
 where
-    T: core::ptr::Pointee<Metadata = ()>,
+    T: core::ptr::Thin,
 {
     type Mask = isize;
 }

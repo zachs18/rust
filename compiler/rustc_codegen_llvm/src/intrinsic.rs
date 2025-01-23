@@ -2218,6 +2218,7 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
 
         match in_elem.kind() {
             ty::RawPtr(p_ty, _) => {
+                tracing::warn!("HERE: generic_simd_intrinsic {in_elem:?}");
                 let metadata = p_ty.ptr_metadata_ty(bx.tcx, |ty| {
                     bx.tcx.normalize_erasing_regions(bx.typing_env(), ty)
                 });

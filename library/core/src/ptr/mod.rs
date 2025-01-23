@@ -414,12 +414,27 @@ pub use crate::intrinsics::copy_nonoverlapping;
 #[doc(inline)]
 pub use crate::intrinsics::write_bytes;
 
+#[cfg_attr(not(bootstrap), path = "metadata_v2.rs")]
 mod metadata;
+/// Bootstrap-only type alias to make introducing `ptr::Metadata` more seamless.
+#[unstable(feature = "ptr_metadata", issue = "81513")]
+#[cfg(bootstrap)]
+pub type SimpleMetadata<T> = <T as Pointee>::Metadata;
+/// Bootstrap-only type alias to make introducing `ptr::Metadata` more seamless.
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+#[cfg(not(bootstrap))]
+pub type SimpleMetadata<T> = <T as SimplePointee>::Metadata;
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
 #[cfg(not(bootstrap))]
 pub use metadata::Metadata;
+#[cfg(bootstrap)]
 #[unstable(feature = "ptr_metadata", issue = "81513")]
 pub use metadata::{DynMetadata, Pointee, Thin, from_raw_parts, from_raw_parts_mut, metadata};
+#[cfg(not(bootstrap))]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+pub use metadata::{
+    DynMetadata, SimplePointee, Thin, from_raw_parts, from_raw_parts_mut, metadata,
+};
 
 mod non_null;
 #[stable(feature = "nonnull", since = "1.25.0")]

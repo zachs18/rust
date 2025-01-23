@@ -1098,7 +1098,9 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                         | ty::Infer(_)
                         | ty::Error(_) => false,
                     }
-                } else if tcx.is_lang_item(trait_ref.def_id, LangItem::PointeeTrait) {
+                } else if tcx.is_lang_item(trait_ref.def_id, LangItem::PointeeTrait)
+                    || tcx.is_lang_item(trait_ref.def_id, LangItem::SimplePointeeTrait)
+                {
                     let tail = selcx.tcx().struct_tail_raw(
                         self_ty,
                         |ty| {
@@ -1562,6 +1564,41 @@ fn confirm_builtin_candidate<'cx, 'tcx>(
         (self_ty.async_destructor_ty(tcx).into(), PredicateObligations::new())
     } else if tcx.is_lang_item(trait_def_id, LangItem::PointeeTrait) {
         let metadata_def_id = tcx.require_lang_item(LangItem::Metadata, None);
+        assert_eq!(metadata_def_id, item_def_id);
+
+        let mut obligations = PredicateObligations::new();
+        let normalize = |ty| {
+            normalize_with_depth_to(
+                selcx,
+                obligation.param_env,
+                obligation.cause.clone(),
+                obligation.recursion_depth + 1,
+                ty,
+                &mut obligations,
+            )
+        };
+        let metadata_ty = self_ty.ptr_metadata_ty_or_tail(tcx, normalize).unwrap_or_else(|tail| {
+            if tail == self_ty {
+                // This is the "fallback impl" for type parameters, unnormalizable projections
+                // and opaque types: If the `self_ty` is `Sized`, then the metadata is `()`.
+                // FIXME(ptr_metadata): This impl overlaps with the other impls and shouldn't
+                // exist. Instead, `Pointee<Metadata = ()>` should be a supertrait of `Sized`.
+                let sized_predicate = ty::TraitRef::new(
+                    tcx,
+                    tcx.require_lang_item(LangItem::Sized, Some(obligation.cause.span)),
+                    [self_ty],
+                );
+                obligations.push(obligation.with(tcx, sized_predicate));
+                tcx.types.unit
+            } else {
+                // We know that `self_ty` has the same metadata as `tail`. This allows us
+                // to prove predicates like `Wrapper<Tail>::Metadata == Tail::Metadata`.
+                Ty::new_projection(tcx, metadata_def_id, [tail])
+            }
+        });
+        (metadata_ty.into(), obligations)
+    } else if tcx.is_lang_item(trait_def_id, LangItem::SimplePointeeTrait) {
+        let metadata_def_id = tcx.require_lang_item(LangItem::SimpleMetadataType, None);
         assert_eq!(metadata_def_id, item_def_id);
 
         let mut obligations = PredicateObligations::new();

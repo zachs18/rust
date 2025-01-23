@@ -89,6 +89,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             } else if tcx.is_lang_item(def_id, LangItem::PointeeTrait) {
                 // `Pointee` is automatically implemented for every type.
                 candidates.vec.push(BuiltinCandidate { has_nested: false });
+            } else if tcx.is_lang_item(def_id, LangItem::SimplePointeeTrait) {
+                // FIXME(ptr_metadata_v2): `SimplePointee` is currently automatically implemented for every type,
+                // but should not be implemented for complex-metadata types.
+                candidates.vec.push(BuiltinCandidate { has_nested: false });
             } else if tcx.is_lang_item(def_id, LangItem::Sized) {
                 // Sized is never implementable by end-users, it is
                 // always automatically computed.

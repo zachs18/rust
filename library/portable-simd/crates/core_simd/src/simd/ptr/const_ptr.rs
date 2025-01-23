@@ -1,5 +1,7 @@
 use super::sealed::Sealed;
-use crate::simd::{cmp::SimdPartialEq, num::SimdUint, LaneCount, Mask, Simd, SupportedLaneCount};
+use crate::simd::cmp::SimdPartialEq;
+use crate::simd::num::SimdUint;
+use crate::simd::{LaneCount, Mask, Simd, SupportedLaneCount};
 
 /// Operations on SIMD vectors of constant pointers.
 pub trait SimdConstPtr: Copy + Sealed {
@@ -96,9 +98,9 @@ where
     fn cast<U>(self) -> Self::CastPtr<U> {
         // SimdElement currently requires zero-sized metadata, so this should never fail.
         // If this ever changes, `simd_cast_ptr` should produce a post-mono error.
-        use core::ptr::Pointee;
-        assert_eq!(size_of::<<T as Pointee>::Metadata>(), 0);
-        assert_eq!(size_of::<<U as Pointee>::Metadata>(), 0);
+        use core::ptr::SimpleMetadata;
+        assert_eq!(size_of::<SimpleMetadata<T>>(), 0);
+        assert_eq!(size_of::<SimpleMetadata<U>>(), 0);
 
         // Safety: pointers can be cast
         unsafe { core::intrinsics::simd::simd_cast_ptr(self) }
@@ -125,9 +127,7 @@ where
         // In the mean-time, this operation is defined to be "as if" it was
         // a wrapping_offset, so we can emulate it as such. This should properly
         // restore pointer provenance even under today's compiler.
-        self.cast::<u8>()
-            .wrapping_offset(addr.cast::<isize>() - self.addr().cast::<isize>())
-            .cast()
+        self.cast::<u8>().wrapping_offset(addr.cast::<isize>() - self.addr().cast::<isize>()).cast()
     }
 
     #[inline]

@@ -230,7 +230,7 @@ fn layout_of_uncached<'tcx>(
         ty::PtrMetadata(pointee) => {
             let pointee = tcx.normalize_erasing_regions(cx.typing_env, pointee);
 
-            let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type()
+            let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type().or(tcx.lang_items().simple_metadata_type())
                 // Projection eagerly bails out when the pointee references errors,
                 // fall back to structurally deducing metadata.
                 && !pointee.references_error()

@@ -13,7 +13,7 @@ use core::mem;
 #[cfg(not(no_global_oom_handling))]
 use core::mem::SizedTypeProperties;
 use core::ops::{Deref, DerefMut};
-use core::ptr::{self, NonNull, Pointee};
+use core::ptr::{self, NonNull, SimpleMetadata};
 
 use crate::alloc::{self, Layout, LayoutError};
 
@@ -37,7 +37,7 @@ use crate::alloc::{self, Layout, LayoutError};
 /// ```
 #[unstable(feature = "thin_box", issue = "92791")]
 pub struct ThinBox<T: ?Sized> {
-    // This is essentially `WithHeader<<T as Pointee>::Metadata>`,
+    // This is essentially `WithHeader<Metadata<T>>`,
     // but that would be invariant in `T`, and we want covariance.
     ptr: WithOpaqueHeader,
     _marker: PhantomData<T>,
@@ -65,7 +65,7 @@ impl<T> ThinBox<T> {
     /// let five = ThinBox::new(5);
     /// ```
     ///
-    /// [`Metadata`]: core::ptr::Pointee::Metadata
+    /// [`Metadata`]: core::ptr::Metadata
     #[cfg(not(no_global_oom_handling))]
     pub fn new(value: T) -> Self {
         let meta = ptr::metadata(&value);
@@ -87,7 +87,7 @@ impl<T> ThinBox<T> {
     /// # Ok::<(), std::alloc::AllocError>(())
     /// ```
     ///
-    /// [`Metadata`]: core::ptr::Pointee::Metadata
+    /// [`Metadata`]: core::ptr::Metadata
     pub fn try_new(value: T) -> Result<Self, core::alloc::AllocError> {
         let meta = ptr::metadata(&value);
         WithOpaqueHeader::try_new(meta, value).map(|ptr| ThinBox { ptr, _marker: PhantomData })
@@ -108,7 +108,7 @@ impl<Dyn: ?Sized> ThinBox<Dyn> {
     /// let thin_slice = ThinBox::<[i32]>::new_unsize([1, 2, 3, 4]);
     /// ```
     ///
-    /// [`Metadata`]: core::ptr::Pointee::Metadata
+    /// [`Metadata`]: core::ptr::Metadata
     #[cfg(not(no_global_oom_handling))]
     pub fn new_unsize<T>(value: T) -> Self
     where
@@ -174,7 +174,7 @@ impl<T: ?Sized> Drop for ThinBox<T> {
 
 #[unstable(feature = "thin_box", issue = "92791")]
 impl<T: ?Sized> ThinBox<T> {
-    fn meta(&self) -> <T as Pointee>::Metadata {
+    fn meta(&self) -> SimpleMetadata<T> {
         //  Safety:
         //  -   NonNull and valid.
         unsafe { *self.with_header().header() }
@@ -184,7 +184,7 @@ impl<T: ?Sized> ThinBox<T> {
         self.with_header().value()
     }
 
-    fn with_header(&self) -> &WithHeader<<T as Pointee>::Metadata> {
+    fn with_header(&self) -> &WithHeader<SimpleMetadata<T>> {
         // SAFETY: both types are transparent to `NonNull<u8>`
         unsafe { &*((&raw const self.ptr) as *const WithHeader<_>) }
     }
@@ -216,7 +216,7 @@ impl WithOpaqueHeader {
         Dyn: ?Sized,
         T: Unsize<Dyn>,
     {
-        let ptr = WithHeader::<<Dyn as Pointee>::Metadata>::new_unsize_zst::<Dyn, T>(value);
+        let ptr = WithHeader::<SimpleMetadata<Dyn>>::new_unsize_zst::<Dyn, T>(value);
         Self(ptr.0)
     }
 
@@ -310,9 +310,9 @@ impl<H> WithHeader<H> {
 
     // `Dyn` is `?Sized` type like `[u32]`, and `T` is ZST type like `[u32; 0]`.
     #[cfg(not(no_global_oom_handling))]
-    fn new_unsize_zst<Dyn, T>(value: T) -> WithHeader<H>
+    fn new_unsize_zst<Dyn, T>(value: T) -> WithHeader<SimpleMetadata<Dyn>>
     where
-        Dyn: Pointee<Metadata = H> + ?Sized,
+        Dyn: ?Sized,
         T: Unsize<Dyn>,
     {
         assert!(mem::size_of::<T>() == 0);
@@ -325,25 +325,22 @@ impl<H> WithHeader<H> {
         // of the header, past the padding, so the assigned type makes sense.
         // It also ensures that the address at the end of the header is sufficiently
         // aligned for T.
-        let alloc: &<Dyn as Pointee>::Metadata = const {
+        let alloc: &SimpleMetadata<Dyn> = const {
             // FIXME: just call `WithHeader::alloc_layout` with size reset to 0.
             // Currently that's blocked on `Layout::extend` not being `const fn`.
 
-            let alloc_align =
-                max(mem::align_of::<T>(), mem::align_of::<<Dyn as Pointee>::Metadata>());
+            let alloc_align = max(mem::align_of::<T>(), mem::align_of::<SimpleMetadata<Dyn>>());
 
-            let alloc_size =
-                max(mem::align_of::<T>(), mem::size_of::<<Dyn as Pointee>::Metadata>());
+            let alloc_size = max(mem::align_of::<T>(), mem::size_of::<SimpleMetadata<Dyn>>());
 
             unsafe {
                 // SAFETY: align is power of two because it is the maximum of two alignments.
                 let alloc: *mut u8 = const_allocate(alloc_size, alloc_align);
 
                 let metadata_offset =
-                    alloc_size.checked_sub(mem::size_of::<<Dyn as Pointee>::Metadata>()).unwrap();
+                    alloc_size.checked_sub(mem::size_of::<SimpleMetadata<Dyn>>()).unwrap();
                 // SAFETY: adding offset within the allocation.
-                let metadata_ptr: *mut <Dyn as Pointee>::Metadata =
-                    alloc.add(metadata_offset).cast();
+                let metadata_ptr: *mut SimpleMetadata<Dyn> = alloc.add(metadata_offset).cast();
                 // SAFETY: `*metadata_ptr` is within the allocation.
                 metadata_ptr.write(ptr::metadata::<Dyn>(ptr::dangling::<T>() as *const Dyn));
 
@@ -352,9 +349,9 @@ impl<H> WithHeader<H> {
             }
         };
 
-        // SAFETY: `alloc` points to `<Dyn as Pointee>::Metadata`, so addition stays in-bounds.
+        // SAFETY: `alloc` points to `Metadata<Dyn>`, so addition stays in-bounds.
         let value_ptr =
-            unsafe { (alloc as *const <Dyn as Pointee>::Metadata).add(1) }.cast::<T>().cast_mut();
+            unsafe { (alloc as *const SimpleMetadata<Dyn>).add(1) }.cast::<T>().cast_mut();
         debug_assert!(value_ptr.is_aligned());
         mem::forget(value);
         WithHeader(NonNull::new(value_ptr.cast()).unwrap(), PhantomData)

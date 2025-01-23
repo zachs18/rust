@@ -6,6 +6,8 @@ use crate::intrinsics::{aggregate_raw_ptr, ptr_metadata};
 use crate::marker::Freeze;
 use crate::ptr::NonNull;
 
+/// FIXME: update docs for ptr_metadata_v2.
+///
 /// Provides the pointer metadata type of any pointed-to type.
 ///
 /// # Pointer metadata
@@ -52,18 +54,44 @@ use crate::ptr::NonNull;
 /// with [`from_raw_parts`] or [`from_raw_parts_mut`].
 ///
 /// [`to_raw_parts`]: *const::to_raw_parts
-#[lang = "pointee_trait"]
+#[lang = "simple_pointee_trait"]
 #[cfg_attr(bootstrap, rustc_deny_explicit_impl(implement_via_object = false))]
 #[cfg_attr(not(bootstrap), rustc_deny_explicit_impl)]
 #[cfg_attr(not(bootstrap), rustc_do_not_implement_via_object)]
-pub trait Pointee {
+pub trait SimplePointee {
     /// The type for metadata in pointers and references to `Self`.
-    #[lang = "metadata_type"]
+    #[lang = "simple_metadata_type"]
     // NOTE: Keep trait bounds in `static_assert_expected_bounds_for_metadata`
     // in `library/core/src/ptr/metadata.rs`
     // in sync with those here:
-    type Metadata: fmt::Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze;
+    type SimpleMetadata: fmt::Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze;
 }
+
+pub type SimpleMetadata<T> = <T as SimplePointee>::Metadata;
+
+/// Pointer metadata type.
+#[rustc_builtin_macro(metadata_type)]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+macro metadata_type($($arg:tt)*) {
+    /* compiler built-in */
+}
+
+/// Pointer metadata type.
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+pub type Metadata<T> = metadata_type!(T);
+
+// FIXME(ptr_metadata_v2): move to clone.rs, like raw ptrs impls are
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+impl<T: ?Sized> Clone for Metadata<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+// FIXME(ptr_metadata_v2): move to marker.rs, like raw ptrs impls are
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+impl<T: ?Sized> Copy for Metadata<T> {}
 
 /// Pointers to types implementing this trait alias are “thin”.
 ///
@@ -78,9 +106,9 @@ pub trait Pointee {
 ///     assert_eq!(std::mem::size_of::<&T>(), std::mem::size_of::<usize>())
 /// }
 /// ```
-#[unstable(feature = "ptr_metadata", issue = "81513")]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
 // NOTE: don’t stabilize this before trait aliases are stable in the language?
-pub trait Thin = Pointee<Metadata = ()>;
+pub trait Thin = SimplePointee<SimpleMetadata = ()>;
 
 /// Extracts the metadata component of a pointer.
 ///
@@ -95,7 +123,7 @@ pub trait Thin = Pointee<Metadata = ()>;
 /// assert_eq!(std::ptr::metadata("foo"), 3_usize);
 /// ```
 #[inline]
-pub const fn metadata<T: ?Sized>(ptr: *const T) -> <T as Pointee>::Metadata {
+pub const fn metadata<T: ?Sized>(ptr: *const T) -> Metadata<T> {
     ptr_metadata(ptr)
 }
 
@@ -106,11 +134,11 @@ pub const fn metadata<T: ?Sized>(ptr: *const T) -> <T as Pointee>::Metadata {
 /// For trait objects, the metadata must come from a pointer to the same underlying erased type.
 ///
 /// [`slice::from_raw_parts`]: crate::slice::from_raw_parts
-#[unstable(feature = "ptr_metadata", issue = "81513")]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
 #[inline]
 pub const fn from_raw_parts<T: ?Sized>(
     data_pointer: *const impl Thin,
-    metadata: <T as Pointee>::Metadata,
+    metadata: Metadata<T>,
 ) -> *const T {
     aggregate_raw_ptr(data_pointer, metadata)
 }
@@ -119,11 +147,11 @@ pub const fn from_raw_parts<T: ?Sized>(
 /// raw `*mut` pointer is returned, as opposed to a raw `*const` pointer.
 ///
 /// See the documentation of [`from_raw_parts`] for more details.
-#[unstable(feature = "ptr_metadata", issue = "81513")]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
 #[inline]
 pub const fn from_raw_parts_mut<T: ?Sized>(
     data_pointer: *mut impl Thin,
-    metadata: <T as Pointee>::Metadata,
+    metadata: SimpleMetadata<T>,
 ) -> *mut T {
     aggregate_raw_ptr(data_pointer, metadata)
 }
