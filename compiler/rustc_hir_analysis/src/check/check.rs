@@ -10,7 +10,8 @@ use rustc_hir::{Node, intravisit};
 use rustc_infer::infer::{RegionVariableOrigin, TyCtxtInferExt};
 use rustc_infer::traits::{Obligation, ObligationCauseCode};
 use rustc_lint_defs::builtin::{
-    REPR_TRANSPARENT_EXTERNAL_PRIVATE_FIELDS, UNSUPPORTED_FN_PTR_CALLING_CONVENTIONS,
+    REPR_TRANSPARENT_EXTERNAL_PRIVATE_FIELDS, REPR_TRANSPARENT_UNINHABITED_FIELDS,
+    UNSUPPORTED_FN_PTR_CALLING_CONVENTIONS,
 };
 use rustc_middle::hir::nested_filter;
 use rustc_middle::middle::resolve_bound_vars::ResolvedArg;
@@ -1359,7 +1360,16 @@ pub(super) fn check_transparent<'tcx>(tcx: TyCtxt<'tcx>, adt: ty::AdtDef<'tcx>) 
         return;
     }
 
-    // For each field, figure out if it's known to have "trivial" layout (i.e., is a 1-ZST), with
+    let descr = adt.descr();
+
+    enum DisallowedFieldCause<'tcx> {
+        AdtNonExhaustive(AdtDef<'tcx>, GenericArgsRef<'tcx>),
+        AdtPrivateFields(AdtDef<'tcx>, GenericArgsRef<'tcx>),
+        AdtUninhabited(AdtDef<'tcx>, GenericArgsRef<'tcx>),
+        NeverTypeUninhabited,
+    }
+
+    // For each field, figure out if it's known to have "trivial" layout (i.e., is an inhabited 1-ZST), with
     // "known" respecting #[non_exhaustive] attributes.
     let field_infos = adt.all_fields().map(|field| {
         let ty = field.ty(tcx, GenericArgs::identity_for_item(tcx, field.did));
@@ -1371,12 +1381,12 @@ pub(super) fn check_transparent<'tcx>(tcx: TyCtxt<'tcx>, adt: ty::AdtDef<'tcx>) 
         if !trivial {
             return (span, trivial, None);
         }
-        // Even some 1-ZST fields are not allowed though, if they have `non_exhaustive`.
+        // Even some 1-ZST fields are not allowed though, if they have `non_exhaustive`, or are uninhabited.
 
         fn check_non_exhaustive<'tcx>(
             tcx: TyCtxt<'tcx>,
             t: Ty<'tcx>,
-        ) -> ControlFlow<(&'static str, DefId, GenericArgsRef<'tcx>, bool)> {
+        ) -> ControlFlow<DisallowedFieldCause<'tcx>> {
             match t.kind() {
                 ty::Tuple(list) => list.iter().try_for_each(|t| check_non_exhaustive(tcx, t)),
                 ty::Array(ty, _) => check_non_exhaustive(tcx, *ty),
@@ -1388,13 +1398,15 @@ pub(super) fn check_transparent<'tcx>(tcx: TyCtxt<'tcx>, adt: ty::AdtDef<'tcx>) 
                                 .variants()
                                 .iter()
                                 .any(ty::VariantDef::is_field_list_non_exhaustive);
+                        if non_exhaustive {
+                            return ControlFlow::Break(DisallowedFieldCause::AdtNonExhaustive(
+                                *def, args,
+                            ));
+                        }
                         let has_priv = def.all_fields().any(|f| !f.vis.is_public());
-                        if non_exhaustive || has_priv {
-                            return ControlFlow::Break((
-                                def.descr(),
-                                def.did(),
-                                args,
-                                non_exhaustive,
+                        if has_priv {
+                            return ControlFlow::Break(DisallowedFieldCause::AdtPrivateFields(
+                                *def, args,
                             ));
                         }
                     }
@@ -1406,7 +1418,72 @@ pub(super) fn check_transparent<'tcx>(tcx: TyCtxt<'tcx>, adt: ty::AdtDef<'tcx>) 
             }
         }
 
-        (span, trivial, check_non_exhaustive(tcx, ty).break_value())
+        fn check_uninhabited<'tcx>(
+            tcx: TyCtxt<'tcx>,
+            t: Ty<'tcx>,
+        ) -> ControlFlow<DisallowedFieldCause<'tcx>> {
+            match t.kind() {
+                ty::Tuple(list) => list.iter().try_for_each(|t| check_uninhabited(tcx, t)),
+                ty::Array(ty, len) => {
+                    // Allow length-0 arrays of uninhabited types
+                    if let Some(0) = len.try_to_target_usize(tcx) {
+                        return ControlFlow::Continue(());
+                    }
+                    check_uninhabited(tcx, *ty)
+                }
+                ty::Adt(def, args) => {
+                    // Union validity requirements are not decided yet.
+                    // Currently, unions are always inhabited, but to be safe,
+                    // here we check that at least one field is inhabited
+                    if def.is_union() {
+                        for field in def.all_fields() {
+                            let t = field.ty(tcx, args);
+                            let check_result = check_uninhabited(tcx, t);
+                            if check_result.is_continue() {
+                                return ControlFlow::Continue(());
+                            }
+                        }
+                        return ControlFlow::Break(DisallowedFieldCause::AdtUninhabited(
+                            *def, args,
+                        ));
+                    }
+
+                    // If there is exactly one variant, recurse into it to give a more specific error message
+                    // pointing at the uninhabited field instead of at the whole struct/enum.
+                    if def.variants().len() == 1 {
+                        return def
+                            .all_fields()
+                            .map(|field| field.ty(tcx, args))
+                            .try_for_each(|t| check_uninhabited(tcx, t));
+                    }
+
+                    // If every variant is uninhabited, then the whole ADT is uninhabited.
+                    // This vacuously includes the case of an enum with no variants.
+                    if def.variants().iter().all(|variant| {
+                        variant
+                            .fields
+                            .iter()
+                            .map(|field| field.ty(tcx, args))
+                            .any(|t| check_uninhabited(tcx, t).is_break())
+                    }) {
+                        return ControlFlow::Break(DisallowedFieldCause::AdtUninhabited(
+                            *def, args,
+                        ));
+                    }
+                    ControlFlow::Continue(())
+                }
+                ty::Never => ControlFlow::Break(DisallowedFieldCause::NeverTypeUninhabited),
+                _ => ControlFlow::Continue(()),
+            }
+        }
+
+        (
+            span,
+            trivial,
+            check_non_exhaustive(tcx, ty)
+                .break_value()
+                .or_else(|| check_uninhabited(tcx, ty).break_value()),
+        )
     });
 
     let non_trivial_fields = field_infos
@@ -1423,36 +1500,60 @@ pub(super) fn check_transparent<'tcx>(tcx: TyCtxt<'tcx>, adt: ty::AdtDef<'tcx>) 
         );
         return;
     }
-    let mut prev_non_exhaustive_1zst = false;
-    for (span, _trivial, non_exhaustive_1zst) in field_infos {
-        if let Some((descr, def_id, args, non_exhaustive)) = non_exhaustive_1zst {
-            // If there are any non-trivial fields, then there can be no non-exhaustive 1-zsts.
-            // Otherwise, it's only an issue if there's >1 non-exhaustive 1-zst.
-            if non_trivial_count > 0 || prev_non_exhaustive_1zst {
+    let mut prev_disallowed_1zst = false;
+    for (span, _trivial, disallowed_1zst) in field_infos {
+        if let Some(cause) = disallowed_1zst {
+            // If there are any non-trivial fields, then there can be no disallowed 1-zsts.
+            // Otherwise, it's only an issue if there's >1 disallowed 1-zst.
+            if non_trivial_count > 0 || prev_disallowed_1zst {
+                use DisallowedFieldCause as DFC;
+
+                let (lint, msg) = match cause {
+                    DFC::AdtNonExhaustive(..) | DFC::AdtPrivateFields(..) => (
+                        REPR_TRANSPARENT_EXTERNAL_PRIVATE_FIELDS,
+                        "zero-sized fields in `repr(transparent)` cannot \
+                        contain external non-exhaustive types",
+                    ),
+                    DFC::AdtUninhabited(..) | DFC::NeverTypeUninhabited => (
+                        REPR_TRANSPARENT_UNINHABITED_FIELDS,
+                        "zero-sized fields in `repr(transparent)` cannot \
+                        be uninhabited",
+                    ),
+                };
                 tcx.node_span_lint(
-                    REPR_TRANSPARENT_EXTERNAL_PRIVATE_FIELDS,
+                    lint,
                     tcx.local_def_id_to_hir_id(adt.did().expect_local()),
                     span,
                     |lint| {
-                        lint.primary_message(
-                            "zero-sized fields in `repr(transparent)` cannot \
-                             contain external non-exhaustive types",
-                        );
-                        let note = if non_exhaustive {
-                            "is marked with `#[non_exhaustive]`"
-                        } else {
-                            "contains private fields"
+                        lint.primary_message(msg);
+                        let field_ty = match cause {
+                            DFC::AdtNonExhaustive(adt_def, args)
+                            | DFC::AdtPrivateFields(adt_def, args)
+                            | DFC::AdtUninhabited(adt_def, args) => {
+                                &tcx.def_path_str_with_args(adt_def.did(), args)
+                            }
+                            DFC::NeverTypeUninhabited => "!",
                         };
-                        let field_ty = tcx.def_path_str_with_args(def_id, args);
-                        lint.note(format!(
-                            "this {descr} contains `{field_ty}`, which {note}, \
+                        let note = match cause {
+                            DFC::AdtNonExhaustive(..) => {
+                                "is marked with #[non_exhaustive], \
                                 and makes it not a breaking change to become \
                                 non-zero-sized in the future."
-                        ));
+                            }
+                            DFC::AdtPrivateFields(..) => {
+                                "contains private fields, \
+                                and makes it not a breaking change to become \
+                                non-zero-sized in the future."
+                            }
+                            DFC::AdtUninhabited(..) | DFC::NeverTypeUninhabited => {
+                                "is uninhabited and affects its ABI."
+                            }
+                        };
+                        lint.note(format!("this {descr} contains `{field_ty}`, which {note}"));
                     },
                 )
             } else {
-                prev_non_exhaustive_1zst = true;
+                prev_disallowed_1zst = true;
             }
         }
     }

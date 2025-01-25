@@ -1,0 +1,103 @@
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:37:38
+   |
+LL | struct EmptyEnum1ZstDisallowed1(u32, EmptyEnum);
+   |                                      ^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `EmptyEnum`, which is uninhabited and affects its ABI.
+   = note: `#[warn(repr_transparent_uninhabited_fields)]` on by default
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:45:44
+   |
+LL | struct EmptyEnum1ZstDisallowed2(EmptyEnum, EmptyEnum);
+   |                                            ^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `EmptyEnum`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:58:54
+   |
+LL | struct UninhabitedOneVariantEnum1ZstDisallowed1(u32, UninhabitedOneVariantEnum);
+   |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `EmptyEnum`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:67:5
+   |
+LL |     UninhabitedOneVariantEnum,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `EmptyEnum`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:81:56
+   |
+LL | struct UninhabitedMultiVariantEnum1ZstDisallowed1(u32, UninhabitedMultiVariantEnum);
+   |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `UninhabitedMultiVariantEnum`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:90:5
+   |
+LL |     UninhabitedMultiVariantEnum,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `UninhabitedMultiVariantEnum`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:103:30
+   |
+LL | struct NeverDisallowed1(u32, !);
+   |                              ^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `!`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:110:28
+   |
+LL | struct NeverDisallowed2(!, !);
+   |                            ^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `!`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:146:55
+   |
+LL | struct MaybeUninhabitedUnionUnion1ZstDisallowed1(u32, MaybeUninhabitedUnion);
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `MaybeUninhabitedUnion`, which is uninhabited and affects its ABI.
+
+warning: zero-sized fields in `repr(transparent)` cannot be uninhabited
+  --> $DIR/repr-transparent-uninhabited.rs:153:73
+   |
+LL | struct MaybeUninhabitedUnionUnion1ZstDisallowed2(MaybeUninhabitedUnion, MaybeUninhabitedUnion);
+   |                                                                         ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+   = note: this struct contains `MaybeUninhabitedUnion`, which is uninhabited and affects its ABI.
+
+warning: 10 warnings emitted
+

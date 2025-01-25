@@ -3280,6 +3280,59 @@ declare_lint! {
 }
 
 declare_lint! {
+    /// The `repr_transparent_uninhabited_fields` lint
+    /// detects types marked `#[repr(transparent)]` that (transitively)
+    /// contain an uninhabited ZST type.
+    ///
+    /// ### Example
+    ///
+    /// ```rust
+    /// #![deny(repr_transparent_uninhabited_fields)]
+    /// enum UninhabitedZst {}
+    ///
+    /// #[repr(transparent)]
+    /// struct Bar(u32, ([u32; 0], UninhabitedZst));
+    /// ```
+    ///
+    /// This will produce:
+    ///
+    /// ```text
+    /// error: zero-sized fields in repr(transparent) cannot be uninhabited
+    ///  --> src/main.rs:5:28
+    ///   |
+    /// 5 | struct Bar(u32, ([u32; 0], UninhabitedZst));
+    ///   |                            ^^^^^^^^^^^^^^
+    ///   |
+    /// note: the lint level is defined here
+    ///  --> src/main.rs:1:9
+    ///   |
+    /// 1 | #![deny(repr_transparent_uninhabited_fields)]
+    ///   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ///   = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+    ///   = note: for more information, see issue #135802 <https://github.com/rust-lang/rust/issues/135802>
+    ///   = note: this struct contains `UninhabitedZst`, which is uninhabited and affects its ABI.
+    /// ```
+    ///
+    /// ### Explanation
+    ///
+    /// Previous, Rust accepted fields that contain uninhabited zero-sized types,
+    /// even though such types are not intended to be allowed.
+    ///
+    /// This is a [future-incompatible] lint to transition this
+    /// to a hard error in the future. See [issue #135802] for more details.
+    ///
+    /// [issue #135802]: https://github.com/rust-lang/rust/issues/135802
+    /// [future-incompatible]: ../index.md#future-incompatible-lints
+    pub REPR_TRANSPARENT_UNINHABITED_FIELDS,
+    Warn,
+    "transparent type contains an uninhabited ZST",
+    @future_incompatible = FutureIncompatibleInfo {
+        reason: FutureIncompatibilityReason::FutureReleaseErrorDontReportInDeps,
+        reference: "issue #135802 <https://github.com/rust-lang/rust/issues/135802>",
+    };
+}
+
+declare_lint! {
     /// The `unstable_syntax_pre_expansion` lint detects the use of unstable
     /// syntax that is discarded during attribute expansion.
     ///
