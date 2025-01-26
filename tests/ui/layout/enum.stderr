@@ -4,7 +4,7 @@ error: align: AbiAndPrefAlign { abi: Align(2 bytes), pref: $PREF_ALIGN }
 LL | enum UninhabitedVariantAlign {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: size: Size(16 bytes)
+error: size: Size(15 bytes)
   --> $DIR/enum.rs:15:1
    |
 LL | enum UninhabitedVariantSpace {

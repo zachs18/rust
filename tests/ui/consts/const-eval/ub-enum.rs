@@ -93,9 +93,9 @@ const BAD_OPTION_CHAR: Option<(char, char)> = Some(('x', unsafe { mem::transmute
 
 // All variants are uninhabited but also have data.
 // Use `0` as constant to make behavior endianness-independent.
-const BAD_UNINHABITED_WITH_DATA1: Result<(i32, Never), (i32, !)> = unsafe { mem::transmute(0u64) };
+const BAD_UNINHABITED_WITH_DATA1: Result<(i32, Never), (i32, !)> = unsafe { mem::transmute(0u32) };
 //~^ ERROR evaluation of constant value failed
-const BAD_UNINHABITED_WITH_DATA2: Result<(i32, !), (i32, Never)> = unsafe { mem::transmute(0u64) };
+const BAD_UNINHABITED_WITH_DATA2: Result<(i32, !), (i32, Never)> = unsafe { mem::transmute(0u32) };
 //~^ ERROR evaluation of constant value failed
 
 const TEST_ICE_89765: () = {
