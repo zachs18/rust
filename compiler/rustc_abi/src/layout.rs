@@ -750,11 +750,15 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let mut layout_variants = variants
             .iter_enumerated()
             .map(|(i, field_layouts)| {
-                let mut st = self.univariant(
-                    field_layouts,
-                    repr,
-                    StructKind::Prefixed(min_ity.size(), prefix_align),
-                )?;
+                let uninhabited = field_layouts.iter().any(|f| f.is_uninhabited());
+                // We don't need to encode the tag in uninhabited variants in repr(Rust) enums
+                let struct_kind = if uninhabited && !repr.inhibit_enum_layout_opt() {
+                    StructKind::AlwaysSized
+                } else {
+                    StructKind::Prefixed(min_ity.size(), prefix_align)
+                };
+                let mut st = self.univariant(field_layouts, repr, struct_kind)?;
+
                 st.variants = Variants::Single { index: i };
                 // Find the first field we can't move later
                 // to make room for a larger discriminant.
@@ -824,6 +828,11 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             let old_ity_size = min_ity.size();
             let new_ity_size = ity.size();
             for variant in &mut layout_variants {
+                // Don't change field offsets of uninhabited variants in repr(Rust) enums,
+                // they don't encode the tag and their fields may overlap with the tag.
+                if variant.is_uninhabited() && !repr.inhibit_enum_layout_opt() {
+                    continue;
+                }
                 match variant.fields {
                     FieldsShape::Arbitrary { ref mut offsets, .. } => {
                         for i in offsets {
@@ -868,6 +877,11 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 let FieldsShape::Arbitrary { ref offsets, .. } = layout_variant.fields else {
                     panic!("encountered a non-arbitrary layout during enum layout");
                 };
+                // Don't look in uninhabited variants for repr(Rust) enums, they will never be passed over an ABI so
+                // they don't matter for the purpose of determining BackendRepr.
+                if layout_variant.is_uninhabited() && !repr.inhibit_enum_layout_opt() {
+                    continue;
+                }
                 // We skip *all* ZST here and later check if we are good in terms of alignment.
                 // This lets us handle some cases involving aligned ZST.
                 let mut fields = iter::zip(field_layouts, offsets).filter(|p| !p.0.is_zst());
