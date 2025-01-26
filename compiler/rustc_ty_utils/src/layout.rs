@@ -339,16 +339,7 @@ fn layout_of_uncached<'tcx>(
             let abi = BackendRepr::Memory { sized: true };
 
             let largest_niche = if count != 0 { element.largest_niche } else { None };
-            let uninhabited = if count != 0 {
-                let a = element.ty.is_privately_uninhabited(tcx, cx.typing_env);
-                let b = element.uninhabited;
-                if a != b {
-                    tracing::warn!("HMMM: priv: {a}, abi: {b}, for ty {:?}", element);
-                }
-                a
-            } else {
-                false
-            };
+            let uninhabited = if count != 0 { element.uninhabited } else { false };
 
             tcx.mk_layout(LayoutData {
                 variants: Variants::Single { index: FIRST_VARIANT },
