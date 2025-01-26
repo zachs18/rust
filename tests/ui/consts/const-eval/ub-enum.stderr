@@ -107,13 +107,13 @@ LL | const BAD_OPTION_CHAR: Option<(char, char)> = Some(('x', unsafe { mem::tran
 error[E0080]: evaluation of constant value failed
   --> $DIR/ub-enum.rs:96:77
    |
-LL | const BAD_UNINHABITED_WITH_DATA1: Result<(i32, Never), (i32, !)> = unsafe { mem::transmute(0u64) };
+LL | const BAD_UNINHABITED_WITH_DATA1: Result<(i32, Never), (i32, !)> = unsafe { mem::transmute(0u32) };
    |                                                                             ^^^^^^^^^^^^^^^^^^^^ constructing invalid value at .<enum-tag>: encountered an uninhabited enum variant
 
 error[E0080]: evaluation of constant value failed
   --> $DIR/ub-enum.rs:98:77
    |
-LL | const BAD_UNINHABITED_WITH_DATA2: Result<(i32, !), (i32, Never)> = unsafe { mem::transmute(0u64) };
+LL | const BAD_UNINHABITED_WITH_DATA2: Result<(i32, !), (i32, Never)> = unsafe { mem::transmute(0u32) };
    |                                                                             ^^^^^^^^^^^^^^^^^^^^ constructing invalid value at .<enum-tag>: encountered an uninhabited enum variant
 
 error[E0080]: evaluation of constant value failed
