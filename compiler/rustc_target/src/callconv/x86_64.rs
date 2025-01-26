@@ -49,8 +49,6 @@ where
         }
 
         let mut c = match layout.backend_repr {
-            BackendRepr::Uninhabited => return Ok(()),
-
             BackendRepr::Scalar(scalar) => match scalar.primitive() {
                 abi::Int(..) | abi::Pointer(_) => Class::Int,
                 abi::Float(_) => Class::Sse,

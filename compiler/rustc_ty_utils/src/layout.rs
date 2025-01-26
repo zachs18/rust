@@ -336,19 +336,26 @@ fn layout_of_uncached<'tcx>(
                 .checked_mul(count, dl)
                 .ok_or_else(|| error(cx, LayoutError::SizeOverflow(ty)))?;
 
-            let abi = if count != 0 && ty.is_privately_uninhabited(tcx, cx.typing_env) {
-                BackendRepr::Uninhabited
-            } else {
-                BackendRepr::Memory { sized: true }
-            };
+            let abi = BackendRepr::Memory { sized: true };
 
             let largest_niche = if count != 0 { element.largest_niche } else { None };
+            let uninhabited = if count != 0 {
+                let a = element.ty.is_privately_uninhabited(tcx, cx.typing_env);
+                let b = element.uninhabited;
+                if a != b {
+                    tracing::warn!("HMMM: priv: {a}, abi: {b}, for ty {:?}", element);
+                }
+                a
+            } else {
+                false
+            };
 
             tcx.mk_layout(LayoutData {
                 variants: Variants::Single { index: FIRST_VARIANT },
                 fields: FieldsShape::Array { stride: element.size, count },
                 backend_repr: abi,
                 largest_niche,
+                uninhabited,
                 align: element.align,
                 size,
                 max_repr_align: None,
@@ -363,6 +370,7 @@ fn layout_of_uncached<'tcx>(
                 fields: FieldsShape::Array { stride: element.size, count: 0 },
                 backend_repr: BackendRepr::Memory { sized: false },
                 largest_niche: None,
+                uninhabited: false,
                 align: element.align,
                 size: Size::ZERO,
                 max_repr_align: None,
@@ -376,6 +384,7 @@ fn layout_of_uncached<'tcx>(
             fields: FieldsShape::Array { stride: Size::from_bytes(1), count: 0 },
             backend_repr: BackendRepr::Memory { sized: false },
             largest_niche: None,
+            uninhabited: false,
             align: dl.i8_align,
             size: Size::ZERO,
             max_repr_align: None,
@@ -551,6 +560,7 @@ fn layout_of_uncached<'tcx>(
                 fields,
                 backend_repr: abi,
                 largest_niche: e_ly.largest_niche,
+                uninhabited: false,
                 size,
                 align,
                 max_repr_align: None,
@@ -1005,13 +1015,8 @@ fn coroutine_layout<'tcx>(
 
     size = size.align_to(align.abi);
 
-    let abi = if prefix.backend_repr.is_uninhabited()
-        || variants.iter().all(|v| v.backend_repr.is_uninhabited())
-    {
-        BackendRepr::Uninhabited
-    } else {
-        BackendRepr::Memory { sized: true }
-    };
+    let uninhabited = prefix.uninhabited || variants.iter().all(|v| v.is_uninhabited());
+    let abi = BackendRepr::Memory { sized: true };
 
     // this is similar to how ReprOptions populates its field_shuffle_seed
     let def_hash = tcx.def_path_hash(def_id).0.to_smaller_hash().as_u64();
@@ -1032,6 +1037,7 @@ fn coroutine_layout<'tcx>(
         // See <https://github.com/rust-lang/rust/issues/63818>, <https://github.com/rust-lang/miri/issues/3780>.
         // FIXME: Remove when <https://github.com/rust-lang/rust/issues/125735> is implemented and aliased coroutine fields are wrapped in `UnsafePinned`.
         largest_niche: None,
+        uninhabited,
         size,
         align,
         max_repr_align: None,
