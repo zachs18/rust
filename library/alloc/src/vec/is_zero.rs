@@ -106,10 +106,8 @@ unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
 
 // `Option<NonZero<u32>>` and similar have a representation guarantee that
 // they're the same size as the corresponding `u32` type, as well as a guarantee
-// that transmuting between `NonZero<u32>` and `Option<NonZero<u32>>` works.
-// While the documentation officially makes it UB to transmute from `None`,
-// we're the standard library so we can make extra inferences, and we know that
-// the only niche available to represent `None` is the one that's all zeros.
+// that transmuting `0u32` into `Option<NonZero<u32>>` works and gives `None`.
+// See the "Representation" section of the docs in `core::option`.
 macro_rules! impl_is_zero_option_of_nonzero_int {
     ($($t:ty),+ $(,)?) => {$(
         unsafe impl IsZero for Option<NonZero<$t>> {
