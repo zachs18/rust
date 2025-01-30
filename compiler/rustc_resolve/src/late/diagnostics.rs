@@ -1750,7 +1750,7 @@ impl<'ast, 'ra: 'ast, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
             ) => {
                 self.suggest_using_enum_variant(err, source, def_id, span);
             }
-            (Res::Def(DefKind::Struct, def_id), source) if ns == ValueNS => {
+            (Res::Def(DefKind::Struct | DefKind::TyAlias, def_id), source) if ns == ValueNS => {
                 let struct_ctor = match def_id.as_local() {
                     Some(def_id) => self.r.struct_constructors.get(&def_id).cloned(),
                     None => {
