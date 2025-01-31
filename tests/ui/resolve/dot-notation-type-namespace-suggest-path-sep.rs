@@ -6,6 +6,11 @@ mod foo {
     fn bar() {}
 }
 
+enum Bar {
+    A,
+    B,
+}
+
 fn main() {
     let _ = String.new();
     //~^ ERROR expected value, found struct `String`
@@ -29,6 +34,10 @@ fn main() {
 
     let _ = foo.bar;
     //~^ ERROR expected value, found module `foo`
+    //~| HELP use the path separator
+
+    let _ = Bar.A;
+    //~^ ERROR expected value, found enum `Bar`
     //~| HELP use the path separator
 }
 

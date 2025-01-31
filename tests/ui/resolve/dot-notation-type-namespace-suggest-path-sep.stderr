@@ -1,5 +1,5 @@
 error[E0423]: expected value, found struct `String`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:10:13
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:15:13
    |
 LL |     let _ = String.new();
    |             ^^^^^^
@@ -10,7 +10,7 @@ LL |     let _ = String::new();
    |                   ~~
 
 error[E0423]: expected value, found struct `String`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:14:13
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:19:13
    |
 LL |     let _ = String.default;
    |             ^^^^^^
@@ -21,7 +21,7 @@ LL |     let _ = String::default;
    |                   ~~
 
 error[E0423]: expected value, found struct `Vec`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:18:13
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:23:13
    |
 LL |     let _ = Vec::<()>.with_capacity(1);
    |             ^^^^^^^^^
@@ -32,7 +32,7 @@ LL |     let _ = Vec::<()>::with_capacity(1);
    |                      ~~
 
 error[E0423]: expected value, found type alias `Alias`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:22:13
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:27:13
    |
 LL |     let _ = Alias.new();
    |             ^^^^^
@@ -43,7 +43,7 @@ LL |     let _ = Alias::new();
    |                  ~~
 
 error[E0423]: expected value, found type alias `Alias`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:26:13
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:31:13
    |
 LL |     let _ = Alias.default;
    |             ^^^^^
@@ -54,7 +54,7 @@ LL |     let _ = Alias::default;
    |                  ~~
 
 error[E0423]: expected value, found module `foo`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:30:13
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:35:13
    |
 LL |     let _ = foo.bar;
    |             ^^^
@@ -64,8 +64,27 @@ help: use the path separator to refer to an item
 LL |     let _ = foo::bar;
    |                ~~
 
+error[E0423]: expected value, found enum `Bar`
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:39:13
+   |
+LL |     let _ = Bar.A;
+   |             ^^^
+   |
+note: the enum is defined here
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:9:1
+   |
+LL | / enum Bar {
+LL | |     A,
+LL | |     B,
+LL | | }
+   | |_^
+help: use the path separator to refer to a variant
+   |
+LL |     let _ = Bar::A;
+   |                ~~
+
 error[E0423]: expected value, found struct `std::cell::Cell`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:37:9
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:46:9
    |
 LL |         ::std::cell::Cell
    |         ^^^^^^^^^^^^^^^^^
@@ -80,7 +99,7 @@ LL |     <Type!()>::get();
    |     ~~~~~~~~~~~
 
 error[E0423]: expected value, found struct `std::cell::Cell`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:37:9
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:46:9
    |
 LL |         ::std::cell::Cell
    |         ^^^^^^^^^^^^^^^^^
@@ -95,7 +114,7 @@ LL |     <Type! {}>::get;
    |     ~~~~~~~~~~~~
 
 error[E0423]: expected value, found struct `Vec`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:46:9
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:55:9
    |
 LL |         Vec.new()
    |         ^^^
@@ -110,7 +129,7 @@ LL |         Vec::new()
    |            ~~
 
 error[E0423]: expected value, found struct `Vec`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:51:9
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:60:9
    |
 LL |         Vec.new
    |         ^^^
@@ -125,7 +144,7 @@ LL |         Vec::new
    |            ~~
 
 error[E0423]: expected value, found struct `std::cell::Cell`
-  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:37:9
+  --> $DIR/dot-notation-type-namespace-suggest-path-sep.rs:46:9
    |
 LL |         ::std::cell::Cell
    |         ^^^^^^^^^^^^^^^^^
@@ -139,6 +158,6 @@ help: use the path separator to refer to an item
 LL |         <Type!()>::new(0)
    |         ~~~~~~~~~~~
 
-error: aborting due to 11 previous errors
+error: aborting due to 12 previous errors
 
 For more information about this error, try `rustc --explain E0423`.

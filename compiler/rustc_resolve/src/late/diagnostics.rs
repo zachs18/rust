@@ -8,7 +8,7 @@ use rustc_ast::ptr::P;
 use rustc_ast::visit::{FnCtxt, FnKind, LifetimeCtxt, Visitor, walk_ty};
 use rustc_ast::{
     self as ast, AssocItemKind, DUMMY_NODE_ID, Expr, ExprKind, GenericParam, GenericParamKind,
-    Item, ItemKind, MethodCall, NodeId, Path, Ty, TyKind,
+    Item, ItemKind, MethodCall, NodeId, Path, PathSegment, Ty, TyKind,
 };
 use rustc_ast_pretty::pprust::where_bound_predicate_to_string;
 use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
@@ -2449,9 +2449,66 @@ impl<'ast, 'ra: 'ast, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
             return;
         };
 
-        let suggest_only_tuple_variants =
-            matches!(source, PathSource::TupleStruct(..)) || source.is_call();
-        if suggest_only_tuple_variants {
+        let (
+            suggest_path_sep_for_tuple_variant,
+            suggest_path_sep_for_unit_variant,
+            suggest_only_tuple_variants,
+        ) = match source {
+            // `Type(a, b)`, only suggest adding `::TupleVariant`
+            PathSource::TupleStruct(..) => (None, None, true),
+            PathSource::Expr(Some(expr)) => match &expr.kind {
+                // `Type(a, b)`, only suggest adding `::TupleVariant`
+                ExprKind::Call(..) => (None, None, true),
+                // `Type.Foo(a, b)`, suggest `.` -> `::` if variant `Foo` exists and is a tuple variant
+                ExprKind::MethodCall(box MethodCall {
+                    receiver,
+                    span,
+                    seg: PathSegment { ident, .. },
+                    ..
+                }) => {
+                    let dot_span = receiver.span.between(*span);
+                    let info = (*ident, dot_span);
+                    (Some(info), None, false)
+                }
+                // `Type.Foo`, suggest `.` -> `::` if variant `Foo` exists and is a unit or tuple variant
+                ExprKind::Field(base, ident) => {
+                    let dot_span = base.span.between(ident.span);
+                    let info = (*ident, dot_span);
+                    (Some(info), Some(info), false)
+                }
+                _ => (None, None, false),
+            },
+            _ => (None, None, false),
+        };
+
+        if let Some((expected_tuple_variant_name, dot_span)) = suggest_path_sep_for_tuple_variant
+            && variants.iter().any(|(path, _, ctor_kind)| {
+                *ctor_kind == CtorKind::Fn
+                    && path
+                        .segments
+                        .last()
+                        .is_some_and(|seg| seg.ident == expected_tuple_variant_name)
+            })
+        {
+            let msg = "use the path separator to refer to a variant";
+            // FIXME: suggest path sep
+
+            err.span_suggestion_verbose(dot_span, msg, "::", Applicability::MaybeIncorrect);
+        } else if let Some((expected_unit_variant_name, dot_span)) =
+            suggest_path_sep_for_unit_variant
+            && variants.iter().any(|(path, _, ctor_kind)| {
+                *ctor_kind == CtorKind::Const
+                    && path
+                        .segments
+                        .last()
+                        .is_some_and(|seg| seg.ident == expected_unit_variant_name)
+            })
+        {
+            let msg = "use the path separator to refer to a variant";
+            // FIXME: suggest path sep
+
+            err.span_suggestion_verbose(dot_span, msg, "::", Applicability::MaybeIncorrect);
+        } else if suggest_only_tuple_variants {
             // Suggest only tuple variants regardless of whether they have fields and do not
             // suggest path with added parentheses.
             let mut suggestable_variants = variants
