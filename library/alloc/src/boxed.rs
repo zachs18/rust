@@ -183,7 +183,7 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
-use core::borrow::{Borrow, BorrowMut};
+use core::borrow::{Borrow, BorrowMut, BorrowPure};
 #[cfg(not(no_global_oom_handling))]
 use core::clone::CloneToUninit;
 use core::cmp::Ordering;
@@ -2045,6 +2045,9 @@ impl<T: ?Sized, A: Allocator> BorrowMut<T> for Box<T, A> {
         &mut **self
     }
 }
+
+#[unstable(feature = "borrow_pure_trait", issue = "87121")]
+unsafe impl<T: ?Sized, A: Allocator> BorrowPure<T> for Box<T, A> {}
 
 #[stable(since = "1.5.0", feature = "smart_ptr_as_ref")]
 impl<T: ?Sized, A: Allocator> AsRef<T> for Box<T, A> {

@@ -7,7 +7,7 @@
 // It's cleaner to just turn off the unused_imports warning than to fix them.
 #![allow(unused_imports)]
 
-use core::borrow::{Borrow, BorrowMut};
+use core::borrow::{Borrow, BorrowMut, BorrowPure};
 use core::iter::FusedIterator;
 use core::mem::MaybeUninit;
 #[stable(feature = "encode_utf16", since = "1.8.0")]
@@ -200,6 +200,9 @@ impl BorrowMut<str> for String {
         &mut self[..]
     }
 }
+
+#[unstable(feature = "borrow_pure_trait", issue = "87121")]
+unsafe impl<T: ?Sized> BorrowPure<str> for String {}
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "rust1", since = "1.0.0")]

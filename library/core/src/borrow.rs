@@ -240,3 +240,21 @@ impl<T: ?Sized> BorrowMut<T> for &mut T {
         &mut **self
     }
 }
+
+/// Perma-unstable marker trait. Indicates that the type has a well-behaved [`Borrow<T>`]
+/// (and, if applicable, [`BorrowMut<T>`]) implementation. This is relied on for soundness
+/// of deref patterns of [`Cow`](alloc::borrow::Cow).
+///
+/// FIXME(deref_patterns): The precise semantics are undecided; the rough idea is that
+/// successive calls to `borrow`/`borrow_mut` without intermediate mutation should be
+/// idempotent, in the sense that they return the same value as far as pattern-matching
+/// is concerned. Calls to `borrow`/`borrow_mut` must leave the pointer itself likewise
+/// unchanged.
+#[unstable(feature = "borrow_pure_trait", issue = "87121")]
+pub unsafe trait BorrowPure<T: ?Sized> {}
+
+#[unstable(feature = "borrow_pure_trait", issue = "87121")]
+unsafe impl<T: ?Sized> BorrowPure<T> for &T {}
+
+#[unstable(feature = "borrow_pure_trait", issue = "87121")]
+unsafe impl<T: ?Sized> BorrowPure<T> for &mut T {}
