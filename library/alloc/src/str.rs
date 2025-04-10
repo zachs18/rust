@@ -7,6 +7,7 @@
 // It's cleaner to just turn off the unused_imports warning than to fix them.
 #![allow(unused_imports)]
 
+use core::alloc::Allocator;
 use core::borrow::{Borrow, BorrowMut};
 use core::iter::FusedIterator;
 use core::mem::MaybeUninit;
@@ -234,7 +235,7 @@ impl str {
     #[stable(feature = "str_box_extras", since = "1.20.0")]
     #[must_use = "`self` will be dropped if the result is not used"]
     #[inline]
-    pub fn into_boxed_bytes(self: Box<str>) -> Box<[u8]> {
+    pub fn into_boxed_bytes<A: Allocator>(self: Box<str, A>) -> Box<[u8], A> {
         self.into()
     }
 
@@ -501,8 +502,8 @@ impl str {
     #[rustc_allow_incoherent_impl]
     #[must_use = "`self` will be dropped if the result is not used"]
     #[inline]
-    pub fn into_string(self: Box<str>) -> String {
-        let slice = Box::<[u8]>::from(self);
+    pub fn into_string<A: Allocator>(self: Box<Self, A>) -> String<A> {
+        let slice = Box::<[u8], A>::from(self);
         unsafe { String::from_utf8_unchecked(slice.into_vec()) }
     }
 
@@ -616,6 +617,27 @@ impl str {
 #[inline]
 pub unsafe fn from_boxed_utf8_unchecked(v: Box<[u8]>) -> Box<str> {
     unsafe { Box::from_raw(Box::into_raw(v) as *mut str) }
+}
+
+/// Converts a boxed slice of bytes to a boxed string slice without checking
+/// that the string contains valid UTF-8.
+///
+/// # Examples
+///
+/// ```
+/// #![feature(allocator_api)]
+/// use std::alloc::System;
+/// let smile_utf8 = Box::new_in([226, 152, 186], System);
+/// let smile = unsafe { std::str::from_boxed_utf8_unchecked_in(smile_utf8) };
+///
+/// assert_eq!("☺", &*smile);
+/// ```
+#[unstable(feature = "allocator_api", issue = "32838")]
+#[must_use]
+#[inline]
+pub unsafe fn from_boxed_utf8_unchecked_in<A: Allocator>(v: Box<[u8], A>) -> Box<str, A> {
+    let (ptr, alloc) = Box::into_raw_with_allocator(v);
+    unsafe { Box::from_raw_in(ptr as *mut str, alloc) }
 }
 
 /// Converts leading ascii bytes in `s` by calling the `convert` function.

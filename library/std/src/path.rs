@@ -69,6 +69,8 @@
 
 use core::clone::CloneToUninit;
 
+use alloc_crate::alloc::Allocator;
+
 use crate::borrow::{Borrow, Cow};
 use crate::collections::TryReserveError;
 use crate::error::Error;
@@ -3353,7 +3355,7 @@ impl AsRef<Path> for str {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl AsRef<Path> for String {
+impl<A: Allocator> AsRef<Path> for String<A> {
     #[inline]
     fn as_ref(&self) -> &Path {
         Path::new(self)
