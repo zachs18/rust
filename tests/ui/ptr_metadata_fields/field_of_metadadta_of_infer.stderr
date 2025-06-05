@@ -1,0 +1,15 @@
+error[E0609]: no field `len` on type `{ptr metadata for _}`
+  --> $DIR/field_of_metadadta_of_infer.rs:5:49
+   |
+LL |     let len = std::ptr::metadata(x as *const _).len;
+   |                                                 ^^^ unknown field
+
+error[E0609]: no field `vtable` on type `{ptr metadata for _}`
+  --> $DIR/field_of_metadadta_of_infer.rs:10:52
+   |
+LL |     let vtable = std::ptr::metadata(x as *const _).vtable;
+   |                                                    ^^^^^^ unknown field
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0609`.

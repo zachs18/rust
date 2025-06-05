@@ -135,6 +135,10 @@ impl<T> Erasable for Result<&'_ T, ErrorGuaranteed> {
     type Storage = [u8; size_of::<Result<&'_ (), ErrorGuaranteed>>()];
 }
 
+impl Erasable for ty::layout::MetadataFields<'_> {
+    type Storage = [u8; size_of::<ty::layout::MetadataFields<'_>>()];
+}
+
 impl<T> Erasable for Option<&'_ T> {
     type Storage = [u8; size_of::<Option<&'_ ()>>()];
 }

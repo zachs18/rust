@@ -18,5 +18,6 @@ struct Foo {
 
 static BAR: u8 = 42;
 static FOO2: &Foo = unsafe { std::mem::transmute(&BAR) };
+//~^ ERROR cannot transmute
 
 fn main() {}

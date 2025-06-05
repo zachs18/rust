@@ -6,5 +6,15 @@ LL |     type Assoc2 = impl std::fmt::Debug;
    |
    = note: `Assoc2` must be used in combination with a concrete type within the same impl
 
-error: aborting due to 1 previous error
+error[E0512]: cannot transmute between types of different sizes, or dependently-sized types
+  --> $DIR/bad-transmute-itiat.rs:20:30
+   |
+LL | static FOO2: &Foo = unsafe { std::mem::transmute(&BAR) };
+   |                              ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: source type: `&u8` (64 bits)
+   = note: target type: `&Foo` (the type has an unknown layout)
 
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0512`.

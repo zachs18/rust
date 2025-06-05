@@ -153,6 +153,10 @@ pub trait Ty<I: Interner<Ty = Self>>:
         matches!(self.kind(), ty::FnPtr(..))
     }
 
+    fn is_ptr_metadata(self) -> bool {
+        matches!(self.kind(), ty::PtrMetadata(..))
+    }
+
     /// Checks whether this type is an ADT that has unsafe fields.
     fn has_unsafe_fields(self) -> bool;
 

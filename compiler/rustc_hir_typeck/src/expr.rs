@@ -1859,7 +1859,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         expr: &hir::Expr<'tcx>,
         expected: Expectation<'tcx>,
         pointee: Option<&'tcx hir::Ty<'tcx>>,
-        fields: &'tcx [hir::ExprField<'tcx>],
+        hir_fields: &'tcx [hir::ExprField<'tcx>],
         base_expr: &'tcx hir::StructTailExpr<'tcx>,
     ) -> Ty<'tcx> {
         let tcx = self.tcx;
@@ -1885,45 +1885,270 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             // re-link the variables that the fudging above can create.
             self.demand_eqtype(expr.span, ptr_metadata_ty_hint, ptr_metadata_ty);
         }
-
-        let [field] = fields else {
-            unreachable!("FIXME(ptr_metadata_v2_fields): implement multiple ptr_metadata fields")
-        };
-
-        self.write_field_index(field.hir_id, FieldIdx::ZERO);
-        assert_eq!(
-            field.ident.name,
-            sym::ptr_metadata,
-            "FIXME(ptr_metadata_v2): handle incorrect field names"
-        );
-        let field_type = {
-            let metadata_def_id = tcx.require_lang_item(rustc_hir::LangItem::Metadata, expr.span);
-            self.normalize(expr.span, Ty::new_projection(tcx, metadata_def_id, [pointee_ty]))
-        };
-
-        // Check that the expected field type is WF. Otherwise, we emit no use-site error
-        // in the case of coercions for non-WF fields, which leads to incorrect error
-        // tainting. See issue #126272.
-        self.register_wf_obligation(
-            field_type.into(),
-            field.expr.span,
-            ObligationCauseCode::WellFormed(None),
-        );
-
-        // Make sure to give a type to the field even if there's
-        // an error, so we can continue type-checking.
-        let ty = self.check_expr_with_hint(field.expr, field_type);
-        let diag = self.demand_coerce_diag(field.expr, ty, field_type, None, AllowTwoPhase::No);
-
-        if let Err(diag) = diag {
-            diag.emit();
+        if let hir::StructTailExpr::Base(base) = base_expr {
+            // FIXME(ptr_metadata_v2): interaction with type_changing_struct_update feature
+            self.check_expr_has_type_or_error(base, ptr_metadata_ty, |_| {});
         }
 
-        let hir::StructTailExpr::None = base_expr else {
-            unreachable!(
-                "FIXME(ptr_metadata_v2_fields): implement ptr_metadata fields and FRU/base syntax"
-            )
+        // Don't try to continue if we don't at least know the top-level pointee type
+        // FIXME(ptr_metadata_v2): Things like
+        // `let s: &str = &*from_raw_parts(ptr, builtin # ptr_metadata(len, ..));`
+        // fail and need `ptr_metadata(for str; len, ..)`, see if we can make that work instead.
+        let pointee_ty = self.structurally_resolve_type(expr.span, pointee_ty);
+        if pointee_ty.references_error() {
+            self.check_struct_fields_on_error(hir_fields, base_expr);
+            return ptr_metadata_ty;
+        }
+
+        let expected_fields = pointee_ty
+            .metadata_fields_for_pointee(tcx, Some(self.infcx.typing_env(self.param_env)));
+
+        let expected_fields = match expected_fields {
+            ty::layout::MetadataFields::KnownFields(expected_fields) => expected_fields,
+            ty::layout::MetadataFields::ThinUnknownFields => match base_expr {
+                rustc_hir::StructTailExpr::None => {
+                    let mut err = self.dcx().struct_span_err(
+                        expr.span,
+                        format!("pointer metadata of `{}` does not have known fields", pointee_ty),
+                    );
+                    err.note(format!(
+                        "`{pointee_ty}` is `Thin`, so you can use `..` default field syntax"
+                    ));
+                    err.emit();
+                    ty::List::empty()
+                }
+                rustc_hir::StructTailExpr::Base(..)
+                | rustc_hir::StructTailExpr::DefaultFields(..) => ty::List::empty(),
+                rustc_hir::StructTailExpr::NoneWithError(guaranteed) => {
+                    // If parsing recovered from a syntax error, do not report missing
+                    // fields. This prevents spurious errors when a field is intended to be present
+                    // but a preceding syntax error caused it not to be parsed.
+
+                    // Signal that type checking has failed, even though we haven’t emitted a diagnostic
+                    // about it ourselves.
+                    self.infcx.set_tainted_by_errors(*guaranteed);
+
+                    ty::List::empty()
+                }
+            },
+            ty::layout::MetadataFields::TooGeneric => match base_expr {
+                rustc_hir::StructTailExpr::None | rustc_hir::StructTailExpr::DefaultFields(..) => {
+                    let err = self.dcx().struct_span_err(
+                        expr.span,
+                        format!("pointer metadata of `{}` does not have known fields", pointee_ty),
+                    );
+                    err.emit();
+                    ty::List::empty()
+                }
+                rustc_hir::StructTailExpr::Base(..) => ty::List::empty(),
+                rustc_hir::StructTailExpr::NoneWithError(guaranteed) => {
+                    // If parsing recovered from a syntax error, do not report missing
+                    // fields. This prevents spurious errors when a field is intended to be present
+                    // but a preceding syntax error caused it not to be parsed.
+
+                    // Signal that type checking has failed, even though we haven’t emitted a diagnostic
+                    // about it ourselves.
+                    self.infcx.set_tainted_by_errors(*guaranteed);
+
+                    ty::List::empty()
+                }
+            },
         };
+
+        let mut remaining_fields = expected_fields
+            .iter()
+            .enumerate()
+            .map(|(i, field @ (name, ..))| {
+                (name.normalize_to_macros_2_0(), (FieldIdx::from_usize(i), field))
+            })
+            .collect::<UnordMap<_, _>>();
+
+        let mut seen_fields = FxHashMap::default();
+
+        let mut error_happened = false;
+
+        if expected_fields.len() != remaining_fields.len() {
+            // Some field is defined more than once. Make sure we don't try to
+            // instantiate this ptr metadata in static/const context.
+            let guar =
+                self.dcx().span_delayed_bug(expr.span, "ptr metadata fields have non-unique names");
+            self.set_tainted_by_errors(guar);
+            error_happened = true;
+        }
+
+        for (idx, field) in hir_fields.iter().enumerate() {
+            // FIXME(ptr_metadata_fields): tcx.adjust_ident(field.ident, variant.def_id); from check_struct_expr_fields?
+            let ident = field.ident;
+            let field_type = if let Some((i, v_field)) = remaining_fields.remove(&ident) {
+                seen_fields.insert(ident, field.span);
+                self.write_field_index(field.hir_id, i);
+
+                // FIXME(ptr_metadata_fields): look at stability of struct fields to get stability of their metadata fields.
+                // Probably will require more info from MetadataFields::KnownFields.
+
+                v_field.2
+            } else {
+                error_happened = true;
+                let guar = if let Some(prev_span) = seen_fields.get(&ident) {
+                    self.dcx().emit_err(FieldMultiplySpecifiedInInitializer {
+                        span: field.ident.span,
+                        prev_span: *prev_span,
+                        ident,
+                    })
+                } else {
+                    struct_span_code_err!(
+                        self.dcx(),
+                        field.ident.span,
+                        E0559,
+                        "pointer metadata for `{}` has no field named `{}`",
+                        pointee_ty,
+                        field.ident
+                    )
+                    .emit()
+                };
+
+                Ty::new_error(tcx, guar)
+            };
+
+            // Check that the expected field type is WF. Otherwise, we emit no use-site error
+            // in the case of coercions for non-WF fields, which leads to incorrect error
+            // tainting. See issue #126272.
+            self.register_wf_obligation(
+                field_type.into(),
+                field.expr.span,
+                ObligationCauseCode::WellFormed(None),
+            );
+
+            // Make sure to give a type to the field even if there's
+            // an error, so we can continue type-checking.
+            let ty = self.check_expr_with_hint(field.expr, field_type);
+            let diag = self.demand_coerce_diag(field.expr, ty, field_type, None, AllowTwoPhase::No);
+
+            if let Err(diag) = diag {
+                if idx == hir_fields.len() - 1 {
+                    // if remaining_fields.is_empty() {
+                    //     self.suggest_fru_from_range_and_emit(field, variant, args, diag);
+                    // } else {
+                    //     diag.stash(field.span, StashKey::MaybeFruTypo);
+                    // }
+                    diag.stash(field.span, StashKey::MaybeFruTypo);
+                } else {
+                    diag.emit();
+                }
+            }
+        }
+
+        // If check_expr_struct_fields hit an error, do not attempt to populate
+        // the fields with the base_expr. This could cause us to hit errors later
+        // when certain fields are assumed to exist that in fact do not.
+        if error_happened {
+            return ptr_metadata_ty;
+        }
+
+        if let hir::StructTailExpr::DefaultFields(span) = *base_expr {
+            let mut missing_mandatory_fields = Vec::new();
+            let mut missing_optional_fields = Vec::new();
+            for (ident, _vis, ty) in expected_fields {
+                // FIXME(ptr_metadata_fields): tcx.adjust_ident from check_struct_expr_fields?
+                // let ident = self.tcx.adjust_ident(f.ident(self.tcx), variant.def_id);
+                if let Some(_) = remaining_fields.remove(&ident) {
+                    let field_is_required = match ty.kind() {
+                        ty::PtrMetadata(field_pointee) => {
+                            !field_pointee.is_thin(tcx, self.infcx.typing_env(self.param_env))
+                        }
+                        _ => true,
+                    };
+                    if field_is_required {
+                        missing_mandatory_fields.push(ident);
+                    } else {
+                        missing_optional_fields.push(ident);
+                    }
+                }
+            }
+
+            if !missing_mandatory_fields.is_empty() {
+                let s = pluralize!(missing_mandatory_fields.len());
+                let fields = listify(&missing_mandatory_fields, |f| format!("`{f}`")).unwrap();
+                self.dcx()
+                    .struct_span_err(
+                        span.shrink_to_lo(),
+                        format!("missing field{s} {fields} in initializer"),
+                    )
+                    .with_span_label(
+                        span.shrink_to_lo(),
+                        "fields that do not have a defaulted value must be provided explicitly",
+                    )
+                    .emit();
+                return ptr_metadata_ty;
+            }
+            let fru_tys =
+                expected_fields.iter().map(|(_, _, ty)| self.normalize(span, ty)).collect();
+            self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
+        } else if let hir::StructTailExpr::Base(_) = base_expr {
+            // FIXME(ptr_metadata_v2): Interaction with type_changing_struct_update feature
+            let fru_tys =
+                expected_fields.iter().map(|(_, _, ty)| self.normalize(expr.span, ty)).collect();
+            self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
+        } else if !remaining_fields.is_empty() {
+            debug!(?remaining_fields);
+            let private_fields: Vec<_> = expected_fields
+                .iter()
+                .filter(|(_, vis, _)| !vis.is_accessible_from(tcx.parent_module(expr.hir_id), tcx))
+                .collect();
+
+            if !private_fields.is_empty() {
+                tracing::warn!("FIXME(ptr_metadata_v2): handle private fields {private_fields:?}");
+                // self.report_private_fields(
+                //     adt_ty,
+                //     path_span,
+                //     expr.span,
+                //     private_fields,
+                //     hir_fields,
+                // );
+            } else {
+                let len = remaining_fields.len();
+
+                let displayable_field_names: Vec<&str> = remaining_fields
+                    .items()
+                    .map(|(ident, _)| ident.as_str())
+                    .into_sorted_stable_ord();
+
+                let mut truncated_fields_error = String::new();
+                let remaining_fields_names = match &displayable_field_names[..] {
+                    [field1] => format!("`{field1}`"),
+                    [field1, field2] => format!("`{field1}` and `{field2}`"),
+                    [field1, field2, field3] => format!("`{field1}`, `{field2}` and `{field3}`"),
+                    _ => {
+                        truncated_fields_error =
+                            format!(" and {} other field{}", len - 3, pluralize!(len - 3));
+                        displayable_field_names
+                            .iter()
+                            .take(3)
+                            .map(|n| format!("`{n}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                };
+
+                let mut err = struct_span_code_err!(
+                    self.dcx(),
+                    expr.span,
+                    E0063,
+                    "missing field{} {}{} in initializer of pointer metadata for `{}`",
+                    pluralize!(len),
+                    remaining_fields_names,
+                    truncated_fields_error,
+                    pointee_ty
+                );
+                err.span_label(
+                    expr.span,
+                    format!("missing {remaining_fields_names}{truncated_fields_error}"),
+                );
+            }
+            todo!(
+                "FIXME(ptr_metadata_v2): emit errors for missing/private ptr metadata fields: remaining = {remaining_fields:?}, private = {private_fields:?}"
+            )
+        }
 
         ptr_metadata_ty
     }
@@ -2879,19 +3104,26 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     }
                 }
                 ty::PtrMetadata(pointee_ty) => {
-                    if field.name == sym::ptr_metadata {
-                        let adjustments = self.adjust_steps(&autoderef);
-                        self.apply_adjustments(base, adjustments);
-                        self.register_predicates(autoderef.into_obligations());
-                        self.write_field_index(expr.hir_id, FieldIdx::ZERO);
-                        match pointee_ty.ptr_metadata_ty_or_tail(self.tcx, |x| x) {
-                            Ok(metadata_ty) => return metadata_ty,
-                            Err(tail_ty) => {
-                                let metadata_def_id =
-                                    self.tcx.require_lang_item(LangItem::Metadata, expr.span);
-                                return Ty::new_projection(self.tcx, metadata_def_id, [tail_ty]);
+                    let metadata_fields = pointee_ty.metadata_fields_for_pointee(
+                        self.tcx,
+                        Some(self.infcx.typing_env(self.param_env)),
+                    );
+
+                    match metadata_fields {
+                        ty::layout::MetadataFields::KnownFields(fields) => {
+                            for (i, metadata_field) in fields.iter().enumerate() {
+                                // FIXME(ptr_metadata_v2): visibility
+                                if field == metadata_field.0 {
+                                    let adjustments = self.adjust_steps(&autoderef);
+                                    self.apply_adjustments(base, adjustments);
+                                    self.register_predicates(autoderef.into_obligations());
+                                    self.write_field_index(expr.hir_id, FieldIdx::from_usize(i));
+                                    return metadata_field.2;
+                                }
                             }
                         }
+                        ty::layout::MetadataFields::ThinUnknownFields
+                        | ty::layout::MetadataFields::TooGeneric => {}
                     }
                 }
                 _ => {}

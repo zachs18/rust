@@ -114,7 +114,7 @@ impl<T> [T] {
     #[inline]
     #[must_use]
     pub const fn len(&self) -> usize {
-        ptr::metadata(self).ptr_metadata
+        ptr::metadata(self).len
     }
 
     /// Returns `true` if the slice has a length of 0.

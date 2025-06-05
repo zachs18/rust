@@ -1102,6 +1102,10 @@ Some standard library process tests which are hard to write within standard libr
 
 Some standard library process termination tests which are hard to write within standard library crate tests.
 
+## `tests/ui/ptr_metadata_fields/`
+
+Using `std::ptr::Metadata`'s fields, and the `std::ptr::build_metadata!` macro.
+
 ## `tests/ui/ptr_ops/`: Using operations on a pointer
 
 Contains only 2 tests, related to a single issue, which was about an error caused by using addition on a pointer to `i8`.

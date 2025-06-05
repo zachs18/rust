@@ -711,68 +711,111 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     })
                     .collect();
 
-                let field_names = [rustc_abi::FieldIdx::ZERO].into_iter();
+                let rvalue = match inferred_pointee_ty
+                    .metadata_fields_for_pointee(this.tcx, Some(this.typing_env()))
+                {
+                    ty::layout::MetadataFields::KnownFields(fields) => {
+                        let expected_field_count = fields.len();
+                        let field_names = (FieldIdx::ZERO..).take(expected_field_count);
 
-                let fields = match base {
-                    PtrMetadataExprBase::None => {
-                        field_names.filter_map(|n| fields_map.get(&n).cloned()).collect()
-                    }
-                    PtrMetadataExprBase::Base(FruInfo { base, field_types }) => {
-                        let place_builder = unpack!(block = this.as_place_builder(block, *base));
+                        let fields = match base {
+                            PtrMetadataExprBase::None => {
+                                field_names.filter_map(|n| fields_map.get(&n).cloned()).collect()
+                            }
+                            PtrMetadataExprBase::Base(FruInfo { base, field_types }) => {
+                                let place_builder = unpack!(block = this.as_place_builder(block, *base));
 
-                        // We desugar FRU as we lower to MIR, so for each
-                        // base-supplied field, generate an operand that
-                        // reads it from the base.
-                        itertools::zip_eq(field_names, &**field_types)
-                            .map(|(n, ty)| match fields_map.get(&n) {
-                                Some(v) => v.clone(),
-                                None => {
-                                    let place =
-                                        place_builder.clone_project(PlaceElem::Field(n, *ty));
-                                    this.consume_by_copy_or_move(place.to_place(this))
-                                }
-                            })
-                            .collect()
+                                // We desugar FRU as we lower to MIR, so for each
+                                // base-supplied field, generate an operand that
+                                // reads it from the base.
+                                itertools::zip_eq(field_names, &**field_types)
+                                    .map(|(n, ty)| match fields_map.get(&n) {
+                                        Some(v) => v.clone(),
+                                        None => {
+                                            let place =
+                                                place_builder.clone_project(PlaceElem::Field(n, *ty));
+                                            this.consume_by_copy_or_move(place.to_place(this))
+                                        }
+                                    })
+                                    .collect()
+                            }
+                            PtrMetadataExprBase::DefaultFields(field_types) => {
+                                itertools::zip_eq(field_names, field_types)
+                                    .map(|(n, &ty)| match fields_map.get(&n) {
+                                        Some(v) => v.clone(),
+                                        None => {
+                                            let field_pointee_ty = match ty.kind() {
+                                                ty::PtrMetadata(pointee) => *pointee,
+                                                _ => span_bug!(
+                                                    expr_span,
+                                                    "missing mandatory PtrMetadata field (only fields of type PtrMetadata(impl Thin) can be defaulted)"
+                                                ),
+                                            };
+                                            if field_pointee_ty
+                                                .is_thin(this.tcx, this.infcx.typing_env(this.param_env))
+                                            {
+                                                Operand::Constant(Box::new(ConstOperand {
+                                                    span: expr_span,
+                                                    user_ty: None,
+                                                    const_: Const::Val(ConstValue::ZeroSized, ty),
+                                                }))
+                                            } else {
+                                                span_bug!(
+                                                    expr_span,
+                                                    "FIXME(ptr_metadata_v2_fields): implement ptr metadata fields"
+                                                )
+                                            }
+                                        }
+                                    })
+                                    .collect()
+                            }
+                        };
+                        let ptr_metadata =
+                            Box::new(AggregateKind::PtrMetadata(inferred_pointee_ty, user_ty));
+                        Ok(Rvalue::Aggregate(ptr_metadata, fields))
                     }
-                    PtrMetadataExprBase::DefaultFields(field_types) => {
-                        itertools::zip_eq(field_names, field_types)
-                            .map(|(n, &ty)| match fields_map.get(&n) {
-                                Some(v) => v.clone(),
-                                None => {
-                                    let field_pointee_ty = match ty.kind() {
-                                        ty::PtrMetadata(pointee) => *pointee,
-                                        _ => span_bug!(
-                                            expr_span,
-                                            "missing mandatory PtrMetadata field (only fields of type PtrMetadata(impl Thin) can be defaulted)"
-                                        ),
-                                    };
-                                    if field_pointee_ty
-                                        .is_thin(this.tcx, this.infcx.typing_env(this.param_env))
-                                    {
-                                        Operand::Constant(Box::new(ConstOperand {
-                                            span: expr_span,
-                                            user_ty: None,
-                                            const_: Const::Val(ConstValue::ZeroSized, ty),
-                                        }))
-                                    } else {
-                                        span_bug!(
-                                            expr_span,
-                                            "FIXME(ptr_metadata_v2_fields): implement ptr metadata fields"
-                                        )
-                                    }
+                    ty::layout::MetadataFields::ThinUnknownFields => {
+                        // For `T: Thin`, just emit a zero-sized constant,
+                        // not an Aggregate, as that would cause invalid MIR if we get inlined
+                        // into a function where `T` is concrete and does have
+                        // (zst) metadata fields. There should be no fields listed.
+                        // FIXME: If this is using FRU syntax, do we need to "use" the base?
+                        let meta = Const::zero_sized(inferred_ty);
+                        Ok(Rvalue::Use(Operand::Constant(Box::new(ConstOperand {
+                            span: DUMMY_SP,
+                            user_ty: None,
+                            const_: meta,
+                        }))))
+                    }
+                    ty::layout::MetadataFields::TooGeneric => {
+                        // If using FRU syntax, just copy from the base wholesale.
+                        // There should be no fields listed.
+                        match base {
+                            PtrMetadataExprBase::None | PtrMetadataExprBase::DefaultFields(_) => {
+                                // This should have been rejected already by hir_typeck.
+                                let err = this.tcx.dcx().span_delayed_bug(expr_span, "non-thin generic type build_metadata!(..) expr had no FRU base");
+                                Err(err)
+                            }
+                            PtrMetadataExprBase::Base(FruInfo { base, field_types }) => {
+                                if field_types.len() != 0 {
+                                    // This should have been rejected already by hir_typeck.
+                                    let err = this.tcx.dcx().span_delayed_bug(
+                                        expr_span,
+                                        "non-thin generic type build_metadata!(..) expr had fields",
+                                    );
+                                    Err(err)
+                                } else {
+                                    // Just copy from the base wholesale
+                                    let src = unpack!(block = this.as_place(block, *base));
+                                    Ok(Rvalue::Use(Operand::Copy(src)))
                                 }
-                            })
-                            .collect()
+                            }
+                        }
                     }
                 };
-                let ptr_metadata =
-                    Box::new(AggregateKind::PtrMetadata(inferred_pointee_ty, user_ty));
-                this.cfg.push_assign(
-                    block,
-                    source_info,
-                    destination,
-                    Rvalue::Aggregate(ptr_metadata, fields),
-                );
+                if let Ok(rvalue) = rvalue {
+                    this.cfg.push_assign(block, source_info, destination, rvalue);
+                }
                 block.unit()
             }
             ExprKind::InlineAsm(box InlineAsmExpr {

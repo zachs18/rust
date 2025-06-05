@@ -287,7 +287,7 @@ impl<Dyn: PointeeSized> Hash for DynMetadata<Dyn> {
 impl<T: PointeeSized> PartialEq for Metadata<T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.ptr_metadata == other.ptr_metadata
+        Self::cmp(self, other).is_eq()
     }
 }
 
@@ -296,7 +296,29 @@ impl<T: PointeeSized> Eq for Metadata<T> {}
 impl<T: PointeeSized> Ord for Metadata<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> crate::cmp::Ordering {
-        Ord::cmp(&self.ptr_metadata, &other.ptr_metadata)
+        // FIXME(ptr_metadata_v2): make this a builtin impl that actually compares
+        // the metadata fields. The current impl is just a hack to avoid panicking while
+        // still comparing correctly.
+
+        // SAFETY: this is currently sound, all ptr metadata is either:
+        // * (), which is 0 bytes,
+        // * usize, which is 8 initialized bytes,
+        // * DynMetadata, which is 8 initialized bytes
+        let lhs = unsafe {
+            let ptr = self as *const Self as *const usize;
+            let len = size_of::<Self>() / 8;
+            crate::slice::from_raw_parts(ptr, len)
+        };
+        // SAFETY: this is currently sound, all ptr metadata is either:
+        // * (), which is 0 bytes,
+        // * usize, which is 8 initialized bytes,
+        // * DynMetadata, which is 8 initialized bytes
+        let rhs = unsafe {
+            let ptr = other as *const Self as *const usize;
+            let len = size_of::<Self>() / 8;
+            crate::slice::from_raw_parts(ptr, len)
+        };
+        Ord::cmp(&lhs, &rhs)
     }
 }
 
@@ -309,6 +331,6 @@ impl<T: PointeeSized> PartialOrd for Metadata<T> {
 
 impl<T: PointeeSized + Thin> Default for builtin!(ptr_metadata(T)) {
     fn default() -> Self {
-        builtin!(ptr_metadata(ptr_metadata: ()))
+        builtin!(ptr_metadata(..))
     }
 }

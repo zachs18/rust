@@ -10,10 +10,9 @@ use rustc_abi::{
 use rustc_hashes::Hash64;
 use rustc_hir as hir;
 use rustc_hir::find_attr;
-use rustc_index::{Idx as _, IndexVec};
+use rustc_index::{Idx as _, IndexSlice, IndexVec};
 use rustc_middle::bug;
 use rustc_middle::query::Providers;
-use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::layout::{
     FloatExt, HasTyCtxt, IntegerExt, LayoutCx, LayoutError, LayoutOf, SimdLayoutError, TyAndLayout,
 };
@@ -417,60 +416,33 @@ fn layout_of_uncached<'tcx>(
 
         // Pointer metadata
         ty::PtrMetadata(pointee) => {
-            // FIXME(ptr_metadata_v2_fields): Invert this, i.e. have <T as Pointee>::Metadata = builtin # ptr_metadata(T)
-            // instead of having builtin # ptr_metadata(T) hold a <T as Pointee>::Metadata.
-            let metadata_ty = if pointee.is_sized(tcx, cx.typing_env) {
-                tcx.types.unit
-            } else if let Some(metadata_def_id) = tcx.lang_items().metadata_type() {
-                let pointee_metadata = Ty::new_projection(tcx, metadata_def_id, [pointee]);
-
-                match tcx.try_normalize_erasing_regions(cx.typing_env, pointee_metadata) {
-                    Ok(metadata_ty) => metadata_ty,
-                    Err(mut err) => {
-                        // Usually `<Ty as Pointee>::Metadata` can't be normalized because
-                        // its struct tail cannot be normalized either, so try to get a
-                        // more descriptive layout error here, which will lead to less confusing
-                        // diagnostics.
-                        //
-                        // We use the raw struct tail function here to get the first tail
-                        // that is an alias, which is likely the cause of the normalization
-                        // error.
-                        match tcx.try_normalize_erasing_regions(
-                            cx.typing_env,
-                            tcx.struct_or_union_tail_raw(
-                                pointee,
-                                &ObligationCause::dummy(),
-                                |ty| ty,
-                                || {},
-                            ),
-                        ) {
-                            Ok(_) => {}
-                            Err(better_err) => {
-                                err = better_err;
-                            }
-                        }
-                        return Err(error(cx, LayoutError::NormalizationFailure(pointee, err)));
+            use ty::layout::MetadataFields;
+            let metadata_fields =
+                match pointee.metadata_fields_for_pointee(tcx, Some(cx.typing_env)) {
+                    MetadataFields::KnownFields(fields) => fields,
+                    MetadataFields::ThinUnknownFields => ty::List::empty(),
+                    MetadataFields::TooGeneric => {
+                        return Err(error(cx, LayoutError::TooGeneric(ty)));
                     }
-                }
-            } else {
-                let unsized_part = tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env);
+                };
 
-                match unsized_part.kind() {
-                    ty::Foreign(..) => tcx.types.unit,
-                    ty::Slice(_) | ty::Str => tcx.types.usize,
-                    ty::Dynamic(..) => Ty::new_ref(
-                        tcx,
-                        tcx.lifetimes.re_static,
-                        tcx.types.unit,
-                        ty::Mutability::Not,
-                    ),
-                    _ => {
-                        return Err(error(cx, LayoutError::Unknown(pointee)));
-                    }
-                }
-            };
-
-            univariant(&[metadata_ty], StructKind::AlwaysSized)?
+            let metadata_field_tys = metadata_fields.iter().map(|(_name, _vis, ty)| ty);
+            let metadata_field_ty_layouts =
+                metadata_field_tys.map(|ty| cx.layout_of(ty)).collect::<Result<Vec<_>, _>>()?;
+            let repr = ReprOptions { flags: ReprFlags::IS_LINEAR, ..ReprOptions::default() };
+            let layout = map_layout(cx.calc.univariant(
+                IndexSlice::from_raw(&metadata_field_ty_layouts),
+                &repr,
+                StructKind::AlwaysSized,
+            ))?;
+            if pointee.is_thin(tcx, cx.typing_env) && !layout.is_1zst() {
+                // If we are in an impossible predicate situation where e.g. str: Thin,
+                // return a layout error.
+                // Otherwise we get consteval "use of uninitialized value" errors due to
+                // "conjuring" non-thin metadata.
+                return Err(error(cx, LayoutError::Unknown(ty)));
+            }
+            layout
         }
 
         // Potentially-wide pointers.

@@ -59,7 +59,7 @@ fn slice_get_unchecked_mut_range(_1: &mut [u32], _2: std::ops::Range<usize>) -> 
         _11 = copy _5 as *mut u32 (PtrToPtr);
         _12 = Offset(copy _11, copy _3);
         StorageLive(_13);
-        _13 = builtin # ptr_metadata([u32]) from (copy _10,);
+        _13 = builtin # ptr_metadata([u32]) from (copy _10, const ZeroSized: {ptr metadata for u32});
         _14 = *mut [u32] from (copy _12, move _13);
         StorageDead(_13);
         StorageDead(_12);

@@ -22,7 +22,7 @@ help: the `Box` type always has a statically known size and allocates its conten
 LL | struct ArenaSet<U: Deref, V: ?Sized = <U as Deref>::Target>(Box<V>, U);
    |                                                             ++++ +
 
-error[E0080]: the type `ArenaSet<Vec<u8>, [u8]>` has an unknown layout
+error[E0080]: the type `{ptr metadata for ArenaSet<Vec<u8>, [u8]>}` has an unknown layout
   --> $DIR/issue-unsized-tail-restatic-ice-122488.rs:8:1
    |
 LL | const DATA: *const ArenaSet<Vec<u8>> = std::ptr::null_mut();

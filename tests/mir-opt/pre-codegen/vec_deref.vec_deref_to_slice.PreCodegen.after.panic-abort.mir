@@ -44,7 +44,7 @@ fn vec_deref_to_slice(_1: &Vec<u8>) -> &[u8] {
         StorageLive(_5);
         StorageLive(_4);
         _4 = copy ((*_1).1: usize);
-        _5 = builtin # ptr_metadata([u8]) from (move _4,);
+        _5 = builtin # ptr_metadata([u8]) from (move _4, const ZeroSized: {ptr metadata for u8});
         StorageDead(_4);
         _6 = *const [u8] from (copy _3, move _5);
         StorageDead(_5);

@@ -228,7 +228,7 @@ pub const unsafe fn from_utf8_unchecked_mut(v: &mut [u8]) -> &mut str {
 #[unstable(feature = "str_from_raw_parts", issue = "119206")]
 pub const unsafe fn from_raw_parts<'a>(ptr: *const u8, len: usize) -> &'a str {
     // SAFETY: the caller must uphold the safety contract for `from_raw_parts`.
-    unsafe { &*ptr::from_raw_parts(ptr, ptr::build_metadata!(ptr_metadata: len)) }
+    unsafe { &*ptr::from_raw_parts(ptr, ptr::build_metadata!(for str; len)) }
 }
 
 /// Creates a `&mut str` from a pointer and a length.
@@ -246,5 +246,5 @@ pub const unsafe fn from_raw_parts<'a>(ptr: *const u8, len: usize) -> &'a str {
 #[unstable(feature = "str_from_raw_parts", issue = "119206")]
 pub const unsafe fn from_raw_parts_mut<'a>(ptr: *mut u8, len: usize) -> &'a mut str {
     // SAFETY: the caller must uphold the safety contract for `from_raw_parts_mut`.
-    unsafe { &mut *ptr::from_raw_parts_mut(ptr, ptr::build_metadata!(ptr_metadata: len)) }
+    unsafe { &mut *ptr::from_raw_parts_mut(ptr, ptr::build_metadata!(for str; len)) }
 }

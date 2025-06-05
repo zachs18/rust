@@ -1,9 +1,6 @@
 // Utility Functions.
 
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::layout::{HasTypingEnv, LayoutOf};
-use rustc_middle::ty::{self, Ty};
-use tracing::trace;
 
 use super::CodegenUnitDebugContext;
 use super::namespace::item_namespace;
@@ -46,52 +43,4 @@ pub(crate) fn DIB<'a, 'll>(cx: &'a CodegenCx<'ll, '_>) -> &'a DIBuilder<'ll> {
 
 pub(crate) fn get_namespace_for_item<'ll>(cx: &CodegenCx<'ll, '_>, def_id: DefId) -> &'ll DIScope {
     item_namespace(cx, cx.tcx.parent(def_id))
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum WidePtrKind {
-    Slice,
-    Dyn,
-}
-
-/// Determines if `pointee_ty` is slice-like or trait-object-like, i.e.
-/// if the second field of the wide pointer is a length or a vtable-pointer.
-/// If `pointee_ty` does not require a wide pointer (because it is Sized) then
-/// the function returns `None`.
-pub(crate) fn wide_pointer_kind<'ll, 'tcx>(
-    cx: &CodegenCx<'ll, 'tcx>,
-    pointee_ty: Ty<'tcx>,
-) -> Option<WidePtrKind> {
-    let pointee_tail_ty = cx.tcx.struct_or_union_tail_for_codegen(pointee_ty, cx.typing_env());
-    let layout = cx.layout_of(pointee_tail_ty);
-    trace!(
-        "wide_pointer_kind: {:?} has layout {:?} (is_unsized? {})",
-        pointee_tail_ty,
-        layout,
-        layout.is_unsized()
-    );
-
-    if layout.is_sized() {
-        return None;
-    }
-
-    match *pointee_tail_ty.kind() {
-        ty::Str | ty::Slice(_) => Some(WidePtrKind::Slice),
-        ty::Dynamic(..) => Some(WidePtrKind::Dyn),
-        ty::Foreign(_) => {
-            // Assert that pointers to foreign types really are thin:
-            assert_eq!(
-                cx.size_of(Ty::new_imm_ptr(cx.tcx, pointee_tail_ty)),
-                cx.size_of(Ty::new_imm_ptr(cx.tcx, cx.tcx.types.u8))
-            );
-            None
-        }
-        _ => {
-            // For all other pointee types we should already have returned None
-            // at the beginning of the function.
-            panic!(
-                "wide_pointer_kind() - Encountered unexpected `pointee_tail_ty`: {pointee_tail_ty:?}"
-            )
-        }
-    }
 }
