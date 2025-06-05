@@ -1839,7 +1839,7 @@ impl<T, A: Allocator> Vec<T, A> {
             // instantiated often enough that avoiding the UB check is worth it
             &*core::intrinsics::aggregate_raw_ptr::<*const [T], _, _>(
                 self.as_ptr(),
-                build_metadata!(ptr_metadata: self.len),
+                build_metadata!(len: self.len, ..),
             )
         }
     }
@@ -1878,7 +1878,7 @@ impl<T, A: Allocator> Vec<T, A> {
             // instantiated often enough that avoiding the UB check is worth it
             &mut *core::intrinsics::aggregate_raw_ptr::<*mut [T], _, _>(
                 self.as_mut_ptr(),
-                build_metadata!(ptr_metadata: self.len),
+                build_metadata!(len: self.len, ..),
             )
         }
     }

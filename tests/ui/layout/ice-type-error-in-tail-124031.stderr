@@ -14,7 +14,7 @@ LL |         std::mem::transmute::<Option<()>, Option<&Other>>(None);
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: source type: `Option<()>` ($BITS bits)
-   = note: target type: `Option<&Other>` ($BITS bits)
+   = note: target type: `Option<&Other>` (the type has an unknown layout)
 
 error: aborting due to 2 previous errors
 

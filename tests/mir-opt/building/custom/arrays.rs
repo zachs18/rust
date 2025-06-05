@@ -13,7 +13,7 @@ fn arrays<const C: usize>() -> usize {
             let y = &raw const x;
             let z = CastUnsize::<_, *const [i32]>(y);
             let c = PtrMetadata(z);
-            let d = c.ptr_metadata;
+            let d = c.len;
             RET = d;
             Return()
         }

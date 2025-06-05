@@ -78,13 +78,13 @@ fn wide_ptr_ops() {
 
 fn metadata_vtable() {
     let p = &0i32 as &dyn std::fmt::Debug;
-    let meta: ptr::DynMetadata<_> = ptr::metadata(p as *const _).ptr_metadata;
+    let meta: ptr::DynMetadata<_> = ptr::metadata(p).vtable;
     assert_eq!(meta.size_of(), mem::size_of::<i32>());
     assert_eq!(meta.align_of(), mem::align_of::<i32>());
 
     type T = [i32; 16];
     let p = &T::default() as &dyn std::fmt::Debug;
-    let meta: ptr::DynMetadata<_> = ptr::metadata(p as *const _).ptr_metadata;
+    let meta: ptr::DynMetadata<_> = ptr::metadata(p).vtable;
     assert_eq!(meta.size_of(), mem::size_of::<T>());
     assert_eq!(meta.align_of(), mem::align_of::<T>());
 }

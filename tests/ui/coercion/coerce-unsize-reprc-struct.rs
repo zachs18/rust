@@ -1,4 +1,5 @@
-//@ known-bug: #54888
+//@ build-pass
+// Regression test for #54888; previously coercing to a BackendRepr::Memory type ICEd.
 
 #![feature(unsize, coerce_unsized)]
 

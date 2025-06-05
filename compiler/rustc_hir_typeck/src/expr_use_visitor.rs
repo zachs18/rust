@@ -23,6 +23,7 @@ pub use rustc_middle::hir::place::{Place, PlaceBase, PlaceWithHirId, Projection}
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::thir::DerefPatBorrowMode;
 use rustc_middle::ty::adjustment::DerefAdjustKind;
+use rustc_middle::ty::layout::MetadataFields;
 use rustc_middle::ty::{
     self, BorrowKind, Ty, TyCtxt, TypeFoldable, TypeVisitableExt as _, adjustment,
 };
@@ -733,7 +734,6 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         for field in fields {
             self.consume_expr(field.expr)?;
 
-            // The struct path probably didn't resolve
             if self.cx.typeck_results().opt_field_index(field.hir_id).is_none() {
                 self.cx
                     .tcx()
@@ -757,48 +757,32 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         // expression that will actually be used
         match self.cx.structurally_resolve_type(with_expr.span, with_place.place.ty()).kind() {
             ty::PtrMetadata(pointee_ty) => {
-                // For now, only have the one `metadata` field of type `<pointee as Pointee>::Metadata`
-                // Only consume the field of the with expression if it is needed.
-
-                // There's only one field, so if any field is mentioned, it's that field
-                let is_mentioned = fields.is_empty();
-
-                if !is_mentioned {
-                    let field_ty = match pointee_ty.ptr_metadata_ty_or_tail(self.cx.tcx(), |x| x) {
-                        Ok(metadata_ty) => metadata_ty,
-                        Err(tail_ty) => {
-                            let metadata_def_id = self.cx.tcx().require_lang_item(
-                                rustc_hir::LangItem::Metadata,
-                                rustc_span::DUMMY_SP,
-                            );
-                            Ty::new_projection(self.cx.tcx(), metadata_def_id, [tail_ty])
-                        }
-                    };
-                    let field_place = self.cat_projection(
-                        with_expr.hir_id,
-                        with_place.clone(),
-                        field_ty,
-                        ProjectionKind::Field(FieldIdx::ZERO, FIRST_VARIANT),
+                let MetadataFields::KnownFields(field_tys) =
+                    pointee_ty.metadata_fields_for_pointee(self.cx.tcx(), None)
+                else {
+                    // is this reachable for `builtin!(ptr_metadata(..base))`
+                    // where `T`'s metadata fields are not known?
+                    bug!(
+                        "ptr_metadata expr for pointee with unknown metadata fields should have been rejected already"
                     );
-                    self.consume_or_copy(&field_place, field_place.hir_id);
-                }
+                };
 
-                // FIXME(ptr_metadata_v2_fields): implement multiple fields
-                // // Consume those fields of the with expression that are needed.
-                // for (f_index, with_field) in adt.non_enum_variant().fields.iter_enumerated() {
-                //     let is_mentioned = fields.iter().any(|f| {
-                //         self.cx.typeck_results().opt_field_index(f.hir_id) == Some(f_index)
-                //     });
-                //     if !is_mentioned {
-                //         let field_place = self.cat_projection(
-                //             with_expr.hir_id,
-                //             with_place.clone(),
-                //             with_field.ty(self.cx.tcx(), args),
-                //             ProjectionKind::Field(f_index, FIRST_VARIANT),
-                //         );
-                //         self.consume_or_copy(&field_place, field_place.hir_id);
-                //     }
-                // }
+                // Consume those fields of the with expression that are needed.
+                for (f_index, (_name, _vis, field_ty)) in field_tys.iter().enumerate() {
+                    let f_index = FieldIdx::from_usize(f_index);
+                    let is_mentioned = fields.iter().any(|f| {
+                        self.cx.typeck_results().opt_field_index(f.hir_id) == Some(f_index)
+                    });
+                    if !is_mentioned {
+                        let field_place = self.cat_projection(
+                            with_expr.hir_id,
+                            with_place.clone(),
+                            field_ty,
+                            ProjectionKind::Field(f_index, FIRST_VARIANT),
+                        );
+                        self.consume_or_copy(&field_place, field_place.hir_id);
+                    }
+                }
             }
             _ => {
                 // the base expression should always evaluate to a

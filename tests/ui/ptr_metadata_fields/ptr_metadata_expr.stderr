@@ -1,0 +1,47 @@
+error: pointer metadata of `T` does not have known fields
+  --> $DIR/ptr_metadata_expr.rs:6:5
+   |
+LL |     builtin # ptr_metadata()
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `T` is `Thin`, so you can use `..` default field syntax
+
+error: pointer metadata of `T` does not have known fields
+  --> $DIR/ptr_metadata_expr.rs:20:5
+   |
+LL |     builtin # ptr_metadata()
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: pointer metadata of `T` does not have known fields
+  --> $DIR/ptr_metadata_expr.rs:25:5
+   |
+LL |     builtin # ptr_metadata(..)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+  --> $DIR/ptr_metadata_expr.rs:34:13
+   |
+LL |     let _ = builtin # ptr_metadata();
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> $DIR/ptr_metadata_expr.rs:40:13
+   |
+LL |     let _ = builtin # ptr_metadata(..);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> $DIR/ptr_metadata_expr.rs:46:13
+   |
+LL |     let _ = builtin # ptr_metadata(for _);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> $DIR/ptr_metadata_expr.rs:52:13
+   |
+LL |     let _ = builtin # ptr_metadata(for _; ..);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error: aborting due to 7 previous errors
+
+For more information about this error, try `rustc --explain E0282`.

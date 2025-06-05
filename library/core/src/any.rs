@@ -89,8 +89,7 @@
 use crate::intrinsics::{self, type_id_vtable};
 use crate::mem::transmute;
 use crate::mem::type_info::{TraitImpl, TypeKind};
-use crate::ptr::{self, build_metadata};
-use crate::{fmt, hash};
+use crate::{fmt, hash, ptr};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Any trait
@@ -809,11 +808,7 @@ impl TypeId {
     /// ```
     #[unstable(feature = "type_info", issue = "146922")]
     #[rustc_const_unstable(feature = "type_info", issue = "146922")]
-    pub const fn trait_info_of<
-        T: ptr::Pointee<Metadata = ptr::DynMetadata<T>> + ?Sized + 'static,
-    >(
-        self,
-    ) -> Option<TraitImpl<T>> {
+    pub const fn trait_info_of<T: ?Sized + 'static>(self) -> Option<TraitImpl<T>> {
         // SAFETY: The vtable was obtained for `T`, so it is guaranteed to be `DynMetadata<T>`.
         // The intrinsic can't infer this because it is designed to work with arbitrary TypeIds.
         unsafe { transmute(self.trait_info_of_trait_type_id(const { TypeId::of::<T>() })) }
@@ -1007,17 +1002,17 @@ pub const fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
 /// ```
 #[must_use]
 #[unstable(feature = "try_as_dyn", issue = "144361")]
-pub const fn try_as_dyn<
-    T: Any + 'static,
-    U: ptr::Pointee<Metadata = ptr::DynMetadata<U>> + ?Sized + 'static,
->(
-    t: &T,
-) -> Option<&U> {
+pub const fn try_as_dyn<T: Any + 'static, U: ?Sized + 'static>(t: &T) -> Option<&U> {
     let vtable: Option<ptr::DynMetadata<U>> =
         const { TypeId::of::<T>().trait_info_of::<U>().as_ref().map(TraitImpl::get_vtable) };
     match vtable {
         Some(dyn_metadata) => {
-            let pointer = ptr::from_raw_parts(t, build_metadata!(ptr_metadata: dyn_metadata));
+            // FIXME(ptr_metadata_v2): maybe add a `DynTrait` marker trait that metadata field computation
+            // can use to know
+            // SAFETY: if `trait_info_of` returns `Some`, then `U` is a trait object, so its metadata is
+            // is just a vtable. Pointer metadata is always `Copy`.
+            let metadata = unsafe { core::mem::transmute_copy(&dyn_metadata) };
+            let pointer = ptr::from_raw_parts(t, metadata);
             // SAFETY: `t` is a reference to a type, so we know it is valid.
             // `dyn_metadata` is a vtable for T, implementing the trait of `U`.
             Some(unsafe { &*pointer })
@@ -1061,17 +1056,17 @@ pub const fn try_as_dyn<
 /// ```
 #[must_use]
 #[unstable(feature = "try_as_dyn", issue = "144361")]
-pub const fn try_as_dyn_mut<
-    T: Any + 'static,
-    U: ptr::Pointee<Metadata = ptr::DynMetadata<U>> + ?Sized + 'static,
->(
-    t: &mut T,
-) -> Option<&mut U> {
+pub const fn try_as_dyn_mut<T: Any + 'static, U: ?Sized + 'static>(t: &mut T) -> Option<&mut U> {
     let vtable: Option<ptr::DynMetadata<U>> =
         const { TypeId::of::<T>().trait_info_of::<U>().as_ref().map(TraitImpl::get_vtable) };
     match vtable {
         Some(dyn_metadata) => {
-            let pointer = ptr::from_raw_parts_mut(t, build_metadata!(ptr_metadata: dyn_metadata));
+            // FIXME(ptr_metadata_v2): maybe add a `DynTrait` marker trait that metadata field computation
+            // can use to know
+            // SAFETY: if `trait_info_of` returns `Some`, then `U` is a trait object, so its metadata is
+            // is just a vtable. Pointer metadata is always `Copy`.
+            let metadata = unsafe { core::mem::transmute_copy(&dyn_metadata) };
+            let pointer = ptr::from_raw_parts_mut(t, metadata);
             // SAFETY: `t` is a reference to a type, so we know it is valid.
             // `dyn_metadata` is a vtable for T, implementing the trait of `U`.
             Some(unsafe { &mut *pointer })

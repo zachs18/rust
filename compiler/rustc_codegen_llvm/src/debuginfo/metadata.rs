@@ -33,7 +33,7 @@ use super::type_names::{compute_debuginfo_type_name, compute_debuginfo_vtable_na
 use super::utils::{DIB, debug_context, get_namespace_for_item, is_node_local_to_unit};
 use crate::common::{AsCCharPtr, CodegenCx};
 use crate::debuginfo::metadata::type_map::build_type_with_children;
-use crate::debuginfo::utils::{WidePtrKind, create_DIArray, wide_pointer_kind};
+use crate::debuginfo::utils::create_DIArray;
 use crate::debuginfo::{DIBuilderExt, dwarf_const};
 use crate::llvm::debuginfo::{
     DIBasicType, DIBuilder, DICompositeType, DIDescriptor, DIFile, DIFlags, DILexicalBlock,
@@ -161,117 +161,113 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
     let pointer_align = data_layout.pointer_align();
     let ptr_type_debuginfo_name = compute_debuginfo_type_name(cx.tcx, ptr_type, true);
 
-    match wide_pointer_kind(cx, pointee_type) {
-        None => {
-            // This is a thin pointer. Create a regular pointer type and give it the correct name.
-            assert_eq!(
-                (pointer_size, pointer_align.abi),
-                cx.size_and_align_of(ptr_type),
-                "ptr_type={ptr_type}, pointee_type={pointee_type}",
-            );
+    if cx.size_of(ptr_type) == pointer_size {
+        // This is a thin pointer. Create a regular pointer type and give it the correct name.
+        assert_eq!(
+            (pointer_size, pointer_align.abi),
+            cx.size_and_align_of(ptr_type),
+            "ptr_type={ptr_type}, pointee_type={pointee_type}",
+        );
 
-            let di_node = create_pointer_type(
+        let di_node = create_pointer_type(
+            cx,
+            pointee_type_di_node,
+            pointer_size,
+            pointer_align.abi,
+            &ptr_type_debuginfo_name,
+        );
+
+        DINodeCreationResult { di_node, already_stored_in_typemap: false }
+    } else {
+        type_map::build_type_with_children(
+            cx,
+            type_map::stub(
                 cx,
-                pointee_type_di_node,
-                pointer_size,
-                pointer_align.abi,
+                Stub::Struct,
+                unique_type_id,
                 &ptr_type_debuginfo_name,
-            );
+                None,
+                cx.size_and_align_of(ptr_type),
+                NO_SCOPE_METADATA,
+                DIFlags::FlagZero,
+            ),
+            |cx, owner| {
+                // FIXME: If this wide pointer is a `Box` then we don't want to use its
+                //        type layout and instead use the layout of the raw pointer inside
+                //        of it.
+                //        The proper way to handle this is to not treat Box as a pointer
+                //        at all and instead emit regular struct debuginfo for it. We just
+                //        need to make sure that we don't break existing debuginfo consumers
+                //        by doing that (at least not without a warning period).
+                let layout_type = if ptr_type.is_box() {
+                    // The assertion at the start of this function ensures we have a ZST
+                    // allocator. We'll make debuginfo "skip" all ZST allocators, not just the
+                    // default allocator.
+                    Ty::new_mut_ptr(cx.tcx, pointee_type)
+                } else {
+                    ptr_type
+                };
 
-            DINodeCreationResult { di_node, already_stored_in_typemap: false }
-        }
-        Some(_wide_pointer_kind) => {
-            type_map::build_type_with_children(
-                cx,
-                type_map::stub(
+                let layout = cx.layout_of(layout_type);
+                let addr_field = layout.field(cx, WIDE_PTR_ADDR);
+                let extra_field = layout.field(cx, WIDE_PTR_EXTRA);
+                let usize = cx.layout_of(cx.tcx.types.usize);
+
+                // GDB's Rust integration currently assumes the debuginfo layout of
+                // `&str`, `&[T]`, and `&dyn Trait`, so we need to keep them the same for now at least.
+                // FIXME(more_unsized), FIXME(ptr_metadata_v2): Maybe make this configurable with an unstable flag,
+                // and switch the default if/when GDB supports uniform `data_ptr, metadata` version?
+                let (addr_field_name, extra_field_name, extra_field) = match pointee_type.kind() {
+                    ty::Dynamic(..) => (
+                        "pointer",
+                        "vtable",
+                        cx.layout_of(cx.tcx.ty_dyn_metadata_struct(DUMMY_SP, pointee_type)),
+                    ),
+                    ty::Str => ("data_ptr", "length", usize),
+                    ty::Slice(..) if extra_field.size == usize.size => {
+                        ("data_ptr", "length", usize)
+                    }
+                    _ => ("data_ptr", "metadata", extra_field),
+                };
+
+                assert_eq!(WIDE_PTR_ADDR, 0);
+                assert_eq!(WIDE_PTR_EXTRA, 1);
+
+                // The data pointer type is a regular, thin pointer, regardless of whether this
+                // is a slice or a trait object.
+                let data_ptr_type_di_node = create_pointer_type(
                     cx,
-                    Stub::Struct,
-                    unique_type_id,
-                    &ptr_type_debuginfo_name,
-                    None,
-                    cx.size_and_align_of(ptr_type),
-                    NO_SCOPE_METADATA,
-                    DIFlags::FlagZero,
-                ),
-                |cx, owner| {
-                    // FIXME: If this wide pointer is a `Box` then we don't want to use its
-                    //        type layout and instead use the layout of the raw pointer inside
-                    //        of it.
-                    //        The proper way to handle this is to not treat Box as a pointer
-                    //        at all and instead emit regular struct debuginfo for it. We just
-                    //        need to make sure that we don't break existing debuginfo consumers
-                    //        by doing that (at least not without a warning period).
-                    let layout_type = if ptr_type.is_box() {
-                        // The assertion at the start of this function ensures we have a ZST
-                        // allocator. We'll make debuginfo "skip" all ZST allocators, not just the
-                        // default allocator.
-                        Ty::new_mut_ptr(cx.tcx, pointee_type)
-                    } else {
-                        ptr_type
-                    };
+                    pointee_type_di_node,
+                    addr_field.size,
+                    addr_field.align.abi,
+                    "",
+                );
 
-                    let layout = cx.layout_of(layout_type);
-                    let addr_field = layout.field(cx, WIDE_PTR_ADDR);
-                    let extra_field = layout.field(cx, WIDE_PTR_EXTRA);
-                    let usize = cx.layout_of(cx.tcx.types.usize);
-
-                    // GDB's Rust integration currently assumes the debuginfo layout of
-                    // `&str`, `&[T]`, and `&dyn Trait`, so we need to keep them the same for now at least.
-                    // FIXME(more_unsized), FIXME(ptr_metadata_v2): Maybe make this configurable with an unstable flag,
-                    // and switch the default if/when GDB supports uniform `data_ptr, metadata` version?
-                    let (addr_field_name, extra_field_name, extra_field) = match pointee_type.kind()
-                    {
-                        ty::Dynamic(..) => (
-                            "pointer",
-                            "vtable",
-                            cx.layout_of(cx.tcx.ty_dyn_metadata_struct(DUMMY_SP, pointee_type)),
-                        ),
-                        ty::Str => ("data_ptr", "length", usize),
-                        ty::Slice(..) if extra_field.size == usize.size => {
-                            ("data_ptr", "length", usize)
-                        }
-                        _ => ("data_ptr", "metadata", extra_field),
-                    };
-
-                    assert_eq!(WIDE_PTR_ADDR, 0);
-                    assert_eq!(WIDE_PTR_EXTRA, 1);
-
-                    // The data pointer type is a regular, thin pointer, regardless of whether this
-                    // is a slice or a trait object.
-                    let data_ptr_type_di_node = create_pointer_type(
+                smallvec![
+                    build_field_di_node(
                         cx,
-                        pointee_type_di_node,
-                        addr_field.size,
-                        addr_field.align.abi,
-                        "",
-                    );
-
-                    smallvec![
-                        build_field_di_node(
-                            cx,
-                            owner,
-                            addr_field_name,
-                            addr_field,
-                            layout.fields.offset(WIDE_PTR_ADDR),
-                            DIFlags::FlagZero,
-                            data_ptr_type_di_node,
-                            None,
-                        ),
-                        build_field_di_node(
-                            cx,
-                            owner,
-                            extra_field_name,
-                            extra_field,
-                            layout.fields.offset(WIDE_PTR_EXTRA),
-                            DIFlags::FlagZero,
-                            type_di_node(cx, extra_field.ty),
-                            None,
-                        ),
-                    ]
-                },
-                NO_GENERICS,
-            )
-        }
+                        owner,
+                        addr_field_name,
+                        addr_field,
+                        layout.fields.offset(WIDE_PTR_ADDR),
+                        DIFlags::FlagZero,
+                        data_ptr_type_di_node,
+                        None,
+                    ),
+                    build_field_di_node(
+                        cx,
+                        owner,
+                        extra_field_name,
+                        extra_field,
+                        layout.fields.offset(WIDE_PTR_EXTRA),
+                        DIFlags::FlagZero,
+                        type_di_node(cx, extra_field.ty),
+                        None,
+                    ),
+                ]
+            },
+            NO_GENERICS,
+        )
     }
 }
 
@@ -302,24 +298,29 @@ fn build_pointer_metadata_di_node<'ll, 'tcx>(
         |cx, owner| {
             // FIXME(ptr_metadata_v2_fields): implement multiple fields
             let layout = cx.layout_of(ptr_metadata_type);
-            let real_metadata_field = layout.field(cx, 0);
-
-            let real_metadata_field_name = match wide_pointer_kind(cx, pointee_type) {
-                Some(WidePtrKind::Dyn) => "vtable",
-                Some(WidePtrKind::Slice) => "length",
-                None => "metadata",
+            let ty::layout::MetadataFields::KnownFields(fields) =
+                pointee_type.metadata_fields_for_pointee(cx.tcx, None)
+            else {
+                unreachable!("should be monomorphic during codegen")
             };
 
-            smallvec![build_field_di_node(
-                cx,
-                owner,
-                real_metadata_field_name,
-                real_metadata_field,
-                layout.fields.offset(0),
-                DIFlags::FlagZero,
-                type_di_node(cx, real_metadata_field.ty),
-                None,
-            ),]
+            fields
+                .iter()
+                .enumerate()
+                .map(|(idx, (name, _vis, _field_ty))| {
+                    let field_ty = layout.field(cx, idx);
+                    build_field_di_node(
+                        cx,
+                        owner,
+                        name.name.as_str(),
+                        field_ty,
+                        layout.fields.offset(idx),
+                        DIFlags::FlagZero,
+                        type_di_node(cx, field_ty.ty),
+                        None,
+                    )
+                })
+                .collect()
         },
         NO_GENERICS,
     )

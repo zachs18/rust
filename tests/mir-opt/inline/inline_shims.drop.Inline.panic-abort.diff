@@ -68,7 +68,7 @@
 +         _9 = copy _11 as *mut A (Transmute);
 +         StorageDead(_11);
 +         _10 = copy ((*_6).1: usize);
-+         _12 = builtin # ptr_metadata([A]) from (copy _10,);
++         _12 = builtin # ptr_metadata([A]) from (copy _10, const ZeroSized: {ptr metadata for A});
 +         _8 = *mut [A] from (copy _9, copy _12);
 +         StorageDead(_9);
 +         StorageLive(_13);

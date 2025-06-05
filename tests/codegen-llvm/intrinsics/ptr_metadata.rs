@@ -2,24 +2,33 @@
 //@ only-64bit (so I don't need to worry about usize)
 
 #![crate_type = "lib"]
-#![feature(core_intrinsics)]
+#![feature(core_intrinsics, ptr_metadata)]
 
 use std::intrinsics::ptr_metadata;
+use std::ptr::Metadata;
 
 // CHECK-LABEL: @thin_metadata(
 #[no_mangle]
-pub fn thin_metadata(p: *const ()) {
+pub fn thin_metadata(p: *const ()) -> Metadata<()> {
     // CHECK: start
     // CHECK-NEXT: ret void
-    ptr_metadata(p).ptr_metadata
+    ptr_metadata(p)
 }
 
 // CHECK-LABEL: @slice_metadata(
 #[no_mangle]
-pub fn slice_metadata(p: *const [u8]) -> usize {
+pub fn slice_metadata(p: *const [u8]) -> Metadata<[u8]> {
     // CHECK: start
     // CHECK-NEXT: ret i64 %p.1
-    ptr_metadata(p).ptr_metadata
+    ptr_metadata(p)
+}
+
+// CHECK-LABEL: @slice_len(
+#[no_mangle]
+pub fn slice_len(p: *const [u8]) -> usize {
+    // CHECK: start
+    // CHECK-NEXT: ret i64 %p.1
+    ptr_metadata(p).len
 }
 
 // CHECK-LABEL: @dyn_byte_offset(

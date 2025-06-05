@@ -25,8 +25,11 @@ pub trait PointeeSized {}
 #[lang = "meta_sized"]
 pub trait MetaSized: PointeeSized {}
 
+#[lang = "thin_pointee_trait"]
+pub trait Thin: PointeeSized {}
+
 #[lang = "sized"]
-pub trait Sized: MetaSized {}
+pub trait Sized: MetaSized + Thin {}
 
 #[lang = "drop_in_place"]
 fn drop_in_place<T>(_: *mut T) {}
