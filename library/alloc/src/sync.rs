@@ -1137,6 +1137,8 @@ impl<T, A: Allocator> Arc<T, A> {
 
         // Following the implementation of `drop` and `drop_slow`
         if this.inner().strong.fetch_sub(1, Release) != 1 {
+            // Safety: `this` is ManuallyDrop so the allocator will not be double-dropped
+            let _alloc = unsafe { ptr::read(&this.alloc) };
             return None;
         }
 
@@ -2606,6 +2608,188 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
             false
         }
     }
+
+    /// Converts an `Arc` into a [`UniqueArc`], if there are no other `Arc` pointers to the same
+    /// allocation.
+    ///
+    /// If there are other `Arc` pointers to the same allocation, then `try_into_unique` will
+    /// return `Err(this)`.
+    ///
+    /// However, if there are no other `Arc` pointers to this allocation, but some [`Weak`]
+    /// pointers, then the [`Weak`] pointers will be deactivated until the returned [`UniqueArc`]
+    /// is converted back into an `Arc` with [`UniqueArc::into_arc`].
+    ///
+    /// It is strongly recommended to use [`Arc::into_unique`] instead if you don't
+    /// keep the `Arc` in the [`Err`] case.
+    /// Immediately dropping the [`Err`]-value, as the expression
+    /// `Arc::try_into_unique(this).ok()` does, can cause the strong count to
+    /// drop to zero and the inner value of the `Arc` to be dropped.
+    /// For instance, if two threads execute such an expression in parallel,
+    /// there is a race condition without the possibility of unsafety:
+    /// The threads could first both check whether they own the last instance
+    /// in `Arc::try_into_unique`, determine that they both do not, and then both
+    /// discard and drop their instance in the call to [`ok`][`Result::ok`].
+    /// In this scenario, the value inside the `Arc` is safely destroyed
+    /// by exactly one of the threads, but neither thread will ever be able
+    /// to use the value.
+    ///
+    /// # Examples
+    ///
+    /// [`Weak`] pointers will be deactivated, but not disassociated:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::{Arc, UniqueArc};
+    ///
+    /// let data = Arc::new(5);
+    ///
+    /// let weak = Arc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 5);
+    ///
+    /// let mut data = Arc::try_into_unique(data).unwrap(); // Won't clone anything
+    /// *data = 42;
+    ///
+    /// assert_eq!(weak.upgrade(), None);
+    ///
+    /// let data = UniqueArc::into_arc(data);
+    ///
+    /// let weak = Arc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 42);
+    /// ```
+    ///
+    /// Fails if other `Arc`s point to the same allocation:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::Arc;
+    ///
+    /// let data = Arc::new(5);
+    /// let other_data = Arc::clone(&data);
+    ///
+    /// assert!(Arc::try_into_unique(data).is_err());
+    /// ```
+    #[unstable(feature = "unique_rc_arc", issue = "112566")]
+    pub fn try_into_unique(this: Self) -> Result<UniqueArc<T, A>, Self> {
+        if Arc::strong_count(&this) != 1 {
+            // Failure, there are other Arcs.
+            Err(this)
+        } else {
+            let this = ManuallyDrop::new(this);
+            let strong = &this.inner().strong;
+
+            // Convert our strong reference into a weak reference, if it is unique
+            match strong.compare_exchange(1, 0, Acquire, Relaxed) {
+                Ok(_) => {}
+                Err(_) => {
+                    // Failure, there are other Arcs
+                    return Err(ManuallyDrop::into_inner(this));
+                }
+            }
+
+            // Move the allocator out.
+            // SAFETY: `this.alloc` will not be accessed again, nor dropped because it is in
+            // a `ManuallyDrop`.
+            let alloc: A = unsafe { ptr::read(&this.alloc) };
+
+            // SAFETY: This pointer was allocated at creation time so we know it is valid.
+            Ok(UniqueArc { ptr: this.ptr, _marker: PhantomData, _marker2: PhantomData, alloc })
+        }
+    }
+
+    /// Converts an `Arc` into a [`UniqueArc`], if there are no other `Arc` pointers to the same
+    /// allocation.
+    ///
+    /// Otherwise, `None` is returned and the `Arc` is dropped.
+    ///
+    /// However, if there are no other `Arc` pointers to this allocation, but some [`Weak`]
+    /// pointers, then the [`Weak`] pointers will be deactivated until the returned [`UniqueArc`]
+    /// is converted back into an `Arc` with [`UniqueArc::into_arc`].
+    ///
+    /// [`Arc::try_into_unique`] is conceptually similar to `Arc::into_unique`, but it
+    /// is meant for different use-cases. If used as a direct replacement
+    /// for `Arc::into_unique` anyway, such as with the expression
+    /// <code>[Arc::try_into_unique]\(this).[ok][Result::ok]()</code>, then it does
+    /// **not** give the same guarantee as described in the previous paragraph.
+    /// For more information, see the examples below and read the documentation
+    /// of [`Arc::try_into_unique`].
+    ///
+    /// # Examples
+    ///
+    /// Minimal example demonstrating the guarantee that `Arc::into_unique` gives.
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::Arc;
+    ///
+    /// let x = Arc::new(3);
+    /// let y = Arc::clone(&x);
+    ///
+    /// // Two threads calling `Arc::into_inner` on both clones of an `Arc`:
+    /// let x_thread = std::thread::spawn(|| Arc::into_unique(x));
+    /// let y_thread = std::thread::spawn(|| Arc::into_unique(y));
+    ///
+    /// let x_inner_value = x_thread.join().unwrap();
+    /// let y_inner_value = y_thread.join().unwrap();
+    ///
+    /// // One of the threads is guaranteed to receive the inner value:
+    /// assert!(matches!(
+    ///     (x_inner_value.as_deref(), y_inner_value.as_deref()),
+    ///     (None, Some(3)) | (Some(3), None)
+    /// ));
+    /// // The result could also be `(None, None)` if the threads called
+    /// // `Arc::try_into_unique(x).ok()` and `Arc::try_into_unique(y).ok()` instead.
+    /// ```
+    ///
+    /// [`Weak`] pointers will be deactivated, but not disassociated:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::{Arc, UniqueArc};
+    ///
+    /// let data = Arc::new(5);
+    ///
+    /// let weak = Arc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 5);
+    ///
+    /// let mut data = Arc::into_unique(data).unwrap(); // Won't clone anything
+    /// *data = 42;
+    ///
+    /// assert_eq!(weak.upgrade(), None);
+    ///
+    /// let data = UniqueArc::into_arc(data);
+    ///
+    /// let weak = Arc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 42);
+    /// ```
+    ///
+    /// Fails if other `Arc`s point to the same allocation:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::Arc;
+    ///
+    /// let data = Arc::new(5);
+    /// let other_data = Arc::clone(&data);
+    ///
+    /// assert!(Arc::into_unique(data).is_none());
+    /// ```
+    #[unstable(feature = "unique_rc_arc", issue = "112566")]
+    pub fn into_unique(this: Self) -> Option<UniqueArc<T, A>> {
+        // Make sure that the ordinary `Drop` implementation isn’t called as well
+        let this = mem::ManuallyDrop::new(this);
+        // Safety: `this` is ManuallyDrop so the allocator will not be double-dropped
+        let alloc = unsafe { ptr::read(&this.alloc) };
+
+        // Following the implementation of `drop` and `drop_slow`
+        if this.inner().strong.fetch_sub(1, Release) != 1 {
+            // Don't leak the allocator
+            drop(alloc);
+            return None;
+        }
+
+        acquire!(this.inner().strong);
+
+        Some(UniqueArc { ptr: this.ptr, _marker: PhantomData, _marker2: PhantomData, alloc })
+    }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -3085,7 +3269,9 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
     {
         #[inline]
         fn checked_increment(n: usize) -> Option<usize> {
-            // Any write of 0 we can observe leaves the field in permanently zero state.
+            // If we observe 0, we cannot upgrade: either the value has been dropped (so the strong count
+            // will never increase), or is uniquely owned by a `UniqueArc` (where it is not sound to
+            // upgrade until after `UniqueArc::into_arc` increments the strong count to `1`).
             if n == 0 {
                 return None;
             }
@@ -3099,9 +3285,11 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
         // from zero to one.
         //
         // Relaxed is fine for the failure case because we don't have any expectations about the new state.
+        //
         // Acquire is necessary for the success case to synchronise with `Arc::new_cyclic`, when the inner
-        // value can be initialized after `Weak` references have already been created. In that case, we
-        // expect to observe the fully initialized value.
+        // value can be initialized after `Weak` references have already been created, and with
+        // `UniqueArc`, when the inner value can be modified while `Weak` references exist until `UniqueArc::into_arc` is called.
+        // In those cases, we expect to observe the fully initialized value.
         if self.inner()?.strong.fetch_update(Acquire, Relaxed, checked_increment).is_ok() {
             // SAFETY: pointer is not null, verified in checked_increment
             unsafe { Some(Arc::from_inner_in(self.ptr, self.alloc.clone())) }

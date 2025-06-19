@@ -1814,6 +1814,130 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
         unsafe { &mut (*this.ptr.as_ptr()).value }
     }
 
+    /// Converts an `Rc` into a [`UniqueRc`], if there are no other `Rc` pointers to the same
+    /// allocation.
+    ///
+    /// If there are other `Rc` pointers to the same allocation, then `try_into_unique` will
+    /// return `Err(this)`.
+    ///
+    /// However, if there are no other `Rc` pointers to this allocation, but some [`Weak`]
+    /// pointers, then the [`Weak`] pointers will be deactivated until the returned [`UniqueRc`]
+    /// is converted back into an `Rc` with [`UniqueRc::into_rc`].
+    ///
+    /// # Examples
+    ///
+    /// [`Weak`] pointers will be deactivated, but not disassociated:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::rc::{Rc, UniqueRc};
+    ///
+    /// let data = Rc::new(5);
+    ///
+    /// let weak = Rc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 5);
+    ///
+    /// let mut data = Rc::try_into_unique(data).unwrap(); // Won't clone anything
+    /// *data = 42;
+    ///
+    /// assert_eq!(weak.upgrade(), None);
+    ///
+    /// let data = UniqueRc::into_rc(data);
+    ///
+    /// let weak = Rc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 42);
+    /// ```
+    ///
+    /// Fails if other `Rc`s point to the same allocation:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::rc::Rc;
+    ///
+    /// let data = Rc::new(5);
+    /// let other_data = Rc::clone(&data);
+    ///
+    /// assert!(Rc::try_into_unique(data).is_err());
+    /// ```
+    #[unstable(feature = "unique_rc_arc", issue = "112566")]
+    pub fn try_into_unique(this: Self) -> Result<UniqueRc<T, A>, Self> {
+        if Rc::strong_count(&this) != 1 {
+            // Failure, there are other Rcs.
+            Err(this)
+        } else {
+            let mut this = ManuallyDrop::new(this);
+
+            // Move the allocator out.
+            // SAFETY: `this.alloc` will not be accessed again, nor dropped because it is in
+            // a `ManuallyDrop`.
+            let alloc: A = unsafe { ptr::read(&this.alloc) };
+
+            // SAFETY: This pointer was allocated at creation time so we know it is valid.
+            unsafe {
+                // Convert our strong reference into a weak reference
+                this.ptr.as_mut().strong.set(0);
+                Ok(UniqueRc { ptr: this.ptr, _marker: PhantomData, _marker2: PhantomData, alloc })
+            }
+        }
+    }
+
+    /// Converts an `Rc` into a [`UniqueRc`], if there are no other `Rc` pointers to the same
+    /// allocation.
+    ///
+    /// Otherwise, `None` is returned and the `Rc` is dropped.
+    ///
+    /// However, if there are no other `Rc` pointers to this allocation, but some [`Weak`]
+    /// pointers, then the [`Weak`] pointers will be deactivated until the returned [`UniqueRc`]
+    /// is converted back into an `Rc` with [`UniqueRc::into_arc`].
+    ///
+    /// [`Rc::try_into_unique`] is conceptually similar to `Rc::into_unique`, but it
+    /// is meant for different use-`Rc::into_unique(this)` is in fact equivalent to
+    /// <code>[Rc::try_into_unique]\(this).[ok][Result::ok]()</code>.
+    /// (Note that the same kind of equivalence does **not** hold true for
+    /// [`Arc`](crate::sync::Arc), due to race conditions that do not apply to `Rc`!)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::rc::Rc;
+    ///
+    /// let x = Rc::new(3);
+    /// assert_eq!(*Rc::into_unique(x).unwrap(), 3);
+    ///
+    /// let x = Rc::new(4);
+    /// let y = Rc::clone(&x);
+    ///
+    /// assert!(Rc::into_unique(y).is_none());
+    /// assert_eq!(*Rc::into_unique(x).unwrap(), 3);
+    /// ```
+    ///
+    /// [`Weak`] pointers will be deactivated, but not disassociated:
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::rc::{Rc, UniqueRc};
+    ///
+    /// let data = Rc::new(5);
+    ///
+    /// let weak = Rc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 5);
+    ///
+    /// let mut data = Rc::into_unique(data).unwrap(); // Won't clone anything
+    /// *data = 42;
+    ///
+    /// assert_eq!(weak.upgrade(), None);
+    ///
+    /// let data = UniqueRc::into_arc(data);
+    ///
+    /// let weak = Rc::downgrade(&data);
+    /// assert_eq!(*weak.upgrade().unwrap(), 42);
+    /// ```
+    #[unstable(feature = "unique_rc_arc", issue = "112566")]
+    pub fn into_unique(this: Self) -> Option<UniqueRc<T, A>> {
+        Self::try_into_unique(this).ok()
+    }
+
     #[inline]
     #[stable(feature = "ptr_eq", since = "1.17.0")]
     /// Returns `true` if the two `Rc`s point to the same allocation in a vein similar to
