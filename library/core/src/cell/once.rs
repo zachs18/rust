@@ -1,4 +1,5 @@
 use crate::cell::UnsafeCell;
+use crate::ops::{Residual, Try};
 use crate::{fmt, mem};
 
 /// A cell which can nominally be written to only once.
@@ -231,12 +232,16 @@ impl<T> OnceCell<T> {
     /// assert_eq!(cell.get(), Some(&92))
     /// ```
     #[unstable(feature = "once_cell_try", issue = "109737")]
-    pub fn get_or_try_init<F, E>(&self, f: F) -> Result<&T, E>
+    pub fn get_or_try_init<'a, R>(
+        &'a self,
+        f: impl FnOnce() -> R,
+    ) -> <<R as Try>::Residual as Residual<&'a T>>::TryType
     where
-        F: FnOnce() -> Result<T, E>,
+        R: Try<Output = T>,
+        <R as Try>::Residual: Residual<&'a T>,
     {
         if let Some(val) = self.get() {
-            return Ok(val);
+            return Try::from_output(val);
         }
         self.try_init(f)
     }
@@ -271,29 +276,44 @@ impl<T> OnceCell<T> {
     /// assert_eq!(cell.get(), Some(&1236))
     /// ```
     #[unstable(feature = "once_cell_get_mut", issue = "121641")]
-    pub fn get_mut_or_try_init<F, E>(&mut self, f: F) -> Result<&mut T, E>
+    pub fn get_mut_or_try_init<'a, R>(
+        &'a mut self,
+        f: impl FnOnce() -> R,
+    ) -> <<R as Try>::Residual as Residual<&'a mut T>>::TryType
     where
-        F: FnOnce() -> Result<T, E>,
+        R: Try<Output = T>,
+        <R as Try>::Residual: Residual<&'a mut T>,
     {
         if self.get().is_none() {
-            self.try_init(f)?;
+            let val = f()?;
+            if self.try_insert(val).is_err() {
+                unreachable!("reentrant init while holding &mut self")
+            }
         }
-        Ok(self.get_mut().unwrap())
+        Try::from_output(self.get_mut().unwrap())
     }
 
     // Avoid inlining the initialization closure into the common path that fetches
     // the already initialized value
     #[cold]
-    fn try_init<F, E>(&self, f: F) -> Result<&T, E>
+    fn try_init<'a, R>(
+        &'a self,
+        f: impl FnOnce() -> R,
+    ) -> <<R as Try>::Residual as Residual<&'a T>>::TryType
     where
-        F: FnOnce() -> Result<T, E>,
+        R: Try<Output = T>,
+        <R as Try>::Residual: Residual<&'a T>,
     {
         let val = f()?;
         // Note that *some* forms of reentrant initialization might lead to
         // UB (see `reentrant_init` test). I believe that just removing this
         // `panic`, while keeping `try_insert` would be sound, but it seems
         // better to panic, rather than to silently use an old value.
-        if let Ok(val) = self.try_insert(val) { Ok(val) } else { panic!("reentrant init") }
+        if let Ok(val) = self.try_insert(val) {
+            Try::from_output(val)
+        } else {
+            panic!("reentrant init")
+        }
     }
 
     /// Consumes the cell, returning the wrapped value.
