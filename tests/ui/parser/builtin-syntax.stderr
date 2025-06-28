@@ -1,14 +1,38 @@
-error: unknown `builtin #` construct `foobar`
-  --> $DIR/builtin-syntax.rs:4:5
+error: unknown `builtin #` expression construct `foobar`
+  --> $DIR/builtin-syntax.rs:8:5
    |
 LL |     builtin # foobar();
    |     ^^^^^^^^^^^^^^^^
 
+error: unknown `builtin #` type construct `foobar`
+  --> $DIR/builtin-syntax.rs:12:15
+   |
+LL |     type Ty = builtin # foobar();
+   |               ^^^^^^^^^^^^^^^^
+
+error: unknown `builtin #` pattern construct `foobar`
+  --> $DIR/builtin-syntax.rs:17:9
+   |
+LL |         builtin # foobar() => {},
+   |         ^^^^^^^^^^^^^^^^
+
 error: expected identifier after `builtin #`
-  --> $DIR/builtin-syntax.rs:8:15
+  --> $DIR/builtin-syntax.rs:22:15
    |
 LL |     builtin # {}();
    |               ^
 
-error: aborting due to 2 previous errors
+error: expected identifier after `builtin #`
+  --> $DIR/builtin-syntax.rs:26:38
+   |
+LL |     type NotIdentifierTy = builtin # {}();
+   |                                      ^
+
+error: expected identifier after `builtin #`
+  --> $DIR/builtin-syntax.rs:31:19
+   |
+LL |         builtin # {}() => {},
+   |                   ^
+
+error: aborting due to 6 previous errors
 

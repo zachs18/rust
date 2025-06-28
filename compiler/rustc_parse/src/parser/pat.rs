@@ -1459,7 +1459,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pat_builtin(&mut self) -> PResult<'a, PatKind> {
-        self.parse_builtin(|self_, _lo, ident| {
+        self.parse_builtin("pattern", |self_, _lo, ident| {
             Ok(match ident.name {
                 // builtin#deref(PAT)
                 sym::deref => {

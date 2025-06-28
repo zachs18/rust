@@ -1983,7 +1983,7 @@ impl<'a> Parser<'a> {
 
     /// Parse `builtin # ident(args,*)`.
     fn parse_expr_builtin(&mut self) -> PResult<'a, Box<Expr>> {
-        self.parse_builtin(|this, lo, ident| {
+        self.parse_builtin("expression", |this, lo, ident| {
             Ok(match ident.name {
                 sym::offset_of => Some(this.parse_expr_offset_of(lo)?),
                 sym::type_ascribe => Some(this.parse_expr_type_ascribe(lo)?),
@@ -2000,6 +2000,7 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn parse_builtin<T>(
         &mut self,
+        kind: &'static str,
         parse: impl FnOnce(&mut Parser<'a>, Span, Ident) -> PResult<'a, Option<T>>,
     ) -> PResult<'a, T> {
         let lo = self.token.span;
@@ -2020,6 +2021,7 @@ impl<'a> Parser<'a> {
         } else {
             let err = self.dcx().create_err(errors::UnknownBuiltinConstruct {
                 span: lo.to(ident.span),
+                kind,
                 name: ident,
             });
             return Err(err);
