@@ -4058,10 +4058,11 @@ impl IntoDiagArg for Case {
 }
 
 #[derive(Diagnostic)]
-#[diag("unknown `builtin #` construct `{$name}`")]
+#[diag("unknown `builtin #` {$kind} construct `{$name}`")]
 pub(crate) struct UnknownBuiltinConstruct {
     #[primary_span]
     pub span: Span,
+    pub kind: &'static str,
     pub name: Ident,
 }
 
