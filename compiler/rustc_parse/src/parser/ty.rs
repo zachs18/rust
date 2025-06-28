@@ -804,8 +804,9 @@ impl<'a> Parser<'a> {
         Ok(TyKind::Err(guar))
     }
 
+    /// Parse `builtin # ident(args,*)`.
     fn parse_builtin_ty(&mut self) -> PResult<'a, TyKind> {
-        self.parse_builtin(|this, lo, ident| {
+        self.parse_builtin("type", |this, lo, ident| {
             Ok(match ident.name {
                 sym::field_of => Some(this.parse_ty_field_of(lo)?),
                 _ => None,
