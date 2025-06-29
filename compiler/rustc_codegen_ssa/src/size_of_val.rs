@@ -12,18 +12,73 @@ use crate::common::IntPredicate;
 use crate::traits::*;
 use crate::{common, meth};
 
+enum CalculationResult<V> {
+    /// The computation was unchecked, or the result is statically known to be valid.
+    Unchecked { size: V, align: V },
+    /// The result is statically known to be invalid.
+    Invalid,
+    /// The computation was checked, and the result is not statically known to be valid.
+    Checked { valid: V, size: V, align: V },
+}
+
 pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: Option<Bx::Value>,
 ) -> (Bx::Value, Bx::Value) {
+    match size_and_align_of_dst_impl(bx, t, info, false) {
+        CalculationResult::Unchecked { size, align }
+        | CalculationResult::Checked { size, align, .. } => (size, align),
+        CalculationResult::Invalid => (bx.const_usize(0), bx.const_usize(1)),
+    }
+}
+
+pub fn checked_size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    bx: &mut Bx,
+    t: Ty<'tcx>,
+    info: Option<Bx::Value>,
+) -> (Bx::Value, Bx::Value, Bx::Value) {
+    match size_and_align_of_dst_impl(bx, t, info, true) {
+        CalculationResult::Unchecked { size, align } => (bx.const_bool(true), size, align),
+        CalculationResult::Checked { valid, size, align } => (valid, size, align),
+        CalculationResult::Invalid => (bx.const_bool(false), bx.const_usize(0), bx.const_usize(1)),
+    }
+}
+
+fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    bx: &mut Bx,
+    t: Ty<'tcx>,
+    info: Option<Bx::Value>,
+    checked: bool,
+) -> CalculationResult<Bx::Value> {
     let layout = bx.layout_of(t);
     trace!("size_and_align_of_dst(ty={}, info={:?}): layout: {:?}", t, info, layout);
     if layout.is_sized() {
         let size = bx.const_usize(layout.size.bytes());
         let align = bx.const_usize(layout.align.bytes());
-        return (size, align);
+        return CalculationResult::Unchecked { size, align };
     }
+
+    // Invariant: all valid sizes (including intermediate sizes) are `<= isize::MAX`.
+    // Therefore, we can calculate such that the output is correct if both addends are `<= isize::MAX`,
+    // and if either input was invalid, `valid` will have already been set to false so the output doesn't matter.
+    let add = |bx: &mut Bx, valid: &mut Option<_>, lhs, rhs| {
+        // Because we know that valid sizes are `<= isize::MAX`, and `isize::MAX as usize * 2 <= usize::MAX`,
+        // we can do the addition and check overflow afterwards.
+        // Note that we still can't use `unchecked_add` unconditionally.
+        let sum = bx.add(lhs, rhs);
+        if checked {
+            let isize_max = bx
+                .const_usize(bx.data_layout().ptr_sized_integer().signed_max().try_into().unwrap());
+            let sum_valid = bx.icmp(IntPredicate::IntULE, sum, isize_max);
+            *valid = Some(match *valid {
+                Some(valid) => bx.and(valid, sum_valid),
+                None => sum_valid,
+            });
+        }
+        sum
+    };
+
     match t.kind() {
         ty::Dynamic(..) => {
             // Load size/align from vtable.
@@ -41,18 +96,39 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             let align_bound = Align::max_for_target(bx.data_layout()).bytes().into();
             bx.range_metadata(align, WrappingRange { start: 1, end: align_bound });
 
-            (size, align)
+            CalculationResult::Unchecked { size, align }
         }
         ty::Slice(_) | ty::Str => {
             let unit = layout.field(bx, 0);
-            // The info in this case is the length of the str, so the size is that
+            // The info in this case is the length of the str/slice, so the size is that
             // times the unit size.
-            (
-                // All slice sizes must fit into `isize`, so this multiplication cannot
+            if unit.size.bytes() == 0 {
+                // If the element size is zero, then the size is zero, and any length is valid.
+                let size = bx.const_usize(0);
+                let align = bx.const_usize(unit.align.bytes());
+                CalculationResult::Unchecked { size, align }
+            } else if !checked {
+                // In unchecked mode, all slice sizes must fit into `isize`, so this multiplication cannot
                 // wrap -- neither signed nor unsigned.
-                bx.unchecked_sumul(info.unwrap(), bx.const_usize(unit.size.bytes())),
-                bx.const_usize(unit.align.bytes()),
-            )
+                let size = bx.unchecked_sumul(info.unwrap(), bx.const_usize(unit.size.bytes()));
+                let align = bx.const_usize(unit.align.bytes());
+                CalculationResult::Unchecked { size, align }
+            } else {
+                // If we are in checked mode, we need to check if `elem_size * count <= isize::MAX as usize`,
+                // but we can't check that after the overflow might occur, so check the equivalent division
+                // `count <= isize::MAX as usize / elem_size`, since we know `elem_size > 0` from the above check
+                let isize_max = bx.const_usize(
+                    bx.data_layout().ptr_sized_integer().signed_max().try_into().unwrap(),
+                );
+                let elem_size = bx.const_usize(unit.size.bytes());
+                let count = info.unwrap();
+                let isize_max_div_elem_size = bx.udiv(isize_max, elem_size);
+                // The slice is valid if the element
+                let valid = bx.icmp(IntPredicate::IntULE, count, isize_max_div_elem_size);
+                let size = bx.mul(count, elem_size);
+                let align = bx.const_usize(unit.align.bytes());
+                CalculationResult::Checked { valid, size, align }
+            }
         }
         ty::Foreign(_) => {
             // `extern` type. We cannot compute the size, so panic.
@@ -82,10 +158,7 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 None,
             );
 
-            // This function does not return so we can now return whatever we want.
-            let size = bx.const_usize(layout.size.bytes());
-            let align = bx.const_usize(layout.align.bytes());
-            (size, align)
+            CalculationResult::Invalid
         }
         ty::Adt(..) | ty::Tuple(..) => {
             // First get the size of all statically known fields.
@@ -107,7 +180,12 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             // Recurse to get the size of the dynamically sized field (must be
             // the last field).
             let field_ty = layout.field(bx, i).ty;
-            let (unsized_size, mut unsized_align) = size_and_align_of_dst(bx, field_ty, info);
+            let (mut valid, unsized_size, mut unsized_align) =
+                match size_and_align_of_dst_impl(bx, field_ty, info, checked) {
+                    CalculationResult::Unchecked { size, align } => (None, size, align),
+                    CalculationResult::Invalid => return CalculationResult::Invalid,
+                    CalculationResult::Checked { valid, size, align } => (Some(valid), size, align),
+                };
 
             // # First compute the dynamic alignment
 
@@ -159,7 +237,7 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             // Furthermore, `align >= unsized_align`, and therefore we only need to do:
             // let full_size = (unsized_offset_unadjusted + unsized_size).align_to(full_align);
 
-            let full_size = bx.add(unsized_offset_unadjusted, unsized_size);
+            let full_size = add(bx, &mut valid, unsized_offset_unadjusted, unsized_size);
 
             // Issue #27023: must add any necessary padding to `size`
             // (to make it a multiple of `align`) before returning it.
@@ -173,11 +251,16 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             //   `(size + (align-1)) & -align`
             let one = bx.const_usize(1);
             let addend = bx.sub(full_align, one);
-            let add = bx.add(full_size, addend);
+            let add = add(bx, &mut valid, full_size, addend);
             let neg = bx.neg(full_align);
             let full_size = bx.and(add, neg);
 
-            (full_size, full_align)
+            match valid {
+                Some(valid) => {
+                    CalculationResult::Checked { valid, size: full_size, align: full_align }
+                }
+                None => CalculationResult::Unchecked { size: full_size, align: full_align },
+            }
         }
         _ => bug!("size_and_align_of_dst: {t} not supported"),
     }
