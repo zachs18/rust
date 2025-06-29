@@ -618,6 +618,39 @@ impl () {}
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_pointer {}
 
+#[rustc_doc_primitive = "untyped_ptr"]
+#[unstable(feature = "untyped_ptr", issue = "none")]
+/// Untyped pointer primitive, `builtin # untyped_ptr(nonnull)` and `builtin # untyped_ptr(nullable)`.
+mod prim_untyped_ptr {}
+
+#[rustc_doc_primitive = "ptr_metadata"]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+/// Typed pointer metadata primitive, `builtin # ptr_metadata(T)`.
+mod prim_ptr_metadata {}
+
+/// Allows using builtin # foo() syntax before the bootstrap tidy recognizes it.
+/// Copied here from core/src/internal_macros.rs, because this file is included in std also.
+macro_rules! builtin {
+    ($($rest:tt)*) => {
+        builtin # $($rest)*
+    }
+}
+
+// Required to make auto trait impls render.
+// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+#[doc(hidden)]
+impl builtin!(untyped_ptr(nonnull)) {}
+
+// Required to make auto trait impls render.
+// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+#[doc(hidden)]
+impl builtin!(untyped_ptr(nullable)) {}
+
+// Required to make auto trait impls render.
+// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+#[doc(hidden)]
+impl<T: ?Sized> builtin!(ptr_metadata(T)) {}
+
 #[rustc_doc_primitive = "array"]
 #[doc(alias = "[]")]
 #[doc(alias = "[T;N]")] // unfortunately, rustdoc doesn't have fuzzy search for aliases

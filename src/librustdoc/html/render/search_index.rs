@@ -2067,6 +2067,8 @@ fn get_index_type_id(
         | clean::SelfTy
         | clean::ImplTrait(_)
         | clean::Infer
+        | clean::UntypedPointer { .. }
+        | clean::PointerMetadata(..)
         | clean::UnsafeBinder(_) => None,
     }
 }

@@ -1837,6 +1837,8 @@ pub(crate) fn clean_ty<'tcx>(ty: &hir::Ty<'tcx>, cx: &mut DocContext<'tcx>) -> T
             let lifetime = if l.is_anonymous() { None } else { Some(clean_lifetime(l, cx)) };
             BorrowedRef { lifetime, mutability: m.mutbl, type_: Box::new(clean_ty(m.ty, cx)) }
         }
+        TyKind::PtrMetadata(ty) => PointerMetadata(Box::new(clean_ty(ty, cx))),
+        TyKind::UntypedPtr { is_nonnull } => UntypedPointer { is_nonnull },
         TyKind::Slice(ty) => Slice(Box::new(clean_ty(ty, cx))),
         TyKind::Pat(inner_ty, pat) => {
             // Local HIR pattern types should print the same way as cross-crate inlined ones,
@@ -2103,6 +2105,10 @@ pub(crate) fn clean_middle_ty<'tcx>(
         }
         ty::RawPtr(ty, mutbl) => {
             RawPointer(mutbl, Box::new(clean_middle_ty(bound_ty.rebind(ty), cx, None, None)))
+        }
+        ty::UntypedPtr { is_nonnull } => UntypedPointer { is_nonnull },
+        ty::PtrMetadata(ty) => {
+            PointerMetadata(Box::new(clean_middle_ty(bound_ty.rebind(ty), cx, None, None)))
         }
         ty::Ref(r, ty, mutbl) => BorrowedRef {
             lifetime: clean_middle_region(r, cx.tcx),

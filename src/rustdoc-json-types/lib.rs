@@ -1451,6 +1451,16 @@ pub enum Type {
         #[cfg_attr(feature = "rkyv_0_8", rkyv(omit_bounds))]
         type_: Box<Type>,
     },
+    /// A pointer metadata type: `builtin # ptr_metadata(T)`
+    PointerMetadata {
+        /// The type of the pointee, e.g. the `T` in `builtin # ptr_metadata(T)`
+        type_: Box<Type>,
+    },
+    /// An untyped raw pointer type: `builtin # untyped_ptr(nonnull)`, `builtin # untyped_ptr(nullable)`
+    UntypedPointer {
+        /// This is `true` for `builtin # untyped_ptr(nonnull)`, and `false` for `builtin # untyped_ptr(nullable)`
+        is_nonnull: bool,
+    },
     /// Associated types like `<Type as Trait>::Name` and `T::Item` where
     /// `T: Iterator` or inherent associated types like `Struct::Name`.
     QualifiedPath {

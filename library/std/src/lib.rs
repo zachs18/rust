@@ -272,6 +272,7 @@
 #![feature(allow_internal_unstable)]
 #![feature(asm_experimental_arch)]
 #![feature(autodiff)]
+#![feature(builtin_syntax)]
 #![feature(cfg_sanitizer_cfi)]
 #![feature(cfg_target_thread_local)]
 #![feature(cfi_encoding)]
@@ -297,6 +298,7 @@
 #![feature(never_type)]
 #![feature(optimize_attribute)]
 #![feature(prelude_import)]
+#![feature(ptr_metadata_v2)]
 #![feature(rustc_attrs)]
 #![feature(rustdoc_internals)]
 #![feature(staged_api)]
@@ -307,6 +309,7 @@
 #![feature(try_blocks)]
 #![feature(try_trait_v2)]
 #![feature(type_alias_impl_trait)]
+#![feature(untyped_ptr)]
 // tidy-alphabetical-end
 //
 // Library features (core):
