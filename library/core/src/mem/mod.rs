@@ -385,10 +385,6 @@ pub const fn size_of_val<T: ?Sized>(val: &T) -> usize {
 ///       to a valid vtable acquired by an unsizing coercion, and the size
 ///       of the *entire value* (dynamic tail length + statically sized prefix)
 ///       must fit in `isize`.
-///     - an (unstable) [extern type], then this function is always safe to
-///       call, but may panic or otherwise return the wrong value, as the
-///       extern type's layout is not known. This is the same behavior as
-///       [`size_of_val`] on a reference to a type with an extern type tail.
 ///     - otherwise, it is conservatively not allowed to call this function.
 ///
 /// [`size_of::<T>()`]: size_of
@@ -413,6 +409,59 @@ pub const fn size_of_val<T: ?Sized>(val: &T) -> usize {
 pub const unsafe fn size_of_val_raw<T: ?Sized>(val: *const T) -> usize {
     // SAFETY: the caller must provide a valid raw pointer
     unsafe { intrinsics::size_of_val(val) }
+}
+
+/// Returns the size of the pointed-to value in bytes, or `None` if it would be
+/// too large to fit in `isize`.
+///
+/// This is usually the same as [`size_of::<T>()`]. However, when `T` *has* no
+/// statically-known size, e.g., a slice [`[T]`][slice] or a [trait object],
+/// then `size_of_val_raw` can be used to get the dynamically-known size.
+///
+/// # Safety
+///
+/// This function is always safe to call.
+///
+/// - If `T` is `Sized`, this function returns `Some(size_of::<T>())`.
+/// - If the unsized tail of `T` is:
+///     - a [slice], then this function will return `Some` if the size of the
+///       *entire value* (dynamic tail length + statically sized prefix) fits
+///       in `isize`.
+///     - a [trait object], then the vtable part of the pointer must point
+///       to a valid vtable acquired by an unsizing coercion, and the size
+///       of the *entire value* (dynamic tail length + statically sized prefix)
+///       must fit in `isize`.
+///     - otherwise, it is conservatively not allowed to call this function.
+///
+/// [`size_of::<T>()`]: size_of
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+///
+/// # Examples
+///
+/// ```
+/// #![feature(checked_layout_for_ptr)]
+/// use std::mem;
+///
+/// assert_eq!(Some(4), checked_size_of_val_raw(&5i32));
+///
+/// let x: [u8; 13] = [0; 13];
+/// let y: &[u8] = &x;
+/// assert_eq!(Some(13), mem::checked_size_of_val_raw(y));
+///
+/// let p: *const [u8; 42] = std::ptr::null();
+/// let p: *const [u8] = p;
+/// assert_eq!(Some(42), mem::checked_size_of_val_raw(p));
+///
+/// // `[u8; usize::MAX]` is too large; the maximum allocation size is `isize::MAX as usize` bytes
+/// let p: *const [u8] = std::ptr::slice_from_raw_parts(std::ptr::null(), usize::MAX);
+/// assert_eq!(None, mem::checked_size_of_val_raw(p));
+/// ```
+#[inline]
+#[must_use]
+#[unstable(feature = "checked_layout_for_ptr", issue = "69835")]
+pub const fn checked_size_of_val_raw<T: ?Sized>(val: *const T) -> Option<usize> {
+    let (valid, size) = intrinsics::checked_size_of_val(val);
+    if valid { Some(size) } else { None }
 }
 
 /// Returns the [ABI]-required minimum alignment of a type in bytes.
@@ -552,6 +601,60 @@ pub const fn align_of_val<T: ?Sized>(val: &T) -> usize {
 pub const unsafe fn align_of_val_raw<T: ?Sized>(val: *const T) -> usize {
     // SAFETY: the caller must provide a valid raw pointer
     unsafe { intrinsics::align_of_val(val) }
+}
+
+/// Returns the [ABI]-required minimum alignment of the type of the value that `val` points to in
+/// bytes, or `None` if it would be too large to fit in `isize` or is otherwise uncomputable.
+///
+/// Every reference to a value of the type `T` with the same metadata as the given pointer
+/// must be a multiple of this number.
+///
+/// [ABI]: https://en.wikipedia.org/wiki/Application_binary_interface
+///
+/// # Safety
+///
+/// This function is always safe to call.
+///
+/// - If `T` is `Sized`, this function returns `Some(align_of::<T>())`.
+/// - If the unsized tail of `T` is:
+///     - a [slice] `[U]`, then this function will return `Some(align_of::<U>)`
+// FIXME(checked_layout_for_ptr): should this be guaranteed to return `Some` in exactly the same cases as
+// `checked_size_of_val_raw`, or is it okay to return `Some` even if the pointee is too large?
+///     - a [trait object], then the vtable part of the pointer must point
+///       to a valid vtable acquired by an unsizing coercion, and the size
+///       of the *entire value* (dynamic tail length + statically sized prefix)
+///       must fit in `isize`.
+///     - otherwise, it is conservatively not allowed to call this function.
+///
+/// [`align_of::<T>()`]: align_of
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+///
+/// # Examples
+///
+/// ```
+/// #![feature(checked_layout_for_ptr)]
+/// use std::mem;
+///
+/// assert_eq!(Some(4), checked_align_of_val_raw(&5i32));
+///
+/// let x: [u8; 13] = [0; 13];
+/// let y: &[u8] = &x;
+/// assert_eq!(Some(13), mem::checked_align_of_val_raw(y));
+///
+/// let p: *const [u8; 42] = std::ptr::null();
+/// let p: *const [u8] = p;
+/// assert_eq!(Some(42), mem::checked_align_of_val_raw(p));
+///
+/// // `[u8; usize::MAX]` is too large; the maximum allocation align is `isize::MAX as usize` bytes
+/// let p: *const [u8] = std::ptr::slice_from_raw_parts(std::ptr::null(), usize::MAX);
+/// assert_eq!(None, mem::checked_align_of_val_raw(p));
+/// ```
+#[inline]
+#[must_use]
+#[unstable(feature = "checked_layout_for_ptr", issue = "69835")]
+pub const fn checked_align_of_val_raw<T: ?Sized>(val: *const T) -> Option<usize> {
+    let (valid, align) = intrinsics::checked_align_of_val(val);
+    if valid { Some(align) } else { None }
 }
 
 /// Returns `true` if dropping values of type `T` matters.

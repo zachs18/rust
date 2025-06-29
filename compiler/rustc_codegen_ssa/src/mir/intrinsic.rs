@@ -10,6 +10,7 @@ use super::operand::OperandRef;
 use super::place::PlaceRef;
 use crate::common::{AtomicRmwBinOp, SynchronizationScope};
 use crate::errors::InvalidMonomorphization;
+use crate::mir::operand::OperandValue;
 use crate::traits::*;
 use crate::{MemFlags, meth, size_of_val};
 
@@ -123,6 +124,22 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let (_, meta) = args[0].val.pointer_parts();
                 let (_, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
                 llalign
+            }
+            sym::checked_size_of_val => {
+                let tp_ty = fn_args.type_at(0);
+                let (_, meta) = args[0].val.pointer_parts();
+                let (llvalid, llsize, _) =
+                    size_of_val::checked_size_and_align_of_dst(bx, tp_ty, meta);
+                OperandRef { val: OperandValue::Pair(llvalid, llsize), layout: result.layout }
+                    .immediate_or_packed_pair(bx)
+            }
+            sym::checked_align_of_val => {
+                let tp_ty = fn_args.type_at(0);
+                let (_, meta) = args[0].val.pointer_parts();
+                let (llvalid, _, llalign) =
+                    size_of_val::checked_size_and_align_of_dst(bx, tp_ty, meta);
+                OperandRef { val: OperandValue::Pair(llvalid, llalign), layout: result.layout }
+                    .immediate_or_packed_pair(bx)
             }
             sym::vtable_size | sym::vtable_align => {
                 let vtable = args[0].immediate();

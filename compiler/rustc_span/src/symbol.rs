@@ -640,6 +640,8 @@ symbols! {
         char,
         char_is_ascii,
         char_to_digit,
+        checked_align_of_val,
+        checked_size_of_val,
         child_id,
         child_kill,
         client,

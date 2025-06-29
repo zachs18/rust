@@ -2668,7 +2668,7 @@ pub const fn variant_count<T>() -> usize;
 
 /// The size of the referenced value in bytes.
 ///
-/// The stabilized version of this intrinsic is [`size_of_val`].
+/// The stabilized version of this intrinsic is [`crate::mem::size_of_val`].
 ///
 /// # Safety
 ///
@@ -2681,7 +2681,7 @@ pub const unsafe fn size_of_val<T: ?Sized>(ptr: *const T) -> usize;
 
 /// The required alignment of the referenced value.
 ///
-/// The stabilized version of this intrinsic is [`align_of_val`].
+/// The stabilized version of this intrinsic is [`crate::mem::align_of_val`].
 ///
 /// # Safety
 ///
@@ -2691,6 +2691,42 @@ pub const unsafe fn size_of_val<T: ?Sized>(ptr: *const T) -> usize;
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn align_of_val<T: ?Sized>(ptr: *const T) -> usize;
+
+/// Returns `true` and the size of the referenced value, or `false` and an arbitrary
+/// value if the size would overflow `isize` or is otherwise uncomputable.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// The to-be-stabilized version of this intrinsic is [`crate::mem::checked_size_of_val_raw`].
+///
+/// # Safety
+///
+/// See [`crate::mem::checked_size_of_val_raw`] for safety conditions.
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[rustc_intrinsic_const_stable_indirect]
+pub const fn checked_size_of_val<T: ?Sized>(ptr: *const T) -> (bool, usize);
+
+/// Returns `true` and the required alignment of the referenced value, or `false` and an arbitrary
+/// value if the alignment would overflow `isize` or is otherwise uncomputable.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// The to-be-stabilized version of this intrinsic is [`crate::mem::checked_align_of_val_raw`].
+///
+/// See [`crate::mem::checked_align_of_val_raw`] for safety conditions.
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[rustc_intrinsic_const_stable_indirect]
+pub const fn checked_align_of_val<T: ?Sized>(ptr: *const T) -> (bool, usize);
 
 /// Gets a static string slice containing the name of a type.
 ///
