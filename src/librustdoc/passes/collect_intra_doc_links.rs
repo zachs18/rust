@@ -534,6 +534,8 @@ fn ty_to_res<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Res> {
         ty::Slice(_) => Res::Primitive(Slice),
         ty::RawPtr(_, _) => Res::Primitive(RawPointer),
         ty::Ref(..) => Res::Primitive(Reference),
+        ty::PtrMetadata(..) => Res::Primitive(PointerMetadata),
+        ty::UntypedPtr { .. } => Res::Primitive(UntypedPointer),
         ty::FnDef(..) => panic!("type alias to a function definition"),
         ty::FnPtr(..) => Res::Primitive(Fn),
         ty::Never => Res::Primitive(Never),

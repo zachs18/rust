@@ -1037,6 +1037,52 @@ fn fmt_type(
                 .wrap_fn(|f| fmt_type(ty, f, use_absolute, cx))
                 .fmt(f)
         }
+        clean::PointerMetadata(t) => {
+            if matches!(**t, clean::Generic(_)) || t.is_assoc_ty() {
+                let ty = print_type(t, cx);
+                if f.alternate() {
+                    primitive_link(
+                        f,
+                        clean::PrimitiveType::PointerMetadata,
+                        format_args!("builtin # ptr_metadata({ty:#})"),
+                        cx,
+                    )
+                } else {
+                    primitive_link(
+                        f,
+                        clean::PrimitiveType::PointerMetadata,
+                        format_args!("builtin # ptr_metadata({ty})"),
+                        cx,
+                    )
+                }
+            } else {
+                primitive_link(
+                    f,
+                    clean::PrimitiveType::PointerMetadata,
+                    format_args!("builtin # ptr_metadata("),
+                    cx,
+                )?;
+                print_type(t, cx).fmt(f)?;
+                primitive_link(f, clean::PrimitiveType::PointerMetadata, format_args!(")"), cx)
+            }
+        }
+        &clean::UntypedPointer { is_nonnull } => {
+            if is_nonnull {
+                primitive_link(
+                    f,
+                    clean::PrimitiveType::UntypedPointer,
+                    format_args!("builtin # untyped_ptr(nonnull)"),
+                    cx,
+                )
+            } else {
+                primitive_link(
+                    f,
+                    clean::PrimitiveType::UntypedPointer,
+                    format_args!("builtin # untyped_ptr(nullable)"),
+                    cx,
+                )
+            }
+        }
         clean::ImplTrait(bounds) => {
             f.write_str("impl ")?;
             print_generic_bounds(bounds, cx).fmt(f)

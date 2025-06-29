@@ -33,8 +33,8 @@ use tracing::{debug, trace};
 
 pub(crate) use self::ItemKind::*;
 pub(crate) use self::Type::{
-    Array, BareFunction, BorrowedRef, DynTrait, Generic, ImplTrait, Infer, Primitive, QPath,
-    RawPointer, SelfTy, Slice, Tuple, UnsafeBinder,
+    Array, BareFunction, BorrowedRef, DynTrait, Generic, ImplTrait, Infer, PointerMetadata,
+    Primitive, QPath, RawPointer, SelfTy, Slice, Tuple, UnsafeBinder, UntypedPointer,
 };
 use crate::clean::cfg::Cfg;
 use crate::clean::clean_middle_path;
@@ -1379,6 +1379,12 @@ pub(crate) enum Type {
         mutability: Mutability,
         type_: Box<Type>,
     },
+    /// A pointer metadata type: `builtin # ptr_metadata(T)`
+    PointerMetadata(Box<Type>),
+    /// An untyped raw pointer type: `builtin # untyped_ptr(nonnull)`, `builtin # untyped_ptr(nullable)`
+    UntypedPointer {
+        is_nonnull: bool,
+    },
 
     /// A qualified path to an associated item: `<Type as Trait>::Name`
     QPath(Box<QPathData>),
@@ -1500,6 +1506,8 @@ impl Type {
                 }
             }
             RawPointer(..) => Some(PrimitiveType::RawPointer),
+            PointerMetadata(..) => Some(PrimitiveType::PointerMetadata),
+            UntypedPointer { .. } => Some(PrimitiveType::UntypedPointer),
             BareFunction(..) => Some(PrimitiveType::Fn),
             _ => None,
         }
@@ -1586,6 +1594,8 @@ impl Type {
             Type::Pat(..) => PrimitiveType::Pat,
             Type::FieldOf(..) => PrimitiveType::FieldOf,
             RawPointer(..) => PrimitiveType::RawPointer,
+            UntypedPointer { .. } => PrimitiveType::UntypedPointer,
+            PointerMetadata(..) => PrimitiveType::PointerMetadata,
             QPath(box QPathData { self_type, .. }) => return self_type.def_id(cache),
             Generic(_) | SelfTy | Infer | ImplTrait(_) | UnsafeBinder(_) => return None,
         };
@@ -1637,6 +1647,8 @@ pub(crate) enum PrimitiveType {
     Unit,
     RawPointer,
     Reference,
+    UntypedPointer,
+    PointerMetadata,
     Fn,
     Never,
 }
@@ -1695,6 +1707,8 @@ impl PrimitiveType {
             sym::unit => Some(PrimitiveType::Unit),
             sym::pointer => Some(PrimitiveType::RawPointer),
             sym::reference => Some(PrimitiveType::Reference),
+            sym::untyped_ptr => Some(PrimitiveType::UntypedPointer),
+            sym::ptr_metadata => Some(PrimitiveType::PointerMetadata),
             kw::Fn => Some(PrimitiveType::Fn),
             sym::never => Some(PrimitiveType::Never),
             _ => None,
@@ -1739,6 +1753,8 @@ impl PrimitiveType {
                 Unit => single(SimplifiedType::Tuple(0)),
                 RawPointer => [SimplifiedType::Ptr(Mutability::Not), SimplifiedType::Ptr(Mutability::Mut)].into_iter().collect(),
                 Reference => [SimplifiedType::Ref(Mutability::Not), SimplifiedType::Ref(Mutability::Mut)].into_iter().collect(),
+                UntypedPointer => [SimplifiedType::UntypedPtr { is_nonnull: true }, SimplifiedType::UntypedPtr { is_nonnull: false }].into_iter().collect(),
+                PointerMetadata => single(SimplifiedType::PtrMetadata),
                 // FIXME: This will be wrong if we ever add inherent impls
                 // for function pointers.
                 Fn => single(SimplifiedType::Function(1)),
@@ -1794,6 +1810,8 @@ impl PrimitiveType {
             Unit => sym::unit,
             RawPointer => sym::pointer,
             Reference => sym::reference,
+            PointerMetadata => sym::ptr_metadata,
+            UntypedPointer => sym::untyped_ptr,
             Fn => kw::Fn,
             Never => sym::never,
         }

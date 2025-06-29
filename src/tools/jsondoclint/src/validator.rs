@@ -270,6 +270,10 @@ impl<'a> Validator<'a> {
             Type::Infer => {}
             Type::RawPointer { is_mutable: _, type_ } => self.check_type(&**type_),
             Type::BorrowedRef { lifetime: _, is_mutable: _, type_ } => self.check_type(&**type_),
+            Type::UntypedPointer { is_nonnull } => {
+                let _: bool = *is_nonnull;
+            }
+            Type::PointerMetadata { type_ } => self.check_type(&**type_),
             Type::QualifiedPath { name: _, args, self_type, trait_ } => {
                 self.check_opt_generic_args(&args);
                 self.check_type(&**self_type);
