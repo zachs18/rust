@@ -35,6 +35,7 @@ where
         | ty::Float(_)
         | ty::FnDef(..)
         | ty::FnPtr(..)
+        | ty::UntypedPtr { .. }
         | ty::Error(_)
         | ty::Never
         | ty::Char => Ok(ty::Binder::dummy(vec![])),
@@ -59,7 +60,8 @@ where
             panic!("unexpected type `{ty:?}`")
         }
 
-        ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) => {
+        ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) | ty::PtrMetadata(element_ty) => {
+            // FIXME(ptr_metadata_v2): Is this correct for PtrMetadata?... is it even correct for RawPtr?
             Ok(ty::Binder::dummy(vec![element_ty]))
         }
 
@@ -133,6 +135,8 @@ where
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::RawPtr(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Char
         | ty::Ref(..)
         | ty::Coroutine(..)
@@ -213,6 +217,8 @@ where
         | ty::RawPtr(..)
         | ty::Never
         | ty::Ref(_, _, Mutability::Not)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Array(..) => Err(NoSolution),
 
         // Cannot implement in core, as we can't be generic over patterns yet,
@@ -392,6 +398,8 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<I: Intern
         | ty::Slice(_)
         | ty::RawPtr(_, _)
         | ty::Ref(_, _, _)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Dynamic(_, _)
         | ty::Coroutine(_, _)
         | ty::CoroutineWitness(..)
@@ -566,6 +574,8 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_async_callable<I: 
         | ty::Slice(_)
         | ty::RawPtr(_, _)
         | ty::Ref(_, _, _)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Dynamic(_, _)
         | ty::Coroutine(_, _)
         | ty::CoroutineWitness(..)
@@ -728,6 +738,8 @@ pub(in crate::solve) fn extract_fn_def_from_const_callable<I: Interner>(
         | ty::Slice(_)
         | ty::RawPtr(_, _)
         | ty::Ref(_, _, _)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Dynamic(_, _)
         | ty::Coroutine(_, _)
         | ty::CoroutineWitness(..)
@@ -802,6 +814,8 @@ pub(in crate::solve) fn const_conditions_for_destruct<I: Interner>(
         | ty::Str
         | ty::RawPtr(..)
         | ty::Ref(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::Never

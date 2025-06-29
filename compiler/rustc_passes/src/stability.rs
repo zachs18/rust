@@ -928,13 +928,16 @@ impl<'tcx> Visitor<'tcx> for CheckTraitImplStable<'tcx> {
     }
 
     fn visit_ty(&mut self, t: &'tcx Ty<'tcx, AmbigArg>) {
-        if let TyKind::Never = t.kind {
-            self.fully_stable = false;
-        }
-        if let TyKind::FnPtr(function) = t.kind {
-            if extern_abi_stability(function.abi).is_err() {
+        match t.kind {
+            TyKind::Never | TyKind::PtrMetadata(..) | TyKind::UntypedPtr { .. } => {
                 self.fully_stable = false;
             }
+            TyKind::FnPtr(function) => {
+                if extern_abi_stability(function.abi).is_err() {
+                    self.fully_stable = false;
+                }
+            }
+            _ => {}
         }
         intravisit::walk_ty(self, t)
     }

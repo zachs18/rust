@@ -1891,6 +1891,8 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::Slice(_)
                     | ty::FnDef(_, _)
                     | ty::FnPtr(..)
+                    | ty::UntypedPtr { .. }
+                    | ty::PtrMetadata(..)
                     | ty::Dynamic(_, _)
                     | ty::Closure(_, _)
                     | ty::CoroutineClosure(_, _)
@@ -1922,6 +1924,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     ty::Closure(..)
                     | ty::CoroutineClosure(..)
                     | ty::Coroutine(_, _)
+                    | ty::PtrMetadata(..)
                     | ty::Tuple(_) => (),
                     ty::Bool
                     | ty::Char
@@ -1935,6 +1938,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::Slice(_)
                     | ty::RawPtr(_, _)
                     | ty::Ref(_, _, _)
+                    | ty::UntypedPtr { .. }
                     | ty::FnDef(_, _)
                     | ty::FnPtr(..)
                     | ty::Dynamic(_, _)

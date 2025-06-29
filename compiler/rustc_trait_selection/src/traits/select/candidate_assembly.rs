@@ -701,6 +701,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | ty::Slice(_)
                 | ty::RawPtr(_, _)
                 | ty::Ref(_, _, _)
+                | ty::UntypedPtr { .. }
+                | ty::PtrMetadata(..)
                 | ty::Closure(..)
                 | ty::CoroutineClosure(..)
                 | ty::Coroutine(_, _)
@@ -879,6 +881,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | ty::Adt(..)
                 | ty::RawPtr(_, _)
                 | ty::Ref(..)
+                | ty::UntypedPtr { .. }
+                | ty::PtrMetadata(..)
                 | ty::FnDef(..)
                 | ty::FnPtr(..)
                 | ty::Closure(..)
@@ -1158,6 +1162,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Float(_)
             | ty::Char
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Ref(_, _, hir::Mutability::Not)
             | ty::Array(..) => {}
@@ -1255,6 +1261,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Char
             | ty::Ref(..)
             | ty::Array(..)
@@ -1341,6 +1349,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(_, _)
             | ty::Pat(_, _)
             | ty::FnPtr(..)
@@ -1382,6 +1392,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::Placeholder(..)
             | ty::Dynamic(..)
@@ -1428,6 +1440,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Float(_)
             | ty::Char
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Pat(..)
             | ty::Dynamic(..)

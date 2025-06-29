@@ -167,6 +167,19 @@ impl<'tcx> PlaceTy<'tcx> {
                     .get(f.index())
                     .copied()
                     .unwrap_or_else(|| bug!("field {f:?} out of range: {self_ty:?}")),
+                ty::PtrMetadata(pointee_ty) => {
+                    if f.as_usize() != 0 {
+                        bug!("field {f:?} out of range for {self_ty}");
+                    }
+                    match pointee_ty.ptr_metadata_ty_or_tail(tcx, |x| x) {
+                        Ok(metadata_ty) => metadata_ty,
+                        Err(tail_ty) => {
+                            let metadata_def_id =
+                                tcx.require_lang_item(rustc_hir::LangItem::Metadata, DUMMY_SP);
+                            Ty::new_projection(tcx, metadata_def_id, [tail_ty])
+                        }
+                    }
+                }
                 _ => bug!("can't project out of {self_ty:?}"),
             }
         }

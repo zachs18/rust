@@ -889,6 +889,8 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Tuple(..) => {
                 self.assemble_inherent_candidates_for_incoherent_ty(raw_self_ty, receiver_steps)

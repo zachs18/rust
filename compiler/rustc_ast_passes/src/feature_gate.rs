@@ -294,6 +294,12 @@ impl<'a> Visitor<'a> for PostExpansionVisitor<'a> {
             ast::TyKind::Pat(..) => {
                 gate!(self, pattern_types, ty.span, "pattern types are unstable");
             }
+            ast::TyKind::PtrMetadata(..) => {
+                gate!(&self, ptr_metadata_v2, ty.span, "the pointer metadata type is unstable");
+            }
+            ast::TyKind::UntypedPtr { .. } => {
+                gate!(&self, untyped_ptr, ty.span, "the untyped pointer type is unstable");
+            }
             _ => {}
         }
         visit::walk_ty(self, ty)

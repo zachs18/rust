@@ -792,6 +792,22 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
                 }
             }
 
+            ty::UntypedPtr { .. } => {
+                // FIXME(untyped_ptr): is this right?
+                FfiSafe
+            }
+
+            ty::PtrMetadata(..) => {
+                // FIXME(ptr_metadata_v2): implement this
+                FfiUnsafe {
+                    ty,
+                    reason: DiagMessage::Str(
+                        "FIXME(ptr_metadata_v2): implement FFI-safety linting".into(),
+                    ),
+                    help: None,
+                }
+            }
+
             ty::FnPtr(sig_tys, hdr) => {
                 let sig = sig_tys.with(hdr);
                 if sig.abi().is_rustic_abi() {

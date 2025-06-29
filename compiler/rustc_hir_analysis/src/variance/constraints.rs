@@ -230,6 +230,7 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
             | ty::Int(_)
             | ty::Uint(_)
             | ty::Float(_)
+            | ty::UntypedPtr { .. }
             | ty::Str
             | ty::Never
             | ty::Foreign(..) => {
@@ -261,6 +262,10 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
 
             ty::RawPtr(ty, mutbl) => {
                 self.add_constraints_from_mt(current, &ty::TypeAndMut { ty, mutbl }, variance);
+            }
+
+            ty::PtrMetadata(typ) => {
+                self.add_constraints_from_ty(current, typ, variance);
             }
 
             ty::Tuple(subtys) => {

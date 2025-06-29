@@ -673,6 +673,47 @@ mod impls {
     #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
     unsafe impl<T: PointeeSized> const TrivialClone for *mut T {}
 
+    #[unstable(feature = "untyped_ptr", issue = "none")]
+    #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
+    impl const Clone for builtin!(untyped_ptr(nonnull)) {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    #[doc(hidden)]
+    #[unstable(feature = "trivial_clone", issue = "none")]
+    #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
+    unsafe impl const TrivialClone for builtin!(untyped_ptr(nonnull)) {}
+
+    #[unstable(feature = "untyped_ptr", issue = "none")]
+    #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
+    impl const Clone for builtin!(untyped_ptr(nullable)) {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    #[doc(hidden)]
+    #[unstable(feature = "trivial_clone", issue = "none")]
+    #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
+    unsafe impl const TrivialClone for builtin!(untyped_ptr(nullable)) {}
+
+    #[unstable(feature = "ptr_metadata_v2", issue = "none")]
+    #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
+    impl<T: PointeeSized> const Clone for builtin!(ptr_metadata(T)) {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    #[doc(hidden)]
+    #[unstable(feature = "trivial_clone", issue = "none")]
+    #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
+    unsafe impl<T: PointeeSized> const TrivialClone for builtin!(ptr_metadata(T)) {}
+
     /// Shared references can be cloned, but mutable references *cannot*!
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_clone", issue = "142757")]

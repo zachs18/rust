@@ -734,6 +734,18 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
                 ty::TypeAndMut { ty, mutbl }.print(self)?;
             }
             ty::Never => write!(self, "!")?,
+            ty::UntypedPtr { is_nonnull } => {
+                write!(self, "{{")?;
+                if is_nonnull {
+                    write!(self, "nonnull ")?;
+                }
+                write!(self, "ptr}}")?
+            }
+            ty::PtrMetadata(ty) => {
+                write!(self, "{{ptr metadata for ")?;
+                ty.print(self)?;
+                write!(self, "}}")?
+            }
             ty::Tuple(tys) => {
                 write!(self, "(")?;
                 self.comma_sep(tys.iter())?;

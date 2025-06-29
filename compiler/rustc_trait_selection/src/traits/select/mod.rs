@@ -2171,6 +2171,8 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::RawPtr(..)
             | ty::Char
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
             | ty::Array(..)
@@ -2225,6 +2227,8 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::RawPtr(..)
             | ty::Never
             | ty::Ref(_, _, hir::Mutability::Not)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Array(..) => {
                 unreachable!("tried to assemble `Sized` for type with libcore-provided impl")
             }
@@ -2319,6 +2323,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::Float(_)
             | ty::FnDef(..)
             | ty::FnPtr(..)
+            | ty::UntypedPtr { .. }
             | ty::Error(_)
             | ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
             | ty::Never
@@ -2355,7 +2360,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 bug!("asked to assemble constituent types of unexpected type: {:?}", t);
             }
 
-            ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) => {
+            ty::RawPtr(element_ty, _) | ty::Ref(_, element_ty, _) | ty::PtrMetadata(element_ty) => {
                 ty::Binder::dummy(AutoImplConstituents {
                     types: vec![element_ty],
                     assumptions: vec![],

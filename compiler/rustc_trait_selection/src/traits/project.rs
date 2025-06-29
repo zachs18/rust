@@ -1031,6 +1031,8 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                         | ty::Slice(_)
                         | ty::RawPtr(..)
                         | ty::Ref(..)
+                        | ty::UntypedPtr { .. }
+                        | ty::PtrMetadata(..)
                         | ty::FnDef(..)
                         | ty::FnPtr(..)
                         | ty::Dynamic(..)
@@ -1086,6 +1088,8 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                             | ty::Slice(_)
                             | ty::RawPtr(..)
                             | ty::Ref(..)
+                            | ty::UntypedPtr { .. }
+                            | ty::PtrMetadata(..)
                             | ty::FnDef(..)
                             | ty::FnPtr(..)
                             | ty::Dynamic(..)

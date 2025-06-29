@@ -338,6 +338,15 @@ impl<I: Interner> FlagComputation<I> {
                 self.add_ty(ty);
             }
 
+            ty::UntypedPtr { is_nonnull } => {
+                let _: bool = is_nonnull;
+                // FIXME(untyped_ptr): once this uses generics, do stuff here.
+            }
+
+            ty::PtrMetadata(ty) => {
+                self.add_ty(ty);
+            }
+
             ty::Tuple(types) => {
                 self.add_tys(types);
             }
