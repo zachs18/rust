@@ -594,6 +594,10 @@ impl FromClean<clean::Type> for Type {
                 is_mutable: *mutability == ast::Mutability::Mut,
                 type_: Box::new(type_.into_json(renderer)),
             },
+            clean::Type::PointerMetadata(type_) => {
+                Type::PointerMetadata { type_: Box::new(type_.into_json(renderer)) }
+            }
+            &clean::Type::UntypedPointer { is_nonnull } => Type::UntypedPointer { is_nonnull },
             QPath(qpath) => qpath.into_json(renderer),
             // FIXME(unsafe_binder): Implement rustdoc-json.
             UnsafeBinder(_) => todo!(),
