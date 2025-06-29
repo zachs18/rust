@@ -31,6 +31,8 @@ fn sizedness_constraint_for_ty<'tcx>(
         | ty::Float(..)
         | ty::RawPtr(..)
         | ty::Ref(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::Array(..)
@@ -383,6 +385,8 @@ fn impl_self_is_guaranteed_unsized<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) 
         | ty::Pat(_, _)
         | ty::RawPtr(_, _)
         | ty::Ref(_, _, _)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::FnDef(_, _)
         | ty::FnPtr(_, _)
         | ty::UnsafeBinder(_)

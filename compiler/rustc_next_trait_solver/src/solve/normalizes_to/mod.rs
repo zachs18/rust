@@ -633,6 +633,8 @@ where
             | ty::Pat(..)
             | ty::RawPtr(..)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::Closure(..)
@@ -888,6 +890,8 @@ where
             | ty::Pat(..)
             | ty::RawPtr(..)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::Closure(..)

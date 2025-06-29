@@ -722,6 +722,8 @@ where
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)
@@ -844,6 +846,8 @@ where
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)

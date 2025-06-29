@@ -922,9 +922,10 @@ fn try_write_constant<'tcx>(
         // Unsupported for now.
         ty::Array(_, _)
         | ty::Pat(_, _)
+        | ty::PtrMetadata(..)
 
         // Do not attempt to support indirection in constants.
-        | ty::Ref(..) | ty::RawPtr(..) | ty::FnPtr(..) | ty::Str | ty::Slice(_)
+        | ty::Ref(..) | ty::RawPtr(..) | ty::UntypedPtr { .. } | ty::FnPtr(..) | ty::Str | ty::Slice(_)
 
         | ty::Never
         | ty::Foreign(..)

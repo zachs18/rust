@@ -159,10 +159,16 @@ impl Visitable for RigidTy {
             }
             RigidTy::Pat(t, _p) => t.visit(visitor),
             RigidTy::Slice(inner) => inner.visit(visitor),
+            RigidTy::PtrMetadata(ty) => ty.visit(visitor),
             RigidTy::RawPtr(ty, _) => ty.visit(visitor),
             RigidTy::Ref(reg, ty, _) => {
                 reg.visit(visitor)?;
                 ty.visit(visitor)
+            }
+            RigidTy::UntypedPtr { is_nonnull } => {
+                let _: bool = *is_nonnull;
+                // FIXME(untyped_ptr): if UntypedPtr starts using const generics, visit those here
+                ControlFlow::Continue(())
             }
             RigidTy::Adt(_, args)
             | RigidTy::Closure(_, args)

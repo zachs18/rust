@@ -1013,9 +1013,15 @@ pub fn walk_ty<'v, V: Visitor<'v>>(visitor: &mut V, typ: &'v Ty<'v, AmbigArg>) -
     match *kind {
         TyKind::Slice(ref ty) => try_visit!(visitor.visit_ty_unambig(ty)),
         TyKind::Ptr(ref mutable_type) => try_visit!(visitor.visit_ty_unambig(mutable_type.ty)),
+        TyKind::PtrMetadata(ty) => try_visit!(visitor.visit_ty_unambig(ty)),
         TyKind::Ref(ref lifetime, ref mutable_type) => {
             try_visit!(visitor.visit_lifetime(lifetime));
             try_visit!(visitor.visit_ty_unambig(mutable_type.ty));
+        }
+        TyKind::UntypedPtr { is_nonnull } => {
+            let _: bool = is_nonnull;
+            // FIXME(untyped_ptr): once UntypedPtr uses const generics, this should actually do something,
+            // but for now this arm is empty
         }
         TyKind::Never => {}
         TyKind::Tup(tuple_element_types) => {

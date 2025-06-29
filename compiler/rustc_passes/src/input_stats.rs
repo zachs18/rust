@@ -398,6 +398,8 @@ impl<'v> hir_visit::Visitor<'v> for StatCollector<'v> {
                 InferDelegation,
                 Slice,
                 Array,
+                UntypedPtr,
+                PtrMetadata,
                 Ptr,
                 Ref,
                 FnPtr,
@@ -672,6 +674,8 @@ impl<'v> ast_visit::Visitor<'v> for StatCollector<'v> {
             [
                 Slice,
                 Array,
+                UntypedPtr,
+                PtrMetadata,
                 Ptr,
                 Ref,
                 PinnedRef,

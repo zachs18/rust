@@ -299,6 +299,8 @@ fn type_trailing_braced_mac_call(mut ty: &ast::Ty) -> Option<&ast::MacCall> {
             | ast::TyKind::CVarArgs
             | ast::TyKind::Pat(..)
             | ast::TyKind::FieldOf(..)
+            | ast::TyKind::UntypedPtr { .. }
+            | ast::TyKind::PtrMetadata(..)
             | ast::TyKind::Dummy
             | ast::TyKind::Err(..) => break None,
         }

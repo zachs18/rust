@@ -488,6 +488,15 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 PathElem::Field(def.non_enum_variant().fields[FieldIdx::from_usize(field)].name)
             }
 
+            // pointer metadata fields
+            ty::PtrMetadata(..) => {
+                // FIXME(ptr_metadata_fields): change this
+                if field > 0 {
+                    panic!("ptr_metadata should have one field: the 'raw' metadata")
+                }
+                PathElem::Field(sym::ptr_metadata)
+            }
+
             // arrays/slices
             ty::Array(..) | ty::Slice(..) => PathElem::ArrayElem(field),
 
@@ -893,6 +902,19 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 self.check_safe_pointer(value, PointerKind::Ref(*mutbl))?;
                 interp_ok(true)
             }
+            ty::UntypedPtr { is_nonnull: _ } => {
+                // FIXME(untyped_ptr): is this correct?
+                let scalar = self.read_scalar(value, ExpectedKind::RawPtr)?;
+                if self.reset_provenance_and_padding {
+                    // Make sure we do not preserve partial provenance. This matches the thin
+                    // pointer handling in `deref_pointer`.
+                    if matches!(scalar, Scalar::Int(..)) {
+                        self.ecx.clear_provenance(value)?;
+                    }
+                    self.add_data_range_place(value);
+                }
+                interp_ok(true)
+            }
             ty::FnPtr(..) => {
                 let scalar = self.read_scalar(value, ExpectedKind::FnPtr)?;
 
@@ -942,6 +964,8 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 interp_ok(true)
             }
             ty::UnsafeBinder(_) => todo!("FIXME(unsafe_binder)"),
+            // This is compound, use the Adt code path
+            ty::PtrMetadata(..) => interp_ok(false),
             // The above should be all the primitive types. The rest is compound, we
             // check them by visiting their fields/variants.
             ty::Adt(..)

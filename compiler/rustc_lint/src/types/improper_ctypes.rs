@@ -637,6 +637,22 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
 
             ty::RawPtr(ty, _) | ty::Ref(_, ty, _) => self.visit_type(state, ty),
 
+            ty::UntypedPtr { .. } => {
+                // FIXME(untyped_ptr): is this right?
+                FfiSafe
+            }
+
+            ty::PtrMetadata(..) => {
+                // FIXME(ptr_metadata_v2): implement this
+                FfiUnsafe {
+                    ty,
+                    reason: DiagMessage::Str(
+                        "FIXME(ptr_metadata_v2): implement FFI-safety linting".into(),
+                    ),
+                    help: None,
+                }
+            }
+
             ty::Array(inner_ty, _) => self.visit_type(state, inner_ty),
 
             ty::FnPtr(sig_tys, hdr) => {

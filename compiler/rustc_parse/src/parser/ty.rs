@@ -452,6 +452,58 @@ impl<'a> Parser<'a> {
         if allow_qpath_recovery { self.maybe_recover_from_bad_qpath(ty) } else { Ok(ty) }
     }
 
+    /// Parse `builtin # untyped_ptr()`, where `builtin #` has already been consumed
+    fn parse_untyped_ptr_ty(&mut self) -> PResult<'a, TyKind> {
+        let is_nonnull = match self.parse_ident().map(|ident| ident.name) {
+            Ok(sym::nonnull) => true,
+            Ok(sym::nullable) => false,
+            Ok(symbol) => {
+                todo!("emit error for unknown symbol {symbol}")
+            }
+            Err(mut e) => {
+                e.note("expected `nonnull` or `nullable` argument to untyped_ptr");
+                e.emit();
+                false
+            }
+        };
+        if let Err(mut e) = self.expect_one_of(&[], &[exp!(CloseParen)]) {
+            e.note("unexpected argument to untyped_ptr");
+            e.emit();
+        }
+
+        // Eat tokens until the `builtin #` call ends.
+        if self.may_recover() {
+            while !self.token.kind.is_close_delim_or_eof() {
+                self.bump();
+            }
+        }
+
+        Ok(TyKind::UntypedPtr { is_nonnull })
+    }
+
+    /// Parse `builtin # ptr_metadata(T)`, where `builtin #` has already been consumed
+    fn parse_ptr_metadata_ty(&mut self) -> PResult<'a, TyKind> {
+        let pointee = self.parse_ty()?;
+        let trailing_comma = self.eat_noexpect(&TokenKind::Comma);
+        if let Err(mut e) = self.expect_one_of(&[], &[exp!(CloseParen)]) {
+            if trailing_comma {
+                e.note("unexpected second argument to ptr_metadata");
+            } else {
+                e.note("ptr_metadata expects a single type");
+            }
+            e.emit();
+        }
+
+        // Eat tokens until the `builtin #` call ends.
+        if self.may_recover() {
+            while !self.token.kind.is_close_delim_or_eof() {
+                self.bump();
+            }
+        }
+
+        Ok(TyKind::PtrMetadata(pointee))
+    }
+
     fn parse_unsafe_binder_ty(&mut self) -> PResult<'a, TyKind> {
         let lo = self.token.span;
         assert!(self.eat_keyword(exp!(Unsafe)));
@@ -809,6 +861,8 @@ impl<'a> Parser<'a> {
         self.parse_builtin("type", |this, lo, ident| {
             Ok(match ident.name {
                 sym::field_of => Some(this.parse_ty_field_of(lo)?),
+                sym::untyped_ptr => Some(this.parse_untyped_ptr_ty()?),
+                sym::ptr_metadata => Some(this.parse_ptr_metadata_ty()?),
                 _ => None,
             })
         })

@@ -177,6 +177,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::Int(_)
             | ty::Uint(_)
             | ty::Float(_)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Str
             | ty::Never => "type".into(),
             ty::Tuple(tys) if tys.is_empty() => "unit type".into(),

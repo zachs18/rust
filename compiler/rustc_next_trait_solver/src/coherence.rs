@@ -341,6 +341,8 @@ where
             | ty::Array(..)
             | ty::Slice(..)
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Tuple(..)
             // FIXME(unsafe_binders): Non-local?

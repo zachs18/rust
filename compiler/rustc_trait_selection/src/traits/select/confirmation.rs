@@ -1276,6 +1276,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Float(_)
             | ty::Char
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::Pat(..)
             | ty::Dynamic(..)

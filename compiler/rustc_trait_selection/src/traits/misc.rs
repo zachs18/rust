@@ -58,6 +58,8 @@ pub fn type_allowed_to_implement_copy<'tcx>(
         | ty::RawPtr(..)
         | ty::Never
         | ty::Ref(_, _, hir::Mutability::Not)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Array(..) => return Ok(()),
 
         &ty::Adt(adt, args) => (adt, args),

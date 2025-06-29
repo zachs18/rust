@@ -412,6 +412,8 @@ impl<'cx, 'tcx> TypeFolder<TyCtxt<'tcx>> for Canonicalizer<'cx, 'tcx> {
             | ty::Slice(..)
             | ty::RawPtr(..)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::Dynamic(..)

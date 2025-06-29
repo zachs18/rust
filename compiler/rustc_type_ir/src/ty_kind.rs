@@ -144,6 +144,12 @@ pub enum TyKind<I: Interner> {
     /// The pointee of an array slice. Written as `[T]`.
     Slice(I::Ty),
 
+    /// An untyped pointer. Written as `builtin # untyped_ptr(nonnull)` or `builtin # untyped_ptr(nullable)`
+    UntypedPtr { is_nonnull: bool },
+
+    /// The metadata of a pointer to T. Written as `builtin # ptr_metadata(T)`
+    PtrMetadata(I::Ty),
+
     /// A raw pointer. Written as `*mut T` or `*const T`
     RawPtr(I::Ty, Mutability),
 
@@ -344,6 +350,8 @@ impl<I: Interner> TyKind<I> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)
@@ -394,6 +402,10 @@ impl<I: Interner> fmt::Debug for TyKind<I> {
             Array(t, c) => write!(f, "[{t:?}; {c:?}]"),
             Pat(t, p) => write!(f, "pattern_type!({t:?} is {p:?})"),
             Slice(t) => write!(f, "[{:?}]", &t),
+            UntypedPtr { is_nonnull } => {
+                f.debug_struct("UntypedPtr").field("is_nonnull", is_nonnull).finish()
+            }
+            PtrMetadata(ty) => f.debug_tuple("PtrMetadata").field(ty).finish(),
             RawPtr(ty, mutbl) => write!(f, "*{} {:?}", mutbl.ptr_str(), ty),
             Ref(r, t, m) => write!(f, "&{:?} {}{:?}", r, m.prefix_str(), t),
             FnDef(d, s) => f.debug_tuple("FnDef").field(d).field(&s).finish(),

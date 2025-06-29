@@ -455,6 +455,8 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
             ty::Float(FloatTy::F32) => "f",
             ty::Float(FloatTy::F64) => "d",
             ty::Float(FloatTy::F128) => "C4f128",
+            ty::UntypedPtr { is_nonnull: true } => "C11nonnull_ptr",
+            ty::UntypedPtr { is_nonnull: false } => "C3ptr",
             ty::Never => "z",
 
             ty::Tuple(_) if ty.is_unit() => "u",
@@ -477,7 +479,14 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
 
         match *ty.kind() {
             // Basic types, handled above.
-            ty::Bool | ty::Char | ty::Str | ty::Int(_) | ty::Uint(_) | ty::Float(_) | ty::Never => {
+            ty::Bool
+            | ty::Char
+            | ty::Str
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::Never
+            | ty::UntypedPtr { .. } => {
                 unreachable!()
             }
             ty::Tuple(_) if ty.is_unit() => unreachable!(),
@@ -501,6 +510,11 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
                     hir::Mutability::Not => "P",
                     hir::Mutability::Mut => "O",
                 });
+                ty.print(self)?;
+            }
+
+            ty::PtrMetadata(ty) => {
+                self.push("H");
                 ty.print(self)?;
             }
 

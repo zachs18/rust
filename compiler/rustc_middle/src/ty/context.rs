@@ -1832,7 +1832,7 @@ macro_rules! sty_debug_print {
                             ty::Bool | ty::Char | ty::Int(..) | ty::Uint(..) |
                                 ty::Float(..) | ty::Str | ty::Never => continue,
                             ty::Error(_) => /* unimportant */ continue,
-                            $(ty::$variant(..) => &mut $variant,)*
+                            $(ty::TyKind::$variant { .. } => &mut $variant,)*
                         };
                         let lt = t.flags.intersects(ty::TypeFlags::HAS_RE_INFER);
                         let ty = t.flags.intersects(ty::TypeFlags::HAS_TY_INFER);
@@ -1882,6 +1882,8 @@ impl<'tcx> TyCtxt<'tcx> {
                 Slice,
                 RawPtr,
                 Ref,
+                UntypedPtr,
+                PtrMetadata,
                 FnDef,
                 FnPtr,
                 UnsafeBinder,

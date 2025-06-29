@@ -793,8 +793,13 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
                 }
             }
 
-            ty::RawPtr(_, _) => {
+            ty::RawPtr(_, _) | ty::PtrMetadata(_) => {
                 // Simple cases that are WF if their type args are WF.
+            }
+
+            ty::UntypedPtr { is_nonnull } => {
+                let _: bool = is_nonnull;
+                // FIXME(untyped_ptr): if untyped_ptr starts using const generics, visit those here.
             }
 
             ty::Alias(ty::AliasTy {

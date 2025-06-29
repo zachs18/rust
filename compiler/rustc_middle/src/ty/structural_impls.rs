@@ -345,6 +345,7 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
     ) -> Result<Self, F::Error> {
         let kind = match *self.kind() {
             ty::RawPtr(ty, mutbl) => ty::RawPtr(ty.try_fold_with(folder)?, mutbl),
+            ty::PtrMetadata(ty) => ty::PtrMetadata(ty.try_fold_with(folder)?),
             ty::Array(typ, sz) => ty::Array(typ.try_fold_with(folder)?, sz.try_fold_with(folder)?),
             ty::Slice(typ) => ty::Slice(typ.try_fold_with(folder)?),
             ty::Adt(tid, args) => ty::Adt(tid, args.try_fold_with(folder)?),
@@ -369,6 +370,12 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
             ty::Alias(data) => ty::Alias(data.try_fold_with(folder)?),
             ty::Pat(ty, pat) => ty::Pat(ty.try_fold_with(folder)?, pat.try_fold_with(folder)?),
 
+            ty::UntypedPtr { is_nonnull } => {
+                let _: bool = is_nonnull;
+                // FIXME(untyped_ptr): if UntypedPtr starts using const generics, fold over those here
+                return Ok(self);
+            }
+
             ty::Bool
             | ty::Char
             | ty::Str
@@ -390,6 +397,7 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
     fn super_fold_with<F: TypeFolder<TyCtxt<'tcx>>>(self, folder: &mut F) -> Self {
         let kind = match *self.kind() {
             ty::RawPtr(ty, mutbl) => ty::RawPtr(ty.fold_with(folder), mutbl),
+            ty::PtrMetadata(ty) => ty::PtrMetadata(ty.fold_with(folder)),
             ty::Array(typ, sz) => ty::Array(typ.fold_with(folder), sz.fold_with(folder)),
             ty::Slice(typ) => ty::Slice(typ.fold_with(folder)),
             ty::Adt(tid, args) => ty::Adt(tid, args.fold_with(folder)),
@@ -407,6 +415,12 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
             ty::CoroutineClosure(did, args) => ty::CoroutineClosure(did, args.fold_with(folder)),
             ty::Alias(data) => ty::Alias(data.fold_with(folder)),
             ty::Pat(ty, pat) => ty::Pat(ty.fold_with(folder), pat.fold_with(folder)),
+
+            ty::UntypedPtr { is_nonnull } => {
+                let _: bool = is_nonnull;
+                // FIXME(untyped_ptr): if this changes to use const generics, fold over them here
+                ty::UntypedPtr { is_nonnull }
+            }
 
             ty::Bool
             | ty::Char
@@ -431,6 +445,7 @@ impl<'tcx> TypeSuperVisitable<TyCtxt<'tcx>> for Ty<'tcx> {
     fn super_visit_with<V: TypeVisitor<TyCtxt<'tcx>>>(&self, visitor: &mut V) -> V::Result {
         match self.kind() {
             ty::RawPtr(ty, _mutbl) => ty.visit_with(visitor),
+            ty::PtrMetadata(ty) => ty.visit_with(visitor),
             ty::Array(typ, sz) => {
                 try_visit!(typ.visit_with(visitor));
                 sz.visit_with(visitor)
@@ -468,6 +483,7 @@ impl<'tcx> TypeSuperVisitable<TyCtxt<'tcx>> for Ty<'tcx> {
             | ty::Int(_)
             | ty::Uint(_)
             | ty::Float(_)
+            | ty::UntypedPtr { .. }
             | ty::Infer(_)
             | ty::Bound(..)
             | ty::Placeholder(..)

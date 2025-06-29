@@ -180,6 +180,7 @@ impl<'tcx> MarkSymbolVisitor<'tcx> {
             }
             ty::Tuple(..) => {}
             ty::Error(_) => {}
+            ty::PtrMetadata(..) => {}
             kind => span_bug!(lhs.span, "named field access on non-ADT: {kind:?}"),
         }
     }

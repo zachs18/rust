@@ -98,6 +98,19 @@ impl<T: PointeeSized> !Send for *const T {}
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> !Send for *mut T {}
 
+// FIXME(untyped_ptr): Typed pointers are !Send + !Sync as a lint. Should untyped pointers be Send + Sync?
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl !Send for builtin!(untyped_ptr(nonnull)) {}
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl !Send for builtin!(untyped_ptr(nullable)) {}
+
+// Typed pointers are !Send + !Sync as a lint. Their metadata still needs to be Send + Sync.
+// Maybe we could imagine a future where `builtin!(ptr_metadata(T)): Send + Sync`
+// iff `T: Sync` or `T: Send`, but the specifics would be muddy, and the existing
+// `Pointee::Metadata` also requires `Send + Sync`, so it's good enough for now.
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+unsafe impl<T: PointeeSized> Send for builtin!(ptr_metadata(T)) {}
+
 // Most instances arise automatically, but this instance is needed to link up `T: Sync` with
 // `&T: Send` (and it also removes the unsound default instance `T Send` -> `&T: Send` that would
 // otherwise exist).
@@ -480,6 +493,15 @@ marker_impls! {
 
 }
 
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl Copy for builtin!(untyped_ptr(nonnull)) {}
+
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl Copy for builtin!(untyped_ptr(nullable)) {}
+
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+impl<T: PointeeSized> Copy for builtin!(ptr_metadata(T)) {}
+
 #[unstable(feature = "never_type", issue = "35121")]
 impl Copy for ! {}
 
@@ -672,6 +694,19 @@ pub unsafe auto trait Sync {
 impl<T: PointeeSized> !Sync for *const T {}
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> !Sync for *mut T {}
+
+// FIXME(untyped_ptr): Typed pointers are !Send + !Sync as a lint. Should untyped pointers be Send + Sync?
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl !Sync for builtin!(untyped_ptr(nonnull)) {}
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl !Sync for builtin!(untyped_ptr(nullable)) {}
+
+// Typed pointers are !Send + !Sync as a lint. Their metadata still needs to be Send + Sync.
+// Maybe we could imagine a future where `builtin!(ptr_metadata(T)): Send + Sync`
+// iff `T: Sync` or `T: Send`, but the specifics would be muddy, and the existing
+// `Pointee::Metadata` also requires `Send + Sync`, so it's good enough for now.
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+unsafe impl<T: PointeeSized> Sync for builtin!(ptr_metadata(T)) {}
 
 /// Zero-sized type used to mark things that "act like" they own a `T`.
 ///
@@ -917,6 +952,15 @@ marker_impls! {
         {T: PointeeSized} &mut T,
 }
 
+#[unstable(feature = "untyped_ptr", issue = "none")]
+unsafe impl Freeze for builtin!(untyped_ptr(nonnull)) {}
+
+#[unstable(feature = "untyped_ptr", issue = "none")]
+unsafe impl Freeze for builtin!(untyped_ptr(nullable)) {}
+
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+unsafe impl<T: PointeeSized> Freeze for builtin!(ptr_metadata(T)) {}
+
 /// Used to determine whether a type contains any `UnsafePinned` (or `PhantomPinned`) internally,
 /// but not through an indirection. This affects, for example, whether we emit `noalias` metadata
 /// for `&mut T` or not.
@@ -938,6 +982,15 @@ marker_impls! {
         {T: PointeeSized} &T,
         {T: PointeeSized} &mut T,
 }
+
+#[unstable(feature = "untyped_ptr", issue = "none")]
+unsafe impl UnsafeUnpin for builtin!(untyped_ptr(nonnull)) {}
+
+#[unstable(feature = "untyped_ptr", issue = "none")]
+unsafe impl UnsafeUnpin for builtin!(untyped_ptr(nullable)) {}
+
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+unsafe impl<T: PointeeSized> UnsafeUnpin for builtin!(ptr_metadata(T)) {}
 
 /// Types that do not require any pinning guarantees.
 ///
@@ -1046,6 +1099,15 @@ marker_impls! {
         {T: PointeeSized} *const T,
         {T: PointeeSized} *mut T,
 }
+
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl Unpin for builtin!(untyped_ptr(nonnull)) {}
+
+#[unstable(feature = "untyped_ptr", issue = "none")]
+impl Unpin for builtin!(untyped_ptr(nullable)) {}
+
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+impl<T: PointeeSized> Unpin for builtin!(ptr_metadata(T)) {}
 
 /// A marker for types that can be dropped.
 ///

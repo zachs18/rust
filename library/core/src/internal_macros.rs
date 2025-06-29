@@ -108,3 +108,10 @@ macro_rules! impl_fn_for_zst {
         )+
     }
 }
+
+/// Allows using builtin # foo() syntax before the bootstrap tidy recognizes it
+macro_rules! builtin {
+    ($($rest:tt)*) => {
+        builtin # $($rest)*
+    }
+}

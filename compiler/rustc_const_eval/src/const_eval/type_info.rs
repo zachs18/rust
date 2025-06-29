@@ -202,6 +202,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         }
                         ty::Foreign(_)
                         | ty::Pat(_, _)
+                        | ty::UntypedPtr { .. }
+                        | ty::PtrMetadata(..)
                         | ty::FnDef(..)
                         | ty::UnsafeBinder(..)
                         | ty::Closure(..)

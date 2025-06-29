@@ -130,6 +130,8 @@ pub fn ty_dtor_span<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Span> {
         | ty::Never
         | ty::RawPtr(_, _)
         | ty::Ref(_, _, _)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::FnPtr(_, _)
         | ty::Tuple(_)
         | ty::Dynamic(_, _)

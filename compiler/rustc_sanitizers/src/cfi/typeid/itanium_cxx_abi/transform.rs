@@ -206,6 +206,23 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for TransformTy<'tcx> {
                 }
             }
 
+            // FIXME(untyped_ptr): Implement this.
+            ty::UntypedPtr { .. } => {
+                todo!()
+            }
+
+            // FIXME(ptr_metadata_v2): Implement this.
+            ty::PtrMetadata(..) => {
+                if self.options.contains(TransformTyOptions::GENERALIZE_POINTERS) {
+                    bug!(
+                        "FIXME(ptr_metadata_v2): How should Metadata<T> interact with \
+                        TransformTyOptions::GENERALIZE_POINTERS"
+                    )
+                } else {
+                    t.super_fold_with(self)
+                }
+            }
+
             ty::FnPtr(..) => {
                 if self.options.contains(TransformTyOptions::GENERALIZE_POINTERS) {
                     Ty::new_imm_ptr(self.tcx, self.tcx.types.unit)

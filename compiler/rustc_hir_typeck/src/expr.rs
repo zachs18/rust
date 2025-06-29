@@ -2801,6 +2801,22 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         }
                     }
                 }
+                ty::PtrMetadata(pointee_ty) => {
+                    if field.name == sym::ptr_metadata {
+                        let adjustments = self.adjust_steps(&autoderef);
+                        self.apply_adjustments(base, adjustments);
+                        self.register_predicates(autoderef.into_obligations());
+                        self.write_field_index(expr.hir_id, FieldIdx::ZERO);
+                        match pointee_ty.ptr_metadata_ty_or_tail(self.tcx, |x| x) {
+                            Ok(metadata_ty) => return metadata_ty,
+                            Err(tail_ty) => {
+                                let metadata_def_id =
+                                    self.tcx.require_lang_item(LangItem::Metadata, expr.span);
+                                return Ty::new_projection(self.tcx, metadata_def_id, [tail_ty]);
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }

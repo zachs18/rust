@@ -102,6 +102,10 @@ pub trait Ty<I: Interner<Ty = Self>>:
 
     fn new_ref(interner: I, region: I::Region, ty: Self, mutbl: Mutability) -> Self;
 
+    fn new_untyped_ptr(interner: I, is_nonnull: bool) -> Self;
+
+    fn new_ptr_metadata(interner: I, ty: Self) -> Self;
+
     fn new_array_with_const_len(interner: I, ty: Self, len: I::Const) -> Self;
 
     fn new_slice(interner: I, ty: Self) -> Self;
@@ -176,6 +180,8 @@ pub trait Ty<I: Interner<Ty = Self>>:
             | ty::Pat(_, _)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(_, _)
             | ty::FnPtr(_, _)
             | ty::UnsafeBinder(_)

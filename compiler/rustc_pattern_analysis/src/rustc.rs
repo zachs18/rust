@@ -410,6 +410,10 @@ impl<'p, 'tcx: 'p> RustcPatCtxt<'p, 'tcx> {
             ty::Adt(..) | ty::Tuple(..) => {
                 ConstructorSet::Struct { empty: cx.is_uninhabited(ty.inner()) }
             }
+            ty::PtrMetadata(..) => {
+                // FIXME(ptr_metadata_v2): is this correct?
+                ConstructorSet::Struct { empty: cx.is_uninhabited(ty.inner()) }
+            }
             ty::Ref(..) => ConstructorSet::Ref,
             ty::Never => ConstructorSet::NoConstructors,
             // This type is one for which we cannot list constructors, like `str` or `f64`.
@@ -418,6 +422,7 @@ impl<'p, 'tcx: 'p> RustcPatCtxt<'p, 'tcx> {
             | ty::Str
             | ty::Foreign(_)
             | ty::RawPtr(_, _)
+            | ty::UntypedPtr { .. }
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::Pat(_, _)

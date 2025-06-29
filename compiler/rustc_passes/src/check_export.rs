@@ -302,6 +302,8 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for ExportableItemsChecker<'tcx, 'a> {
             | ty::Pat(..)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(_)
             | ty::FnDef(_, _)
             | ty::FnPtr(_, _)
             | ty::CoroutineClosure(_, _)

@@ -112,7 +112,7 @@ fn const_to_valtree_inner<'tcx>(
         },
 
 
-        ty::RawPtr(_, _) => {
+        ty::RawPtr(_, _) | ty::UntypedPtr { .. } => {
             // Not all raw pointers are allowed, as we cannot properly test them for
             // equality at compile-time (see `ptr_guaranteed_cmp`).
             // However we allow those that are just integers in disguise.
@@ -120,7 +120,7 @@ fn const_to_valtree_inner<'tcx>(
             let val = ecx.read_immediate(place).report_err()?;
             // We could allow wide raw pointers where both sides are integers in the future,
             // but for now we reject them.
-            if matches!(val.layout.backend_repr, BackendRepr::ScalarPair(..)) {
+            if !matches!(val.layout.backend_repr, BackendRepr::Scalar(..)) {
                 return Err(ValTreeCreationError::NonSupportedType(ty));
             }
             let val = val.to_scalar();
@@ -131,6 +131,11 @@ fn const_to_valtree_inner<'tcx>(
             };
             // It's just a ScalarInt!
             Ok(ty::ValTree::from_scalar_int(tcx, val))
+        }
+
+        ty::PtrMetadata(..) => {
+            // FIXME(ptr_metadata_v2): Implement this
+            todo!()
         }
 
         // Technically we could allow function pointers (represented as `ty::Instance`), but this is not guaranteed to
@@ -287,9 +292,13 @@ pub fn valtree_to_const_value<'tcx>(
             assert!(cv.valtree.is_zst());
             mir::ConstValue::ZeroSized
         }
-        ty::Bool | ty::Int(_) | ty::Uint(_) | ty::Float(_) | ty::Char | ty::RawPtr(_, _) => {
-            mir::ConstValue::Scalar(Scalar::Int(cv.to_leaf()))
-        }
+        ty::Bool
+        | ty::Int(_)
+        | ty::Uint(_)
+        | ty::Float(_)
+        | ty::Char
+        | ty::RawPtr(_, _)
+        | ty::UntypedPtr { .. } => mir::ConstValue::Scalar(Scalar::Int(cv.to_leaf())),
         ty::Pat(ty, _) => {
             let cv = ty::Value { valtree: cv.valtree, ty };
             valtree_to_const_value(tcx, typing_env, cv)
@@ -358,6 +367,7 @@ pub fn valtree_to_const_value<'tcx>(
         | ty::Str
         | ty::Slice(_)
         | ty::Dynamic(..)
+        | ty::PtrMetadata(..)
         | ty::UnsafeBinder(_) => {
             bug!("no ValTree should have been created for type {:?}", cv.ty.kind())
         }

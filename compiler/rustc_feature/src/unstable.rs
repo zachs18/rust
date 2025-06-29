@@ -253,6 +253,8 @@ declare_features! (
     (internal, prelude_import, "1.2.0", None),
     /// Used to identify crates that contain the profiler runtime.
     (internal, profiler_runtime, "1.18.0", None),
+    /// Allows using the pointer metadata type.
+    (unstable, ptr_metadata_v2, "CURRENT_RUSTC_VERSION", None),
     /// Allows using `rustc_*` attributes (RFC 572).
     (internal, rustc_attrs, "1.0.0", None),
     /// Allows using the `#[stable]` and `#[unstable]` attributes.
@@ -263,6 +265,8 @@ declare_features! (
     (internal, test_unstable_lint, "1.60.0", None),
     /// Allows unsized tail fields in `union`s.
     (unstable, unsized_unions, "CURRENT_RUSTC_VERSION", None),
+    /// Allows using the untyped pointer type.
+    (internal, untyped_ptr, "CURRENT_RUSTC_VERSION", None),
     /// Use for stable + negative coherence and strict coherence depending on trait's
     /// rustc_strict_coherence value.
     (unstable, with_negative_coherence, "1.60.0", None),

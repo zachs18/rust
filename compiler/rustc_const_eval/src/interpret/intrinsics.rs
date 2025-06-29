@@ -254,6 +254,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     | ty::Slice(_)
                     | ty::RawPtr(_, _)
                     | ty::Ref(_, _, _)
+                    | ty::UntypedPtr { .. }
+                    | ty::PtrMetadata(..)
                     | ty::FnDef(_, _)
                     | ty::FnPtr(..)
                     | ty::Dynamic(_, _)

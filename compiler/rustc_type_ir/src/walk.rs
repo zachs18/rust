@@ -88,6 +88,11 @@ fn push_inner<I: Interner>(stack: &mut TypeWalkerStack<I>, parent: I::GenericArg
             | ty::Bound(..)
             | ty::Foreign(..) => {}
 
+            ty::UntypedPtr { is_nonnull } => {
+                let _: bool = is_nonnull;
+                // FIXME(untyped_ptr): if untyped_ptr starts using const generics, walk those here.
+            }
+
             ty::Pat(ty, pat) => {
                 push_ty_pat::<I>(stack, pat);
                 stack.push(ty.into());
@@ -100,6 +105,9 @@ fn push_inner<I: Interner>(stack: &mut TypeWalkerStack<I>, parent: I::GenericArg
                 stack.push(ty.into());
             }
             ty::RawPtr(ty, _) => {
+                stack.push(ty.into());
+            }
+            ty::PtrMetadata(ty) => {
                 stack.push(ty.into());
             }
             ty::Ref(lt, ty, _) => {

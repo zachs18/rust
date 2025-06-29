@@ -339,6 +339,12 @@ fn visit_implementation_of_dispatch_from_dyn(checker: &Checker<'_>) -> Result<()
 
             let fields = &def_a.non_enum_variant().fields;
 
+            // FIXME(ptr_metadata_v2): remove this special case?
+            if tcx.is_lang_item(def_a.did(), hir::lang_items::LangItem::NonNull) {
+                // allow the builtin # untyped_ptr(nonnull) field of NonNull
+                return Ok(());
+            }
+
             let mut res = Ok(());
             let coerced_fields = fields
                 .iter_enumerated()
@@ -502,6 +508,8 @@ pub(crate) fn coerce_unsized_info<'tcx>(
             let mt_b = ty::TypeAndMut { ty: ty_b, mutbl: mutbl_b };
             check_mutbl(mt_a, mt_b, &|ty| Ty::new_imm_ptr(tcx, ty))
         }
+
+        (&ty::PtrMetadata(ty_a), &ty::PtrMetadata(ty_b)) => (ty_a, ty_b, unsize_trait, None, span),
 
         (&ty::Adt(def_a, args_a), &ty::Adt(def_b, args_b))
             if def_a.is_struct() && def_b.is_struct() =>

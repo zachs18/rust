@@ -379,6 +379,8 @@ impl<'a, D: SolverDelegate<Interner = I>, I: Interner> Canonicalizer<'a, D, I> {
             | ty::Array(_, _)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Ref(_, _, _)
             | ty::Pat(_, _)
             | ty::FnDef(_, _)
