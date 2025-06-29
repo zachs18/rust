@@ -428,11 +428,10 @@ pub const fn size_of_val<T: ?Sized>(val: &T) -> usize {
 ///       to a valid vtable acquired by an unsizing coercion, and the size
 ///       of the *entire value* (dynamic tail length + statically sized prefix)
 ///       must fit in `isize`.
-///     - an (unstable) [extern type], then this function is always safe to
-///       call, but may panic or otherwise return the wrong value, as the
-///       extern type's layout is not known. This is the same behavior as
-///       [`size_of_val`] on a reference to a type with an extern type tail.
 ///     - otherwise, it is conservatively not allowed to call this function.
+///
+/// If you do not know if these conditions are met, consider calling
+/// [`checked_size_for_meta`] instead.
 ///
 /// [`size_of::<T>()`]: size_of
 /// [trait object]: ../../book/ch17-02-trait-objects.html
@@ -456,6 +455,113 @@ pub const fn size_of_val<T: ?Sized>(val: &T) -> usize {
 pub const unsafe fn size_of_val_raw<T: ?Sized>(val: *const T) -> usize {
     // SAFETY: the caller must provide a valid raw pointer
     unsafe { intrinsics::size_of_val(val) }
+}
+
+/// Returns the size of the pointed-to value in bytes.
+///
+/// This is usually the same as [`size_of::<T>()`]. However, when `T` *has* no
+/// statically-known size, e.g., a slice [`[T]`][slice] or a [trait object],
+/// then `size_of_val_raw` can be used to get the dynamically-known size.
+///
+/// # Safety
+///
+/// This function is only safe to call if the following conditions hold:
+///
+/// - If `T` is `Sized`, this function is always safe to call.
+/// - If the unsized tail of `T` is:
+///     - a [slice], then the length of the slice tail must be an initialized
+///       integer, and the size of the *entire value*
+///       (dynamic tail length + statically sized prefix) must fit in `isize`.
+///       For the special case where the dynamic tail length is 0, this function
+///       is safe to call.
+//        NOTE: the reason this is safe is that if an overflow were to occur already with size 0,
+//        then we would stop compilation as even the "statically known" part of the type would
+//        already be too big (or the call may be in dead code and optimized away, but then it
+//        doesn't matter).
+///     - a [trait object], then the vtable part of the pointer must point
+///       to a valid vtable acquired by an unsizing coercion, and the size
+///       of the *entire value* (dynamic tail length + statically sized prefix)
+///       must fit in `isize`.
+///     - otherwise, it is conservatively not allowed to call this function.
+///
+/// If you do not know if these conditions are met, consider calling
+/// [`checked_size_for_meta`] instead.
+///
+/// [`size_of::<T>()`]: size_of
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+/// [extern type]: ../../unstable-book/language-features/extern-types.html
+///
+/// # Examples
+///
+/// ```
+/// #![feature(layout_for_meta)]
+/// use std::mem;
+/// unsafe {
+///     assert_eq!(4, mem::unchecked_size_for_meta::<i32>(()));
+///
+///     assert_eq!(13, mem::unchecked_size_for_meta::<[u8]>(13));
+///
+///     assert_eq!(42, mem::unchecked_size_for_meta::<[u16]>(21));
+/// }
+/// ```
+#[inline]
+#[must_use]
+#[unstable(feature = "layout_for_meta", issue = "69835")]
+pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> usize {
+    // SAFETY: the caller must provide a valid pointer metadata
+    unsafe { intrinsics::unchecked_size_for_meta::<T>(meta) }
+}
+
+/// Returns the size of the pointed-to value in bytes, or `None` if it would be
+/// too large to fit in `isize`.
+///
+/// This is usually the same as [`size_of::<T>()`]. However, when `T` *has* no
+/// statically-known size, e.g., a slice [`[T]`][slice] or a [trait object],
+/// then `size_of_val_raw` can be used to get the dynamically-known size.
+///
+/// # Safety
+///
+/// This function is always safe to call.
+///
+/// - If `T` is `Sized`, this function returns `Some(size_of::<T>())`.
+/// - If the unsized tail of `T` is:
+///     - a [slice], then this function will return `Some` if the size of the
+///       *entire value* (dynamic tail length + statically sized prefix) fits
+///       in `isize`.
+///     - a [trait object], then the vtable part of the pointer must point
+///       to a valid vtable acquired by an unsizing coercion, and this function
+///       will return `Some` if the size of the *entire value* (dynamic tail
+///       length + statically sized prefix) fits in `isize`.
+///
+/// [`size_of::<T>()`]: size_of
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+///
+/// # Examples
+///
+/// ```
+/// #![feature(layout_for_meta)]
+/// use std::mem;
+///
+/// assert_eq!(Some(4), mem::checked_size_for_meta::<i32>(()));
+///
+/// assert_eq!(Some(13), mem::checked_size_for_meta::<[u8]>(13));
+///
+/// assert_eq!(Some(42), mem::checked_size_for_meta::<[u16]>(21));
+///
+/// // `[u8; usize::MAX]` is too large; the maximum allocation size is `isize::MAX as usize` bytes
+/// assert_eq!(None, mem::checked_size_for_meta::<[u8]>(usize::MAX));
+/// ```
+#[inline]
+#[must_use]
+#[unstable(feature = "layout_for_meta", issue = "69835")]
+//#[unstable(feature = "ptr_metadata", issue = "81513")]
+pub const fn checked_size_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> Option<usize> {
+    let (valid, size) = intrinsics::checked_size_for_meta::<T>(meta);
+    if valid { Some(size) } else { None }
 }
 
 /// Returns the [ABI]-required minimum alignment of a type in bytes.
@@ -578,6 +684,9 @@ pub const fn align_of_val<T: ?Sized>(val: &T) -> usize {
 ///       [`align_of_val`] on a reference to a type with an extern type tail.
 ///     - otherwise, it is conservatively not allowed to call this function.
 ///
+/// If you do not know if these conditions are met, consider calling
+/// [`checked_align_for_meta`] instead.
+///
 /// [trait object]: ../../book/ch17-02-trait-objects.html
 /// [extern type]: ../../unstable-book/language-features/extern-types.html
 ///
@@ -595,6 +704,113 @@ pub const fn align_of_val<T: ?Sized>(val: &T) -> usize {
 pub const unsafe fn align_of_val_raw<T: ?Sized>(val: *const T) -> usize {
     // SAFETY: the caller must provide a valid raw pointer
     unsafe { intrinsics::align_of_val(val) }
+}
+
+/// Returns the [ABI]-required minimum alignment of the type of the value that `val` points to in
+/// bytes.
+///
+/// Every reference to a value of the type `T` must be a multiple of this number.
+///
+/// [ABI]: https://en.wikipedia.org/wiki/Application_binary_interface
+///
+/// # Safety
+///
+/// This function is only safe to call if the following conditions hold:
+///
+/// - If `T` is `Sized`, this function is always safe to call, and returns `align_of::<T>()`.
+/// - If the unsized tail of `T` is:
+///     - a [slice], then the length of the slice tail must be an initialized
+///       integer, and the size of the *entire value*
+///       (dynamic tail length + statically sized prefix) must fit in `isize`.
+///       For the special case where the dynamic tail length is 0, this function
+///       is safe to call.
+///     - a [trait object], then the vtable part of the pointer must point
+///       to a valid vtable acquired by an unsizing coercion, and the size
+///       of the *entire value* (dynamic tail length + statically sized prefix)
+///       must fit in `isize`.
+///     - an (unstable) [extern type], then this function is always safe to
+///       call, but may panic or otherwise return the wrong value, as the
+///       extern type's layout is not known. This is the same behavior as
+///       [`align_of_val`] on a reference to a type with an extern type tail.
+///     - otherwise, it is conservatively not allowed to call this function.
+///
+/// If you do not know if these conditions are met, consider calling
+/// [`checked_align_for_meta`] instead.
+///
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+/// [extern type]: ../../unstable-book/language-features/extern-types.html
+///
+/// # Examples
+///
+/// ```
+/// #![feature(layout_for_meta)]
+/// use std::mem;
+/// unsafe {
+///     assert_eq!(4, mem::unchecked_align_for_meta::<i32>(()));
+///
+///     assert_eq!(1, mem::unchecked_align_for_meta::<[u8]>(13));
+///
+///     assert_eq!(2, mem::unchecked_align_for_meta::<[u16]>(21));
+/// }
+/// ```
+#[must_use]
+#[unstable(feature = "layout_for_meta", issue = "69835")]
+pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> usize {
+    // SAFETY: the caller must provide a valid pointer metadata
+    unsafe { intrinsics::unchecked_align_for_meta::<T>(meta) }
+}
+
+/// Returns the [ABI]-required minimum alignment of the type of a value with pointer metadata `meta` in
+/// bytes, or `None` if it would be too large to fit in `isize` or is otherwise uncomputable.
+///
+/// Every reference to a value of the type `T` with the given metadata
+/// must be a multiple of this number.
+///
+/// [ABI]: https://en.wikipedia.org/wiki/Application_binary_interface
+///
+/// # Safety
+///
+/// This function is always safe to call.
+///
+/// - If `T` is `Sized`, this function returns `Some(align_of::<T>())`.
+/// - If the unsized tail of `T` is:
+///     - a [slice] `[U]`, then this function will return `Some(align_of::<U>)`
+///       if the size of the *entire value* (dynamic tail length + statically sized
+///       prefix) fits in `isize`.
+///     - a [trait object], then the vtable part of the pointer must point
+///       to a valid vtable acquired by an unsizing coercion, and this function
+///       will return `Some` if the size of the *entire value* (dynamic tail length
+///       + statically sized prefix) fits in `isize`.
+///
+/// [`align_of::<T>()`]: align_of
+/// [trait object]: ../../book/ch17-02-trait-objects.html
+///
+/// # Examples
+///
+/// ```
+/// #![feature(layout_for_meta)]
+/// use std::mem;
+///
+/// assert_eq!(Some(4), mem::checked_align_for_meta::<i32>(()));
+///
+/// assert_eq!(Some(1), mem::checked_align_for_meta::<[u8]>(13));
+///
+/// assert_eq!(Some(2), mem::checked_align_for_meta::<[u16]>(21));
+///
+/// // `[u8; usize::MAX]` is too large; the maximum allocation align is `isize::MAX as usize` bytes
+/// assert_eq!(None, mem::checked_align_for_meta::<[u8]>(usize::MAX));
+/// ```
+#[inline]
+#[must_use]
+#[unstable(feature = "layout_for_meta", issue = "69835")]
+//#[unstable(feature = "ptr_metadata", issue = "81513")]
+pub const fn checked_align_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> Option<usize> {
+    let (valid, align) = intrinsics::checked_align_for_meta::<T>(meta);
+    if valid { Some(align) } else { None }
 }
 
 /// Returns `true` if dropping values of type `T` matters.
