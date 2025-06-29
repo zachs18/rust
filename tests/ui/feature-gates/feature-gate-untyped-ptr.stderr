@@ -1,0 +1,21 @@
+error[E0658]: the untyped pointer type is unstable
+  --> $DIR/feature-gate-untyped-ptr.rs:3:10
+   |
+LL | type T = builtin # untyped_ptr(nullable);
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add `#![feature(untyped_ptr)]` to the crate attributes to enable
+   = note: this compiler was built on YYYY-MM-DD; consider upgrading it if it is out of date
+
+error[E0658]: the untyped pointer type is unstable
+  --> $DIR/feature-gate-untyped-ptr.rs:4:10
+   |
+LL | type U = builtin # untyped_ptr(nonnull);
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add `#![feature(untyped_ptr)]` to the crate attributes to enable
+   = note: this compiler was built on YYYY-MM-DD; consider upgrading it if it is out of date
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0658`.

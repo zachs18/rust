@@ -121,6 +121,7 @@
 #![feature(allow_internal_unsafe)]
 #![feature(allow_internal_unstable)]
 #![feature(auto_traits)]
+#![feature(builtin_syntax)]
 #![feature(cfg_sanitize)]
 #![feature(cfg_target_has_atomic)]
 #![feature(cfg_target_has_atomic_equal_alignment)]
@@ -157,6 +158,8 @@
 #![feature(optimize_attribute)]
 #![feature(pattern_types)]
 #![feature(prelude_import)]
+#![feature(ptr_metadata_v2)]
+#![feature(reborrow)]
 #![feature(repr_simd)]
 #![feature(rustc_attrs)]
 #![feature(rustdoc_internals)]
@@ -172,6 +175,7 @@
 #![feature(unboxed_closures)]
 #![feature(unsized_fn_params)]
 #![feature(unsized_unions)]
+#![feature(untyped_ptr)]
 #![feature(with_negative_coherence)]
 // tidy-alphabetical-end
 //

@@ -108,6 +108,8 @@ impl<'tcx> AbiHashStable<'tcx> for Ty<'tcx> {
             | ty::Pat(_, _)
             | ty::Slice(_)
             | ty::RawPtr(_, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(_)
             | ty::FnDef(_, _)
             | ty::FnPtr(_, _)
             | ty::Dynamic(_, _)

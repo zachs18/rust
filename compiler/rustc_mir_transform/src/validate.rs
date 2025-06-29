@@ -802,6 +802,23 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
 
                         check_equal(self, location, f_ty);
                     }
+                    ty::PtrMetadata(pointee_ty) => {
+                        if f.as_usize() != 0 {
+                            fail_out_of_bounds(self, location);
+                        }
+                        let f_ty = match pointee_ty.ptr_metadata_ty_or_tail(self.tcx, |x| x) {
+                            Ok(metadata_ty) => metadata_ty,
+                            Err(tail_ty) => {
+                                let metadata_def_id = self.tcx.require_lang_item(
+                                    rustc_hir::LangItem::Metadata,
+                                    self.body.source_info(location).span,
+                                );
+                                Ty::new_projection(self.tcx, metadata_def_id, [tail_ty])
+                            }
+                        };
+
+                        check_equal(self, location, f_ty);
+                    }
                     _ => {
                         self.fail(location, format!("{:?} does not have fields", parent_ty.ty));
                     }

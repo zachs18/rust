@@ -611,6 +611,16 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_untyped_ptr(tcx: TyCtxt<'tcx>, is_nonnull: bool) -> Ty<'tcx> {
+        Ty::new(tcx, ty::UntypedPtr { is_nonnull })
+    }
+
+    #[inline]
+    pub fn new_ptr_metadata(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
+        Ty::new(tcx, ty::PtrMetadata(ty))
+    }
+
+    #[inline]
     pub fn new_ptr(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, mutbl: ty::Mutability) -> Ty<'tcx> {
         Ty::new(tcx, ty::RawPtr(ty, mutbl))
     }
@@ -1038,6 +1048,14 @@ impl<'tcx> rustc_type_ir::inherent::Ty<TyCtxt<'tcx>> for Ty<'tcx> {
         Ty::new_ref(interner, region, ty, mutbl)
     }
 
+    fn new_untyped_ptr(interner: TyCtxt<'tcx>, is_nonnull: bool) -> Self {
+        Ty::new_untyped_ptr(interner, is_nonnull)
+    }
+
+    fn new_ptr_metadata(interner: TyCtxt<'tcx>, ty: Self) -> Self {
+        Ty::new_ptr_metadata(interner, ty)
+    }
+
     fn new_array_with_const_len(interner: TyCtxt<'tcx>, ty: Self, len: ty::Const<'tcx>) -> Self {
         Ty::new_array_with_const_len(interner, ty, len)
     }
@@ -1323,11 +1341,16 @@ impl<'tcx> Ty<'tcx> {
         matches!(self.kind(), RawPtr(_, _))
     }
 
+    #[inline]
+    pub fn is_untyped_ptr(self) -> bool {
+        matches!(self.kind(), UntypedPtr { .. })
+    }
+
     /// Tests if this is any kind of primitive pointer type (reference, raw pointer, fn pointer).
     /// `Box` is *not* considered a pointer here!
     #[inline]
     pub fn is_any_ptr(self) -> bool {
-        self.is_ref() || self.is_raw_ptr() || self.is_fn_ptr()
+        self.is_ref() || self.is_raw_ptr() || self.is_fn_ptr() || self.is_untyped_ptr()
     }
 
     #[inline]
@@ -1698,6 +1721,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::Dynamic(..)
@@ -1724,6 +1749,7 @@ impl<'tcx> Ty<'tcx> {
         tcx: TyCtxt<'tcx>,
         normalize: impl FnMut(Ty<'tcx>) -> Ty<'tcx>,
     ) -> Result<Ty<'tcx>, Ty<'tcx>> {
+        // FIXME(ptr_metadata_v2): remove all uses of this function
         let tail = tcx.struct_or_union_tail_raw(self, &ObligationCause::dummy(), normalize, || {});
         match tail.kind() {
             // Sized types
@@ -1735,6 +1761,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::FnDef(..)
             | ty::FnPtr(..)
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Char
             | ty::Ref(..)
             | ty::Coroutine(..)
@@ -1776,7 +1804,7 @@ impl<'tcx> Ty<'tcx> {
         }
     }
 
-    /// Returns the type of metadata for (potentially wide) pointers to this type.
+    /// Returns the "underlying" type of metadata for (potentially wide) pointers to this type.
     /// Causes an ICE if the metadata type cannot be determined.
     pub fn ptr_metadata_ty(
         self,
@@ -1928,6 +1956,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::RawPtr(..)
             | ty::Char
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
             | ty::Array(..)
@@ -2004,6 +2034,7 @@ impl<'tcx> Ty<'tcx> {
             // The standard library has a blanket Copy impl for shared references and raw pointers,
             // for all unsized types.
             ty::Ref(_, _, hir::Mutability::Not) | ty::RawPtr(..) => true,
+            ty::UntypedPtr { .. } | ty::PtrMetadata(..) => true,
 
             ty::Coroutine(..) | ty::CoroutineWitness(..) => false,
 
@@ -2034,10 +2065,16 @@ impl<'tcx> Ty<'tcx> {
             | ty::Placeholder(_)
             | ty::Bound(..) => true,
 
+            ty::UntypedPtr { is_nonnull } => {
+                let _: bool = is_nonnull;
+                // FIXME(untyped_ptr): if this starts using const generics, this should probably be false
+                true
+            }
+
             ty::Slice(ty) => {
                 ty.is_trivially_wf(tcx) && ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized)
             }
-            ty::RawPtr(ty, _) => ty.is_trivially_wf(tcx),
+            ty::RawPtr(ty, _) | ty::PtrMetadata(ty) => ty.is_trivially_wf(tcx),
 
             ty::FnPtr(sig_tys, _) => {
                 sig_tys.skip_binder().inputs_and_output.iter().all(|ty| ty.is_trivially_wf(tcx))

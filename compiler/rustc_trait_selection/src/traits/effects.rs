@@ -352,6 +352,8 @@ fn evaluate_host_effect_for_copy_clone_goal<'tcx>(
         | ty::RawPtr(..)
         | ty::Never
         | ty::Ref(_, _, ty::Mutability::Not)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Array(..) => Err(EvaluationFailure::NoSolution),
 
         // Cannot implement in core, as we can't be generic over patterns yet,
@@ -478,6 +480,8 @@ fn evaluate_host_effect_for_destruct_goal<'tcx>(
         | ty::Str
         | ty::RawPtr(..)
         | ty::Ref(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::Never

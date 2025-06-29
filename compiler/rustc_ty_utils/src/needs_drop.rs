@@ -287,6 +287,8 @@ where
                     | ty::Slice(_)
                     | ty::Ref(..)
                     | ty::RawPtr(..)
+                    | ty::UntypedPtr { .. }
+                    | ty::PtrMetadata(..)
                     | ty::FnDef(..)
                     | ty::Pat(..)
                     | ty::FnPtr(..)

@@ -2516,6 +2516,10 @@ pub enum TyKind {
     Slice(Box<Ty>),
     /// A fixed length array (`[T; n]`).
     Array(Box<Ty>, AnonConst),
+    /// An untyped raw pointer (`builtin # untyped_ptr(nonnull)` or `builtin # untyped_ptr(nullable)`)
+    UntypedPtr { is_nonnull: bool },
+    /// Pointer metadata (`builtin # ptr_metadata(T)`)
+    PtrMetadata(Box<Ty>),
     /// A raw pointer (`*const T` or `*mut T`).
     Ptr(MutTy),
     /// A reference (`&'a T` or `&'a mut T`).

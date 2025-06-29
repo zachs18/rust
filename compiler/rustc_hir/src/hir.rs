@@ -3789,6 +3789,10 @@ pub enum TyKind<'hir, Unambig = ()> {
     Slice(&'hir Ty<'hir>),
     /// A fixed length array (i.e., `[T; n]`).
     Array(&'hir Ty<'hir>, &'hir ConstArg<'hir>),
+    /// An untyped raw pointer `builtin # untyped_ptr()`
+    UntypedPtr { is_nonnull: bool },
+    /// Pointer metadata `builtin # ptr_metadata(T)`.
+    PtrMetadata(&'hir Ty<'hir>),
     /// A raw pointer (i.e., `*const T` or `*mut T`).
     Ptr(MutTy<'hir>),
     /// A reference (i.e., `&'a T` or `&'a mut T`).

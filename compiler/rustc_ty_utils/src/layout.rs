@@ -406,6 +406,73 @@ fn layout_of_uncached<'tcx>(
         // The never type.
         ty::Never => tcx.mk_layout(LayoutData::never_type(cx)),
 
+        // Untyped thin pointers.
+        ty::UntypedPtr { is_nonnull } => {
+            let mut data_ptr = scalar_unit(Pointer(AddressSpace::ZERO));
+            if is_nonnull {
+                data_ptr.valid_range_mut().start = 1;
+            }
+            tcx.mk_layout(LayoutData::scalar(cx, data_ptr))
+        }
+
+        // Pointer metadata
+        ty::PtrMetadata(pointee) => {
+            // FIXME(ptr_metadata_v2): Invert this, i.e. have <T as Pointee>::Metadata = builtin # ptr_metadata(T)
+            // instead of having builtin # ptr_metadata(T) hold a <T as Pointee>::Metadata.
+            let metadata_ty = if pointee.is_sized(tcx, cx.typing_env) {
+                tcx.types.unit
+            } else if let Some(metadata_def_id) = tcx.lang_items().metadata_type() {
+                let pointee_metadata = Ty::new_projection(tcx, metadata_def_id, [pointee]);
+
+                match tcx.try_normalize_erasing_regions(cx.typing_env, pointee_metadata) {
+                    Ok(metadata_ty) => metadata_ty,
+                    Err(mut err) => {
+                        // Usually `<Ty as Pointee>::Metadata` can't be normalized because
+                        // its struct tail cannot be normalized either, so try to get a
+                        // more descriptive layout error here, which will lead to less confusing
+                        // diagnostics.
+                        //
+                        // We use the raw struct tail function here to get the first tail
+                        // that is an alias, which is likely the cause of the normalization
+                        // error.
+                        match tcx.try_normalize_erasing_regions(
+                            cx.typing_env,
+                            tcx.struct_or_union_tail_raw(
+                                pointee,
+                                &ObligationCause::dummy(),
+                                |ty| ty,
+                                || {},
+                            ),
+                        ) {
+                            Ok(_) => {}
+                            Err(better_err) => {
+                                err = better_err;
+                            }
+                        }
+                        return Err(error(cx, LayoutError::NormalizationFailure(pointee, err)));
+                    }
+                }
+            } else {
+                let unsized_part = tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env);
+
+                match unsized_part.kind() {
+                    ty::Foreign(..) => tcx.types.unit,
+                    ty::Slice(_) | ty::Str => tcx.types.usize,
+                    ty::Dynamic(..) => Ty::new_ref(
+                        tcx,
+                        tcx.lifetimes.re_static,
+                        tcx.types.unit,
+                        ty::Mutability::Not,
+                    ),
+                    _ => {
+                        return Err(error(cx, LayoutError::Unknown(pointee)));
+                    }
+                }
+            };
+
+            univariant(&[metadata_ty], StructKind::AlwaysSized)?
+        }
+
         // Potentially-wide pointers.
         ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {
             let mut data_ptr = scalar_unit(Pointer(AddressSpace::ZERO));

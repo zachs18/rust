@@ -1437,6 +1437,22 @@ impl<'a> State<'a> {
                 self.end(ib);
                 self.pclose();
             }
+            ast::TyKind::PtrMetadata(ty) => {
+                self.word("builtin # ptr_metadata");
+                self.popen();
+                self.print_type(ty);
+                self.pclose();
+            }
+            ast::TyKind::UntypedPtr { is_nonnull } => {
+                self.word("builtin # untyped_ptr");
+                self.popen();
+                if *is_nonnull {
+                    self.word("nonnull")
+                } else {
+                    self.word("nullable")
+                }
+                self.pclose();
+            }
         }
         self.end(ib);
     }

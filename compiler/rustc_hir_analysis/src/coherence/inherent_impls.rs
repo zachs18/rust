@@ -191,6 +191,8 @@ impl<'tcx> InherentCollect<'tcx> {
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Never
             | ty::FnPtr(..)
             | ty::Tuple(..)

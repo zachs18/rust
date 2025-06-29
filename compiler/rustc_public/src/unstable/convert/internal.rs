@@ -166,6 +166,8 @@ impl RustcInternal for RigidTy {
                 ty.internal(tables, tcx),
                 mutability.internal(tables, tcx),
             ),
+            RigidTy::PtrMetadata(ty) => rustc_ty::TyKind::PtrMetadata(ty.internal(tables, tcx)),
+            &RigidTy::UntypedPtr { is_nonnull } => rustc_ty::TyKind::UntypedPtr { is_nonnull },
             RigidTy::Foreign(def) => rustc_ty::TyKind::Foreign(def.0.internal(tables, tcx)),
             RigidTy::FnDef(def, args) => {
                 rustc_ty::TyKind::FnDef(def.0.internal(tables, tcx), args.internal(tables, tcx))

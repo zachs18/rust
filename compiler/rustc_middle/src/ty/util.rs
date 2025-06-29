@@ -1180,6 +1180,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Ref(..)
             | ty::RawPtr(_, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::Error(_)
             | ty::FnPtr(..) => true,
@@ -1230,6 +1232,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Ref(..)
             | ty::RawPtr(_, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::Error(_)
             | ty::FnPtr(..) => true,
@@ -1281,6 +1285,8 @@ impl<'tcx> Ty<'tcx> {
             | ty::Never
             | ty::Ref(..)
             | ty::RawPtr(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(..)
             | ty::Error(_)
             | ty::FnPtr(..) => true,
@@ -1439,7 +1445,13 @@ impl<'tcx> Ty<'tcx> {
             ty::Adt(..) => tcx.has_structural_eq_impl(self),
 
             // Primitive types that satisfy `Eq`.
-            ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Str | ty::Never => true,
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Str
+            | ty::Never
+            | ty::UntypedPtr { .. } => true,
 
             // Composite types that satisfy `Eq` when all of their fields do.
             //
@@ -1447,8 +1459,9 @@ impl<'tcx> Ty<'tcx> {
             // of the type(s) contained within.
             ty::Pat(..) | ty::Ref(..) | ty::Array(..) | ty::Slice(_) | ty::Tuple(..) => true,
 
+            // FIXME(ptr_metadata_v2): update comment
             // Raw pointers use bitwise comparison.
-            ty::RawPtr(_, _) | ty::FnPtr(..) => true,
+            ty::RawPtr(_, _) | ty::PtrMetadata(..) | ty::FnPtr(..) => true,
 
             // Floating point numbers are not `Eq`.
             ty::Float(_) => false,
@@ -1534,6 +1547,8 @@ pub fn needs_drop_components_with_async<'tcx>(
         | ty::Char
         | ty::RawPtr(_, _)
         | ty::Ref(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Str => Ok(SmallVec::new()),
 
         // Foreign types can never have destructors.

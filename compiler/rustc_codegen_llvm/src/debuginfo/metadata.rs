@@ -481,6 +481,10 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
         ty::Tuple(_) => build_tuple_type_di_node(cx, unique_type_id),
         ty::Pat(base, _) => return type_di_node(cx, base),
         ty::UnsafeBinder(_) => build_unsafe_binder_type_di_node(cx, t, unique_type_id),
+        // FIXME(ptr_metadata_v2): this is implemented in a later commit, when we actually start using this type
+        ty::PtrMetadata(_) => unimplemented!(),
+        // FIXME(untyped_ptr): impl debug info if this type ever exists outside typed ptrs
+        ty::UntypedPtr { .. } => unimplemented!(),
         ty::Alias(..)
         | ty::Param(_)
         | ty::Bound(..)

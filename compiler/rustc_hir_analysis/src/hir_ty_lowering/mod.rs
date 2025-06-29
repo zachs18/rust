@@ -3012,6 +3012,8 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         let result_ty = match &hir_ty.kind {
             hir::TyKind::InferDelegation(infer) => self.lower_delegation_ty(*infer),
             hir::TyKind::Slice(ty) => Ty::new_slice(tcx, self.lower_ty(ty)),
+            hir::TyKind::UntypedPtr { is_nonnull } => Ty::new_untyped_ptr(tcx, *is_nonnull),
+            hir::TyKind::PtrMetadata(ty) => Ty::new_ptr_metadata(tcx, self.lower_ty(ty)),
             hir::TyKind::Ptr(mt) => Ty::new_ptr(tcx, self.lower_ty(mt.ty), mt.mutbl),
             hir::TyKind::Ref(region, mt) => {
                 let r = self.lower_lifetime(region, RegionInferReason::Reference);
@@ -3436,10 +3438,15 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 dcx.span_err(ty_span, format!("cannot use `{ty}` in this position")),
             ),
             // FIXME(FRTs): support these types?
-            ty::Array(..) | ty::Pat(..) => Ty::new_error(
-                tcx,
-                dcx.span_err(ty_span, format!("type `{ty}` is not yet supported in `field_of!`")),
-            ),
+            ty::Array(..) | ty::Pat(..) | ty::PtrMetadata(..) | ty::UntypedPtr { .. } => {
+                Ty::new_error(
+                    tcx,
+                    dcx.span_err(
+                        ty_span,
+                        format!("type `{ty}` is not yet supported in `field_of!`"),
+                    ),
+                )
+            }
         }
     }
 

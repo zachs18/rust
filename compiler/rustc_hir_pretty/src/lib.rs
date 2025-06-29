@@ -476,6 +476,22 @@ impl<'a> State<'a> {
                 self.print_ident(*field);
                 self.word(")");
             }
+            hir::TyKind::PtrMetadata(ty) => {
+                self.word("builtin # ptr_metadata");
+                self.popen();
+                self.print_type(ty);
+                self.pclose();
+            }
+            hir::TyKind::UntypedPtr { is_nonnull } => {
+                self.word("builtin # untyped_ptr");
+                self.popen();
+                if is_nonnull {
+                    self.word("nonnull")
+                } else {
+                    self.word("nullable")
+                }
+                self.pclose();
+            }
         }
         self.end(ib)
     }

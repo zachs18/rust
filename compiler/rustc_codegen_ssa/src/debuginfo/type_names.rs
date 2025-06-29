@@ -177,6 +177,34 @@ fn push_debuginfo_type_name<'tcx>(
                 push_close_angle_bracket(cpp_like_debuginfo, output);
             }
         }
+        ty::UntypedPtr { is_nonnull } => {
+            if cpp_like_debuginfo {
+                match is_nonnull {
+                    true => output.push_str("nonnull_ptr$"),
+                    false => output.push_str("ptr$"),
+                }
+            } else {
+                match is_nonnull {
+                    true => output.push_str("nonnull_ptr"),
+                    false => output.push_str("ptr"),
+                }
+            }
+        }
+        ty::PtrMetadata(inner_type) => {
+            if cpp_like_debuginfo {
+                output.push_str("metadata$<")
+            } else {
+                output.push_str("builtin # ptr_metadata(");
+            }
+
+            push_debuginfo_type_name(tcx, inner_type, qualified, output, visited);
+
+            if cpp_like_debuginfo {
+                push_close_angle_bracket(cpp_like_debuginfo, output);
+            } else {
+                output.push(')');
+            }
+        }
         ty::Array(inner_type, len) => {
             if cpp_like_debuginfo {
                 output.push_str("array$<");

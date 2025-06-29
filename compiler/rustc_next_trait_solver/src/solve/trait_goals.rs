@@ -744,6 +744,8 @@ where
                 | ty::Float(_)
                 | ty::Char
                 | ty::RawPtr(..)
+                | ty::UntypedPtr { .. }
+                | ty::PtrMetadata(..)
                 | ty::Never
                 | ty::Pat(..)
                 | ty::Dynamic(..)
@@ -1306,6 +1308,8 @@ where
             | ty::Slice(_)
             | ty::RawPtr(_, _)
             | ty::Ref(_, _, _)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnDef(_, _)
             | ty::FnPtr(..)
             | ty::Closure(..)

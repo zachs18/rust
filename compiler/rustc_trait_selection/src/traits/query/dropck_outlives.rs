@@ -41,6 +41,8 @@ pub fn trivial_dropck_outlives<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
         | ty::CoroutineWitness(..)
         | ty::RawPtr(_, _)
         | ty::Ref(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::Str
         | ty::Foreign(..)
         | ty::Error(_) => true,
@@ -278,6 +280,8 @@ pub fn dtorck_constraint_for_ty_inner<'tcx>(
         | ty::Foreign(..)
         | ty::RawPtr(..)
         | ty::Ref(..)
+        | ty::UntypedPtr { .. }
+        | ty::PtrMetadata(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)
         | ty::CoroutineWitness(..) => {

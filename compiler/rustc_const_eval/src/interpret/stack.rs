@@ -504,6 +504,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 | ty::FnDef(..)
                 | ty::FnPtr(..)
                 | ty::RawPtr(..)
+                | ty::UntypedPtr { .. }
+                | ty::PtrMetadata(..)
                 | ty::Char
                 | ty::Ref(..)
                 | ty::Coroutine(..)

@@ -797,6 +797,7 @@ where
                 | ty::Uint(_)
                 | ty::Float(_)
                 | ty::FnPtr(..)
+                | ty::UntypedPtr { .. }
                 | ty::Never
                 | ty::FnDef(..)
                 | ty::CoroutineWitness(..)
@@ -840,6 +841,63 @@ where
                             ..tcx.layout_of(typing_env.as_query_input(unit_ptr_ty)).unwrap()
                         });
                     }
+
+                    let mk_dyn_vtable = |principal: Option<ty::PolyExistentialTraitRef<'tcx>>| {
+                        let min_count = ty::vtable_min_entries(
+                            tcx,
+                            principal.map(|principal| {
+                                tcx.instantiate_bound_regions_with_erased(principal)
+                            }),
+                        );
+                        Ty::new_imm_ref(
+                            tcx,
+                            tcx.lifetimes.re_static,
+                            // FIXME: properly type (e.g. usize and fn pointers) the fields.
+                            Ty::new_array(tcx, tcx.types.usize, min_count.try_into().unwrap()),
+                        )
+                    };
+
+                    let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type()
+                        // Projection eagerly bails out when the pointee references errors,
+                        // fall back to structurally deducing metadata.
+                        && !pointee.references_error()
+                    {
+                        let metadata = tcx.normalize_erasing_regions(
+                            cx.typing_env(),
+                            Ty::new_projection(tcx, metadata_def_id, [pointee]),
+                        );
+
+                        // Map `Metadata = DynMetadata<dyn Trait>` back to a vtable, since it
+                        // offers better information than `std::ptr::metadata::VTable`,
+                        // and we rely on this layout information to trigger a panic in
+                        // `std::mem::uninitialized::<&dyn Trait>()`, for example.
+                        if let ty::Adt(def, args) = metadata.kind()
+                            && tcx.is_lang_item(def.did(), LangItem::DynMetadata)
+                            && let ty::Dynamic(data, _) = args.type_at(0).kind()
+                        {
+                            mk_dyn_vtable(data.principal())
+                        } else {
+                            metadata
+                        }
+                    } else {
+                        match tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env()).kind()
+                        {
+                            ty::Slice(_) | ty::Str => tcx.types.usize,
+                            ty::Dynamic(data, _) => mk_dyn_vtable(data.principal()),
+                            _ => bug!("TyAndLayout::field({:?}): not applicable", this),
+                        }
+                    };
+
+                    TyMaybeWithLayout::Ty(metadata)
+                }
+
+                ty::PtrMetadata(pointee) => {
+                    assert_eq!(
+                        this.fields.count(),
+                        1,
+                        "all `builtin # ptr_metadata(T)` currently should have one field: the actual pointer metadata"
+                    );
+                    assert!(i < 1);
 
                     let mk_dyn_vtable = |principal: Option<ty::PolyExistentialTraitRef<'tcx>>| {
                         let min_count = ty::vtable_min_entries(

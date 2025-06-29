@@ -217,6 +217,8 @@ pub(crate) fn orphan_check_impl(
             | ty::Slice(..)
             | ty::RawPtr(..)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::FnPtr(..)
             | ty::Never
             | ty::Tuple(..)

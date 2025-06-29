@@ -853,6 +853,8 @@ impl TyCoercionStability {
                 | TyKind::Array(..)
                 | TyKind::Ptr(_)
                 | TyKind::FnPtr(_)
+                | TyKind::PtrMetadata(_)
+                | TyKind::UntypedPtr { .. }
                 | TyKind::Pat(..)
                 | TyKind::FieldOf(..)
                 | TyKind::Never
@@ -918,6 +920,8 @@ impl TyCoercionStability {
                 | ty::Pat(..)
                 | ty::Float(_)
                 | ty::RawPtr(..)
+                | ty::PtrMetadata(..)
+                | ty::UntypedPtr { .. }
                 | ty::FnPtr(..)
                 | ty::Str
                 | ty::Slice(..)

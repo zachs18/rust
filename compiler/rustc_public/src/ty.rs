@@ -557,6 +557,8 @@ pub enum RigidTy {
     Slice(Ty),
     RawPtr(Ty, Mutability),
     Ref(Region, Ty, Mutability),
+    UntypedPtr { is_nonnull: bool },
+    PtrMetadata(Ty),
     FnDef(FnDef, GenericArgs),
     FnPtr(PolyFnSig),
     Closure(ClosureDef, GenericArgs),

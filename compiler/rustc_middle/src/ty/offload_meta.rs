@@ -105,6 +105,8 @@ impl MappingFlags {
 
             ty::FnDef(_, _)
             | ty::FnPtr(_, _)
+            | ty::PtrMetadata(..)
+            | ty::UntypedPtr { .. }
             | ty::Closure(_, _)
             | ty::CoroutineClosure(_, _)
             | ty::Coroutine(_, _)

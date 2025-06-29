@@ -1558,6 +1558,13 @@ impl<'a, 'tcx> SpanlessHash<'a, 'tcx> {
                 self.hash_ty(mut_ty.ty);
                 mut_ty.mutbl.hash(&mut self.s);
             },
+            TyKind::PtrMetadata(ty) => {
+                self.hash_ty(ty);
+            },
+            TyKind::UntypedPtr { is_nonnull } => {
+                let _: bool = *is_nonnull;
+                is_nonnull.hash(&mut self.s);
+            },
             TyKind::FnPtr(fn_ptr) => {
                 fn_ptr.safety.hash(&mut self.s);
                 fn_ptr.abi.hash(&mut self.s);

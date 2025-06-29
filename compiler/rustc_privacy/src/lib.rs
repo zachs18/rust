@@ -296,6 +296,8 @@ where
             | ty::Tuple(..)
             | ty::RawPtr(..)
             | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
             | ty::Pat(..)
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)

@@ -457,6 +457,22 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             Ok(Ty::new_ref(cx, r, ty, a_mutbl))
         }
 
+        (
+            ty::UntypedPtr { is_nonnull: lhs_nonnull },
+            ty::UntypedPtr { is_nonnull: rhs_nonnull },
+        ) => {
+            if lhs_nonnull != rhs_nonnull {
+                Err(TypeError::Sorts(ExpectedFound::new(a, b)))
+            } else {
+                Ok(Ty::new_untyped_ptr(cx, lhs_nonnull))
+            }
+        }
+
+        (ty::PtrMetadata(a_t), ty::PtrMetadata(b_t)) => {
+            let t = relation.relate(a_t, b_t)?;
+            Ok(Ty::new_ptr_metadata(cx, t))
+        }
+
         (ty::Array(a_t, sz_a), ty::Array(b_t, sz_b)) => {
             let t = relation.relate(a_t, b_t)?;
             match relation.relate(sz_a, sz_b) {

@@ -575,6 +575,17 @@ pub(crate) fn encode_ty<'tcx>(
             typeid.push_str(&s);
         }
 
+        ty::PtrMetadata(pointee_ty) => {
+            // FIXME(ptr_metadata_v2): is this correct?
+            // u8metadataI<element-type>E
+            let mut s = String::new();
+            s.push_str("u8metadataI");
+            s.push_str(&encode_ty(tcx, *pointee_ty, dict, options));
+            s.push('E');
+            compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
+            typeid.push_str(&s);
+        }
+
         ty::FnPtr(sig_tys, hdr) => {
             // PF<return-type><parameter-type1..parameter-typeN>E
             let mut s = String::from("P");
@@ -586,6 +597,11 @@ pub(crate) fn encode_ty<'tcx>(
             ));
             compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
             typeid.push_str(&s);
+        }
+
+        // FIXME(untyped_ptr): Implement this.
+        ty::UntypedPtr { .. } => {
+            todo!()
         }
 
         // FIXME(unsafe_binders): Implement this.
