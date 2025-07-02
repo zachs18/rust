@@ -643,6 +643,7 @@ impl Rvalue {
                     Ok(Ty::new_coroutine_closure(def, args.clone()))
                 }
                 AggregateKind::RawPtr(ty, mutability) => Ok(Ty::new_ptr(ty, mutability)),
+                AggregateKind::PtrMetadata(ty, _) => Ok(Ty::new_ptr_metadata(ty)),
             },
             Rvalue::CopyForDeref(place) => place.ty(locals),
         }
@@ -654,6 +655,7 @@ pub enum AggregateKind {
     Array(Ty),
     Tuple,
     Adt(AdtDef, VariantIdx, GenericArgs, Option<UserTypeAnnotationIndex>, Option<FieldIdx>),
+    PtrMetadata(Ty, Option<UserTypeAnnotationIndex>),
     Closure(ClosureDef, GenericArgs),
     Coroutine(CoroutineDef, GenericArgs),
     CoroutineClosure(CoroutineClosureDef, GenericArgs),

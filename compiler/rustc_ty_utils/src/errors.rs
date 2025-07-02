@@ -45,6 +45,8 @@ pub(crate) enum GenericConstantTooComplexSub {
     ConstBlockNotSupported(#[primary_span] Span),
     #[label("struct/enum construction is not supported in generic constants")]
     AdtNotSupported(#[primary_span] Span),
+    #[label("pointer metadata construction is not supported in generic constants")]
+    PtrMetadataConstructionNotSupported(#[primary_span] Span),
     #[label("pointer casts are not allowed in generic constants")]
     PointerNotSupported(#[primary_span] Span),
     #[label("coroutine control flow is not allowed in generic constants")]

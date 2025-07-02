@@ -671,6 +671,44 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             },
 
+            hir::ExprKind::PtrMetadata(_user_pointee_ty, fields, base) => {
+                // FIXME(ptr_metadata_v2): Implement this correctly?
+                let _pointee_ty = match expr_ty.kind() {
+                    ty::PtrMetadata(pointee_ty) => pointee_ty,
+                    _ => span_bug!(
+                        expr.span,
+                        "unexpected type for ptr_metadata construction: {:?}",
+                        expr_ty
+                    ),
+                };
+                let user_provided_types = self.typeck_results.user_provided_types();
+                let user_ty = user_provided_types.get(expr.hir_id).copied().map(Box::new);
+                ExprKind::PtrMetadata(Box::new(PtrMetadataExpr {
+                    user_ty,
+                    fields: self.field_refs(fields),
+                    base: match base {
+                        hir::StructTailExpr::Base(base) => PtrMetadataExprBase::Base(FruInfo {
+                            base: self.mirror_expr(base),
+                            field_types: self.typeck_results.fru_field_types()[expr.hir_id]
+                                .iter()
+                                .copied()
+                                .collect(),
+                        }),
+                        hir::StructTailExpr::DefaultFields(_) => {
+                            PtrMetadataExprBase::DefaultFields(
+                                self.typeck_results.fru_field_types()[expr.hir_id]
+                                    .iter()
+                                    .copied()
+                                    .collect(),
+                            )
+                        }
+                        hir::StructTailExpr::None | hir::StructTailExpr::NoneWithError(_) => {
+                            PtrMetadataExprBase::None
+                        }
+                    },
+                }))
+            }
+
             hir::ExprKind::Closure(hir::Closure { .. }) => {
                 let closure_ty = self.typeck_results.expr_ty(expr);
                 let (def_id, args, movability) = match *closure_ty.kind() {

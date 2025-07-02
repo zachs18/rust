@@ -266,7 +266,7 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
 
                 self.visit_body(body);
             }
-            hir::ExprKind::Struct(_, fields, _) => {
+            hir::ExprKind::Struct(_, fields, _) | hir::ExprKind::PtrMetadata(_, fields, _) => {
                 for field in fields {
                     self.visit_field_id(field.hir_id);
                 }

@@ -161,6 +161,9 @@ fn recurse_build<'tcx>(
         ExprKind::Adt(_) => {
             maybe_supported_error(GenericConstantTooComplexSub::AdtNotSupported(node.span))?
         }
+        ExprKind::PtrMetadata(_) => maybe_supported_error(
+            GenericConstantTooComplexSub::PtrMetadataConstructionNotSupported(node.span),
+        )?,
         // dont know if this is correct
         ExprKind::PointerCoercion { .. } => {
             error(GenericConstantTooComplexSub::PointerNotSupported(node.span))?
@@ -292,6 +295,7 @@ impl<'a, 'tcx> IsThirPolymorphic<'a, 'tcx> {
             | thir::ExprKind::Array { .. }
             | thir::ExprKind::Tuple { .. }
             | thir::ExprKind::Adt(_)
+            | thir::ExprKind::PtrMetadata(_)
             | thir::ExprKind::PlaceTypeAscription { .. }
             | thir::ExprKind::ValueTypeAscription { .. }
             | thir::ExprKind::PlaceUnwrapUnsafeBinder { .. }

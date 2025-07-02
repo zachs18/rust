@@ -1541,6 +1541,9 @@ pub enum AggregateKind<'tcx> {
     /// active field index would identity the field `c`
     Adt(DefId, VariantIdx, GenericArgsRef<'tcx>, Option<UserTypeAnnotationIndex>, Option<FieldIdx>),
 
+    /// The type is of the pointee.
+    PtrMetadata(Ty<'tcx>, Option<UserTypeAnnotationIndex>),
+
     Closure(DefId, GenericArgsRef<'tcx>),
     Coroutine(DefId, GenericArgsRef<'tcx>),
     CoroutineClosure(DefId, GenericArgsRef<'tcx>),

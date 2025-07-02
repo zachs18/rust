@@ -52,6 +52,7 @@ impl Category {
             | ExprKind::NeverToAny { .. }
             | ExprKind::Use { .. }
             | ExprKind::Adt { .. }
+            | ExprKind::PtrMetadata { .. }
             | ExprKind::Borrow { .. }
             | ExprKind::RawBorrow { .. }
             | ExprKind::Yield { .. }

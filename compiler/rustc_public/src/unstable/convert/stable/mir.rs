@@ -622,6 +622,12 @@ impl<'tcx> Stable<'tcx> for mir::AggregateKind<'tcx> {
             mir::AggregateKind::Array(ty) => {
                 crate::mir::AggregateKind::Array(ty.stable(tables, cx))
             }
+            mir::AggregateKind::PtrMetadata(pointee_ty, user_ty_index) => {
+                crate::mir::AggregateKind::PtrMetadata(
+                    pointee_ty.stable(tables, cx),
+                    user_ty_index.map(|idx| idx.index()),
+                )
+            }
             mir::AggregateKind::Tuple => crate::mir::AggregateKind::Tuple,
             mir::AggregateKind::Adt(def_id, var_idx, generic_arg, user_ty_index, field_idx) => {
                 crate::mir::AggregateKind::Adt(

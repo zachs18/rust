@@ -397,6 +397,7 @@ enum ImplTraitPosition {
     Cast,
     ImplSelf,
     OffsetOf,
+    PtrMetadata,
 }
 
 impl std::fmt::Display for ImplTraitPosition {
@@ -423,6 +424,7 @@ impl std::fmt::Display for ImplTraitPosition {
             ImplTraitPosition::Cast => "cast expression types",
             ImplTraitPosition::ImplSelf => "impl headers",
             ImplTraitPosition::OffsetOf => "`offset_of!` parameters",
+            ImplTraitPosition::PtrMetadata => "`builtin # ptr_metadata()` parameters",
         };
 
         write!(f, "{name}")

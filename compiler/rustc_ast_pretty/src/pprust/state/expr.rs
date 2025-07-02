@@ -203,6 +203,62 @@ impl<'a> State<'a> {
         self.word("}");
     }
 
+    fn print_expr_ptr_metadata(
+        &mut self,
+        pointee_ty: &Option<Box<ast::Ty>>,
+        fields: &[ast::ExprField],
+        rest: &ast::StructRest,
+    ) {
+        self.word("builtin # ptr_metadata");
+        self.popen();
+        if let Some(pointee_ty) = pointee_ty {
+            self.word("for");
+            self.print_type(pointee_ty);
+            self.word_nbsp(";");
+        }
+        let has_rest = match rest {
+            ast::StructRest::Base(_) | ast::StructRest::Rest(_) => true,
+            ast::StructRest::None | ast::StructRest::NoneWithError(_) => false,
+        };
+        if fields.is_empty() && !has_rest {
+            self.pclose();
+            return;
+        }
+        let cb = self.cbox(0);
+        for (pos, field) in fields.iter().with_position() {
+            let is_first = matches!(pos, Position::First | Position::Only);
+            let is_last = matches!(pos, Position::Last | Position::Only);
+            self.maybe_print_comment(field.span.hi());
+            self.print_outer_attributes(&field.attrs);
+            if is_first {
+                self.space_if_not_bol();
+            }
+            if !field.is_shorthand {
+                self.print_ident(field.ident);
+                self.word_nbsp(":");
+            }
+            self.print_expr(&field.expr, FixupContext::default());
+            if !is_last || has_rest {
+                self.word_space(",");
+            } else {
+                self.trailing_comma_or_space();
+            }
+        }
+        if has_rest {
+            if fields.is_empty() {
+                self.space();
+            }
+            self.word("..");
+            if let ast::StructRest::Base(expr) = rest {
+                self.print_expr(expr, FixupContext::default());
+            }
+            self.space();
+        }
+        self.offset(-INDENT_UNIT);
+        self.end(cb);
+        self.pclose();
+    }
+
     fn print_expr_tup(&mut self, exprs: &[Box<ast::Expr>]) {
         self.popen();
         self.commasep_exprs(Inconsistent, exprs);
@@ -457,6 +513,9 @@ impl<'a> State<'a> {
             }
             ast::ExprKind::Struct(se) => {
                 self.print_expr_struct(&se.qself, &se.path, &se.fields, &se.rest);
+            }
+            ast::ExprKind::PtrMetadata(pme) => {
+                self.print_expr_ptr_metadata(&pme.pointee_ty, &pme.fields, &pme.rest);
             }
             ast::ExprKind::Tup(exprs) => {
                 self.print_expr_tup(exprs);

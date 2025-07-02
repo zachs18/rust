@@ -1184,6 +1184,17 @@ impl<'tcx> Debug for Rvalue<'tcx> {
                         })
                     }
 
+                    AggregateKind::PtrMetadata(pointee_ty, _user_ty) => {
+                        // FIXME(ptr_metadata_v2_fields): implement this using TyCtxt::ptr_metadata_fields_for_pointee once that is implemented
+                        // For now, `builtin # ptr_metadata(for ty; metadata: metadata_expr)` where metadata_expr is
+                        // of type `<T as Pointee>::Metadata` is all that is supported.
+                        with_no_trimmed_paths!(write!(
+                            fmt,
+                            "builtin # ptr_metadata({pointee_ty}) from "
+                        ))?;
+                        if places.is_empty() { write!(fmt, "()") } else { fmt_tuple(fmt, "") }
+                    }
+
                     AggregateKind::Closure(def_id, args)
                     | AggregateKind::CoroutineClosure(def_id, args) => ty::tls::with(|tcx| {
                         let name = if tcx.sess.opts.unstable_opts.span_free_formats {

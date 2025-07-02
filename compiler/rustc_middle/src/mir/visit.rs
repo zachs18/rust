@@ -791,6 +791,9 @@ macro_rules! make_mir_visitor {
                             ) => {
                                 self.visit_args(args, location);
                             }
+                            AggregateKind::PtrMetadata(pointee_ty, _user_args) => {
+                                self.visit_ty($(& $mutability)? *pointee_ty, TyContext::Location(location));
+                            }
                             AggregateKind::Closure(_, closure_args) => {
                                 self.visit_args(closure_args, location);
                             }

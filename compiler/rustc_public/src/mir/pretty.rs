@@ -407,6 +407,10 @@ fn pretty_aggregate<W: Write>(
             write!(writer, "(")?;
             ")"
         }
+        AggregateKind::PtrMetadata(pointee_ty, _) => {
+            write!(writer, "builtin # ptr_metadata(for {pointee_ty}) from (")?;
+            ")"
+        }
         AggregateKind::Adt(def, var, _, _, _) => {
             if def.kind() == AdtKind::Enum {
                 write!(writer, "{}::{}", def.trimmed_name(), def.variant(*var).unwrap().name())?;
