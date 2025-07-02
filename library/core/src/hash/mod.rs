@@ -971,4 +971,12 @@ mod impls {
             metadata.hash(state);
         }
     }
+
+    #[stable(feature = "rust1", since = "1.0.0")]
+    impl<T: ?Sized + marker::PointeeSized> Hash for core::ptr::Metadata<T> {
+        #[inline]
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.ptr_metadata.hash(state)
+        }
+    }
 }

@@ -283,3 +283,26 @@ impl<Dyn: PointeeSized> Hash for DynMetadata<Dyn> {
         crate::ptr::hash::<VTable, _>(self.vtable_ptr(), hasher)
     }
 }
+
+impl<T: PointeeSized> PartialEq for Metadata<T> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr_metadata == other.ptr_metadata
+    }
+}
+
+impl<T: PointeeSized> Eq for Metadata<T> {}
+
+impl<T: PointeeSized> Ord for Metadata<T> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> crate::cmp::Ordering {
+        Ord::cmp(&self.ptr_metadata, &other.ptr_metadata)
+    }
+}
+
+impl<T: PointeeSized> PartialOrd for Metadata<T> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<crate::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
