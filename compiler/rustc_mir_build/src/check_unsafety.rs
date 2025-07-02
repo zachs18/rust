@@ -408,6 +408,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
 
             ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
+            | ExprKind::PtrMetadata { .. }
             | ExprKind::Array { .. }
             | ExprKind::Binary { .. }
             | ExprKind::Block { .. }

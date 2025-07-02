@@ -417,7 +417,7 @@ fn layout_of_uncached<'tcx>(
 
         // Pointer metadata
         ty::PtrMetadata(pointee) => {
-            // FIXME(ptr_metadata_v2): Invert this, i.e. have <T as Pointee>::Metadata = builtin # ptr_metadata(T)
+            // FIXME(ptr_metadata_v2_fields): Invert this, i.e. have <T as Pointee>::Metadata = builtin # ptr_metadata(T)
             // instead of having builtin # ptr_metadata(T) hold a <T as Pointee>::Metadata.
             let metadata_ty = if pointee.is_sized(tcx, cx.typing_env) {
                 tcx.types.unit

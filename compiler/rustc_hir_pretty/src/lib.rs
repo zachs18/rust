@@ -1339,6 +1339,45 @@ impl<'a> State<'a> {
         self.word("}");
     }
 
+    fn print_expr_ptr_metadata(
+        &mut self,
+        pointee_ty: Option<&'_ hir::Ty<'_>>,
+        fields: &[hir::ExprField<'_>],
+        wth: hir::StructTailExpr<'_>,
+    ) {
+        self.word("builtin # ptr_metadata");
+        self.popen();
+        if let Some(pointee_ty) = pointee_ty {
+            self.word("for");
+            self.print_type(pointee_ty);
+            self.word_nbsp(";");
+        }
+        self.commasep_cmnt(Consistent, fields, |s, field| s.print_expr_field(field), |f| f.span);
+        match wth {
+            hir::StructTailExpr::Base(expr) => {
+                let ib = self.ibox(INDENT_UNIT);
+                if !fields.is_empty() {
+                    self.word(",");
+                    self.space();
+                }
+                self.word("..");
+                self.print_expr(expr);
+                self.end(ib);
+            }
+            hir::StructTailExpr::DefaultFields(_) => {
+                let ib = self.ibox(INDENT_UNIT);
+                if !fields.is_empty() {
+                    self.word(",");
+                    self.space();
+                }
+                self.word("..");
+                self.end(ib);
+            }
+            hir::StructTailExpr::None | hir::StructTailExpr::NoneWithError(_) => {}
+        }
+        self.pclose();
+    }
+
     fn print_expr_field(&mut self, field: &hir::ExprField<'_>) {
         let cb = self.cbox(INDENT_UNIT);
         self.print_attrs(self.attrs(field.hir_id));
@@ -1560,6 +1599,9 @@ impl<'a> State<'a> {
             }
             hir::ExprKind::Struct(qpath, fields, wth) => {
                 self.print_expr_struct(qpath, fields, wth);
+            }
+            hir::ExprKind::PtrMetadata(pointee_ty, fields, wth) => {
+                self.print_expr_ptr_metadata(pointee_ty, fields, wth);
             }
             hir::ExprKind::Tup(exprs) => {
                 self.print_expr_tup(exprs);

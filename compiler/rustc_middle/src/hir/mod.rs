@@ -361,6 +361,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     | ExprKind::Become(_)
                     | ExprKind::InlineAsm(_)
                     | ExprKind::Struct(_, _, _)
+                    | ExprKind::PtrMetadata(..)
                     | ExprKind::Repeat(_, _)
                     | ExprKind::Yield(_, _) => true,
 

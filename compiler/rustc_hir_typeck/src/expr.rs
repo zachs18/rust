@@ -410,6 +410,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             ExprKind::Struct(qpath, fields, ref base_expr) => {
                 self.check_expr_struct(expr, expected, qpath, fields, base_expr)
             }
+            ExprKind::PtrMetadata(pointee_ty, fields, ref base_expr) => {
+                self.check_expr_ptr_metadata(expr, expected, pointee_ty, fields, base_expr)
+            }
             ExprKind::Field(base, field) => self.check_expr_field(expr, base, field, expected),
             ExprKind::Index(base, idx, brackets_span) => {
                 self.check_expr_index(base, idx, expr, brackets_span)
@@ -1849,6 +1852,80 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         self.require_type_is_sized(adt_ty, expr.span, ObligationCauseCode::StructInitializerSized);
         adt_ty
+    }
+
+    fn check_expr_ptr_metadata(
+        &self,
+        expr: &hir::Expr<'tcx>,
+        expected: Expectation<'tcx>,
+        pointee: Option<&'tcx hir::Ty<'tcx>>,
+        fields: &'tcx [hir::ExprField<'tcx>],
+        base_expr: &'tcx hir::StructTailExpr<'tcx>,
+    ) -> Ty<'tcx> {
+        let tcx = self.tcx;
+        // FIXME(ptr_metadata_v2_fields): Once PtrMetadata has multiple fields, handle non-exhaustive flag on the pointee.
+
+        // FIXME(ptr_metadata_v2): should this be `.normalized` or `.raw`?
+        let pointee_ty = pointee
+            .map(|pointee| self.lower_ty_saving_user_provided_ty(pointee))
+            .unwrap_or_else(|| self.next_ty_var(expr.span));
+        let ptr_metadata_ty = Ty::new_ptr_metadata(self.tcx, pointee_ty);
+        let ptr_metadata_ty_hint = expected.only_has_type(self).and_then(|expected| {
+            self.fudge_inference_if_ok(|| {
+                let ocx = ObligationCtxt::new(self);
+                ocx.sup(&self.misc(expr.span), self.param_env, expected, ptr_metadata_ty)?;
+                if !ocx.try_evaluate_obligations().is_empty() {
+                    return Err(TypeError::Mismatch);
+                }
+                Ok(self.resolve_vars_if_possible(ptr_metadata_ty))
+            })
+            .ok()
+        });
+        if let Some(ptr_metadata_ty_hint) = ptr_metadata_ty_hint {
+            // re-link the variables that the fudging above can create.
+            self.demand_eqtype(expr.span, ptr_metadata_ty_hint, ptr_metadata_ty);
+        }
+
+        let [field] = fields else {
+            unreachable!("FIXME(ptr_metadata_v2_fields): implement multiple ptr_metadata fields")
+        };
+
+        self.write_field_index(field.hir_id, FieldIdx::ZERO);
+        assert_eq!(
+            field.ident.name,
+            sym::ptr_metadata,
+            "FIXME(ptr_metadata_v2): handle incorrect field names"
+        );
+        let field_type = {
+            let metadata_def_id = tcx.require_lang_item(rustc_hir::LangItem::Metadata, expr.span);
+            self.normalize(expr.span, Ty::new_projection(tcx, metadata_def_id, [pointee_ty]))
+        };
+
+        // Check that the expected field type is WF. Otherwise, we emit no use-site error
+        // in the case of coercions for non-WF fields, which leads to incorrect error
+        // tainting. See issue #126272.
+        self.register_wf_obligation(
+            field_type.into(),
+            field.expr.span,
+            ObligationCauseCode::WellFormed(None),
+        );
+
+        // Make sure to give a type to the field even if there's
+        // an error, so we can continue type-checking.
+        let ty = self.check_expr_with_hint(field.expr, field_type);
+        let diag = self.demand_coerce_diag(field.expr, ty, field_type, None, AllowTwoPhase::No);
+
+        if let Err(diag) = diag {
+            diag.emit();
+        }
+
+        let hir::StructTailExpr::None = base_expr else {
+            unreachable!(
+                "FIXME(ptr_metadata_v2_fields): implement ptr_metadata fields and FRU/base syntax"
+            )
+        };
+
+        ptr_metadata_ty
     }
 
     fn check_expr_struct_fields(

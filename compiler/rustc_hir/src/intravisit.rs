@@ -839,6 +839,16 @@ pub fn walk_expr<'v, V: Visitor<'v>>(visitor: &mut V, expression: &'v Expr<'v>) 
                 | StructTailExpr::DefaultFields(_) => {}
             }
         }
+        ExprKind::PtrMetadata(ref opt_pointee, fields, ref optional_base) => {
+            visit_opt!(visitor, visit_ty_unambig, opt_pointee);
+            walk_list!(visitor, visit_expr_field, fields);
+            match optional_base {
+                StructTailExpr::Base(base) => try_visit!(visitor.visit_expr(base)),
+                StructTailExpr::None
+                | StructTailExpr::NoneWithError(_)
+                | StructTailExpr::DefaultFields(_) => {}
+            }
+        }
         ExprKind::Tup(subexpressions) => {
             walk_list!(visitor, visit_expr, subexpressions);
         }

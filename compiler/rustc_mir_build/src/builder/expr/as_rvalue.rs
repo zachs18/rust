@@ -386,6 +386,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::Borrow { .. }
             | ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
+            | ExprKind::PtrMetadata { .. }
             | ExprKind::Loop { .. }
             | ExprKind::LoopMatch { .. }
             | ExprKind::LogicalOp { .. }

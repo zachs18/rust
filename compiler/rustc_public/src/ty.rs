@@ -44,6 +44,11 @@ impl Ty {
         Ty::from_rigid_kind(RigidTy::RawPtr(pointee_ty, mutability))
     }
 
+    /// Create a new pointer metadata type.
+    pub fn new_ptr_metadata(pointee_ty: Ty) -> Ty {
+        Ty::from_rigid_kind(RigidTy::PtrMetadata(pointee_ty))
+    }
+
     /// Create a new reference type.
     pub fn new_ref(reg: Region, pointee_ty: Ty, mutability: Mutability) -> Ty {
         Ty::from_rigid_kind(RigidTy::Ref(reg, pointee_ty, mutability))

@@ -829,6 +829,7 @@ impl<'tcx> Rvalue<'tcx> {
             Rvalue::Discriminant(ref place) => place.ty(local_decls, tcx).ty.discriminant_ty(tcx),
             Rvalue::Aggregate(ref ak, ref ops) => match **ak {
                 AggregateKind::Array(ty) => Ty::new_array(tcx, ty, ops.len() as u64),
+                AggregateKind::PtrMetadata(pointee_ty, _) => Ty::new_ptr_metadata(tcx, pointee_ty),
                 AggregateKind::Tuple => {
                     Ty::new_tup_from_iter(tcx, ops.iter().map(|op| op.ty(local_decls, tcx)))
                 }

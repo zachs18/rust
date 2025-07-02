@@ -507,6 +507,11 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 self.print_adt_expr(&**adt_expr, depth_lvl + 1);
                 print_indented!(self, "}", depth_lvl);
             }
+            PtrMetadata(ptr_metadata_expr) => {
+                print_indented!(self, "PtrMetadata {", depth_lvl);
+                self.print_ptr_metadata_expr(&**ptr_metadata_expr, depth_lvl + 1);
+                print_indented!(self, "}", depth_lvl);
+            }
             PlaceTypeAscription { source, user_ty, user_ty_span } => {
                 print_indented!(self, "PlaceTypeAscription {", depth_lvl);
                 print_indented!(self, format!("user_ty: {:?}", user_ty), depth_lvl + 1);
@@ -652,6 +657,32 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
         }
         print_indented!(self, "]", depth_lvl + 1);
         print_indented!(self, "}", depth_lvl);
+    }
+
+    fn print_ptr_metadata_expr(
+        &mut self,
+        ptr_metadata_expr: &PtrMetadataExpr<'tcx>,
+        depth_lvl: usize,
+    ) {
+        print_indented!(self, format!("user_ty: {:?}", ptr_metadata_expr.user_ty), depth_lvl + 1);
+
+        for (i, field_expr) in ptr_metadata_expr.fields.iter().enumerate() {
+            print_indented!(self, format!("field {}:", i), depth_lvl + 1);
+            self.print_expr(field_expr.expr, depth_lvl + 2);
+        }
+
+        match ptr_metadata_expr.base {
+            PtrMetadataExprBase::Base(ref base) => {
+                print_indented!(self, "base:", depth_lvl + 1);
+                self.print_fru_info(base, depth_lvl + 2);
+            }
+            PtrMetadataExprBase::DefaultFields(_) => {
+                print_indented!(self, "base: {{ defaulted fields }}", depth_lvl + 1);
+            }
+            PtrMetadataExprBase::None => {
+                print_indented!(self, "base: None", depth_lvl + 1);
+            }
+        }
     }
 
     fn print_arm(&mut self, arm_id: ArmId, depth_lvl: usize) {

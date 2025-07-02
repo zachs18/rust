@@ -16,7 +16,7 @@ use rustc_ast::{
     self as ast, AnonConst, Arm, AssignOp, AssignOpKind, AttrStyle, AttrVec, BinOp, BinOpKind,
     BlockCheckMode, CaptureBy, ClosureBinder, DUMMY_NODE_ID, Expr, ExprField, ExprKind, FnDecl,
     FnRetTy, Guard, Label, MacCall, MetaItemLit, MgcaDisambiguation, Movability, Param,
-    RangeLimits, StmtKind, Ty, TyKind, UnOp, UnsafeBinderCastKind, YieldKind,
+    PtrMetadataExpr, RangeLimits, StmtKind, Ty, TyKind, UnOp, UnsafeBinderCastKind, YieldKind,
 };
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_errors::{Applicability, Diag, PResult, StashKey, Subdiagnostic};
@@ -1993,6 +1993,7 @@ impl<'a> Parser<'a> {
                 sym::unwrap_binder => {
                     Some(this.parse_expr_unsafe_binder_cast(lo, UnsafeBinderCastKind::Unwrap)?)
                 }
+                sym::ptr_metadata => Some(this.parse_expr_ptr_metadata_construction(lo)?),
                 _ => None,
             })
         })
@@ -2057,6 +2058,180 @@ impl<'a> Parser<'a> {
 
         let span = lo.to(self.token.span);
         Ok(self.mk_expr(span, ExprKind::OffsetOf(container, fields)))
+    }
+
+    /// Built-in syntax for `builtin # ptr_metadata()` expressions.
+    pub(crate) fn parse_expr_ptr_metadata_construction(
+        &mut self,
+        lo: Span,
+    ) -> PResult<'a, Box<Expr>> {
+        // input in macro syntax: $(for $ty;)? $($field: $expr),* $(,)? $(..$($base:expr)?)?
+        // trailing comma only if there `$fields` is not empty
+        // $field can be idents or integer literals (for tuples/tuple-structs)
+        // FIXME(ptr_metadata_v2): can also make syntax for enums' metadata here.
+
+        let (pointee_ty, fields, base) = self.parse_ptr_metadata_fields(lo, true)?;
+
+        let span = lo.to(self.token.span);
+        Ok(self.mk_expr(
+            span,
+            ExprKind::PtrMetadata(Box::new(PtrMetadataExpr { pointee_ty, fields, rest: base })),
+        ))
+    }
+
+    pub(super) fn parse_ptr_metadata_fields(
+        &mut self,
+        lo: Span,
+        recover: bool,
+    ) -> PResult<'a, (Option<Box<Ty>>, ThinVec<ExprField>, ast::StructRest)> {
+        let mut fields = ThinVec::new();
+        let mut base = ast::StructRest::None;
+
+        let pointee_ty = if self.eat_keyword(exp!(For)) {
+            let pointee_ty = self.parse_ty()?;
+            if self.eat(exp!(Semi)) {
+                Some(pointee_ty)
+            } else {
+                // Missing semicolon, fine if this is the end of the input, else bad.
+                if let Err(mut e) = self.expect_one_of(&[], &[exp!(CloseParen)]) {
+                    e.note("unexpected argument to ptr_metadata");
+                    return Err(e);
+                } else {
+                    Some(pointee_ty)
+                }
+            }
+        } else {
+            None
+        };
+
+        while self.token != token::CloseParen {
+            if self.eat(exp!(DotDot)) || self.recover_struct_field_dots(&token::CloseParen) {
+                let exp_span = self.prev_token.span;
+
+                if self.check(exp!(CloseParen)) {
+                    base = ast::StructRest::Rest(self.prev_token.span);
+                    break;
+                }
+                match self.parse_expr() {
+                    Ok(e) => base = ast::StructRest::Base(e),
+                    Err(e) if recover => {
+                        e.emit();
+                        self.recover_stmt();
+                    }
+                    Err(e) => return Err(e),
+                }
+                self.recover_struct_comma_after_dotdot(exp_span);
+                break;
+            }
+
+            // Peek the field's ident before parsing its expr in order to emit better diagnostics.
+            let peek = self
+                .token
+                .ident()
+                .filter(|(ident, is_raw)| {
+                    (!ident.is_reserved() || matches!(is_raw, IdentIsRaw::Yes))
+                        && self.look_ahead(1, |tok| *tok == token::Colon)
+                })
+                .map(|(ident, _)| ident);
+
+            // We still want a field even if its expr didn't parse.
+            let field_ident = |this: &Self, guar: ErrorGuaranteed| {
+                peek.map(|ident| {
+                    let span = ident.span;
+                    ExprField {
+                        ident,
+                        span,
+                        expr: this.mk_expr_err(span, guar),
+                        is_shorthand: false,
+                        attrs: AttrVec::new(),
+                        id: DUMMY_NODE_ID,
+                        is_placeholder: false,
+                    }
+                })
+            };
+
+            let parsed_field = match self.parse_expr_field() {
+                Ok(f) => Ok(f),
+                Err(mut e) => {
+                    e.span_label(lo, "while parsing this pointer metadata construction");
+
+                    if let Some((ident, _)) = self.token.ident()
+                        && !self.token.is_reserved_ident()
+                        && self.look_ahead(1, |t| {
+                            AssocOp::from_token(t).is_some()
+                                || matches!(
+                                    t.kind,
+                                    token::OpenParen | token::OpenBracket | token::OpenBrace
+                                )
+                                || *t == token::Dot
+                        })
+                    {
+                        // Looks like they tried to write a shorthand, complex expression,
+                        // E.g.: `n + m`, `f(a)`, `a[i]`, `S { x: 3 }`, or `x.y`.
+                        e.span_suggestion_verbose(
+                            self.token.span.shrink_to_lo(),
+                            "try naming a field",
+                            &format!("{ident}: ",),
+                            Applicability::MaybeIncorrect,
+                        );
+                    }
+
+                    if !recover {
+                        return Err(e);
+                    }
+
+                    let guar = e.emit();
+
+                    // If the next token is a comma, then try to parse
+                    // what comes next as additional fields, rather than
+                    // bailing out until next `}`.
+                    if self.token != token::Comma {
+                        self.recover_stmt_(SemiColonMode::Comma, BlockMode::Ignore);
+                        if self.token != token::Comma {
+                            break;
+                        }
+                    }
+
+                    Err(guar)
+                }
+            };
+
+            let is_shorthand = parsed_field.as_ref().is_ok_and(|f| f.is_shorthand);
+            // A shorthand field can be turned into a full field with `:`.
+            // We should point this out.
+            self.check_or_expected(!is_shorthand, TokenType::Colon);
+
+            match self.expect_one_of(&[exp!(Comma)], &[exp!(CloseParen)]) {
+                Ok(_) => {
+                    if let Ok(f) = parsed_field.or_else(|guar| field_ident(self, guar).ok_or(guar))
+                    {
+                        // Only include the field if there's no parse error for the field name.
+                        fields.push(f);
+                    }
+                }
+                Err(mut e) => {
+                    e.span_label(lo, "while parsing this pointer metadata construction");
+                    if peek.is_some() {
+                        e.span_suggestion(
+                            self.prev_token.span.shrink_to_hi(),
+                            "try adding a comma",
+                            ",",
+                            Applicability::MachineApplicable,
+                        );
+                    }
+                    if !recover {
+                        return Err(e);
+                    }
+                    let guar = e.emit();
+                    if let Some(f) = field_ident(self, guar) {
+                        fields.push(f);
+                    }
+                    self.recover_stmt_(SemiColonMode::Comma, BlockMode::Ignore);
+                    let _ = self.eat(exp!(Comma));
+                }
+            }
+        }
+        Ok((pointee_ty, fields, base))
     }
 
     /// Built-in macro for type ascription expressions.
@@ -4432,6 +4607,7 @@ impl MutVisitor for CondChecker<'_> {
             | ExprKind::OffsetOf(_, _)
             | ExprKind::MacCall(_)
             | ExprKind::Struct(_)
+            | ExprKind::PtrMetadata(_)
             | ExprKind::Repeat(_, _)
             | ExprKind::Yield(_)
             | ExprKind::Yeet(_)

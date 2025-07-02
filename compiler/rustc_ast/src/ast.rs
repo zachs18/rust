@@ -1620,6 +1620,7 @@ impl Expr {
             | ExprKind::MethodCall(..)
             | ExprKind::OffsetOf(..)
             | ExprKind::Paren(..)
+            | ExprKind::PtrMetadata(..)
             | ExprKind::Path(..)
             | ExprKind::Repeat(..)
             | ExprKind::Struct(..)
@@ -1738,6 +1739,13 @@ pub enum StructRest {
 pub struct StructExpr {
     pub qself: Option<Box<QSelf>>,
     pub path: Path,
+    pub fields: ThinVec<ExprField>,
+    pub rest: StructRest,
+}
+
+#[derive(Clone, Encodable, Decodable, Debug, Walkable)]
+pub struct PtrMetadataExpr {
+    pub pointee_ty: Option<Box<Ty>>,
     pub fields: ThinVec<ExprField>,
     pub rest: StructRest,
 }
@@ -1871,6 +1879,10 @@ pub enum ExprKind {
     /// Usually not written directly in user code but
     /// indirectly via the macro `core::mem::offset_of!(...)`.
     OffsetOf(Box<Ty>, Vec<Ident>),
+
+    /// A `ptr_metadata` expression (e.g., `builtin # ptr_metadata(for [u8]; len: 42, ..)`
+    /// or `builtin # ptr_metadata(len: 42, ..)`).
+    PtrMetadata(Box<PtrMetadataExpr>),
 
     /// A macro invocation; pre-expansion.
     MacCall(Box<MacCall>),

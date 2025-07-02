@@ -2486,6 +2486,7 @@ impl Expr<'_> {
             | ExprKind::Match(..)
             | ExprKind::MethodCall(..)
             | ExprKind::OffsetOf(..)
+            | ExprKind::PtrMetadata(..)
             | ExprKind::Path(..)
             | ExprKind::Repeat(..)
             | ExprKind::Struct(..)
@@ -2542,6 +2543,7 @@ impl Expr<'_> {
             | ExprKind::MethodCall(..)
             | ExprKind::Use(..)
             | ExprKind::Struct(..)
+            | ExprKind::PtrMetadata(..)
             | ExprKind::Tup(..)
             | ExprKind::If(..)
             | ExprKind::Match(..)
@@ -2640,7 +2642,7 @@ impl Expr<'_> {
                 // them being used only for its side-effects.
                 lhs.can_have_side_effects() || rhs.can_have_side_effects()
             }
-            ExprKind::Struct(_, fields, init) => {
+            ExprKind::Struct(_, fields, init) | ExprKind::PtrMetadata(_, fields, init) => {
                 let init_side_effects = match init {
                     StructTailExpr::Base(init) => init.can_have_side_effects(),
                     StructTailExpr::DefaultFields(_)
@@ -2908,6 +2910,12 @@ pub enum ExprKind<'hir> {
     /// E.g., `Foo {x: 1, y: 2}`, or `Foo {x: 1, .. base}`,
     /// where `base` is the `Option<Expr>`.
     Struct(&'hir QPath<'hir>, &'hir [ExprField<'hir>], StructTailExpr<'hir>),
+
+    /// A pointer metadata literal expression.
+    ///
+    /// E.g., `builtin # ptr_metadata { len: 42, elem }`, `builtin # ptr_metadata { len: 42, ..base}`,
+    /// or `builtin # ptr_metadata { for [T]; len: 42, .. }`, where `base` is the `StructTailExpr::Base(Expr)`.
+    PtrMetadata(Option<&'hir Ty<'hir>>, &'hir [ExprField<'hir>], StructTailExpr<'hir>),
 
     /// An array literal constructed from one repeated element.
     ///

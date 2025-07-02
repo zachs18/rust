@@ -1165,6 +1165,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             let is_zst = match *kind {
                 AggregateKind::Array(..)
                 | AggregateKind::Tuple
+                | AggregateKind::PtrMetadata(..)
                 | AggregateKind::Closure(..)
                 | AggregateKind::CoroutineClosure(..) => true,
                 // Only enums can be non-ZST.
@@ -1198,6 +1199,8 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 let field = *fields.first()?;
                 return Some(self.insert(ty, Value::Union(active_field, field)));
             }
+            // FIXME(ptr_metadata_v2): Do not track non-empty PtrMetadata for now.
+            AggregateKind::PtrMetadata(..) => return None,
             AggregateKind::RawPtr(..) => {
                 assert_eq!(field_ops.len(), 2);
                 let [mut pointer, metadata] = fields.try_into().unwrap();

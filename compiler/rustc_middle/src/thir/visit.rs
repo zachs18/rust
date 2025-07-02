@@ -1,6 +1,6 @@
 use super::{
     AdtExpr, AdtExprBase, Arm, Block, ClosureExpr, Expr, ExprKind, InlineAsmExpr, InlineAsmOperand,
-    Pat, PatKind, Stmt, StmtKind, Thir,
+    Pat, PatKind, PtrMetadataExpr, PtrMetadataExprBase, Stmt, StmtKind, Thir,
 };
 use crate::thir::LoopMatchMatchData;
 
@@ -135,6 +135,14 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
                 visitor.visit_expr(&visitor.thir()[field.expr]);
             }
             if let AdtExprBase::Base(base) = base {
+                visitor.visit_expr(&visitor.thir()[base.base]);
+            }
+        }
+        PtrMetadata(box PtrMetadataExpr { ref fields, ref base, user_ty: _ }) => {
+            for field in &**fields {
+                visitor.visit_expr(&visitor.thir()[field.expr]);
+            }
+            if let PtrMetadataExprBase::Base(base) = base {
                 visitor.visit_expr(&visitor.thir()[base.base]);
             }
         }
