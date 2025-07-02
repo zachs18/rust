@@ -3073,6 +3073,14 @@ impl<T: PointeeSized> Debug for *mut T {
         Pointer::fmt(self, f)
     }
 }
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T: PointeeSized> Debug for core::ptr::Metadata<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let mut f = f.debug_struct("Metadata");
+        f.field("ptr_metadata", &self.ptr_metadata);
+        f.finish()
+    }
+}
 
 macro_rules! peel {
     ($name:ident, $($other:ident,)*) => (tuple! { $($other,)* })
