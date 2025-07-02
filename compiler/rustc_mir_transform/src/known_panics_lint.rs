@@ -591,6 +591,7 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
                     AggregateKind::Array(_)
                     | AggregateKind::Tuple
                     | AggregateKind::RawPtr(_, _)
+                    | AggregateKind::PtrMetadata(..)
                     | AggregateKind::Closure(_, _)
                     | AggregateKind::Coroutine(_, _)
                     | AggregateKind::CoroutineClosure(_, _) => VariantIdx::ZERO,

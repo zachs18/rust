@@ -547,6 +547,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             ExprKind::Array { .. }
             | ExprKind::Tuple { .. }
             | ExprKind::Adt { .. }
+            | ExprKind::PtrMetadata { .. }
             | ExprKind::Closure { .. }
             | ExprKind::Unary { .. }
             | ExprKind::Binary { .. }

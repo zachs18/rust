@@ -438,6 +438,10 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 self.walk_struct_expr(fields, opt_with)?;
             }
 
+            hir::ExprKind::PtrMetadata(_, fields, ref opt_with) => {
+                self.walk_ptr_metadata_expr(fields, opt_with)?;
+            }
+
             hir::ExprKind::Tup(exprs) => {
                 self.consume_exprs(exprs)?;
             }
@@ -709,6 +713,100 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 // so we can just ignore it.
                 if self.cx.tainted_by_errors().is_ok() {
                     span_bug!(with_expr.span, "with expression doesn't evaluate to a struct");
+                }
+            }
+        }
+
+        // walk the with expression so that complex expressions
+        // are properly handled.
+        self.walk_expr(with_expr)?;
+
+        Ok(())
+    }
+
+    fn walk_ptr_metadata_expr<'hir>(
+        &self,
+        fields: &[hir::ExprField<'_>],
+        opt_with: &hir::StructTailExpr<'hir>,
+    ) -> Result<(), Cx::Error> {
+        // Consume the expressions supplying values for each field.
+        for field in fields {
+            self.consume_expr(field.expr)?;
+
+            // The struct path probably didn't resolve
+            if self.cx.typeck_results().opt_field_index(field.hir_id).is_none() {
+                self.cx
+                    .tcx()
+                    .dcx()
+                    .span_delayed_bug(field.span, "couldn't resolve index for field");
+            }
+        }
+
+        let with_expr = match *opt_with {
+            hir::StructTailExpr::Base(w) => &*w,
+            hir::StructTailExpr::DefaultFields(_)
+            | hir::StructTailExpr::None
+            | hir::StructTailExpr::NoneWithError(_) => {
+                return Ok(());
+            }
+        };
+
+        let with_place = self.cat_expr(with_expr)?;
+
+        // Select just those fields of the `with`
+        // expression that will actually be used
+        match self.cx.structurally_resolve_type(with_expr.span, with_place.place.ty()).kind() {
+            ty::PtrMetadata(pointee_ty) => {
+                // For now, only have the one `metadata` field of type `<pointee as Pointee>::Metadata`
+                // Only consume the field of the with expression if it is needed.
+
+                // There's only one field, so if any field is mentioned, it's that field
+                let is_mentioned = fields.is_empty();
+
+                if !is_mentioned {
+                    let field_ty = match pointee_ty.ptr_metadata_ty_or_tail(self.cx.tcx(), |x| x) {
+                        Ok(metadata_ty) => metadata_ty,
+                        Err(tail_ty) => {
+                            let metadata_def_id = self.cx.tcx().require_lang_item(
+                                rustc_hir::LangItem::Metadata,
+                                rustc_span::DUMMY_SP,
+                            );
+                            Ty::new_projection(self.cx.tcx(), metadata_def_id, [tail_ty])
+                        }
+                    };
+                    let field_place = self.cat_projection(
+                        with_expr.hir_id,
+                        with_place.clone(),
+                        field_ty,
+                        ProjectionKind::Field(FieldIdx::ZERO, FIRST_VARIANT),
+                    );
+                    self.consume_or_copy(&field_place, field_place.hir_id);
+                }
+
+                // FIXME(ptr_metadata_v2_fields): implement multiple fields
+                // // Consume those fields of the with expression that are needed.
+                // for (f_index, with_field) in adt.non_enum_variant().fields.iter_enumerated() {
+                //     let is_mentioned = fields.iter().any(|f| {
+                //         self.cx.typeck_results().opt_field_index(f.hir_id) == Some(f_index)
+                //     });
+                //     if !is_mentioned {
+                //         let field_place = self.cat_projection(
+                //             with_expr.hir_id,
+                //             with_place.clone(),
+                //             with_field.ty(self.cx.tcx(), args),
+                //             ProjectionKind::Field(f_index, FIRST_VARIANT),
+                //         );
+                //         self.consume_or_copy(&field_place, field_place.hir_id);
+                //     }
+                // }
+            }
+            _ => {
+                // the base expression should always evaluate to a
+                // PtrMetadata; however, when EUV is run during typeck, it
+                // may not. This will generate an error earlier in typeck,
+                // so we can just ignore it.
+                if self.cx.tainted_by_errors().is_ok() {
+                    span_bug!(with_expr.span, "with expression doesn't evaluate to a PtrMetadata");
                 }
             }
         }
@@ -1379,6 +1477,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             | hir::ExprKind::Break(..)
             | hir::ExprKind::Continue(..)
             | hir::ExprKind::Struct(..)
+            | hir::ExprKind::PtrMetadata(..)
             | hir::ExprKind::Repeat(..)
             | hir::ExprKind::InlineAsm(..)
             | hir::ExprKind::OffsetOf(..)

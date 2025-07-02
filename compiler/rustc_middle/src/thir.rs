@@ -167,6 +167,30 @@ pub enum AdtExprBase<'tcx> {
 }
 
 #[derive(Clone, Debug, HashStable)]
+pub struct PtrMetadataExpr<'tcx> {
+    /// Optional user-given pointee after `for`: `builtin # ptr_metadata(for [T]; len: 42)`.
+    pub user_ty: UserTy<'tcx>,
+
+    pub fields: Box<[FieldExpr]>,
+    /// The base, e.g. `builtin # ptr_metadata {len: 1, ..base}`.
+    pub base: PtrMetadataExprBase<'tcx>,
+}
+
+#[derive(Clone, Debug, HashStable)]
+pub enum PtrMetadataExprBase<'tcx> {
+    /// A pointer metadata expression where all the fields are explicitly enumerated: `builtin # ptr_metadata { len }`.
+    None,
+    /// A pointer metadata expression with a "base", an expression of the same type as the outer struct that
+    /// will be used to populate any fields not explicitly mentioned: `builtin # ptr_metadata { elem, ..base }`
+    Base(FruInfo<'tcx>),
+    /// A pointer metadata expression with a `..` tail but no "base" expression.
+    // FIXME(ptr_metadata_v2_fields): Not allowed currently, but will eventually mean:
+    /// Any fields not explicitly mentioned must be metadata for `Thin` types, and are filled with their trivial metadata:
+    /// `builtin # ptr_metadata { .. }`.
+    DefaultFields(Box<[Ty<'tcx>]>),
+}
+
+#[derive(Clone, Debug, HashStable)]
 pub struct ClosureExpr<'tcx> {
     pub closure_id: LocalDefId,
     pub args: UpvarArgs<'tcx>,
@@ -475,6 +499,9 @@ pub enum ExprKind<'tcx> {
     },
     /// An ADT constructor, e.g. `Foo {x: 1, y: 2}`.
     Adt(Box<AdtExpr<'tcx>>),
+    /// A pointer metadata constructor, e.g. `builtin # ptr_metadata { len: 42, elem }`,
+    /// `builtin # ptr_metadata { len: 42, ..base}`, or `builtin # ptr_metadata { for [T]; len: 42, .. }`.
+    PtrMetadata(Box<PtrMetadataExpr<'tcx>>),
     /// A type ascription on a place.
     PlaceTypeAscription {
         source: ExprId,

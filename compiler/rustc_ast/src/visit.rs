@@ -464,6 +464,7 @@ macro_rules! common_visitor_and_walkers {
             ParenthesizedArgs,
             PatFieldsRest,
             PatKind,
+            PtrMetadataExpr,
             RangeEnd,
             RangeSyntax,
             Recovered,
@@ -1056,6 +1057,8 @@ macro_rules! common_visitor_and_walkers {
                     visit_visitable!($($mut)? vis, f),
                 ExprKind::OffsetOf(container, fields) =>
                     visit_visitable!($($mut)? vis, container, fields),
+                ExprKind::PtrMetadata(pme) =>
+                    visit_visitable!($($mut)? vis, pme),
                 ExprKind::Yield(kind) =>
                     visit_visitable!($($mut)? vis, kind),
                 ExprKind::Try(subexpression) =>

@@ -52,6 +52,13 @@ pub fn type_op_ascribe_user_type_with_span<'tcx>(
         UserTypeKind::TypeOf(def_id, user_args) => {
             relate_mir_and_user_args(ocx, param_env, span, mir_ty, def_id, user_args)?
         }
+        UserTypeKind::PtrMetadataOf(user_pointee_ty) => relate_mir_and_user_ty(
+            ocx,
+            param_env,
+            span,
+            mir_ty,
+            Ty::new_ptr_metadata(ocx.infcx.tcx, user_pointee_ty),
+        )?,
     };
 
     // Enforce any bounds that come from impl trait in bindings.

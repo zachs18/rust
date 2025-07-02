@@ -672,6 +672,109 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 );
                 block.unit()
             }
+
+            ExprKind::PtrMetadata(box PtrMetadataExpr { ref user_ty, ref fields, ref base }) => {
+                let scope = this.local_temp_lifetime();
+
+                let inferred_ty = expr.ty;
+                let user_ty = user_ty.as_ref().map(|user_ty| {
+                    this.canonical_user_type_annotations.push(CanonicalUserTypeAnnotation {
+                        span: source_info.span,
+                        user_ty: user_ty.clone(),
+                        inferred_ty,
+                    })
+                });
+                let inferred_pointee_ty = match inferred_ty.kind() {
+                    &ty::PtrMetadata(pointee) => pointee,
+                    _ => unreachable!(
+                        "builtin # ptr_metadata() expressions should be inferred to TyKind::PtrMetadata"
+                    ),
+                };
+
+                // first process the set of fields that were provided
+                // (evaluating them in order given by user)
+                let fields_map: FxHashMap<_, _> = fields
+                    .into_iter()
+                    .map(|f| {
+                        (
+                            f.name,
+                            unpack!(
+                                block = this.as_operand(
+                                    block,
+                                    scope,
+                                    f.expr,
+                                    LocalInfo::AggregateTemp,
+                                    NeedsTemporary::Maybe,
+                                )
+                            ),
+                        )
+                    })
+                    .collect();
+
+                let field_names = [rustc_abi::FieldIdx::ZERO].into_iter();
+
+                let fields = match base {
+                    PtrMetadataExprBase::None => {
+                        field_names.filter_map(|n| fields_map.get(&n).cloned()).collect()
+                    }
+                    PtrMetadataExprBase::Base(FruInfo { base, field_types }) => {
+                        let place_builder = unpack!(block = this.as_place_builder(block, *base));
+
+                        // We desugar FRU as we lower to MIR, so for each
+                        // base-supplied field, generate an operand that
+                        // reads it from the base.
+                        itertools::zip_eq(field_names, &**field_types)
+                            .map(|(n, ty)| match fields_map.get(&n) {
+                                Some(v) => v.clone(),
+                                None => {
+                                    let place =
+                                        place_builder.clone_project(PlaceElem::Field(n, *ty));
+                                    this.consume_by_copy_or_move(place.to_place(this))
+                                }
+                            })
+                            .collect()
+                    }
+                    PtrMetadataExprBase::DefaultFields(field_types) => {
+                        itertools::zip_eq(field_names, field_types)
+                            .map(|(n, &ty)| match fields_map.get(&n) {
+                                Some(v) => v.clone(),
+                                None => {
+                                    let field_pointee_ty = match ty.kind() {
+                                        ty::PtrMetadata(pointee) => *pointee,
+                                        _ => span_bug!(
+                                            expr_span,
+                                            "missing mandatory PtrMetadata field (only fields of type PtrMetadata(impl Thin) can be defaulted)"
+                                        ),
+                                    };
+                                    if field_pointee_ty
+                                        .is_sized(this.tcx, this.infcx.typing_env(this.param_env))
+                                    {
+                                        Operand::Constant(Box::new(ConstOperand {
+                                            span: expr_span,
+                                            user_ty: None,
+                                            const_: Const::Val(ConstValue::ZeroSized, ty),
+                                        }))
+                                    } else {
+                                        span_bug!(
+                                            expr_span,
+                                            "FIXME(ptr_metadata_v2_fields): implement ptr metadata fields"
+                                        )
+                                    }
+                                }
+                            })
+                            .collect()
+                    }
+                };
+                let ptr_metadata =
+                    Box::new(AggregateKind::PtrMetadata(inferred_pointee_ty, user_ty));
+                this.cfg.push_assign(
+                    block,
+                    source_info,
+                    destination,
+                    Rvalue::Aggregate(ptr_metadata, fields),
+                );
+                block.unit()
+            }
             ExprKind::InlineAsm(box InlineAsmExpr {
                 asm_macro,
                 template,

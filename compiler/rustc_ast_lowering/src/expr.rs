@@ -363,6 +363,27 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         rest,
                     )
                 }
+                ExprKind::PtrMetadata(pme) => {
+                    let rest = match &pme.rest {
+                        StructRest::Base(e) => hir::StructTailExpr::Base(self.lower_expr(e)),
+                        StructRest::Rest(sp) => hir::StructTailExpr::DefaultFields(*sp),
+                        StructRest::None => hir::StructTailExpr::None,
+                        StructRest::NoneWithError(guar) => {
+                            hir::StructTailExpr::NoneWithError(*guar)
+                        }
+                    };
+                    hir::ExprKind::PtrMetadata(
+                        pme.pointee_ty.as_deref().map(|pointee_ty| {
+                            self.lower_ty_alloc(
+                                pointee_ty,
+                                ImplTraitContext::Disallowed(ImplTraitPosition::PtrMetadata),
+                            )
+                        }),
+                        self.arena
+                            .alloc_from_iter(pme.fields.iter().map(|x| self.lower_expr_field(x))),
+                        rest,
+                    )
+                }
                 ExprKind::Yield(kind) => self.lower_expr_yield(e.span, kind.expr().map(|x| &**x)),
                 ExprKind::Err(guar) => hir::ExprKind::Err(*guar),
 

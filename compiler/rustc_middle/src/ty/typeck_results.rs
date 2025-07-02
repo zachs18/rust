@@ -770,6 +770,9 @@ pub enum UserTypeKind<'tcx> {
     /// The canonical type is the result of `type_of(def_id)` with the
     /// given generic parameters applied.
     TypeOf(DefId, UserArgs<'tcx>),
+
+    /// The canonical type is `builtin # ptr_metadata(T)` of the given `T`.
+    PtrMetadataOf(Ty<'tcx>),
 }
 
 pub trait IsIdentity {
@@ -785,7 +788,7 @@ impl<'tcx> IsIdentity for CanonicalUserType<'tcx> {
         }
 
         match self.value.kind {
-            UserTypeKind::Ty(_) => false,
+            UserTypeKind::Ty(_) | UserTypeKind::PtrMetadataOf(_) => false,
             UserTypeKind::TypeOf(_, user_args) => {
                 if user_args.user_self_ty.is_some() {
                     return false;
@@ -845,6 +848,9 @@ impl<'tcx> std::fmt::Display for UserTypeKind<'tcx> {
                 ty::print::with_no_trimmed_paths!(write!(f, "Ty({})", arg0))
             }
             Self::TypeOf(arg0, arg1) => write!(f, "TypeOf({:?}, {:?})", arg0, arg1),
+            Self::PtrMetadataOf(arg0) => {
+                ty::print::with_no_trimmed_paths!(write!(f, "PtrMetadataOf({})", arg0))
+            }
         }
     }
 }

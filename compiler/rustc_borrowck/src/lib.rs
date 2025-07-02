@@ -1592,6 +1592,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     }
                     AggregateKind::Adt(..)
                     | AggregateKind::Array(..)
+                    | AggregateKind::PtrMetadata(..)
                     | AggregateKind::Tuple { .. }
                     | AggregateKind::RawPtr(..) => (),
                 }

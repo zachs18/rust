@@ -2174,6 +2174,25 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                     Err(FieldAccessError::OutOfRange { field_count: variant.fields.len() })
                 }
             }
+            AggregateKind::PtrMetadata(pointee_ty, _) => {
+                // FIXME(ptr_metadata_v2_fields): implement this using TyCtxt::ptr_metadata_fields_for_pointee once that is implemented
+                // For now, `builtin # ptr_metadata(for ty; ptr_metadata: metadata_expr)` where metadata_expr is
+                // of type `<T as Pointee>::Metadata` is all that is supported.
+                if field_index.as_usize() != 0 {
+                    return Err(FieldAccessError::OutOfRange { field_count: 1 });
+                }
+                let field_ty = match pointee_ty.ptr_metadata_ty_or_tail(tcx, |x| x) {
+                    Ok(metadata_ty) => metadata_ty,
+                    Err(tail_ty) => {
+                        let metadata_def_id = tcx.require_lang_item(
+                            LangItem::Metadata,
+                            self.body.source_info(location).span,
+                        );
+                        Ty::new_projection(tcx, metadata_def_id, [tail_ty])
+                    }
+                };
+                Ok(self.normalize(field_ty, location))
+            }
             AggregateKind::Closure(_, args) => {
                 match args.as_closure().upvar_tys().get(field_index.as_usize()) {
                     Some(ty) => Ok(*ty),
@@ -2227,6 +2246,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
 
             Rvalue::Aggregate(aggregate, _) => match **aggregate {
                 AggregateKind::Adt(_, _, _, user_ty, _) => user_ty,
+                AggregateKind::PtrMetadata(_, user_ty) => user_ty,
                 AggregateKind::Array(_) => None,
                 AggregateKind::Tuple => None,
                 AggregateKind::Closure(_, _) => None,
@@ -2463,7 +2483,10 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 (def_id, self.prove_closure_bounds(tcx, def_id.expect_local(), args, location))
             }
 
-            AggregateKind::Array(_) | AggregateKind::Tuple | AggregateKind::RawPtr(..) => {
+            AggregateKind::Array(_)
+            | AggregateKind::Tuple
+            | AggregateKind::RawPtr(..)
+            | AggregateKind::PtrMetadata(..) => {
                 (CRATE_DEF_ID.to_def_id(), ty::InstantiatedPredicates::empty())
             }
         };
