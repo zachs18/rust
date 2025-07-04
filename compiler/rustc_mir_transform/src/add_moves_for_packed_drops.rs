@@ -1,5 +1,5 @@
 use rustc_middle::mir::*;
-use rustc_middle::ty::{self, TyCtxt};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use tracing::debug;
 
 use crate::patch::MirPatch;
@@ -92,6 +92,11 @@ fn add_move_for_packed_drop<'tcx>(
     let source_info = terminator.source_info;
     let ty = place.ty(body, tcx).ty;
     let temp = patch.new_temp(ty, source_info.span);
+    let temp_src_ptr = patch.new_temp(Ty::new_imm_ptr(tcx, ty), source_info.span);
+    let temp_dst_ptr = patch.new_temp(Ty::new_mut_ptr(tcx, ty), source_info.span);
+    let size = patch.new_temp(tcx.types.usize, source_info.span);
+    let temp_src_ptr_u8 = patch.new_temp(Ty::new_imm_ptr(tcx, tcx.types.u8), source_info.span);
+    let temp_dst_ptr_u8 = patch.new_temp(Ty::new_mut_ptr(tcx, tcx.types.u8), source_info.span);
 
     let storage_dead_block = patch.new_block(BasicBlockData::new_stmts(
         vec![Statement::new(source_info, StatementKind::StorageDead(temp))],
@@ -100,7 +105,41 @@ fn add_move_for_packed_drop<'tcx>(
     ));
 
     patch.add_statement(loc, StatementKind::StorageLive(temp));
-    patch.add_assign(loc, Place::from(temp), Rvalue::Use(Operand::Move(*place)));
+    patch.add_assign(loc, Place::from(size), Rvalue::NullaryOp(NullOp::SizeOf, ty));
+    patch.add_assign(loc, Place::from(temp_src_ptr), Rvalue::RawPtr(RawPtrKind::Const, *place));
+    patch.add_assign(
+        loc,
+        Place::from(temp_dst_ptr),
+        Rvalue::RawPtr(RawPtrKind::Mut, Place::from(temp)),
+    );
+    patch.add_assign(
+        loc,
+        Place::from(temp_src_ptr_u8),
+        Rvalue::Cast(
+            CastKind::PtrToPtr,
+            Operand::Move(Place::from(temp_src_ptr)),
+            Ty::new_imm_ptr(tcx, tcx.types.u8),
+        ),
+    );
+    patch.add_assign(
+        loc,
+        Place::from(temp_dst_ptr_u8),
+        Rvalue::Cast(
+            CastKind::PtrToPtr,
+            Operand::Move(Place::from(temp_dst_ptr)),
+            Ty::new_mut_ptr(tcx, tcx.types.u8),
+        ),
+    );
+    patch.add_statement(
+        loc,
+        StatementKind::Intrinsic(Box::new(NonDivergingIntrinsic::CopyNonOverlapping(
+            rustc_middle::mir::CopyNonOverlapping {
+                src: Operand::Copy(Place::from(temp_src_ptr_u8)),
+                dst: Operand::Copy(Place::from(temp_dst_ptr_u8)),
+                count: Operand::Copy(Place::from(size)),
+            },
+        ))),
+    );
     patch.patch_terminator(
         loc.block,
         TerminatorKind::Drop {
