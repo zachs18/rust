@@ -11,7 +11,7 @@ use std::intrinsics::ptr_metadata;
 pub fn thin_metadata(p: *const ()) {
     // CHECK: start
     // CHECK-NEXT: ret void
-    ptr_metadata(p)
+    ptr_metadata(p).ptr_metadata
 }
 
 // CHECK-LABEL: @slice_metadata(
@@ -19,7 +19,7 @@ pub fn thin_metadata(p: *const ()) {
 pub fn slice_metadata(p: *const [u8]) -> usize {
     // CHECK: start
     // CHECK-NEXT: ret i64 %p.1
-    ptr_metadata(p)
+    ptr_metadata(p).ptr_metadata
 }
 
 // CHECK-LABEL: @dyn_byte_offset(

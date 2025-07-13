@@ -4,8 +4,8 @@ use rustc_abi::Integer::{I8, I32};
 use rustc_abi::Primitive::{self, Float, Int, Pointer};
 use rustc_abi::{
     AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldsShape, HasDataLayout, Layout,
-    LayoutCalculatorError, LayoutData, Niche, ReprOptions, Scalar, Size, StructKind, TagEncoding,
-    VariantIdx, Variants, WrappingRange,
+    LayoutCalculatorError, LayoutData, Niche, ReprFlags, ReprOptions, Scalar, Size, StructKind,
+    TagEncoding, VariantIdx, Variants, WrappingRange,
 };
 use rustc_hashes::Hash64;
 use rustc_hir as hir;
@@ -475,79 +475,21 @@ fn layout_of_uncached<'tcx>(
 
         // Potentially-wide pointers.
         ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {
-            let mut data_ptr = scalar_unit(Pointer(AddressSpace::ZERO));
-            if !ty.is_raw_ptr() {
-                data_ptr.valid_range_mut().start = 1;
-            }
-
-            if pointee.is_sized(tcx, cx.typing_env) {
-                return Ok(tcx.mk_layout(LayoutData::scalar(cx, data_ptr)));
-            }
-
-            let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type() {
-                let pointee_metadata = Ty::new_projection(tcx, metadata_def_id, [pointee]);
-                let metadata_ty =
-                    match tcx.try_normalize_erasing_regions(cx.typing_env, pointee_metadata) {
-                        Ok(metadata_ty) => metadata_ty,
-                        Err(mut err) => {
-                            // Usually `<Ty as Pointee>::Metadata` can't be normalized because
-                            // its struct tail cannot be normalized either, so try to get a
-                            // more descriptive layout error here, which will lead to less confusing
-                            // diagnostics.
-                            //
-                            // We use the raw struct tail function here to get the first tail
-                            // that is an alias, which is likely the cause of the normalization
-                            // error.
-                            match tcx.try_normalize_erasing_regions(
-                                cx.typing_env,
-                                tcx.struct_or_union_tail_raw(
-                                    pointee,
-                                    &ObligationCause::dummy(),
-                                    |ty| ty,
-                                    || {},
-                                ),
-                            ) {
-                                Ok(_) => {}
-                                Err(better_err) => {
-                                    err = better_err;
-                                }
-                            }
-                            return Err(error(cx, LayoutError::NormalizationFailure(pointee, err)));
-                        }
-                    };
-
-                let metadata_layout = cx.layout_of(metadata_ty)?;
-                // If the metadata is a 1-zst, then the pointer is thin.
-                if metadata_layout.is_1zst() {
-                    return Ok(tcx.mk_layout(LayoutData::scalar(cx, data_ptr)));
-                }
-
-                let BackendRepr::Scalar(metadata) = metadata_layout.backend_repr else {
-                    return Err(error(cx, LayoutError::Unknown(pointee)));
-                };
-
-                metadata
+            let data_ptr = if ty.is_raw_ptr() {
+                Ty::new_untyped_ptr(tcx, false)
             } else {
-                let unsized_part = tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env);
-
-                match unsized_part.kind() {
-                    ty::Foreign(..) => {
-                        return Ok(tcx.mk_layout(LayoutData::scalar(cx, data_ptr)));
-                    }
-                    ty::Slice(_) | ty::Str => scalar_unit(Int(dl.ptr_sized_integer(), false)),
-                    ty::Dynamic(..) => {
-                        let mut vtable = scalar_unit(Pointer(AddressSpace::ZERO));
-                        vtable.valid_range_mut().start = 1;
-                        vtable
-                    }
-                    _ => {
-                        return Err(error(cx, LayoutError::Unknown(pointee)));
-                    }
-                }
+                Ty::new_untyped_ptr(tcx, true)
             };
 
-            // Effectively a (ptr, meta) tuple.
-            tcx.mk_layout(LayoutData::scalar_pair(cx, data_ptr, metadata))
+            let metadata = Ty::new_ptr_metadata(tcx, pointee);
+
+            let fields = [data_ptr, metadata]
+                .iter()
+                .map(|ty| cx.layout_of(*ty))
+                .try_collect::<IndexVec<_, _>>()?;
+            let mut repr = ReprOptions::default();
+            repr.flags |= ReprFlags::IS_LINEAR;
+            map_layout(cx.calc.univariant(&fields, &repr, StructKind::AlwaysSized))?
         }
 
         // Arrays and slices.

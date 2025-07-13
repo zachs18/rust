@@ -843,7 +843,7 @@ where
 #[rustc_const_stable(feature = "const_ptr_null", since = "1.24.0")]
 #[rustc_diagnostic_item = "ptr_null"]
 pub const fn null<T: PointeeSized + Thin>() -> *const T {
-    from_raw_parts(without_provenance::<()>(0), ())
+    from_raw_parts(without_provenance::<()>(0), build_metadata!(ptr_metadata: ()))
 }
 
 /// Creates a null mutable raw pointer.
@@ -868,7 +868,7 @@ pub const fn null<T: PointeeSized + Thin>() -> *const T {
 #[rustc_const_stable(feature = "const_ptr_null", since = "1.24.0")]
 #[rustc_diagnostic_item = "ptr_null_mut"]
 pub const fn null_mut<T: PointeeSized + Thin>() -> *mut T {
-    from_raw_parts_mut(without_provenance_mut::<()>(0), ())
+    from_raw_parts_mut(without_provenance_mut::<()>(0), build_metadata!(ptr_metadata: ()))
 }
 
 /// Creates a pointer with the given address and no [provenance][crate::ptr#provenance].
@@ -1180,7 +1180,7 @@ pub const fn from_mut<T: PointeeSized>(r: &mut T) -> *mut T {
 #[rustc_const_stable(feature = "const_slice_from_raw_parts", since = "1.64.0")]
 #[rustc_diagnostic_item = "ptr_slice_from_raw_parts"]
 pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
-    from_raw_parts(data, len)
+    from_raw_parts(data, build_metadata!(ptr_metadata: len))
 }
 
 /// Forms a raw mutable slice from a pointer and a length.
@@ -1226,7 +1226,7 @@ pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
 #[rustc_const_stable(feature = "const_slice_from_raw_parts_mut", since = "1.83.0")]
 #[rustc_diagnostic_item = "ptr_slice_from_raw_parts_mut"]
 pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
-    from_raw_parts_mut(data, len)
+    from_raw_parts_mut(data, build_metadata!(ptr_metadata: len))
 }
 
 /// Swaps the values at two mutable locations of the same type, without

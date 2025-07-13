@@ -1175,15 +1175,12 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                             );
                         }
 
-                        // FIXME: Check metadata more generally
-                        if pointee_ty.is_slice() {
-                            if !self.mir_assign_valid_types(metadata_ty, self.tcx.types.usize) {
-                                self.fail(location, "slice metadata must be usize");
-                            }
-                        } else if pointee_ty.is_sized(self.tcx, self.typing_env) {
-                            if metadata_ty != self.tcx.types.unit {
-                                self.fail(location, "metadata for pointer-to-thin must be unit");
-                            }
+                        match metadata_ty.kind() {
+                            ty::PtrMetadata(pointee) if *pointee == pointee_ty => {}
+                            _ => self.fail(
+                                location,
+                                "metadata for pointer to T must be builtin # ptr_metadata(T)",
+                            ),
                         }
                     } else {
                         self.fail(location, "raw pointer aggregate must have 2 fields");

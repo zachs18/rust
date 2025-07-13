@@ -112,10 +112,10 @@ pub trait Thin: Pointee<Metadata = ()> + PointeeSized {}
 /// ```
 /// #![feature(ptr_metadata)]
 ///
-/// assert_eq!(std::ptr::metadata("foo"), 3_usize);
+/// assert_eq!(std::ptr::metadata("foo").len, 3_usize);
 /// ```
 #[inline]
-pub const fn metadata<T: PointeeSized>(ptr: *const T) -> <T as Pointee>::Metadata {
+pub const fn metadata<T: PointeeSized>(ptr: *const T) -> Metadata<T> {
     ptr_metadata(ptr)
 }
 
@@ -133,7 +133,7 @@ pub const fn metadata<T: PointeeSized>(ptr: *const T) -> <T as Pointee>::Metadat
 #[inline]
 pub const fn from_raw_parts<T: PointeeSized>(
     data_pointer: *const impl Thin,
-    metadata: <T as Pointee>::Metadata,
+    metadata: Metadata<T>,
 ) -> *const T {
     aggregate_raw_ptr(data_pointer, metadata)
 }
@@ -146,7 +146,7 @@ pub const fn from_raw_parts<T: PointeeSized>(
 #[inline]
 pub const fn from_raw_parts_mut<T: PointeeSized>(
     data_pointer: *mut impl Thin,
-    metadata: <T as Pointee>::Metadata,
+    metadata: Metadata<T>,
 ) -> *mut T {
     aggregate_raw_ptr(data_pointer, metadata)
 }

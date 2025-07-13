@@ -592,11 +592,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     mir::UnOp::PtrMetadata => {
                         assert!(operand.layout.ty.is_raw_ptr() || operand.layout.ty.is_ref(),);
                         let (_, meta) = operand.val.pointer_parts();
-                        assert_eq!(operand.layout.fields.count() > 1, meta.is_some());
+                        let meta_ty = operand.layout.field(self.cx, 1);
+                        assert_eq!(meta_ty.is_1zst(), meta.is_none());
                         if let Some(meta) = meta {
-                            (OperandValue::Immediate(meta), operand.layout.field(self.cx, 1))
+                            (OperandValue::Immediate(meta), meta_ty)
                         } else {
-                            (OperandValue::ZeroSized, bx.cx().layout_of(bx.tcx().types.unit))
+                            (OperandValue::ZeroSized, meta_ty)
                         }
                     }
                 };

@@ -171,6 +171,7 @@
 // tidy-alphabetical-start
 #![feature(allocator_internals)]
 #![feature(allow_internal_unstable)]
+#![feature(builtin_syntax)]
 #![feature(cfg_sanitize)]
 #![feature(const_precise_live_drops)]
 #![feature(const_trait_impl)]
@@ -185,6 +186,7 @@
 #![feature(negative_impls)]
 #![feature(never_type)]
 #![feature(optimize_attribute)]
+#![feature(ptr_metadata_v2)]
 #![feature(rustc_attrs)]
 #![feature(slice_internals)]
 #![feature(staged_api)]

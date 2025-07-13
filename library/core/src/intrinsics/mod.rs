@@ -2885,8 +2885,7 @@ pub const unsafe fn align_of_val<T: ?Sized>(ptr: *const T) -> usize;
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
-pub const fn checked_size_for_meta<T: ?Sized>(meta: <T as ptr::Pointee>::Metadata)
--> (bool, usize);
+pub const fn checked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> (bool, usize);
 
 /// Returns `true` and the required alignment of a value with the given pointer metadata,
 /// or `false` and an arbitrary value if the size or alignment would overflow `isize`
@@ -2902,9 +2901,7 @@ pub const fn checked_size_for_meta<T: ?Sized>(meta: <T as ptr::Pointee>::Metadat
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
-pub const fn checked_align_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> (bool, usize);
+pub const fn checked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> (bool, usize);
 
 /// Returns the size of a value with the given pointer metadata.
 ///
@@ -2916,9 +2913,7 @@ pub const fn checked_align_for_meta<T: ?Sized>(
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
-pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> usize;
+pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> usize;
 
 /// Returns the required alignment of a value with the given pointer metadata.
 ///
@@ -2930,9 +2925,7 @@ pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
-pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> usize;
+pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> usize;
 
 #[rustc_intrinsic]
 #[unstable(feature = "core_intrinsics", issue = "none")]
@@ -3007,9 +3000,12 @@ pub const fn type_id_eq(a: crate::any::TypeId, b: crate::any::TypeId) -> bool {
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
-pub const fn aggregate_raw_ptr<P: bounds::BuiltinDeref, D, M>(data: D, meta: M) -> P
+pub const fn aggregate_raw_ptr<Ptr: bounds::BuiltinDeref, D, T: PointeeSized>(
+    data: D,
+    meta: ptr::Metadata<T>,
+) -> Ptr
 where
-    <P as bounds::BuiltinDeref>::Pointee: ptr::Pointee<Metadata = M>;
+    Ptr: bounds::BuiltinDeref<Pointee = T>;
 
 /// Lowers in MIR to `Rvalue::UnaryOp` with `UnOp::PtrMetadata`.
 ///
@@ -3018,7 +3014,7 @@ where
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
-pub const fn ptr_metadata<P: ptr::Pointee<Metadata = M> + PointeeSized, M>(ptr: *const P) -> M;
+pub const fn ptr_metadata<P: PointeeSized>(ptr: *const P) -> ptr::Metadata<P>;
 
 /// This is an accidentally-stable alias to [`ptr::copy_nonoverlapping`]; use that instead.
 // Note (intentionally not in the doc comment): `ptr::copy_nonoverlapping` adds some extra

@@ -1827,6 +1827,8 @@ impl<'tcx> Ty<'tcx> {
     /// [`UnOp::PtrMetadata`](crate::mir::UnOp::PtrMetadata).
     ///
     /// Panics if `self` is not dereferenceable.
+    ///
+    /// FIXME(ptr_metadata_v2): audit/remove all uses
     #[track_caller]
     pub fn pointee_metadata_ty_or_projection(self, tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
         let Some(pointee_ty) = self.builtin_deref(true) else {

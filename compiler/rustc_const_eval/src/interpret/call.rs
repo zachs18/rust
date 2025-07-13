@@ -200,6 +200,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             _ => None,
         };
         if let (Some(caller), Some(callee)) = (thin_pointer(caller), thin_pointer(callee)) {
+            // This is correct even if the pointees are not actually `T: Thin` but have 1-ZST metadata,
+            // because all 1-ZSTs are ABI-compatible.
+            // FIXME(ptr_metadata_v2): What about non-align-1 ZST metadata?
             return interp_ok(caller == callee);
         }
         // For wide pointers we have to get the pointee type.
@@ -214,6 +217,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }))
         };
         if let (Some(caller), Some(callee)) = (pointee_ty(caller.ty)?, pointee_ty(callee.ty)?) {
+            // FIXME(ptr_metadata_v2): implement this check for multi-wide pointees.
             // This is okay if they have the same metadata type.
             let meta_ty = |ty: Ty<'tcx>| {
                 // Even if `ty` is normalized, the search for the unsized tail will project
