@@ -1002,6 +1002,14 @@ impl<'tcx> TyCtxt<'tcx> {
         self.type_of(ordering_enum).no_bound_vars().unwrap()
     }
 
+    /// Gets a `Ty` representing the [`LangItem::DynMetadata`], i.e. `std::ptr::DynMetadata<T>`
+    /// for a given `T`.
+    #[track_caller]
+    pub fn ty_dyn_metadata_struct(self, span: Span, dyn_type: Ty<'tcx>) -> Ty<'tcx> {
+        let dyn_metadata_struct = self.require_lang_item(hir::LangItem::DynMetadata, span);
+        self.type_of(dyn_metadata_struct).instantiate(self, &[dyn_type.into()]).skip_norm_wip()
+    }
+
     /// Obtain the given diagnostic item's `DefId`. Use `is_diagnostic_item` if you just want to
     /// compare against another `DefId`, since `is_diagnostic_item` is cheaper.
     pub fn get_diagnostic_item(self, name: Symbol) -> Option<DefId> {

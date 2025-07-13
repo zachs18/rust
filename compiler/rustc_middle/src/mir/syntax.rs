@@ -1556,7 +1556,7 @@ pub enum AggregateKind<'tcx> {
     /// The [`Rvalue::Aggregate`] operands for thus must be
     ///
     /// 0. A raw pointer of matching mutability with any [`core::ptr::Thin`] pointee
-    /// 1. A value of the appropriate [`core::ptr::Pointee::Metadata`] type
+    /// 1. A value of the `builtin # ptr_metadata(T)` type
     ///
     /// *Both* operands must always be included, even the unit value if this is
     /// creating a thin pointer. If you're just converting between thin pointers,
@@ -1594,12 +1594,7 @@ pub enum UnOp {
     Not,
     /// The `-` operator for negation
     Neg,
-    /// Gets the metadata `M` from a `*const`/`*mut`/`&`/`&mut` to
-    /// `impl Pointee<Metadata = M>`.
-    ///
-    /// For example, this will give a `()` from `*const i32`, a `usize` from
-    /// `&mut [u8]`, or a `ptr::DynMetadata<dyn Foo>` (internally a pointer)
-    /// from a `*mut dyn Foo`.
+    /// Gets the metadata `buiiltin # ptr_metadata(T)` from a `*const T`/`*mut T`/`&T`/`&mut T`.
     ///
     /// Allowed only in [`MirPhase::Runtime`]; earlier it's an intrinsic.
     PtrMetadata,

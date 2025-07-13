@@ -495,21 +495,21 @@ pub const unsafe fn size_of_val_raw<T: ?Sized>(val: *const T) -> usize {
 ///
 /// ```
 /// #![feature(layout_for_meta)]
+/// #![feature(ptr_metadata_v2)]
 /// use std::mem;
+/// use std::ptr::build_metadata;
 /// unsafe {
-///     assert_eq!(4, mem::unchecked_size_for_meta::<i32>(()));
+///     assert_eq!(4, mem::unchecked_size_for_meta::<i32>(build_metadata!(..)));
 ///
-///     assert_eq!(13, mem::unchecked_size_for_meta::<[u8]>(13));
+///     assert_eq!(13, mem::unchecked_size_for_meta::<[u8]>(build_metadata!(len: 13, ..)));
 ///
-///     assert_eq!(42, mem::unchecked_size_for_meta::<[u16]>(21));
+///     assert_eq!(42, mem::unchecked_size_for_meta::<[u16]>(build_metadata!(len: 21, ..)));
 /// }
 /// ```
 #[inline]
 #[must_use]
 #[unstable(feature = "layout_for_meta", issue = "69835")]
-pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> usize {
+pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> usize {
     // SAFETY: the caller must provide a valid pointer metadata
     unsafe { intrinsics::unchecked_size_for_meta::<T>(meta) }
 }
@@ -542,24 +542,24 @@ pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(
 ///
 /// ```
 /// #![feature(layout_for_meta)]
+/// #![feature(ptr_metadata_v2)]
 /// use std::mem;
+/// use std::ptr::build_metadata;
 ///
-/// assert_eq!(Some(4), mem::checked_size_for_meta::<i32>(()));
+/// assert_eq!(Some(4), mem::checked_size_for_meta::<i32>(build_metadata!(..)));
 ///
-/// assert_eq!(Some(13), mem::checked_size_for_meta::<[u8]>(13));
+/// assert_eq!(Some(13), mem::checked_size_for_meta::<[u8]>(build_metadata!(len: 13, ..)));
 ///
-/// assert_eq!(Some(42), mem::checked_size_for_meta::<[u16]>(21));
+/// assert_eq!(Some(42), mem::checked_size_for_meta::<[u16]>(build_metadata!(len: 21, ..)));
 ///
 /// // `[u8; usize::MAX]` is too large; the maximum allocation size is `isize::MAX as usize` bytes
-/// assert_eq!(None, mem::checked_size_for_meta::<[u8]>(usize::MAX));
+/// assert_eq!(None, mem::checked_size_for_meta::<[u8]>(build_metadata!(len: usize::MAX, ..)));
 /// ```
 #[inline]
 #[must_use]
 #[unstable(feature = "layout_for_meta", issue = "69835")]
 //#[unstable(feature = "ptr_metadata", issue = "81513")]
-pub const fn checked_size_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> Option<usize> {
+pub const fn checked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> Option<usize> {
     let (valid, size) = intrinsics::checked_size_for_meta::<T>(meta);
     if valid { Some(size) } else { None }
 }
@@ -744,20 +744,20 @@ pub const unsafe fn align_of_val_raw<T: ?Sized>(val: *const T) -> usize {
 ///
 /// ```
 /// #![feature(layout_for_meta)]
+/// #![feature(ptr_metadata_v2)]
 /// use std::mem;
+/// use std::ptr::build_metadata;
 /// unsafe {
-///     assert_eq!(4, mem::unchecked_align_for_meta::<i32>(()));
+///     assert_eq!(4, mem::unchecked_align_for_meta::<i32>(build_metadata!(..)));
 ///
-///     assert_eq!(1, mem::unchecked_align_for_meta::<[u8]>(13));
+///     assert_eq!(1, mem::unchecked_align_for_meta::<[u8]>(build_metadata!(len: 13, ..)));
 ///
-///     assert_eq!(2, mem::unchecked_align_for_meta::<[u16]>(21));
+///     assert_eq!(2, mem::unchecked_align_for_meta::<[u16]>(build_metadata!(len: 21, ..)));
 /// }
 /// ```
 #[must_use]
 #[unstable(feature = "layout_for_meta", issue = "69835")]
-pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> usize {
+pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> usize {
     // SAFETY: the caller must provide a valid pointer metadata
     unsafe { intrinsics::unchecked_align_for_meta::<T>(meta) }
 }
@@ -791,24 +791,24 @@ pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(
 ///
 /// ```
 /// #![feature(layout_for_meta)]
+/// #![feature(ptr_metadata_v2)]
 /// use std::mem;
+/// use std::ptr::build_metadata;
 ///
-/// assert_eq!(Some(4), mem::checked_align_for_meta::<i32>(()));
+/// assert_eq!(Some(4), mem::checked_align_for_meta::<i32>(build_metadata!(..)));
 ///
-/// assert_eq!(Some(1), mem::checked_align_for_meta::<[u8]>(13));
+/// assert_eq!(Some(1), mem::checked_align_for_meta::<[u8]>(build_metadata!(len: 13, ..)));
 ///
-/// assert_eq!(Some(2), mem::checked_align_for_meta::<[u16]>(21));
+/// assert_eq!(Some(2), mem::checked_align_for_meta::<[u16]>(build_metadata!(len: 21, ..)));
 ///
 /// // `[u8; usize::MAX]` is too large; the maximum allocation align is `isize::MAX as usize` bytes
-/// assert_eq!(None, mem::checked_align_for_meta::<[u8]>(usize::MAX));
+/// assert_eq!(None, mem::checked_align_for_meta::<[u8]>(build_metadata!(len: usize::MAX, ..)));
 /// ```
 #[inline]
 #[must_use]
 #[unstable(feature = "layout_for_meta", issue = "69835")]
 //#[unstable(feature = "ptr_metadata", issue = "81513")]
-pub const fn checked_align_for_meta<T: ?Sized>(
-    meta: <T as ptr::Pointee>::Metadata,
-) -> Option<usize> {
+pub const fn checked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> Option<usize> {
     let (valid, align) = intrinsics::checked_align_for_meta::<T>(meta);
     if valid { Some(align) } else { None }
 }

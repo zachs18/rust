@@ -2,9 +2,10 @@
 //@ only-64bit (so I don't need to worry about usize)
 
 #![crate_type = "lib"]
-#![feature(core_intrinsics)]
+#![feature(core_intrinsics, ptr_metadata, ptr_metadata_v2)]
 
 use std::intrinsics::aggregate_raw_ptr;
+use std::ptr::build_metadata;
 
 // InstSimplify replaces these with casts if it can, which means they're almost
 // never seen in codegen, but PR#121571 found a way, so add a test for it.
@@ -18,6 +19,6 @@ pub unsafe fn thin_ptr_via_aggregate(p: *const ()) {
     // CHECK: %mem = alloca
     // CHECK: store ptr %p, ptr %mem
     // CHECK: call {{.+}}aggregate_thin_pointer{{.+}} %mem)
-    let mem = aggregate_raw_ptr(p, ());
+    let mem = aggregate_raw_ptr(p, build_metadata!(for i32; ptr_metadata: ()));
     opaque(&mem);
 }

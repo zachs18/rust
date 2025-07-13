@@ -180,7 +180,7 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
 
             DINodeCreationResult { di_node, already_stored_in_typemap: false }
         }
-        Some(wide_pointer_kind) => {
+        Some(_wide_pointer_kind) => {
             type_map::build_type_with_children(
                 cx,
                 type_map::stub(
@@ -213,10 +213,24 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
                     let layout = cx.layout_of(layout_type);
                     let addr_field = layout.field(cx, WIDE_PTR_ADDR);
                     let extra_field = layout.field(cx, WIDE_PTR_EXTRA);
+                    let usize = cx.layout_of(cx.tcx.types.usize);
 
-                    let (addr_field_name, extra_field_name) = match wide_pointer_kind {
-                        WidePtrKind::Dyn => ("pointer", "vtable"),
-                        WidePtrKind::Slice => ("data_ptr", "length"),
+                    // GDB's Rust integration currently assumes the debuginfo layout of
+                    // `&str`, `&[T]`, and `&dyn Trait`, so we need to keep them the same for now at least.
+                    // FIXME(more_unsized), FIXME(ptr_metadata_v2): Maybe make this configurable with an unstable flag,
+                    // and switch the default if/when GDB supports uniform `data_ptr, metadata` version?
+                    let (addr_field_name, extra_field_name, extra_field) = match pointee_type.kind()
+                    {
+                        ty::Dynamic(..) => (
+                            "pointer",
+                            "vtable",
+                            cx.layout_of(cx.tcx.ty_dyn_metadata_struct(DUMMY_SP, pointee_type)),
+                        ),
+                        ty::Str => ("data_ptr", "length", usize),
+                        ty::Slice(..) if extra_field.size == usize.size => {
+                            ("data_ptr", "length", usize)
+                        }
+                        _ => ("data_ptr", "metadata", extra_field),
                     };
 
                     assert_eq!(WIDE_PTR_ADDR, 0);
@@ -259,6 +273,56 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
             )
         }
     }
+}
+
+/// Creates debuginfo for built-in pointer metadata type:
+///
+///  - ty::PtrMetadata
+fn build_pointer_metadata_di_node<'ll, 'tcx>(
+    cx: &CodegenCx<'ll, 'tcx>,
+    ptr_metadata_type: Ty<'tcx>,
+    pointee_type: Ty<'tcx>,
+    unique_type_id: UniqueTypeId<'tcx>,
+) -> DINodeCreationResult<'ll> {
+    let ptr_metadata_type_debuginfo_name =
+        compute_debuginfo_type_name(cx.tcx, ptr_metadata_type, true);
+
+    type_map::build_type_with_children(
+        cx,
+        type_map::stub(
+            cx,
+            Stub::Struct,
+            unique_type_id,
+            &ptr_metadata_type_debuginfo_name,
+            None,
+            cx.size_and_align_of(ptr_metadata_type),
+            NO_SCOPE_METADATA,
+            DIFlags::FlagZero,
+        ),
+        |cx, owner| {
+            // FIXME(ptr_metadata_v2_fields): implement multiple fields
+            let layout = cx.layout_of(ptr_metadata_type);
+            let real_metadata_field = layout.field(cx, 0);
+
+            let real_metadata_field_name = match wide_pointer_kind(cx, pointee_type) {
+                Some(WidePtrKind::Dyn) => "vtable",
+                Some(WidePtrKind::Slice) => "length",
+                None => "metadata",
+            };
+
+            smallvec![build_field_di_node(
+                cx,
+                owner,
+                real_metadata_field_name,
+                real_metadata_field,
+                layout.fields.offset(0),
+                DIFlags::FlagZero,
+                type_di_node(cx, real_metadata_field.ty),
+                None,
+            ),]
+        },
+        NO_GENERICS,
+    )
 }
 
 fn build_subroutine_type_di_node<'ll, 'tcx>(
@@ -481,8 +545,9 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
         ty::Tuple(_) => build_tuple_type_di_node(cx, unique_type_id),
         ty::Pat(base, _) => return type_di_node(cx, base),
         ty::UnsafeBinder(_) => build_unsafe_binder_type_di_node(cx, t, unique_type_id),
-        // FIXME(ptr_metadata_v2): this is implemented in a later commit, when we actually start using this type
-        ty::PtrMetadata(_) => unimplemented!(),
+        ty::PtrMetadata(pointee_ty) => {
+            build_pointer_metadata_di_node(cx, t, pointee_ty, unique_type_id)
+        }
         // FIXME(untyped_ptr): impl debug info if this type ever exists outside typed ptrs
         ty::UntypedPtr { .. } => unimplemented!(),
         ty::Alias(..)

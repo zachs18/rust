@@ -1,6 +1,6 @@
 use crate::marker::{Destruct, PhantomData};
 use crate::mem::{ManuallyDrop, SizedTypeProperties, conjure_zst};
-use crate::ptr::{NonNull, drop_in_place, from_raw_parts_mut, null_mut};
+use crate::ptr::{NonNull, drop_in_place, null_mut, slice_from_raw_parts_mut};
 
 impl<'l, 'f, T, U, const N: usize, F: FnMut(T) -> U> Drain<'l, 'f, T, N, F> {
     /// This function returns a function that lets you index the given array in const.
@@ -93,7 +93,7 @@ impl<T: [const] Destruct, const N: usize, F> const Drop for Drain<'_, '_, T, N, 
         if !T::IS_ZST {
             // SAFETY: we cant read more than N elements
             let slice = unsafe {
-                from_raw_parts_mut::<[T]>(
+                slice_from_raw_parts_mut::<T>(
                     self.ptr.as_ptr(),
                     // SAFETY: `start <= end`
                     self.end.offset_from_unsigned(self.ptr.as_ptr()),

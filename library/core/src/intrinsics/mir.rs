@@ -405,7 +405,7 @@ define!("mir_assume", fn Assume(operand: bool));
 define!("mir_checked", fn Checked<T>(binop: T) -> (T, bool));
 define!(
     "mir_ptr_metadata",
-    fn PtrMetadata<P: ?Sized>(place: *const P) -> <P as ::core::ptr::Pointee>::Metadata
+    fn PtrMetadata<P: ?Sized>(place: *const P) -> core::ptr::Metadata<P>
 );
 define!("mir_retag", fn Retag<T>(place: T));
 define!("mir_move", fn Move<T>(place: T) -> T);

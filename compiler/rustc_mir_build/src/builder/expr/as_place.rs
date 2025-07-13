@@ -704,15 +704,20 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     Operand::Move(slice_ptr)
                 };
 
-                let len = self.temp(self.tcx.types.usize, span);
+                let meta_ty = Ty::new_ptr_metadata(self.tcx, place_ty);
+                let meta = self.temp(meta_ty, span);
                 self.cfg.push_assign(
                     block,
                     source_info,
-                    len,
+                    meta,
                     Rvalue::UnaryOp(UnOp::PtrMetadata, ptr_or_ref),
                 );
 
-                Operand::Move(len)
+                // FIXME(ptr_metadata_v2_fields): implement multiple fields
+                Operand::Move(meta.project_deeper(
+                    &[PlaceElem::Field(FieldIdx::ZERO, self.tcx.types.usize)],
+                    self.tcx,
+                ))
             }
             _ => {
                 span_bug!(span, "len called on place of type {place_ty:?}")

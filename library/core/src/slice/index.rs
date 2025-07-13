@@ -87,7 +87,7 @@ const unsafe fn get_offset_len_noubcheck<T>(
     let ptr = ptr as *const T;
     // SAFETY: The caller already checked these preconditions
     let ptr = unsafe { crate::intrinsics::offset(ptr, offset) };
-    crate::intrinsics::aggregate_raw_ptr(ptr, len)
+    crate::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(ptr_metadata: len))
 }
 
 #[inline(always)]
@@ -99,7 +99,7 @@ const unsafe fn get_offset_len_mut_noubcheck<T>(
     let ptr = ptr as *mut T;
     // SAFETY: The caller already checked these preconditions
     let ptr = unsafe { crate::intrinsics::offset(ptr, offset) };
-    crate::intrinsics::aggregate_raw_ptr(ptr, len)
+    crate::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(ptr_metadata: len))
 }
 
 mod private_slice_index {

@@ -87,7 +87,9 @@ pub fn main() {
         let obj: Box<St> = Box::new(St { f: 42 });
         let obj: &dyn Tr = &*obj;
         let data: Box<_> = Box::new(Qux_ { f: St { f: 234 } });
-        let x: &Qux = &*ptr::from_raw_parts::<Qux>(&*data as *const _, ptr::metadata(obj));
+        // FIXME(ptr_metadata_v2): use the struct-like ptr_metadata construction
+        // syntax once that is implemented.
+        let x: &Qux = &*(ptr::from_raw_parts(&*data as *const _, ptr::metadata(obj)) as *const Qux);
         assert_eq!(x.f.foo(), 234);
     }
 }

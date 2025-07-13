@@ -487,16 +487,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             ty::RawPtr(..) | ty::Ref(..) => {
                 assert_eq!(un_op, PtrMetadata);
                 let (_, meta) = val.to_scalar_and_meta();
+                let ty = un_op.ty(*self.tcx, val.layout.ty);
+                let layout = self.layout_of(ty)?;
                 interp_ok(match meta {
-                    MemPlaceMeta::Meta(scalar) => {
-                        let ty = un_op.ty(*self.tcx, val.layout.ty);
-                        let layout = self.layout_of(ty)?;
-                        ImmTy::from_scalar(scalar, layout)
-                    }
-                    MemPlaceMeta::None => {
-                        let unit_layout = self.layout_of(self.tcx.types.unit)?;
-                        ImmTy::uninit(unit_layout)
-                    }
+                    MemPlaceMeta::Meta(scalar) => ImmTy::from_scalar(scalar, layout),
+                    MemPlaceMeta::None => ImmTy::uninit(layout),
                 })
             }
             _ => {

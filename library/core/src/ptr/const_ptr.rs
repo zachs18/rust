@@ -230,7 +230,7 @@ impl<T: PointeeSized> *const T {
     /// The pointer can be later reconstructed with [`from_raw_parts`].
     #[unstable(feature = "ptr_metadata", issue = "81513")]
     #[inline]
-    pub const fn to_raw_parts(self) -> (*const (), <T as super::Pointee>::Metadata) {
+    pub const fn to_raw_parts(self) -> (*const (), Metadata<T>) {
         (self.cast(), metadata(self))
     }
 
@@ -1460,7 +1460,7 @@ impl<T> *const [T] {
     #[stable(feature = "slice_ptr_len", since = "1.79.0")]
     #[rustc_const_stable(feature = "const_slice_ptr_len", since = "1.79.0")]
     pub const fn len(self) -> usize {
-        metadata(self)
+        metadata(self).ptr_metadata
     }
 
     /// Returns `true` if the raw slice has a length of 0.

@@ -152,11 +152,10 @@ impl<'tcx> InstSimplifyContext<'_, 'tcx> {
         }
     }
 
-    /// Transform `Aggregate(RawPtr, [p, ()])` ==> `Cast(PtrToPtr, p)`.
+    /// Transform `Aggregate(RawPtr, [p, m])` ==> `Cast(PtrToPtr, p)` where `m` is `Metadata<impl Thin>`
     fn simplify_ptr_aggregate(&self, rvalue: &mut Rvalue<'tcx>) {
         if let Rvalue::Aggregate(box AggregateKind::RawPtr(pointee_ty, mutability), fields) = rvalue
-            && let meta_ty = fields.raw[1].ty(self.local_decls, self.tcx)
-            && meta_ty.is_unit()
+            && pointee_ty.is_thin(self.tcx, self.typing_env)
         {
             // The mutable borrows we're holding prevent printing `rvalue` here
             let mut fields = std::mem::take(fields);

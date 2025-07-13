@@ -243,7 +243,16 @@ error: fn_abi_of(test_generic) = FnAbi {
                                    valid_range: $FULL,
                                },
                            ),
-                           fields: Primitive,
+                           fields: Arbitrary {
+                               offsets: [
+                                   Size(0 bytes),
+                                   Size(8 bytes),
+                               ],
+                               in_memory_order: [
+                                   0,
+                                   1,
+                               ],
+                           },
                            largest_niche: None,
                            uninhabited: false,
                            variants: Single {
@@ -943,7 +952,16 @@ error: fn_abi_of(assoc_test) = FnAbi {
                                    valid_range: $NON_NULL,
                                },
                            ),
-                           fields: Primitive,
+                           fields: Arbitrary {
+                               offsets: [
+                                   Size(0 bytes),
+                                   Size(8 bytes),
+                               ],
+                               in_memory_order: [
+                                   0,
+                                   1,
+                               ],
+                           },
                            largest_niche: Some(
                                Niche {
                                    offset: Size(0 bytes),
