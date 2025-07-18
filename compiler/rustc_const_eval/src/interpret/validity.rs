@@ -18,7 +18,7 @@ use rustc_abi::{
 };
 use rustc_ast::Mutability;
 use rustc_data_structures::fx::FxHashSet;
-use rustc_hir as hir;
+use rustc_hir::{self as hir, LangItem};
 use rustc_middle::bug;
 use rustc_middle::mir::interpret::{
     InterpErrorKind, InvalidMetaKind, Misalignment, Provenance, UnsupportedOpInfo, alloc_range,
@@ -600,7 +600,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                     Ub(DanglingIntPointer{ .. } | InvalidVTablePointer(..)) =>
                         format!("encountered {vtable}, but expected a vtable pointer"),
                     Ub(InvalidVTableTrait { vtable_dyn_type, expected_dyn_type }) =>
-                        InvalidMetaWrongTrait { expected_dyn_type, vtable_dyn_type },
+                        format!("using vtable for `{vtable_dyn_type}` but `{expected_dyn_type}` was expected"),
                 );
             }
             ty::Slice(..) | ty::Str => {
@@ -964,6 +964,63 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 interp_ok(true)
             }
             ty::UnsafeBinder(_) => todo!("FIXME(unsafe_binder)"),
+            // DynMetadata is a library type, but its fields are a lie.
+            // It has a `NonNull<extern type VTable>` field, but has validity requirements such
+            // that it must point to a valid vtable for its type parameter.
+            ty::Adt(def, args) if self.ecx.tcx.is_lang_item(def.did(), LangItem::DynMetadata) => {
+                assert_eq!(
+                    value.layout().fields.count(),
+                    2,
+                    "`DynMetadata` must have exactly 2 fields"
+                );
+                let (vtable_ptr, phantom) = (
+                    self.ecx().project_field(value, FieldIdx::ZERO)?,
+                    self.ecx().project_field(value, FieldIdx::ONE)?,
+                );
+                assert!(
+                    phantom.layout().ty.ty_adt_def().is_some_and(|adt| adt.is_phantom_data()),
+                    "2nd field of `DynMetadata` should be PhantomData but is {:?}",
+                    phantom.layout().ty,
+                );
+
+                // `vtable_ptr` is typed as `NonNull<extern type VTable>`,
+                // but that's fake. Just get the scalar from it and validate it as a vtable ptr.
+                let vtable_scalar = self.read_scalar(&vtable_ptr, ExpectedKind::RawPtr)?;
+                let vtable = vtable_scalar.to_pointer(self.ecx)?;
+
+                // Reject values of type `DynMetadata<T>` where `T` is not a trait object.
+                let dyn_ty = args.type_at(0);
+                let ty::Dynamic(data, _) = dyn_ty.kind() else {
+                    throw_validation_failure!(
+                        self.path,
+                        format!(
+                            "wrong pointee for DynMetadata: expected a trait object type, but encountered `{dyn_ty}`"
+                        )
+                    );
+                };
+
+                // Make sure it is a genuine vtable pointer for the right trait.
+                try_validation!(
+                    self.ecx.get_ptr_vtable_ty(vtable, Some(data)),
+                    self.path,
+                    Ub(DanglingIntPointer{ .. } | InvalidVTablePointer(..)) =>
+                        format!("encountered {vtable}, but expected a vtable pointer"),
+                    Ub(InvalidVTableTrait { vtable_dyn_type, expected_dyn_type }) =>
+                        format!("using vtable for `{vtable_dyn_type}` but `{expected_dyn_type}` was expected"),
+                );
+                if self.reset_provenance_and_padding {
+                    // Make sure we do not preserve partial provenance. This matches the thin
+                    // pointer handling in `deref_pointer`.
+                    // FIXME(ptr_metadata_v2): Is this necessary? This should have already
+                    // caused a validation error.
+                    if matches!(vtable_scalar, Scalar::Int(..)) {
+                        self.ecx.clear_provenance(value)?;
+                    }
+                    self.add_data_range_place(value);
+                }
+
+                interp_ok(true)
+            }
             // This is compound, use the Adt code path
             ty::PtrMetadata(..) => interp_ok(false),
             // The above should be all the primitive types. The rest is compound, we

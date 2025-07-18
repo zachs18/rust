@@ -1,4 +1,5 @@
 use rustc_abi::{BackendRepr, FieldsShape, Scalar, Variants};
+use rustc_hir::LangItem;
 use rustc_middle::ty::layout::{
     HasTyCtxt, LayoutCx, LayoutError, LayoutOf, TyAndLayout, ValidityRequirement,
 };
@@ -145,6 +146,24 @@ fn check_validity_requirement_lax<'tcx>(
         if pointee.size.bytes() > 0 {
             // A 'fake' integer pointer is not sufficiently dereferenceable.
             return Ok(false);
+        }
+    }
+
+    // Special magic check for DynMetadata (vtable pointers must be valid)
+    if let ty::Adt(adt_def, _args) = this.ty.kind()
+        && cx.tcx().is_lang_item(adt_def.did(), LangItem::DynMetadata)
+    {
+        match init_kind {
+            ValidityRequirement::Inhabited => {
+                bug!("ValidityRequirement::Inhabited should have been handled above")
+            }
+            ValidityRequirement::Uninit => {
+                bug!("ValidityRequirement::Uninit should have been handled above")
+            }
+            ValidityRequirement::Zero | ValidityRequirement::UninitMitigated0x01Fill => {
+                // DynMetadata must point to a valid vtable; it cannot be zeroed or 0x0101...0101-filled
+                return Ok(false);
+            }
         }
     }
 

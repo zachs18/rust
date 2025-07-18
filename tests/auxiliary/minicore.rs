@@ -20,6 +20,7 @@
     intrinsics,
     lang_items,
     auto_traits,
+    extern_types,
     freeze_impls,
     negative_impls,
     pattern_types,
@@ -112,6 +113,16 @@ impl<T: Copy, const N: usize> Copy for [T; N] {}
 pub struct PhantomData<T: PointeeSized>;
 impl<T: PointeeSized> Copy for PhantomData<T> {}
 
+unsafe extern "C" {
+    type VTable;
+}
+
+#[lang = "dyn_metadata"]
+pub struct DynMetadata<Dyn: PointeeSized> {
+    vtable_ptr: NonNull<VTable>,
+    phantom: PhantomData<Dyn>,
+}
+
 pub enum Option<T> {
     None,
     Some(T),
@@ -152,10 +163,10 @@ impl<T> MaybeUninit<T> {
 
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
-pub struct NonNull<T: ?Sized> {
+pub struct NonNull<T: PointeeSized> {
     pointer: pattern_type!(*const T is !null),
 }
-impl<T: ?Sized> Copy for NonNull<T> {}
+impl<T: PointeeSized> Copy for NonNull<T> {}
 
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
