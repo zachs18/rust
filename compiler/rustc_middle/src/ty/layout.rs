@@ -857,48 +857,24 @@ where
                     );
                     assert!(i < 1);
 
-                    let mk_dyn_vtable = |principal: Option<ty::PolyExistentialTraitRef<'tcx>>| {
-                        let min_count = ty::vtable_min_entries(
-                            tcx,
-                            principal.map(|principal| {
-                                tcx.instantiate_bound_regions_with_erased(principal)
-                            }),
-                        );
-                        Ty::new_imm_ref(
-                            tcx,
-                            tcx.lifetimes.re_static,
-                            // FIXME: properly type (e.g. usize and fn pointers) the fields.
-                            Ty::new_array(tcx, tcx.types.usize, min_count.try_into().unwrap()),
-                        )
-                    };
-
                     let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type()
                         // Projection eagerly bails out when the pointee references errors,
                         // fall back to structurally deducing metadata.
                         && !pointee.references_error()
                     {
-                        let metadata = tcx.normalize_erasing_regions(
+                        tcx.normalize_erasing_regions(
                             cx.typing_env(),
                             Ty::new_projection(tcx, metadata_def_id, [pointee]),
-                        );
-
-                        // Map `Metadata = DynMetadata<dyn Trait>` back to a vtable, since it
-                        // offers better information than `std::ptr::metadata::VTable`,
-                        // and we rely on this layout information to trigger a panic in
-                        // `std::mem::uninitialized::<&dyn Trait>()`, for example.
-                        if let ty::Adt(def, args) = metadata.kind()
-                            && tcx.is_lang_item(def.did(), LangItem::DynMetadata)
-                            && let ty::Dynamic(data, _) = args.type_at(0).kind()
-                        {
-                            mk_dyn_vtable(data.principal())
-                        } else {
-                            metadata
-                        }
+                        )
                     } else {
-                        match tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env()).kind()
-                        {
+                        let tail = tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env());
+                        match tail.kind() {
                             ty::Slice(_) | ty::Str => tcx.types.usize,
-                            ty::Dynamic(data, _) => mk_dyn_vtable(data.principal()),
+                            ty::Dynamic(_, _) => Ty::new_adt(
+                                tcx,
+                                tcx.adt_def(tcx.require_lang_item(LangItem::DynMetadata, DUMMY_SP)),
+                                tcx.mk_args(&[tail.into()]),
+                            ),
                             _ => bug!("TyAndLayout::field({:?}): not applicable", this),
                         }
                     };
@@ -1066,6 +1042,36 @@ where
                         // Preserve the alignment assertion! That is required even inside `MaybeDangling`.
                         align: info.align,
                     }
+                })
+            }
+
+            // Fixup `DynMetadata<dyn Trait>`. Recursive traversal will have found the raw
+            // pointer to `extern type VTable`, but we want to tell the codegen backend
+            // about the actual vtable pointer.
+            ty::Adt(adt_def, args)
+                if offset.bytes() == 0
+                    && tcx.is_lang_item(adt_def.did(), LangItem::DynMetadata) =>
+            {
+                let min_count = if optimize && let ty::Dynamic(data, _) = args.type_at(0).kind() {
+                    u64::try_from(ty::vtable_min_entries(
+                        tcx,
+                        data.principal()
+                            .map(|principal| tcx.instantiate_bound_regions_with_erased(principal)),
+                    ))
+                    .expect("FIXME: too many vtable entries?")
+                } else {
+                    3
+                };
+                let size = Primitive::Pointer(AddressSpace::ZERO)
+                    .size(cx)
+                    .checked_mul(min_count, cx)
+                    .expect("FIXME: too many vtable entries?");
+                Some(PointeeInfo {
+                    safe: Some(PointerKind::SharedRef { frozen: true }),
+
+                    size,
+
+                    align: Primitive::Pointer(AddressSpace::ZERO).align(cx).abi,
                 })
             }
 

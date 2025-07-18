@@ -20,6 +20,7 @@
     intrinsics,
     lang_items,
     auto_traits,
+    extern_types,
     freeze_impls,
     negative_impls,
     rustc_attrs,
@@ -110,6 +111,24 @@ impl<T: Copy, const N: usize> Copy for [T; N] {}
 pub struct PhantomData<T: PointeeSized>;
 impl<T: PointeeSized> Copy for PhantomData<T> {}
 
+#[repr(transparent)]
+#[rustc_layout_scalar_valid_range_start(1)]
+#[rustc_nonnull_optimization_guaranteed]
+pub struct NonNull<T: PointeeSized> {
+    pointer: *const T,
+}
+impl<T: PointeeSized> Copy for NonNull<T> {}
+
+unsafe extern "C" {
+    type VTable;
+}
+
+#[lang = "dyn_metadata"]
+pub struct DynMetadata<Dyn: PointeeSized> {
+    vtable_ptr: NonNull<VTable>,
+    phantom: PhantomData<Dyn>,
+}
+
 pub enum Option<T> {
     None,
     Some(T),
@@ -128,14 +147,6 @@ pub struct ManuallyDrop<T: PointeeSized> {
     value: T,
 }
 impl<T: Copy + PointeeSized> Copy for ManuallyDrop<T> {}
-
-#[repr(transparent)]
-#[rustc_layout_scalar_valid_range_start(1)]
-#[rustc_nonnull_optimization_guaranteed]
-pub struct NonNull<T: ?Sized> {
-    pointer: *const T,
-}
-impl<T: ?Sized> Copy for NonNull<T> {}
 
 #[repr(transparent)]
 #[rustc_layout_scalar_valid_range_start(1)]

@@ -397,6 +397,11 @@ pub enum UndefinedBehaviorInfo<'tcx> {
         /// The vtable that was expected at the point in MIR that it was accessed.
         expected_dyn_type: &'tcx ty::List<ty::PolyExistentialPredicate<'tcx>>,
     },
+    /// Using a vtable for a non-trait-object `Dyn` in `DynMetadata<Dyn>`.
+    InvalidVTableNonTrait {
+        /// The `Dyn` that was actually given, and is not `ty::Dynamic`.
+        given_type: Ty<'tcx>,
+    },
     /// Using a string that is not valid UTF-8,
     InvalidStr(std::str::Utf8Error),
     /// Using uninitialized data where it is not allowed.
@@ -596,6 +601,10 @@ impl<'tcx> fmt::Display for UndefinedBehaviorInfo<'tcx> {
             InvalidVTableTrait { vtable_dyn_type, expected_dyn_type } => write!(
                 f,
                 "using vtable for `{vtable_dyn_type}` but `{expected_dyn_type}` was expected"
+            ),
+            InvalidVTableNonTrait { given_type } => write!(
+                f,
+                "wrong pointee for DynMetadata: expected a trait object type, but encountered `{given_type}`"
             ),
             InvalidStr(err) => write!(f, "this string is not valid UTF-8: {err}"),
             InvalidUninitBytes(None) => {
