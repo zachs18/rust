@@ -90,6 +90,13 @@ extern "Rust" {
     /// change, or it may be removed entirely.
     pub fn miri_print_borrow_state(alloc_id: u64, show_unnamed: bool);
 
+    /// Miri-provided extern function to dump (from the interpreter, not the program) the contents of an
+    /// allocation.
+    ///
+    /// This function is extremely unstable. At any time the format of its output may change, its signature may
+    /// change, or it may be removed entirely.
+    pub fn miri_dump_alloc(alloc_id: u64);
+
     /// Miri-provided extern function to associate a name to the nth parent of a tag.
     /// Typically the name given would be the name of the program variable that holds the pointer.
     /// Unreachable tags can still be named by using nonzero `nth_parent` and a child tag.
