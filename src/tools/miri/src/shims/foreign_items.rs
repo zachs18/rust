@@ -391,6 +391,18 @@ trait EvalContextExtPriv<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     eprintln!("{id} is not the ID of a live data allocation");
                 }
             }
+            "miri_dump_alloc" => {
+                let [id] =
+                    this.check_shim_sig_lenient(abi, CanonAbi::Rust, link_name, args)?;
+                let id = this.read_scalar(id)?.to_u64()?;
+                if let Some(id) = std::num::NonZero::new(id).map(AllocId)
+                    && this.get_alloc_info(id).kind == AllocKind::LiveData
+                {
+                    eprintln!("{:?}", this.dump_alloc(id));
+                } else {
+                    eprintln!("{id} is not the ID of a live data allocation");
+                }
+            }
             "miri_pointer_name" => {
                 // This associates a name to a tag. Very useful for debugging, and also makes
                 // tests more strict.
