@@ -10,11 +10,7 @@
 
 use std::ptr::DynMetadata;
 
-// COM: these are the expected results after the change
-// COM: zero: @dyn_metadata_arg(ptr align {{[0-9]+}} [[VTABLE_PTR:%.+]])
-// COM: three: @dyn_metadata_arg(ptr noalias{{( nocapture)?}} noundef readonly align {{[0-9]+}}{{( captures\(none\))?}} dereferenceable({{[0-9]+}}) [[VTABLE_PTR:%.+]])
-// COM: the expected result before the change
-// zero: @dyn_metadata_arg(ptr [[VTABLE_PTR:%.+]])
-// three: @dyn_metadata_arg(ptr{{( nocapture)?}}  noundef nonnull readnone{{( captures\(none\))?}} [[VTABLE_PTR:%.+]])
+// zero: @dyn_metadata_arg(ptr align {{[0-9]+}} [[VTABLE_PTR:%.+]])
+// three: @dyn_metadata_arg(ptr noalias{{( nocapture)?}} noundef readonly align {{[0-9]+}}{{( captures\(none\))?}} dereferenceable({{[0-9]+}}) [[VTABLE_PTR:%.+]])
 #[no_mangle]
 pub fn dyn_metadata_arg(_: DynMetadata<dyn Drop>) {}

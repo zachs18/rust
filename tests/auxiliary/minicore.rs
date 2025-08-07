@@ -100,6 +100,13 @@ impl<T: Copy, const N: usize> Copy for [T; N] {}
 pub struct PhantomData<T: PointeeSized>;
 impl<T: PointeeSized> Copy for PhantomData<T> {}
 
+#[lang = "dyn_metadata"]
+pub struct DynMetadata<T: PointeeSized> {
+    pointee: PhantomData<T>,
+    ptr: &'static (),
+}
+impl<T: PointeeSized> Copy for DynMetadata<T> {}
+
 pub enum Option<T> {
     None,
     Some(T),
