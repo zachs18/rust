@@ -71,7 +71,7 @@ LL | const MYSTR_NO_INIT: &MyStr = unsafe { mem::transmute::<&[_], _>(&[MaybeUni
                HEX_DUMP
            }
 
-error[E0080]: reading memory at ALLOC32[0x%..0x%], but memory is uninitialized at [0x%..0x%], and this operation requires initialized memory
+error[E0080]: reading memory at ALLOC34[0x%..0x%], but memory is uninitialized at [0x%..0x%], and this operation requires initialized memory
   --> $DIR/ub-wide-ptr.rs:64:1
    |
 LL | const SLICE_LENGTH_UNINIT: &[u8] = unsafe {
@@ -183,7 +183,7 @@ note: erroneous constant encountered
 LL | const MYSLICE_SUFFIX_BAD: &MySliceBool = &MySlice(true, [unsafe { mem::transmute(3u8) }]);
    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error[E0080]: reading memory at ALLOC33[0x%..0x%], but memory is uninitialized at [0x%..0x%], and this operation requires initialized memory
+error[E0080]: reading memory at ALLOC35[0x%..0x%], but memory is uninitialized at [0x%..0x%], and this operation requires initialized memory
   --> $DIR/ub-wide-ptr.rs:102:1
    |
 LL | const RAW_SLICE_LENGTH_UNINIT: *const [u8] = unsafe {
@@ -303,8 +303,51 @@ LL | const RAW_TRAIT_OBJ_VTABLE_INVALID: *const dyn Trait = unsafe { mem::transm
                HEX_DUMP
            }
 
+error[E0080]: constructing invalid value: wrong trait in wide pointer vtable: expected `Debug`, but encountered `std::fmt::Display`
+  --> $DIR/ub-wide-ptr.rs:140:1
+   |
+LL | const DYN_METADATA_INVALID_TRAIT: ptr::DynMetadata<dyn std::fmt::Debug> = {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = note: The rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: $SIZE, align: $ALIGN) {
+               HEX_DUMP
+           }
+
+error[E0080]: constructing invalid value: wrong pointee for DynMetadata: expected a trait object type, but encountered `usize`
+  --> $DIR/ub-wide-ptr.rs:145:1
+   |
+LL | const DYN_METADATA_NON_TRAIT: ptr::DynMetadata<usize> = {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = note: The rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: $SIZE, align: $ALIGN) {
+               HEX_DUMP
+           }
+
+error[E0080]: constructing invalid value: encountered 0x2a[noalloc], but expected a vtable pointer
+  --> $DIR/ub-wide-ptr.rs:149:1
+   |
+LL | const DYN_METADATA_NON_TRAIT_INT: ptr::DynMetadata<dyn std::fmt::Debug> = {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = note: The rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: $SIZE, align: $ALIGN) {
+               HEX_DUMP
+           }
+
+error[E0080]: reading memory at ALLOC36[0x%..0x%], but memory is uninitialized at [0x%..0x%], and this operation requires initialized memory
+  --> $DIR/ub-wide-ptr.rs:155:14
+   |
+LL |     unsafe { meta.init }
+   |              ^^^^^^^^^ evaluation of `DYN_METADATA_UNINIT` failed here
+   |
+   = note: the raw bytes of the constant (size: $SIZE, align: $ALIGN) {
+               HEX_DUMP
+           }
+
 error[E0080]: constructing invalid value: encountered null pointer, but expected a vtable pointer
-  --> $DIR/ub-wide-ptr.rs:141:1
+  --> $DIR/ub-wide-ptr.rs:159:1
    |
 LL | static mut RAW_TRAIT_OBJ_VTABLE_NULL_THROUGH_REF: *const dyn Trait = unsafe {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
@@ -314,8 +357,8 @@ LL | static mut RAW_TRAIT_OBJ_VTABLE_NULL_THROUGH_REF: *const dyn Trait = unsafe
                HEX_DUMP
            }
 
-error[E0080]: constructing invalid value: encountered ALLOC31<imm>, but expected a vtable pointer
-  --> $DIR/ub-wide-ptr.rs:145:1
+error[E0080]: constructing invalid value: encountered ALLOC33<imm>, but expected a vtable pointer
+  --> $DIR/ub-wide-ptr.rs:163:1
    |
 LL | static mut RAW_TRAIT_OBJ_VTABLE_INVALID_THROUGH_REF: *const dyn Trait = unsafe {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
@@ -325,6 +368,6 @@ LL | static mut RAW_TRAIT_OBJ_VTABLE_INVALID_THROUGH_REF: *const dyn Trait = uns
                HEX_DUMP
            }
 
-error: aborting due to 29 previous errors
+error: aborting due to 33 previous errors
 
 For more information about this error, try `rustc --explain E0080`.

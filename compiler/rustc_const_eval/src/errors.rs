@@ -499,6 +499,7 @@ impl<'a> ReportErrorExt for UndefinedBehaviorInfo<'a> {
             InvalidFunctionPointer(_) => const_eval_invalid_function_pointer,
             InvalidVTablePointer(_) => const_eval_invalid_vtable_pointer,
             InvalidVTableTrait { .. } => const_eval_invalid_vtable_trait,
+            InvalidVTableNonTrait { .. } => const_eval_invalid_vtable_non_trait,
             InvalidStr(_) => const_eval_invalid_str,
             InvalidUninitBytes(None) => const_eval_invalid_uninit_bytes_unknown,
             InvalidUninitBytes(Some(_)) => const_eval_invalid_uninit_bytes,
@@ -561,6 +562,9 @@ impl<'a> ReportErrorExt for UndefinedBehaviorInfo<'a> {
             InvalidVTableTrait { expected_dyn_type, vtable_dyn_type } => {
                 diag.arg("expected_dyn_type", expected_dyn_type.to_string());
                 diag.arg("vtable_dyn_type", vtable_dyn_type.to_string());
+            }
+            InvalidVTableNonTrait { given_type } => {
+                diag.arg("given_type", given_type.to_string());
             }
             PointerUseAfterFree(alloc_id, msg) => {
                 diag.arg("alloc_id", alloc_id).arg("operation", format!("{:?}", msg));
@@ -678,6 +682,7 @@ impl<'tcx> ReportErrorExt for ValidationErrorInfo<'tcx> {
             Uninit { .. } => const_eval_validation_uninit,
             InvalidVTablePtr { .. } => const_eval_validation_invalid_vtable_ptr,
             InvalidMetaWrongTrait { .. } => const_eval_validation_invalid_vtable_trait,
+            InvalidMetaExpectedDyn { .. } => const_eval_validation_invalid_vtable_non_trait,
             InvalidMetaSliceTooLarge { ptr_kind: PointerKind::Box } => {
                 const_eval_validation_invalid_box_slice_meta
             }
@@ -821,6 +826,9 @@ impl<'tcx> ReportErrorExt for ValidationErrorInfo<'tcx> {
             InvalidMetaWrongTrait { vtable_dyn_type, expected_dyn_type } => {
                 err.arg("vtable_dyn_type", vtable_dyn_type.to_string());
                 err.arg("expected_dyn_type", expected_dyn_type.to_string());
+            }
+            InvalidMetaExpectedDyn { given_type } => {
+                err.arg("given_type", given_type.to_string());
             }
             NullPtr { .. }
             | MutableRefToImmutable

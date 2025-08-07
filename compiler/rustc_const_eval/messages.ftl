@@ -201,6 +201,9 @@ const_eval_invalid_vtable_pointer =
 const_eval_invalid_vtable_trait =
     using vtable for `{$vtable_dyn_type}` but `{$expected_dyn_type}` was expected
 
+const_eval_invalid_vtable_non_trait =
+    using `T = {$given_type}` in a `DynMetadata<T>` but a trait object type was expected
+
 const_eval_lazy_lock =
     consider wrapping this expression in `std::sync::LazyLock::new(|| ...)`
 
@@ -471,6 +474,7 @@ const_eval_validation_invalid_enum_tag = {$front_matter}: encountered {$value}, 
 const_eval_validation_invalid_fn_ptr = {$front_matter}: encountered {$value}, but expected a function pointer
 const_eval_validation_invalid_ref_meta = {$front_matter}: encountered invalid reference metadata: total size is bigger than largest supported object
 const_eval_validation_invalid_ref_slice_meta = {$front_matter}: encountered invalid reference metadata: slice is bigger than largest supported object
+const_eval_validation_invalid_vtable_non_trait = {$front_matter}: wrong pointee for DynMetadata: expected a trait object type, but encountered `{$given_type}`
 const_eval_validation_invalid_vtable_ptr = {$front_matter}: encountered {$value}, but expected a vtable pointer
 const_eval_validation_invalid_vtable_trait = {$front_matter}: wrong trait in wide pointer vtable: expected `{$expected_dyn_type}`, but encountered `{$vtable_dyn_type}`
 const_eval_validation_mutable_ref_in_const = {$front_matter}: encountered mutable reference in `const` value

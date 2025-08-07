@@ -137,6 +137,24 @@ const RAW_TRAIT_OBJ_CONTENT_INVALID: *const dyn Trait = unsafe { mem::transmute:
 // Officially blessed way to get the vtable
 const DYN_METADATA: ptr::DynMetadata<dyn Send> = ptr::metadata::<dyn Send>(ptr::null::<i32>());
 
+const DYN_METADATA_INVALID_TRAIT: ptr::DynMetadata<dyn std::fmt::Debug> = {
+//~^ ERROR wrong trait in wide pointer vtable:
+    let meta = ptr::metadata::<dyn std::fmt::Display>(ptr::null::<i32>());
+    unsafe { std::mem::transmute(meta) }
+};
+const DYN_METADATA_NON_TRAIT: ptr::DynMetadata<usize> = {
+//~^ ERROR expected a trait object type, but encountered `usize`
+    unsafe { std::mem::transmute(&42_u32) }
+};
+const DYN_METADATA_NON_TRAIT_INT: ptr::DynMetadata<dyn std::fmt::Debug> = {
+//~^ ERROR expected a vtable pointer
+    unsafe { std::mem::transmute(42_usize) }
+};
+const DYN_METADATA_UNINIT: ptr::DynMetadata<dyn std::fmt::Debug> = {
+    let meta = MaybeUninit { uninit: () };
+    unsafe { meta.init }
+//~^ ERROR this operation requires initialized memory
+};
 
 static mut RAW_TRAIT_OBJ_VTABLE_NULL_THROUGH_REF: *const dyn Trait = unsafe {
     mem::transmute::<_, &dyn Trait>((&92u8, 0usize))

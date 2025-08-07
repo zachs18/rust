@@ -411,6 +411,11 @@ pub enum UndefinedBehaviorInfo<'tcx> {
         /// The vtable that was expected at the point in MIR that it was accessed.
         expected_dyn_type: &'tcx ty::List<ty::PolyExistentialPredicate<'tcx>>,
     },
+    /// Using a vtable for a non-trait-object `Dyn` in `DynMetadata<Dyn>`.
+    InvalidVTableNonTrait {
+        /// The `Dyn` that was actually given, and is not `ty::Dynamic`.
+        given_type: Ty<'tcx>,
+    },
     /// Using a string that is not valid UTF-8,
     InvalidStr(std::str::Utf8Error),
     /// Using uninitialized data where it is not allowed.
@@ -530,6 +535,11 @@ pub enum ValidationErrorKind<'tcx> {
         vtable_dyn_type: &'tcx ty::List<ty::PolyExistentialPredicate<'tcx>>,
         /// The vtable that was expected at the point in MIR that it was accessed.
         expected_dyn_type: &'tcx ty::List<ty::PolyExistentialPredicate<'tcx>>,
+    },
+    /// An instance of `DynMetadata<Dyn>` with `Dyn` not a trait object was encountered.
+    InvalidMetaExpectedDyn {
+        /// The `Dyn` that was actually given, and is not `ty::Dynamic`.
+        given_type: Ty<'tcx>,
     },
     InvalidMetaSliceTooLarge {
         ptr_kind: PointerKind,
