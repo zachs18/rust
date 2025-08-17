@@ -33,6 +33,9 @@ LL | trait Foo: Copy {
    |       ---  ^^^^ ...because it requires `Self: Sized`
    |       |
    |       this trait is not dyn compatible...
+  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
+   |
+   = note: ...because it opted out of dyn-compatibility
 
 error: aborting due to 2 previous errors
 

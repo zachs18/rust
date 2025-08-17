@@ -85,7 +85,7 @@ pub macro build_metadata {
     (for $pointee:ty; $($field:ident $(: $value:expr)?),+ $(,)?) => { builtin # ptr_metadata(for $pointee; $($field $(: $value)?,)+) },
 }
 
-/// Pointers to types implementing this trait alias are “thin”.
+/// Pointers to types implementing this trait are “thin”.
 ///
 /// This includes statically-`Sized` types and `extern` types.
 ///
@@ -99,8 +99,8 @@ pub macro build_metadata {
 /// }
 /// ```
 #[unstable(feature = "ptr_metadata", issue = "81513")]
-// NOTE: don’t stabilize this before trait aliases are stable in the language?
-pub trait Thin = Pointee<Metadata = ()> + PointeeSized;
+#[lang = "thin_pointee_trait"]
+pub trait Thin: Pointee<Metadata = ()> + PointeeSized {}
 
 /// Extracts the metadata component of a pointer.
 ///
@@ -304,5 +304,11 @@ impl<T: PointeeSized> PartialOrd for Metadata<T> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<crate::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl<T: PointeeSized + Thin> Default for builtin!(ptr_metadata(T)) {
+    fn default() -> Self {
+        builtin!(ptr_metadata(ptr_metadata: ()))
     }
 }

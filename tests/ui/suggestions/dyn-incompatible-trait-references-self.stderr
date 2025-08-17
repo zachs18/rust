@@ -32,6 +32,9 @@ LL | trait Other: Sized {}
    |       -----  ^^^^^ ...because it requires `Self: Sized`
    |       |
    |       this trait is not dyn compatible...
+  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
+   |
+   = note: ...because it opted out of dyn-compatibility
 
 error[E0277]: the size for values of type `Self` cannot be known at compilation time
   --> $DIR/dyn-incompatible-trait-references-self.rs:4:22

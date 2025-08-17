@@ -23,7 +23,7 @@ fn sizedness_constraint_for_ty<'tcx>(
     ty: Ty<'tcx>,
 ) -> Option<Ty<'tcx>> {
     match ty.kind() {
-        // Always `Sized` or `MetaSized`
+        // Always `Sized`, `MetaSized`, and `Thin`
         ty::Bool
         | ty::Char
         | ty::Int(..)
@@ -43,13 +43,13 @@ fn sizedness_constraint_for_ty<'tcx>(
         | ty::Never => None,
 
         ty::Str | ty::Slice(..) | ty::Dynamic(_, _) => match sizedness {
-            // Never `Sized`
-            SizedTraitKind::Sized => Some(ty),
+            // Never `Sized` or `Thin`
+            SizedTraitKind::Sized | SizedTraitKind::Thin => Some(ty),
             // Always `MetaSized`
             SizedTraitKind::MetaSized => None,
         },
 
-        // Maybe `Sized` or `MetaSized`
+        // Maybe `Sized`, `MetaSized`, or `Thin`
         ty::Param(..) | ty::Alias(..) | ty::Error(_) => Some(ty),
 
         // We cannot instantiate the binder, so just return the *original* type back,
@@ -59,8 +59,12 @@ fn sizedness_constraint_for_ty<'tcx>(
             sizedness_constraint_for_ty(tcx, sizedness, inner_ty.skip_binder()).map(|_| ty)
         }
 
-        // Never `MetaSized` or `Sized`
-        ty::Foreign(..) => Some(ty),
+        ty::Foreign(..) => match sizedness {
+            // Never `Sized` or `MetaSized`
+            SizedTraitKind::Sized | SizedTraitKind::MetaSized => Some(ty),
+            // Always `Thin`
+            SizedTraitKind::Thin => None,
+        },
 
         // Recursive cases
         ty::Pat(ty, _) => sizedness_constraint_for_ty(tcx, sizedness, *ty),

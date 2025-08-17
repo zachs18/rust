@@ -577,6 +577,9 @@ where
                 Some(SolverTraitLangItem::PointeeSized) => {
                     unreachable!("`PointeeSized` is removed during lowering");
                 }
+                Some(SolverTraitLangItem::ThinPointeeTrait) => {
+                    G::consider_builtin_sizedness_candidates(self, goal, SizedTraitKind::Thin)
+                }
                 Some(
                     SolverTraitLangItem::Copy
                     | SolverTraitLangItem::Clone
