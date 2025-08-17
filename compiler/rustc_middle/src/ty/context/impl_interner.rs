@@ -804,6 +804,7 @@ bidirectional_lang_item_map! {
     PointeeSized,
     PointeeTrait,
     Sized,
+    ThinPointeeTrait,
     TransmuteTrait,
     TrivialClone,
     Tuple,

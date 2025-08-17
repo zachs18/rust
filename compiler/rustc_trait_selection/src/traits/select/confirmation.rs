@@ -247,6 +247,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             Some(LangItem::Copy | LangItem::Clone | LangItem::TrivialClone) => {
                 self.copy_clone_conditions(self_ty)
             }
+            Some(LangItem::ThinPointeeTrait) => {
+                self.sizedness_conditions(self_ty, SizedTraitKind::Thin)
+            }
             Some(LangItem::FusedIterator) => {
                 if self.coroutine_is_gen(self_ty) {
                     ty::Binder::dummy(vec![])

@@ -144,14 +144,17 @@ where
         | ty::Never
         | ty::Error(_) => Ok(ty::Binder::dummy(vec![])),
 
-        // impl {Meta,}Sized for str, [T], dyn Trait
+        // impl MetaSized for str, [T], dyn Trait
         ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
-            SizedTraitKind::Sized => Err(NoSolution),
+            SizedTraitKind::Sized | SizedTraitKind::Thin => Err(NoSolution),
             SizedTraitKind::MetaSized => Ok(ty::Binder::dummy(vec![])),
         },
 
-        // impl {} for extern type
-        ty::Foreign(..) => Err(NoSolution),
+        // impl Thin for extern type
+        ty::Foreign(..) => match sizedness {
+            SizedTraitKind::Sized | SizedTraitKind::MetaSized => Err(NoSolution),
+            SizedTraitKind::Thin => Ok(ty::Binder::dummy(vec![])),
+        },
 
         ty::Alias(..) | ty::Param(_) | ty::Placeholder(..) => Err(NoSolution),
 
@@ -162,8 +165,8 @@ where
 
         ty::UnsafeBinder(bound_ty) => Ok(bound_ty.map_bound(|ty| vec![ty])),
 
-        // impl {Meta,}Sized for ()
-        // impl {Meta,}Sized for (T1, T2, .., Tn) where Tn: {Meta,}Sized if n >= 1
+        // impl {Meta,}Sized,Thin for ()
+        // impl {Meta,}Sized,Thin for (T1, T2, .., Tn) where Tn: {Meta,}Sized,Thin if n >= 1
         ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.last().map_or_else(Vec::new, |ty| vec![ty]))),
 
         // impl {Meta,}Sized for Adt<Args...>

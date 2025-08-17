@@ -1666,6 +1666,10 @@ rustc_queries! {
     query is_sized_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is `Sized`", env.value }
     }
+    /// Query backing `Ty::is_thin`.
+    query is_thin_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
+        desc { "computing whether `{}` is `Thin", env.value }
+    }
     /// Query backing `Ty::is_freeze`.
     query is_freeze_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is freeze", env.value }

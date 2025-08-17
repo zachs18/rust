@@ -140,12 +140,12 @@ where
         ) -> bool {
             clause_def_id == goal_def_id
             // PERF(sized-hierarchy): Sizedness supertraits aren't elaborated to improve perf, so
-            // check for a `MetaSized` supertrait being matched against a `Sized` assumption.
+            // check for a `MetaSized` or `Thin` supertrait being matched against a `Sized` assumption.
             //
             // `PointeeSized` bounds are syntactic sugar for a lack of bounds so don't need this.
                 || (polarity == PredicatePolarity::Positive
                     && cx.is_trait_lang_item(clause_def_id, SolverTraitLangItem::Sized)
-                    && cx.is_trait_lang_item(goal_def_id, SolverTraitLangItem::MetaSized))
+                    && (cx.is_trait_lang_item(goal_def_id, SolverTraitLangItem::MetaSized) || cx.is_trait_lang_item(goal_def_id, SolverTraitLangItem::ThinPointeeTrait)))
         }
 
         if let Some(trait_clause) = assumption.as_trait_clause()
@@ -176,16 +176,19 @@ where
         let trait_clause = assumption.as_trait_clause().unwrap();
 
         // PERF(sized-hierarchy): Sizedness supertraits aren't elaborated to improve perf, so
-        // check for a `Sized` subtrait when looking for `MetaSized`. `PointeeSized` bounds
+        // check for a `Sized` subtrait when looking for `MetaSized` or `Thin`. `PointeeSized` bounds
         // are syntactic sugar for a lack of bounds so don't need this.
         // We don't need to check polarity, `fast_reject_assumption` already rejected non-`Positive`
-        // polarity `Sized` assumptions as matching non-`Positive` `MetaSized` goals.
-        if ecx.cx().is_trait_lang_item(goal.predicate.def_id(), SolverTraitLangItem::MetaSized)
+        // polarity `Sized` assumptions as matching non-`Positive` `MetaSized`/`Thin` goals.
+        if (ecx.cx().is_trait_lang_item(goal.predicate.def_id(), SolverTraitLangItem::MetaSized)
+            || ecx
+                .cx()
+                .is_trait_lang_item(goal.predicate.def_id(), SolverTraitLangItem::ThinPointeeTrait))
             && ecx.cx().is_trait_lang_item(trait_clause.def_id(), SolverTraitLangItem::Sized)
         {
-            let meta_sized_clause =
+            let thin_or_meta_sized_clause =
                 trait_predicate_with_def_id(ecx.cx(), trait_clause, goal.predicate.def_id());
-            return Self::match_assumption(ecx, goal, meta_sized_clause, then);
+            return Self::match_assumption(ecx, goal, thin_or_meta_sized_clause, then);
         }
 
         let assumption_trait_pred = ecx.instantiate_binder_with_infer(trait_clause);

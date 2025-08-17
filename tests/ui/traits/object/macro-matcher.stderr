@@ -5,8 +5,11 @@ LL |     m!(dyn Copy + Send + 'static);
    |            ^^^^ `Copy` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
-   = note: for a trait to be dyn compatible it needs to allow building a vtable
-           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
+note: for a trait to be dyn compatible it needs to allow building a vtable
+      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
+  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
+   |
+   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
 
 error[E0224]: at least one trait is required for an object type
   --> $DIR/macro-matcher.rs:11:8
