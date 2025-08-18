@@ -100,7 +100,67 @@ help: the `Box` type always has a statically known size and allocates its conten
 LL |     field2: Box<str>, // Unsized
    |             ++++   +
 
-error: aborting due to 6 previous errors
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:61:25
+   |
+LL |     let _a = &size_of::<BadStruct>();
+   |                         ^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `BadStruct`, the trait `Sized` is not implemented for `str`
+note: required because it appears within the type `BadStruct`
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:8:12
+   |
+LL | pub struct BadStruct {
+   |            ^^^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::size_of`
+  --> $SRC_DIR/core/src/mem/mod.rs:LL:COL
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:63:26
+   |
+LL |     assert_eq!(size_of::<BadStruct>(), 21);
+   |                          ^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `BadStruct`, the trait `Sized` is not implemented for `str`
+note: required because it appears within the type `BadStruct`
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:8:12
+   |
+LL | pub struct BadStruct {
+   |            ^^^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::size_of`
+  --> $SRC_DIR/core/src/mem/mod.rs:LL:COL
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:75:25
+   |
+LL |     let _a = &size_of::<BadUnion>();
+   |                         ^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `BadUnion`, the trait `Sized` is not implemented for `str`
+note: required because it appears within the type `BadUnion`
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:44:7
+   |
+LL | union BadUnion {
+   |       ^^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::size_of`
+  --> $SRC_DIR/core/src/mem/mod.rs:LL:COL
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:77:26
+   |
+LL |     assert_eq!(size_of::<BadUnion>(), 21);
+   |                          ^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `BadUnion`, the trait `Sized` is not implemented for `str`
+note: required because it appears within the type `BadUnion`
+  --> $DIR/ice-non-last-unsized-field-issue-121473.rs:44:7
+   |
+LL | union BadUnion {
+   |       ^^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::size_of`
+  --> $SRC_DIR/core/src/mem/mod.rs:LL:COL
+
+error: aborting due to 10 previous errors
 
 Some errors have detailed explanations: E0277, E0740.
 For more information about an error, try `rustc --explain E0277`.

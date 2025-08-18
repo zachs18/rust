@@ -59,7 +59,9 @@ struct StructWithProjections<'a>
 
 pub fn main() {
     let _a = &size_of::<BadStruct>();
+    //~^ ERROR the size for values of type `str` cannot be known at compilation time
     assert_eq!(size_of::<BadStruct>(), 21);
+    //~^ ERROR the size for values of type `str` cannot be known at compilation time
 
     let _a = &size_of::<BadEnum1>();
     assert_eq!(size_of::<BadEnum1>(), 21);
@@ -71,7 +73,9 @@ pub fn main() {
     assert_eq!(size_of::<BadEnumMultiVariant>(), 21);
 
     let _a = &size_of::<BadUnion>();
+    //~^ ERROR the size for values of type `str` cannot be known at compilation time
     assert_eq!(size_of::<BadUnion>(), 21);
+    //~^ ERROR the size for values of type `str` cannot be known at compilation time
 
     let _a = &size_of::<StructWithProjections>();
     assert_eq!(size_of::<StructWithProjections>(), 21);

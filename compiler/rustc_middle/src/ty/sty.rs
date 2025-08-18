@@ -2107,10 +2107,13 @@ impl<'tcx> Ty<'tcx> {
                 SizedTraitKind::Thin => true,
             },
 
-            ty::Tuple(tys) => tys.last().is_none_or(|ty| ty.has_trivial_sizedness(tcx, sizedness)),
+            ty::Tuple(tys) => tys.iter().all(|ty| ty.has_trivial_sizedness(tcx, sizedness)),
 
-            ty::Adt(def, args) => def.sizedness_constraint(tcx, sizedness).is_none_or(|ty| {
-                ty.instantiate(tcx, args).skip_norm_wip().has_trivial_sizedness(tcx, sizedness)
+            ty::Adt(def, args) => def.sizedness_constraints(tcx, sizedness).is_none_or(|tys| {
+                tys.instantiate(tcx, args)
+                    .skip_norm_wip()
+                    .iter()
+                    .all(|ty| ty.has_trivial_sizedness(tcx, sizedness))
             }),
 
             ty::Alias(..) | ty::Param(_) | ty::Placeholder(..) | ty::Bound(..) => false,

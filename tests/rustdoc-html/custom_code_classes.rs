@@ -1,13 +1,22 @@
 // Test for `custom_code_classes_in_docs` feature.
 
 #![crate_name = "foo"]
-#![feature(no_core)]
+#![feature(no_core, lang_items)]
 #![no_core]
 
 //@ has 'foo/struct.Bar.html'
 //@ has - '//*[@id="main-content"]//pre[@class="language-whatever hoho-c"]' 'main;'
 //@ has - '//*[@id="main-content"]//pre[@class="language-whatever2 haha-c"]' 'main;'
 //@ has - '//*[@id="main-content"]//pre[@class="language-whatever4 huhu-c"]' 'main;'
+
+#[lang = "sized"]
+pub trait Sized: MetaSized {}
+
+#[lang = "meta_sized"]
+pub trait MetaSized: PointeeSized {}
+
+#[lang = "pointee_sized"]
+pub trait PointeeSized {}
 
 /// ```{class=hoho-c},whatever
 /// main;
