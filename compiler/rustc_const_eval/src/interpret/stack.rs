@@ -518,7 +518,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 ty::Str | ty::Slice(_) | ty::Dynamic(_, _) | ty::Foreign(..) => false,
 
-                ty::Tuple(tys) => tys.last().is_none_or(|ty| is_very_trivially_sized(*ty)),
+                ty::Tuple(tys) => tys.iter().all(|ty| is_very_trivially_sized(ty)),
 
                 ty::Pat(ty, ..) => is_very_trivially_sized(*ty),
 

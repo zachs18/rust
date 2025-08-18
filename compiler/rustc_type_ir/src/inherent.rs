@@ -603,11 +603,11 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     // FIXME: perhaps use `all_fields` and expose `FieldDef`.
     fn all_field_tys(self, interner: I) -> ty::EarlyBinder<I, impl IntoIterator<Item = I::Ty>>;
 
-    fn sizedness_constraint(
+    fn sizedness_constraints(
         self,
         interner: I,
         sizedness: SizedTraitKind,
-    ) -> Option<ty::EarlyBinder<I, I::Ty>>;
+    ) -> Option<ty::EarlyBinder<I, I::Tys>>;
 
     fn is_fundamental(self) -> bool;
 

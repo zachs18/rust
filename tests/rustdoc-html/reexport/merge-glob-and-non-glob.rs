@@ -2,16 +2,25 @@
 // then it will use attributes from both of them.
 // This is a regression test for <https://github.com/rust-lang/rust/issues/143107>.
 
-#![feature(no_core)]
+#![feature(no_core, lang_items)]
 #![no_core]
 #![no_std]
 #![crate_name = "foo"]
 
-// First we ensure we only have two items.
+#[lang = "sized"]
+pub trait Sized: MetaSized {}
+
+#[lang = "meta_sized"]
+pub trait MetaSized: PointeeSized {}
+
+#[lang = "pointee_sized"]
+pub trait PointeeSized {}
+
+// First we ensure we only have five items (the two below + the three traits above).
 //@ has 'foo/index.html'
-//@ count - '//dl[@class="item-table"]/dt' 2
-// We should also only have one section (Structs).
-//@ count - '//h2[@class="section-header"]' 1
+//@ count - '//dl[@class="item-table"]/dt' 5
+// We should also only have two sections (Structs, Traits).
+//@ count - '//h2[@class="section-header"]' 2
 // We now check the short docs.
 //@ has - '//dl[@class="item-table"]/dd' 'Foobar Blob'
 //@ has - '//dl[@class="item-table"]/dd' 'Tarte Tatin'

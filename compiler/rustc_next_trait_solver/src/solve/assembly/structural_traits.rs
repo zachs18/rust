@@ -166,26 +166,26 @@ where
         ty::UnsafeBinder(bound_ty) => Ok(bound_ty.map_bound(|ty| vec![ty])),
 
         // impl {Meta,}Sized,Thin for ()
-        // impl {Meta,}Sized,Thin for (T1, T2, .., Tn) where Tn: {Meta,}Sized,Thin if n >= 1
-        ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.last().map_or_else(Vec::new, |ty| vec![ty]))),
+        // impl {Meta,}Sized,Thin for (T1, T2, .., Tn) where T1, T2, ..., Tn: {Meta,}Sized,Thin if n >= 1
+        ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.to_vec())),
 
         // impl {Meta,}Sized for Adt<Args...>
-        //   where {meta,pointee,}sized_constraint(Adt)<Args...>: {Meta,}Sized
+        //   where {meta,pointee,}sized_constraints(Adt)<Args...>: {Meta,}Sized
         //
-        //   `{meta,pointee,}sized_constraint(Adt)` is the deepest struct trail that can be
-        //   determined by the definition of `Adt`, independent of the generic args.
+        //   `{meta,pointee,}sized_constraints(Adt)` are the deepest possibly-unsized field types
+        //   that can be determined by the definition of `Adt`, independent of the generic args.
         //
         // impl {Meta,}Sized for Adt<Args...>
-        //   if {meta,pointee,}sized_constraint(Adt) == None
+        //   if {meta,pointee,}sized_constraints(Adt) == None
         //
-        //   As a performance optimization, `{meta,pointee,}sized_constraint(Adt)` can return `None`
+        //   As a performance optimization, `{meta,pointee,}sized_constraints(Adt)` can return `None`
         //   if the ADTs definition implies that it is {meta,}sized by for all possible args.
         //   In this case, the builtin impl will have no nested subgoals. This is a
-        //   "best effort" optimization and `{meta,pointee,}sized_constraint` may return `Some`,
+        //   "best effort" optimization and `{meta,pointee,}sized_constraints` may return `Some`,
         //   even if the ADT is {meta,pointee,}sized for all possible args.
         ty::Adt(def, args) => {
-            if let Some(crit) = def.sizedness_constraint(ecx.cx(), sizedness) {
-                Ok(ty::Binder::dummy(vec![crit.instantiate(ecx.cx(), args)]))
+            if let Some(crits) = def.sizedness_constraints(ecx.cx(), sizedness) {
+                Ok(ty::Binder::dummy(crits.instantiate(ecx.cx(), args).iter().collect()))
             } else {
                 Ok(ty::Binder::dummy(vec![]))
             }

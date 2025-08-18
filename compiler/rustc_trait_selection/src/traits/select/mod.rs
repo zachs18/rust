@@ -2189,15 +2189,13 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 }
             },
 
-            ty::Tuple(tys) => {
-                ty::Binder::dummy(tys.last().map_or_else(Vec::new, |&last| vec![last]))
-            }
+            ty::Tuple(tys) => ty::Binder::dummy(tys.to_vec()),
 
             ty::Pat(ty, _) => ty::Binder::dummy(vec![*ty]),
 
             ty::Adt(def, args) => {
-                if let Some(crit) = def.sizedness_constraint(self.tcx(), sizedness) {
-                    ty::Binder::dummy(vec![crit.instantiate(self.tcx(), args)])
+                if let Some(crits) = def.sizedness_constraints(self.tcx(), sizedness) {
+                    ty::Binder::dummy(crits.instantiate(self.tcx(), args).to_vec())
                 } else {
                     ty::Binder::dummy(vec![])
                 }

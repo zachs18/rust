@@ -16,22 +16,42 @@ help: the `Box` type always has a statically known size and allocates its conten
 LL |     a: Box<[u8]>,
    |        ++++    +
 
-error[E0080]: the type `S` has an unknown layout
-  --> $DIR/base-layout-is-sized-ice-123078.rs:10:1
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> $DIR/base-layout-is-sized-ice-123078.rs:10:10
    |
 LL | const C: S = unsafe { std::mem::transmute(()) };
-   | ^^^^^^^^^^ evaluation of `C` failed here
+   |          ^ doesn't have a size known at compile-time
+   |
+   = help: within `S`, the trait `Sized` is not implemented for `[u8]`
+note: required because it appears within the type `S`
+  --> $DIR/base-layout-is-sized-ice-123078.rs:4:8
+   |
+LL | struct S {
+   |        ^
+   = note: statics and constants must have a statically known size
 
-error[E0512]: cannot transmute between types of different sizes, or dependently-sized types
+error[E0161]: cannot move a value of type `S`
+  --> $DIR/base-layout-is-sized-ice-123078.rs:15:5
+   |
+LL |     C;
+   |     ^ the size of `S` cannot be statically determined
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
   --> $DIR/base-layout-is-sized-ice-123078.rs:10:23
    |
 LL | const C: S = unsafe { std::mem::transmute(()) };
-   |                       ^^^^^^^^^^^^^^^^^^^
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
-   = note: source type: `()` (0 bits)
-   = note: target type: `S` (the type `S` has an unknown layout)
+   = help: within `S`, the trait `Sized` is not implemented for `[u8]`
+note: required because it appears within the type `S`
+  --> $DIR/base-layout-is-sized-ice-123078.rs:4:8
+   |
+LL | struct S {
+   |        ^
+note: required by an implicit `Sized` bound in `std::intrinsics::transmute`
+  --> $SRC_DIR/core/src/intrinsics/mod.rs:LL:COL
 
-error: aborting due to 3 previous errors
+error: aborting due to 4 previous errors
 
-Some errors have detailed explanations: E0080, E0277, E0512.
-For more information about an error, try `rustc --explain E0080`.
+Some errors have detailed explanations: E0161, E0277.
+For more information about an error, try `rustc --explain E0161`.
