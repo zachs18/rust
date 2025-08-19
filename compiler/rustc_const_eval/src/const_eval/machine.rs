@@ -388,8 +388,12 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                         } else {
                             // The pointers are within (or one past the end of) different
                             // non-zero-sized static allocations, and they are not at oppotiste
-                            // ends, so we know they are not equal because statics cannot
-                            // overlap or be deduplicated.
+                            // ends, so we know they are not equal because non-zero-sized statics
+                            // cannot overlap or be deduplicated, as per
+                            // https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.intro
+                            // (non-deduplication), and
+                            // https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
+                            // (non-overlapping)
                             0
                         }
                     } else {
