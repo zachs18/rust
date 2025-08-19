@@ -322,8 +322,11 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                         // cannot be sure of runtime equality of pointers to the same one, (or the
                         // runtime inequality of pointers to different ones) (see e.g. #73722).
                         Some(GlobalAlloc::Function { .. } | GlobalAlloc::VTable(..)) => 2,
-                        // FIXME: Can these be duplicated (or deduplicated)?
-                        Some(GlobalAlloc::Memory(..) | GlobalAlloc::TypeId { .. }) => 2,
+                        // FIXME: Can these can be duplicated?
+                        Some(GlobalAlloc::Memory(..)) => 2,
+                        // `GlobalAlloc::TypeId` exists mostly to prevent consteval from comparing
+                        // `TypeId`s, always return 2
+                        Some(GlobalAlloc::TypeId { .. }) => 2,
                     }
                 } else {
                     if let (Some(GlobalAlloc::Static(a_did)), Some(GlobalAlloc::Static(b_did))) = (
@@ -367,8 +370,12 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                     } else {
                         // Even if one of them is a static, as per https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
                         // immutable statics can overlap with other kinds of allocations somtimes.
-                        // FIXME: We could be more decisive for mutable statics, which cannot
-                        // overlap with other kinds of allocations.
+                        // FIXME: We could be more decisive for (non-zero-sized) mutable statics,
+                        // which cannot overlap with other kinds of allocations.
+                        // `GlobalAlloc::{Memory, Function, Vtable}` can at least be deduplicated with
+                        // the same kind, so comparing two of the same kind of those should return 2.
+                        // `GlobalAlloc::TypeId` exists mostly to prevent consteval from comparing
+                        // `TypeId`s, so comparing two of those should always return 2.
                         // FIXME: Can we determine any other cases?
                         2
                     }
