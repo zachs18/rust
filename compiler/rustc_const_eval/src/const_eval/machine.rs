@@ -287,8 +287,33 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
             {
                 0
             }
-            // Other ways of comparing integers and pointers can never be known for sure.
-            (Scalar::Int { .. }, Scalar::Ptr(..)) | (Scalar::Ptr(..), Scalar::Int { .. }) => 2,
+            // Other ways of comparing integers and pointers can never be known for sure,
+            // except for alignment, e.g. `1 as *const _` can never be equal to an even offset
+            // in an `align(2)` allocation.
+            (Scalar::Int(int), Scalar::Ptr(ptr, _)) | (Scalar::Ptr(ptr, _), Scalar::Int(int)) => {
+                let int = int.to_target_usize(*self.tcx);
+                let (ptr_prov, ptr_offset) = ptr.prov_and_relative_offset();
+                let allocid = ptr_prov.alloc_id();
+                let allocinfo = self.get_alloc_info(allocid);
+
+                // Check if the pointer cannot be equal to the integer due to alignment.
+                // For this purpose, an integer can be thought of as an offset into a
+                // maximally-aligned "allocation" (the whole address space),
+                // so the least common alignment is the alignment of the pointer's allocation.
+                let min_align = allocinfo.align.bytes();
+                let ptr_residue = ptr_offset.bytes() % min_align;
+                let int_residue = int % min_align;
+                if ptr_residue != int_residue {
+                    // The pointer and integer have a different residue modulo their common
+                    // alignment, they can never be equal.
+                    0
+                } else {
+                    // The pointer and integer have the same residue modulo their common alignment,
+                    // so the pointer could end up equal to the integer at runtime;
+                    // we can't know for sure.
+                    2
+                }
+            }
             (Scalar::Ptr(a, _), Scalar::Ptr(b, _)) => {
                 let (a_prov, a_offset) = a.prov_and_relative_offset();
                 let (b_prov, b_offset) = b.prov_and_relative_offset();
@@ -303,7 +328,7 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                     let a_residue = a_offset.bytes() % min_align;
                     let b_residue = b_offset.bytes() % min_align;
                     if a_residue != b_residue {
-                        // If the two pointers have a different residue from their
+                        // If the two pointers have a different residue modulo their
                         // common alignment, they cannot be equal.
                         return interp_ok(0);
                     }
