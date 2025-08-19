@@ -368,8 +368,8 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                             // pointers are (in)equal.
                             // FIXME: Can zero-sized static be "within" non-zero-sized statics?
                             // Conservatively we say yes, since that doesn't cause them to
-                            // "overlap" any bytes, but if not, then we could delete this branch
-                            // and have the other branches handle ZST allocations.
+                            // "overlap" any bytes, but if not, then we could delete this branch;
+                            // the other branches would already handle ZST allocations correctly.
                             2
                         } else if a_offset > a_info.size || b_offset > b_info.size {
                             // One or both pointers are out of bounds of their allocation,
