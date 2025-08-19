@@ -1,4 +1,5 @@
-//@ build-pass
+//@ compile-flags: --crate-type=lib
+//@ check-pass
 //@ edition: 2024
 #![feature(const_raw_ptr_comparison)]
 #![feature(fn_align)]
@@ -77,14 +78,28 @@ const VTABLE_PTR_2: *const () = {
     vtable
 };
 
-// Cannot be `None`: static's address, references, and `fn` pointers cannot be null,
-// and `is_null` is stable with strong guarantees, and `is_null` is implemented using
-// `guaranteed_cmp`.
-do_test!(&A, std::ptr::null::<()>(), Some(false));
-do_test!(&ZST, std::ptr::null::<()>(), Some(false));
-do_test!(&(), std::ptr::null::<()>(), Some(false));
-do_test!(const { &() }, std::ptr::null::<()>(), Some(false));
-do_test!(FN_PTR, std::ptr::null::<()>(), Some(false));
+// Cannot be `None`: `is_null` is stable with strong guarantees about integer-valued pointers.
+do_test!(0 as *const u8, 0 as *const u8, Some(true));
+do_test!(0 as *const u8, 1 as *const u8, Some(false));
+
+// Cannot be `None`: `static`s' addresses, references, (and within and one-past-the-end of those),
+// and `fn` pointers cannot be null, and `is_null` is stable with strong guarantees, and
+// `is_null` is implemented using `guaranteed_cmp`.
+do_test!(&A, 0 as *const u8, Some(false));
+do_test!((&raw const A).cast::<u8>().wrapping_add(1), 0 as *const u8, Some(false));
+do_test!((&raw const A).wrapping_add(1), 0 as *const u8, Some(false));
+do_test!(&ZST, 0 as *const u8, Some(false));
+do_test!(&(), 0 as *const u8, Some(false));
+do_test!(const { &() }, 0 as *const u8, Some(false));
+do_test!(FN_PTR, 0 as *const u8, Some(false));
+
+// aside from 0, these pointers might end up pretty much anywhere.
+do_test!(&A, align_of::<T>() as *const u8, None);
+do_test!(&A, 1 as *const u8, Some(false)); // this one takes into account alignment, so we know that
+
+// When pointers go out-of-bounds, they *might* become null, so these comparions cannot work.
+do_test!((&raw const A).wrapping_add(2), 0 as *const u8, None);
+do_test!((&raw const A).wrapping_sub(1), 0 as *const u8, None);
 
 // Statics cannot be duplicated
 do_test!(&A, &A, Some(true));
@@ -167,5 +182,3 @@ do_test!((&raw const LARGE_WORD_ALIGNED).cast::<usize>().wrapping_add(1), VTABLE
 do_test!((&raw const MUT_LARGE_WORD_ALIGNED).cast::<usize>().wrapping_add(1), VTABLE_PTR_1, None);
 do_test!((&raw const LARGE_WORD_ALIGNED).cast::<usize>().wrapping_add(1), FN_PTR, None);
 do_test!((&raw const MUT_LARGE_WORD_ALIGNED).cast::<usize>().wrapping_add(1), FN_PTR, None);
-
-fn main() {}
