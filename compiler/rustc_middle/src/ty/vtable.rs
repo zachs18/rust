@@ -2,15 +2,14 @@ use std::fmt;
 
 use rustc_ast::Mutability;
 use rustc_macros::HashStable;
-use rustc_type_ir::elaborate;
 
 use crate::mir::interpret::{
     AllocId, AllocInit, Allocation, CTFE_ALLOC_SALT, Pointer, Scalar, alloc_range,
 };
-use crate::ty::{self, Instance, TraitRef, Ty, TyCtxt};
+use crate::ty::{self, ExistentialTraitRef, Instance, TraitRef, Ty, TyCtxt};
 
 #[derive(Clone, Copy, PartialEq, HashStable)]
-pub enum VtblEntry<'tcx> {
+pub enum RawVtblEntry<Instance, TraitRef> {
     /// destructor of this type (used in vtable header)
     MetadataDropInPlace,
     /// layout size of this type (used in vtable header)
@@ -20,14 +19,17 @@ pub enum VtblEntry<'tcx> {
     /// non-dispatchable associated function that is excluded from trait object
     Vacant,
     /// dispatchable associated function
-    Method(Instance<'tcx>),
+    Method(Instance),
     /// pointer to a separate supertrait vtable, can be used by trait upcasting coercion
-    TraitVPtr(TraitRef<'tcx>),
+    TraitVPtr(TraitRef),
 }
+
+pub type VtblEntry<'tcx> = RawVtblEntry<Instance<'tcx>, TraitRef<'tcx>>;
+pub type ExistentialVtblEntry<'tcx> = RawVtblEntry<(), ExistentialTraitRef<'tcx>>;
 
 impl<'tcx> fmt::Debug for VtblEntry<'tcx> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // We want to call `Display` on `Instance` and `PolyTraitRef`,
+        // We want to call `Display` on `Instance` and `TraitRef`,
         // so we implement this manually.
         match self {
             VtblEntry::MetadataDropInPlace => write!(f, "MetadataDropInPlace"),
@@ -40,38 +42,50 @@ impl<'tcx> fmt::Debug for VtblEntry<'tcx> {
     }
 }
 
+impl<'tcx> fmt::Debug for ExistentialVtblEntry<'tcx> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // We want to call `Display` on `Instance` and `TraitRef`,
+        // so we implement this manually.
+        match self {
+            ExistentialVtblEntry::MetadataDropInPlace => write!(f, "MetadataDropInPlace"),
+            ExistentialVtblEntry::MetadataSize => write!(f, "MetadataSize"),
+            ExistentialVtblEntry::MetadataAlign => write!(f, "MetadataAlign"),
+            ExistentialVtblEntry::Vacant => write!(f, "Vacant"),
+            ExistentialVtblEntry::Method(()) => write!(f, "Method"),
+            ExistentialVtblEntry::TraitVPtr(trait_ref) => write!(f, "TraitVPtr({trait_ref})"),
+        }
+    }
+}
+
 // Needs to be associated with the `'tcx` lifetime
 impl<'tcx> TyCtxt<'tcx> {
     pub const COMMON_VTABLE_ENTRIES: &'tcx [VtblEntry<'tcx>] =
         &[VtblEntry::MetadataDropInPlace, VtblEntry::MetadataSize, VtblEntry::MetadataAlign];
+    pub const COMMON_VTABLE_ENTRIES_EXISTENTIAL: &'tcx [ExistentialVtblEntry<'tcx>] = &[
+        ExistentialVtblEntry::MetadataDropInPlace,
+        ExistentialVtblEntry::MetadataSize,
+        ExistentialVtblEntry::MetadataAlign,
+    ];
 }
 
 pub const COMMON_VTABLE_ENTRIES_DROPINPLACE: usize = 0;
 pub const COMMON_VTABLE_ENTRIES_SIZE: usize = 1;
 pub const COMMON_VTABLE_ENTRIES_ALIGN: usize = 2;
 
-// Note that we don't have access to a self type here, this has to be purely based on the trait (and
-// supertrait) definitions. That means we can't call into the same vtable_entries code since that
-// returns a specific instantiation (e.g., with Vacant slots when bounds aren't satisfied). The goal
-// here is to do a best-effort approximation without duplicating a lot of code.
-//
-// This function is used in layout computation for e.g. &dyn Trait, so it's critical that this
-// function is an accurate approximation. We verify this when actually computing the vtable below.
+// This function is used to give codegen backends information about vtables in e.g. &dyn Trait, so
+// it's critical that this function is not an over-estimate. We verify this when actually
+// computing the vtable below.
 pub(crate) fn vtable_min_entries<'tcx>(
     tcx: TyCtxt<'tcx>,
     trait_ref: Option<ty::ExistentialTraitRef<'tcx>>,
 ) -> usize {
-    let mut count = TyCtxt::COMMON_VTABLE_ENTRIES.len();
     let Some(trait_ref) = trait_ref else {
-        return count;
+        return TyCtxt::COMMON_VTABLE_ENTRIES.len();
     };
 
-    // This includes self in supertraits.
-    for def_id in elaborate::supertrait_def_ids(tcx, trait_ref.def_id) {
-        count += tcx.own_existential_vtable_entries(def_id).len();
-    }
+    let entries = tcx.existential_vtable_entries(trait_ref);
 
-    count
+    entries.len()
 }
 
 /// Retrieves an allocation that represents the contents of a vtable.

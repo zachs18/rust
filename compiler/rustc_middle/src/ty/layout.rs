@@ -1084,7 +1084,8 @@ where
 
                 // Fixup `DynMetadata<dyn Trait>`. Recursive traversal will have found the raw
                 // pointer to `extern type VTable` (or the `&'static ()` in minicore), but we want
-                // to tell the codegen backend about the actual vtable pointer.
+                // to tell the codegen backend about the actual vtable pointer for
+                // `dereferenceable` metadata.
                 if let Some(ref mut pointee) = result
                     && offset.bytes() == 0
                     && let ty::Adt(def, args) = this.ty.kind()

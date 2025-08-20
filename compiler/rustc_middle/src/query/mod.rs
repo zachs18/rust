@@ -1570,6 +1570,11 @@ rustc_queries! {
 
     query vtable_entries(key: ty::TraitRef<'tcx>)
                         -> &'tcx [ty::VtblEntry<'tcx>] {
+        desc { |tcx| "finding all vtable entries for type `{}` as trait `{}`", key.args.type_at(0), tcx.def_path_str(key.def_id) }
+    }
+
+    query existential_vtable_entries(key: ty::ExistentialTraitRef<'tcx>)
+                        -> &'tcx [ty::ExistentialVtblEntry<'tcx>] {
         desc { |tcx| "finding all vtable entries for trait `{}`", tcx.def_path_str(key.def_id) }
     }
 

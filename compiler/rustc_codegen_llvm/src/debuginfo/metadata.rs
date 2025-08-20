@@ -271,6 +271,44 @@ fn build_pointer_or_reference_di_node<'ll, 'tcx>(
     }
 }
 
+/// Creates debuginfo for vtable pointer, i.e. `std::ptr::DynMetadata<dyn Trait + _>`.
+///
+/// It points to a vtable type as created by [`build_vtable_type_di_node`], but for `dyn Trait + _`
+/// instead of a concrete `Sized` receiver.
+fn build_vtable_pointer_di_node<'ll, 'tcx>(
+    cx: &CodegenCx<'ll, 'tcx>,
+    dyn_ty: Ty<'tcx>,
+    unique_type_id: UniqueTypeId<'tcx>,
+) -> DINodeCreationResult<'ll> {
+    let void_pointer_ty = Ty::new_imm_ptr(cx.tcx, cx.tcx.types.unit);
+    let pointer_layout = cx.layout_of(void_pointer_ty);
+    let pointer_size = pointer_layout.size;
+    let pointer_align = pointer_layout.align.abi;
+
+    let trait_ref = match dyn_ty.kind() {
+        ty::Dynamic(data, _, ty::Dyn) => data.principal().map(|trait_ref| trait_ref.skip_binder()),
+        _ => None,
+    };
+
+    let vtable_di_node = build_vtable_type_di_node(cx, dyn_ty, trait_ref);
+
+    return_if_di_node_created_in_meantime!(cx, unique_type_id);
+
+    let di_node = unsafe {
+        llvm::LLVMRustDIBuilderCreatePointerType(
+            DIB(cx),
+            vtable_di_node,
+            pointer_size.bits(),
+            pointer_align.bits() as u32,
+            0, // Ignore DWARF address space.
+            std::ptr::null(),
+            0,
+        )
+    };
+
+    DINodeCreationResult { di_node, already_stored_in_typemap: false }
+}
+
 fn build_subroutine_type_di_node<'ll, 'tcx>(
     cx: &CodegenCx<'ll, 'tcx>,
     unique_type_id: UniqueTypeId<'tcx>,
@@ -452,6 +490,11 @@ pub(crate) fn type_di_node<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>, t: Ty<'tcx>) ->
                 && args.get(1).is_none_or(|arg| cx.layout_of(arg.expect_ty()).is_1zst()) =>
         {
             build_pointer_or_reference_di_node(cx, t, t.expect_boxed_ty(), unique_type_id)
+        }
+        // `DynMetadata` is a newtyped vtable pointer, make debuginfo aware of that.
+        ty::Adt(def, args) if cx.tcx.is_lang_item(def.did(), rustc_hir::LangItem::DynMetadata) => {
+            let dyn_ty = args.type_at(0);
+            build_vtable_pointer_di_node(cx, dyn_ty, unique_type_id)
         }
         ty::FnDef(..) | ty::FnPtr(..) => build_subroutine_type_di_node(cx, unique_type_id),
         ty::Closure(..) => build_closure_env_di_node(cx, unique_type_id),
@@ -1419,17 +1462,16 @@ pub(crate) fn build_global_var_di_node<'ll>(
 fn build_vtable_type_di_node<'ll, 'tcx>(
     cx: &CodegenCx<'ll, 'tcx>,
     ty: Ty<'tcx>,
-    poly_trait_ref: Option<ty::ExistentialTraitRef<'tcx>>,
+    trait_ref: Option<ty::ExistentialTraitRef<'tcx>>,
 ) -> &'ll DIType {
     let tcx = cx.tcx;
 
-    let vtable_entries = if let Some(poly_trait_ref) = poly_trait_ref {
-        let trait_ref = poly_trait_ref.with_self_ty(tcx, ty);
+    let vtable_entries = if let Some(trait_ref) = trait_ref {
         let trait_ref = tcx.erase_regions(trait_ref);
 
-        tcx.vtable_entries(trait_ref)
+        tcx.existential_vtable_entries(trait_ref)
     } else {
-        TyCtxt::COMMON_VTABLE_ENTRIES
+        TyCtxt::COMMON_VTABLE_ENTRIES_EXISTENTIAL
     };
 
     // All function pointers are described as opaque pointers. This could be improved in the future
@@ -1446,8 +1488,8 @@ fn build_vtable_type_di_node<'ll, 'tcx>(
     assert_eq!(cx.size_and_align_of(tcx.types.usize), (pointer_size, pointer_align));
 
     let vtable_type_name =
-        compute_debuginfo_vtable_name(cx.tcx, ty, poly_trait_ref, VTableNameKind::Type);
-    let unique_type_id = UniqueTypeId::for_vtable_ty(tcx, ty, poly_trait_ref);
+        compute_debuginfo_vtable_name(cx.tcx, ty, trait_ref, VTableNameKind::Type);
+    let unique_type_id = UniqueTypeId::for_vtable_ty(tcx, ty, trait_ref);
     let size = pointer_size * vtable_entries.len() as u64;
 
     // This gets mapped to a DW_AT_containing_type attribute which allows GDB to correlate
@@ -1472,21 +1514,21 @@ fn build_vtable_type_di_node<'ll, 'tcx>(
                 .enumerate()
                 .filter_map(|(index, vtable_entry)| {
                     let (field_name, field_type_di_node) = match vtable_entry {
-                        ty::VtblEntry::MetadataDropInPlace => {
+                        ty::RawVtblEntry::MetadataDropInPlace => {
                             ("drop_in_place".to_string(), void_pointer_type_di_node)
                         }
-                        ty::VtblEntry::Method(_) => {
+                        ty::RawVtblEntry::Method(_) => {
                             // Note: This code does not try to give a proper name to each method
                             //       because their might be multiple methods with the same name
                             //       (coming from different traits).
                             (format!("__method{index}"), void_pointer_type_di_node)
                         }
-                        ty::VtblEntry::TraitVPtr(_) => {
+                        ty::RawVtblEntry::TraitVPtr(_) => {
                             (format!("__super_trait_ptr{index}"), void_pointer_type_di_node)
                         }
-                        ty::VtblEntry::MetadataAlign => ("align".to_string(), usize_di_node),
-                        ty::VtblEntry::MetadataSize => ("size".to_string(), usize_di_node),
-                        ty::VtblEntry::Vacant => return None,
+                        ty::RawVtblEntry::MetadataAlign => ("align".to_string(), usize_di_node),
+                        ty::RawVtblEntry::MetadataSize => ("size".to_string(), usize_di_node),
+                        ty::RawVtblEntry::Vacant => return None,
                     };
 
                     let field_offset = pointer_size * index as u64;

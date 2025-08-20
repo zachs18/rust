@@ -6,7 +6,8 @@ use rustc_infer::traits::util::PredicateSet;
 use rustc_middle::bug;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{
-    self, GenericArgs, GenericParamDefKind, Ty, TyCtxt, TypeVisitableExt, Upcast, VtblEntry,
+    self, ExistentialVtblEntry, GenericArgs, GenericParamDefKind, RawVtblEntry, Ty, TyCtxt,
+    TypeVisitableExt, Upcast, VtblEntry,
 };
 use rustc_span::DUMMY_SP;
 use smallvec::{SmallVec, smallvec};
@@ -20,10 +21,11 @@ pub enum VtblSegment<'tcx> {
     TraitOwnEntries { trait_ref: ty::TraitRef<'tcx>, emit_vptr: bool },
 }
 
-/// Prepare the segments for a vtable
-// FIXME: This should take a `PolyExistentialTraitRef`, since we don't care
-// about our `Self` type here.
-pub fn prepare_vtable_segments<'tcx, T>(
+/// Prepare the segments for a vtable.
+/// We don't take a `ExistentialTraitRef`, since some uses need a relevant `Self` type
+/// (e.g. to compute impossible predicates). For other uses, it's fine for `Self` to
+/// be `tcx.types.trait_object_dummy_self`.
+fn prepare_vtable_segments<'tcx, T>(
     tcx: TyCtxt<'tcx>,
     trait_ref: ty::TraitRef<'tcx>,
     segment_visitor: impl FnMut(VtblSegment<'tcx>) -> ControlFlow<T>,
@@ -219,10 +221,16 @@ fn own_existential_vtable_entries_iter(
 
 /// Given a trait `trait_ref`, iterates the vtable entries
 /// that come from `trait_ref`, including its supertraits.
-fn vtable_entries<'tcx>(
+///
+/// `trait_ref`'s `Self` type may be `tcx.types.trait_object_dummy_self` if `method_entry`
+/// and `trait_vptr_entry` do not require it to be an actual `Self` type for the trait.
+fn vtable_entries_impl<'tcx, Entry: Copy>(
     tcx: TyCtxt<'tcx>,
     trait_ref: ty::TraitRef<'tcx>,
-) -> &'tcx [VtblEntry<'tcx>] {
+    common_entries: &[Entry],
+    mut method_entry: impl FnMut(TyCtxt<'tcx>, DefId, ty::GenericArgsRef<'tcx>) -> Entry,
+    mut trait_vptr_entry: impl FnMut(TyCtxt<'tcx>, ty::TraitRef<'tcx>) -> Entry,
+) -> Vec<Entry> {
     debug_assert!(!trait_ref.has_non_region_infer() && !trait_ref.has_non_region_param());
     debug_assert_eq!(
         tcx.normalize_erasing_regions(ty::TypingEnv::fully_monomorphized(), trait_ref),
@@ -234,10 +242,10 @@ fn vtable_entries<'tcx>(
 
     let mut entries = vec![];
 
-    let vtable_segment_callback = |segment| -> ControlFlow<()> {
+    let vtable_segment_callback = |segment| -> ControlFlow<!> {
         match segment {
             VtblSegment::MetadataDSA => {
-                entries.extend(TyCtxt::COMMON_VTABLE_ENTRIES);
+                entries.extend(common_entries);
             }
             VtblSegment::TraitOwnEntries { trait_ref, emit_vptr } => {
                 let existential_trait_ref = ty::ExistentialTraitRef::erase_self_ty(tcx, trait_ref);
@@ -262,34 +270,13 @@ fn vtable_entries<'tcx>(
                         }),
                     );
 
-                    // It's possible that the method relies on where-clauses that
-                    // do not hold for this particular set of type parameters.
-                    // Note that this method could then never be called, so we
-                    // do not want to try and codegen it, in that case (see #23435).
-                    let predicates = tcx.predicates_of(def_id).instantiate_own(tcx, args);
-                    if impossible_predicates(
-                        tcx,
-                        predicates.map(|(predicate, _)| predicate).collect(),
-                    ) {
-                        debug!("vtable_entries: predicates do not hold");
-                        return VtblEntry::Vacant;
-                    }
-
-                    let instance = ty::Instance::expect_resolve_for_vtable(
-                        tcx,
-                        ty::TypingEnv::fully_monomorphized(),
-                        def_id,
-                        args,
-                        DUMMY_SP,
-                    );
-
-                    VtblEntry::Method(instance)
+                    method_entry(tcx, def_id, args)
                 });
 
                 entries.extend(own_entries);
 
                 if emit_vptr {
-                    entries.push(VtblEntry::TraitVPtr(trait_ref));
+                    entries.push(trait_vptr_entry(tcx, trait_ref));
                 }
             }
         }
@@ -297,9 +284,64 @@ fn vtable_entries<'tcx>(
         ControlFlow::Continue(())
     };
 
-    let _ = prepare_vtable_segments(tcx, trait_ref, vtable_segment_callback);
+    let None = prepare_vtable_segments(tcx, trait_ref, vtable_segment_callback);
 
-    tcx.arena.alloc_from_iter(entries)
+    entries
+}
+
+/// Given a trait `trait_ref`, iterates the vtable entries
+/// that come from `trait_ref`, including its supertraits.
+fn vtable_entries<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    trait_ref: ty::TraitRef<'tcx>,
+) -> &'tcx [VtblEntry<'tcx>] {
+    tcx.arena.alloc_from_iter(vtable_entries_impl(
+        tcx,
+        trait_ref,
+        TyCtxt::COMMON_VTABLE_ENTRIES,
+        |tcx, def_id, args| {
+            // It's possible that the method relies on where-clauses that
+            // do not hold for this particular set of type parameters.
+            // Note that this method could then never be called, so we
+            // do not want to try and codegen it, in that case (see #23435).
+            let predicates = tcx.predicates_of(def_id).instantiate_own(tcx, args);
+            if impossible_predicates(tcx, predicates.map(|(predicate, _)| predicate).collect()) {
+                debug!("vtable_entries: predicates do not hold");
+                return RawVtblEntry::Vacant;
+            }
+
+            let instance = ty::Instance::expect_resolve_for_vtable(
+                tcx,
+                ty::TypingEnv::fully_monomorphized(),
+                def_id,
+                args,
+                DUMMY_SP,
+            );
+
+            RawVtblEntry::Method(instance)
+        },
+        |_tcx, trait_ref| RawVtblEntry::TraitVPtr(trait_ref),
+    ))
+}
+
+/// Given a trait `trait_ref`, iterates the vtable entries
+/// that come from `trait_ref`, including its supertraits.
+fn existential_vtable_entries<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    trait_ref: ty::ExistentialTraitRef<'tcx>,
+) -> &'tcx [ExistentialVtblEntry<'tcx>] {
+    tcx.arena.alloc_from_iter(vtable_entries_impl(
+        tcx,
+        trait_ref.with_self_ty(tcx, tcx.types.trait_object_dummy_self),
+        TyCtxt::COMMON_VTABLE_ENTRIES_EXISTENTIAL,
+        // We don't try to emit `Vacant` by checking for impossible predicates here, since it's
+        // difficult to correctly handle the `Self` type. e.g. if we tried to use
+        // `Self = dyn Trait`, then `where Self: Sync` would be considered impossible
+        |_tcx, _def_id, _args| RawVtblEntry::Method(()),
+        |tcx, trait_ref| {
+            RawVtblEntry::TraitVPtr(ty::ExistentialTraitRef::erase_self_ty(tcx, trait_ref))
+        },
+    ))
 }
 
 // Given a `dyn Subtrait: Supertrait` trait ref, find corresponding first slot
@@ -436,6 +478,7 @@ pub(super) fn provide(providers: &mut Providers) {
     *providers = Providers {
         own_existential_vtable_entries,
         vtable_entries,
+        existential_vtable_entries,
         first_method_vtable_slot,
         supertrait_vtable_slot,
         ..*providers

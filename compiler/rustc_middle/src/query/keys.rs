@@ -400,6 +400,14 @@ impl<'tcx> Key for ty::PolyTraitRef<'tcx> {
     }
 }
 
+impl<'tcx> Key for ty::ExistentialTraitRef<'tcx> {
+    type Cache<V> = DefaultCache<Self, V>;
+
+    fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
+        tcx.def_span(self.def_id)
+    }
+}
+
 impl<'tcx> Key for ty::PolyExistentialTraitRef<'tcx> {
     type Cache<V> = DefaultCache<Self, V>;
 
