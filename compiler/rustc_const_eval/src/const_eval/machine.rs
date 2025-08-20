@@ -347,7 +347,8 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                         // cannot be sure of runtime equality of pointers to the same one, (or the
                         // runtime inequality of pointers to different ones) (see e.g. #73722).
                         Some(GlobalAlloc::Function { .. } | GlobalAlloc::VTable(..)) => 2,
-                        // FIXME: Can these can be duplicated?
+                        // FIXME: Revisit this once https://github.com/rust-lang/rust/issues/128775
+                        // is fixed.
                         Some(GlobalAlloc::Memory(..)) => 2,
                         // `GlobalAlloc::TypeId` exists mostly to prevent consteval from comparing
                         // `TypeId`s, always return 2
