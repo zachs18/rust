@@ -399,7 +399,7 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                         }
                     } else {
                         // Even if one of them is a static, as per https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
-                        // immutable statics can overlap with other kinds of allocations somtimes.
+                        // immutable statics can overlap with other kinds of allocations sometimes.
                         // FIXME: We could be more decisive for (non-zero-sized) mutable statics,
                         // which cannot overlap with other kinds of allocations.
                         // `GlobalAlloc::{Memory, Function, Vtable}` can at least be deduplicated with
