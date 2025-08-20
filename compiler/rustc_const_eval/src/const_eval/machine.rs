@@ -336,79 +336,104 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
                     // so they could be equal. Try the other checks.
                 }
 
-                if a_allocid == b_allocid {
-                    match self.tcx.try_get_global_alloc(a_allocid) {
-                        None => 2,
-                        // A static cannot be duplicated, so if two pointers are into the same
-                        // static, they are equal if and only if their offsets into the static
-                        // are equal
-                        Some(GlobalAlloc::Static(_)) => (a_offset == b_offset) as u8,
-                        // Functions and vtables can be duplicated (and deduplicated), so we
-                        // cannot be sure of runtime equality of pointers to the same one, (or the
-                        // runtime inequality of pointers to different ones) (see e.g. #73722).
-                        Some(GlobalAlloc::Function { .. } | GlobalAlloc::VTable(..)) => 2,
-                        // FIXME: Revisit this once https://github.com/rust-lang/rust/issues/128775
-                        // is fixed.
-                        Some(GlobalAlloc::Memory(..)) => 2,
-                        // `GlobalAlloc::TypeId` exists mostly to prevent consteval from comparing
-                        // `TypeId`s, always return 2
-                        Some(GlobalAlloc::TypeId { .. }) => 2,
-                    }
-                } else {
-                    if let (Some(GlobalAlloc::Static(a_did)), Some(GlobalAlloc::Static(b_did))) = (
-                        self.tcx.try_get_global_alloc(a_allocid),
-                        self.tcx.try_get_global_alloc(b_allocid),
-                    ) {
+                if let (Some(GlobalAlloc::Static(a_did)), Some(GlobalAlloc::Static(b_did))) = (
+                    self.tcx.try_get_global_alloc(a_allocid),
+                    self.tcx.try_get_global_alloc(b_allocid),
+                ) {
+                    if a_allocid == b_allocid {
+                        debug_assert_eq!(
+                            a_did, b_did,
+                            "different static item DefIds had same AllocId? {a_allocid:?} == {b_allocid:?}, {a_did:?} != {b_did:?}"
+                        );
+                        // Comparing two pointers into the same static. As per
+                        // https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.intro
+                        // a static cannot be duplicated, so if two pointers are into the same
+                        // static, they are equal if and only if their offsets are equal.
+                        (a_offset == b_offset) as u8
+                    } else {
                         debug_assert_ne!(
                             a_did, b_did,
                             "same static item DefId had two different AllocIds? {a_allocid:?} != {b_allocid:?}, {a_did:?} == {b_did:?}"
                         );
-
+                        // Comparing two pointers into the different statics.
+                        // We can never determine for sure that two pointers into different
+                        // statics are *equal*, but we can know that they are *inequal*
+                        // if them being equal would require their statics to overlap, as per
+                        // https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
+                        // we know that two different non-zero-sized statics cannot
+                        // overlap.
                         if a_info.size == Size::ZERO || b_info.size == Size::ZERO {
                             // One or both allocations is zero-sized, so we can't know if the
                             // pointers are (in)equal.
                             // FIXME: Can zero-sized static be "within" non-zero-sized statics?
                             // Conservatively we say yes, since that doesn't cause them to
-                            // "overlap" any bytes, but if not, then we could delete this branch;
-                            // the other branches would already handle ZST allocations correctly.
+                            // "overlap" any bytes.
                             2
-                        } else if a_offset > a_info.size || b_offset > b_info.size {
-                            // One or both pointers are out of bounds of their allocation,
-                            // so conservatively say we don't know.
-                            // FIXME: we could reason about how far out of bounds the pointers are,
-                            // e.g. two pointers cannot be equal if them being equal would require
-                            // their statics to overlap.
-                            2
-                        } else if (a_offset == Size::ZERO && b_offset == b_info.size)
-                            || (a_offset == a_info.size && b_offset == Size::ZERO)
-                        {
-                            // The pointers are on opposite ends of different allocations, we
-                            // cannot know if they are equal, since the allocations may end up
-                            // adjacent at runtime.
-                            2
+                        } else if a_offset > b_offset {
+                            // `a` is offset further into its static than `b` is into its.
+                            // If `a` and `b` were to be equal, then `a`'s static would have to
+                            // start at an address `diff` bytes before `b`'s static.
+                            let diff = a_offset - b_offset;
+                            if a_info.size > diff {
+                                // If `a`'s static is more than `diff` bytes in size,
+                                // the pointers being equal would imply that the two statics
+                                // overlap, which we know is impossible, so the pointers cannot
+                                // be equal
+                                0
+                            } else {
+                                // Otherwise, that layout is possible (but not necessarily the
+                                // case), so we can't know if the pointers are equal or not.
+                                2
+                            }
+                        } else if a_offset < b_offset {
+                            // `b` is offset further into its static than `a` is into its.
+                            // If `a` and `b` were to be equal, then `b`'s static would have to
+                            // start at an address `diff` bytes before `a`'s static.
+                            let diff = b_offset - a_offset;
+                            if b_info.size > diff {
+                                // If `b`'s static is more than `diff` bytes in size,
+                                // the pointers being equal would imply that the two statics
+                                // overlap, which we know is impossible, so the pointers cannot
+                                // be equal
+                                0
+                            } else {
+                                // Otherwise, that layout is possible (but not necessarily the
+                                // case), so we can't know if the pointers are equal or not.
+                                2
+                            }
                         } else {
-                            // The pointers are within (or one past the end of) different
-                            // non-zero-sized static allocations, and they are not at oppotiste
-                            // ends, so we know they are not equal because non-zero-sized statics
-                            // cannot overlap or be deduplicated, as per
-                            // https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.intro
-                            // (non-deduplication), and
-                            // https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
-                            // (non-overlapping)
+                            debug_assert_eq!(a_offset, b_offset);
+                            // Two pointers with the same offset into different statics could only
+                            // be equal if those statics had the same base address. That would
+                            // cause the statics to overlap, (as they are non-zero-sized) so these
+                            // pointers cannot be equal.
                             0
                         }
-                    } else {
-                        // Even if one of them is a static, as per https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
-                        // immutable statics can overlap with other kinds of allocations sometimes.
-                        // FIXME: We could be more decisive for (non-zero-sized) mutable statics,
-                        // which cannot overlap with other kinds of allocations.
-                        // `GlobalAlloc::{Memory, Function, Vtable}` can at least be deduplicated with
-                        // the same kind, so comparing two of the same kind of those should return 2.
-                        // `GlobalAlloc::TypeId` exists mostly to prevent consteval from comparing
-                        // `TypeId`s, so comparing two of those should always return 2.
-                        // FIXME: Can we determine any other cases?
-                        2
                     }
+                } else {
+                    // All other cases we conservatively say we don't know.
+                    //
+                    // For comparing statics to non-statics, as per https://doc.rust-lang.org/nightly/reference/items/static-items.html#r-items.static.storage-disjointness
+                    // immutable statics can overlap with other kinds of allocations sometimes.
+                    //
+                    // FIXME: We could be more decisive for (non-zero-sized) mutable statics,
+                    // which cannot overlap with other kinds of allocations.
+                    //
+                    // Functions and vtables can be duplicated and deduplicated, so we
+                    // cannot be sure of runtime equality of pointers to the same one, or the
+                    // runtime inequality of pointers to different ones (see e.g. #73722),
+                    // so comparing those should return 2, whether they are the same allocation
+                    // or not.
+                    //
+                    // `GlobalAlloc::TypeId` exists mostly to prevent consteval from comparing
+                    // `TypeId`s, so comparing those should always return 2, whether they are the
+                    // same allocation or not.
+                    //
+                    // FIXME: We could revisit comparing pointers into the same
+                    // `GlobalAlloc::Memory` once https://github.com/rust-lang/rust/issues/128775
+                    // is fixed (but they can be deduplicated, so comparing pointers into different
+                    // ones should return 2).
+                    2
                 }
             }
         })

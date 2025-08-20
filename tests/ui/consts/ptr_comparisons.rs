@@ -141,6 +141,14 @@ do_test!(&A, (&T(42) as *const T).wrapping_byte_add(1), Some(false));
 do_test!(&A, (const { &T(42) } as *const T).wrapping_byte_add(1), Some(false));
 do_test!(&A, ({ const X: T = T(42); &X } as *const T).wrapping_byte_add(1), Some(false));
 
+// Pointers to different statics can never be equal if it would require the statics to overlap,
+// even if the pointers themselves are offset out of bounds.
+do_test!(
+    (&raw const LARGE_WORD_ALIGNED).cast::<usize>().wrapping_add(42),
+    (&raw const MUT_LARGE_WORD_ALIGNED).cast::<usize>().wrapping_add(41),
+    Some(false)
+);
+
 // Pointers into the same static are equal if and only if their offset is the same,
 // even if either is out-of-bounds.
 do_test!(&A, &A, Some(true));
