@@ -1393,13 +1393,14 @@ impl EarlyLintPass for UnusedParens {
                             && (is_last || !fn_with_explicit_ret_ty)
                             && !dyn2015_exception
                         {
-                            let s = poly_trait_ref.span;
-                            let spans = (!s.from_expansion()).then(|| {
-                                (
-                                    s.with_hi(s.lo() + rustc_span::BytePos(1)),
-                                    s.with_lo(s.hi() - rustc_span::BytePos(1)),
-                                )
-                            });
+                            let spans = (!ty.span.from_expansion())
+                                .then(|| {
+                                    poly_trait_ref
+                                        .span
+                                        .find_ancestor_inside(ty.span)
+                                        .map(|r| (ty.span.with_hi(r.lo()), ty.span.with_lo(r.hi())))
+                                })
+                                .flatten();
 
                             self.emit_unused_delims(
                                 cx,
