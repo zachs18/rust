@@ -2074,11 +2074,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 // FIXME(ptr_metadata_fields): tcx.adjust_ident from check_struct_expr_fields?
                 // let ident = self.tcx.adjust_ident(f.ident(self.tcx), variant.def_id);
                 if let Some(_) = remove_field(&mut remaining_fields, name, span) {
-                    let field_is_required = match ty.kind() {
-                        ty::PtrMetadata(field_pointee) => {
-                            !field_pointee.is_thin(tcx, self.infcx.typing_env(self.param_env))
-                        }
-                        _ => true,
+                    let field_is_required = if let ty::PtrMetadata(field_pointee) = ty.kind() {
+                        !field_pointee.is_thin(tcx, self.infcx.typing_env(self.param_env))
+                    } else {
+                        true
                     };
                     if field_is_required {
                         missing_mandatory_fields.push(name);
