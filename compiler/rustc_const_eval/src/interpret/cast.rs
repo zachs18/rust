@@ -360,9 +360,33 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         }
     }
 
-    /// `src` is a *pointer to* a `source_ty`, and in `dest` we should store a pointer to th same
+    /// `src` is a *pointer to* a `source_ty`, and in `dest` we should store a pointer to the same
     /// data at type `cast_ty`.
     fn unsize_into_ptr(
+        &mut self,
+        src: &OpTy<'tcx, M::Provenance>,
+        dest: &impl Writeable<'tcx, M::Provenance>,
+        // The pointee types
+        source_ty: Ty<'tcx>,
+        cast_ty: Ty<'tcx>,
+    ) -> InterpResult<'tcx> {
+        // A<Struct> -> A<Trait> conversion
+
+        let src_ptr = self.project_field(src, FieldIdx::ZERO)?;
+        let src_meta = self.project_field(src, FieldIdx::ONE)?;
+        let dest_ptr = self.project_field(dest, FieldIdx::ZERO)?;
+        let dest_meta = self.project_field(dest, FieldIdx::ONE)?;
+
+        let ptr = self.read_pointer(&src_ptr)?;
+        let ptr = Immediate::Scalar(Scalar::from_maybe_pointer(ptr, self));
+        self.write_immediate(ptr, &dest_ptr)?;
+
+        self.unsize_into_ptr_metadata(&src_meta, &dest_meta, source_ty, cast_ty)
+    }
+
+    /// `src` is a *pointer metadata for* a `source_ty`, and in `dest` we should store a pointer
+    /// metadata for the same data at type `cast_ty`.
+    fn unsize_into_ptr_metadata(
         &mut self,
         src: &OpTy<'tcx, M::Provenance>,
         dest: &impl Writeable<'tcx, M::Provenance>,
@@ -377,14 +401,10 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         match (src_pointee_ty.kind(), dest_pointee_ty.kind()) {
             (&ty::Array(_, length), &ty::Slice(_)) => {
-                let ptr = self.read_pointer(src)?;
-                let val = Immediate::new_slice(
-                    ptr,
-                    length
-                        .try_to_target_usize(*self.tcx)
-                        .expect("expected monomorphic const in const eval"),
-                    self,
-                );
+                let len = length
+                    .try_to_target_usize(*self.tcx)
+                    .expect("expected monomorphic const in const eval");
+                let val = Immediate::Scalar(Scalar::from_target_usize(len, self));
                 self.write_immediate(val, dest)
             }
             (ty::Dynamic(data_a, _), ty::Dynamic(data_b, _)) => {
@@ -396,8 +416,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     return self.write_immediate(*val, dest);
                 }
                 // Take apart the old pointer, and find the dynamic type.
-                let (old_data, old_vptr) = val.to_scalar_pair();
-                let old_data = old_data.to_pointer(self)?;
+                let old_vptr = val.to_scalar();
                 let old_vptr = old_vptr.to_pointer(self)?;
                 let ty = self.get_ptr_vtable_ty(old_vptr, Some(data_a))?;
 
@@ -435,13 +454,15 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 // Get the destination trait vtable and return that.
                 let new_vptr = self.get_vtable_ptr(ty, data_b)?;
-                self.write_immediate(Immediate::new_dyn_trait(old_data, new_vptr, self), dest)
+                self.write_immediate(
+                    Immediate::Scalar(Scalar::from_maybe_pointer(new_vptr, self)),
+                    dest,
+                )
             }
             (_, &ty::Dynamic(data, _)) => {
                 // Initial cast from sized to dyn trait
                 let vtable = self.get_vtable_ptr(src_pointee_ty, data)?;
-                let ptr = self.read_pointer(src)?;
-                let val = Immediate::new_dyn_trait(ptr, vtable, &*self.tcx);
+                let val = Immediate::Scalar(Scalar::from_maybe_pointer(vtable, self));
                 self.write_immediate(val, dest)
             }
             _ => {
@@ -451,7 +472,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 span_bug!(
                     self.cur_span(),
-                    "invalid pointer unsizing {} -> {}",
+                    "invalid pointer metadata unsizing {} -> {}",
                     src.layout.ty,
                     cast_ty
                 )
@@ -475,6 +496,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
             (&ty::Ref(_, s, _), &ty::Ref(_, c, _) | &ty::RawPtr(c, _))
             | (&ty::RawPtr(s, _), &ty::RawPtr(c, _)) => self.unsize_into_ptr(src, dest, s, c),
+            (&ty::PtrMetadata(s), &ty::PtrMetadata(c)) => {
+                self.unsize_into_ptr_metadata(src, dest, s, c)
+            }
             (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {
                 assert_eq!(def_a, def_b); // implies same number of fields
 

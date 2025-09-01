@@ -1146,7 +1146,8 @@ fn find_tails_for_unsizing<'tcx>(
             &ty::Ref(_, source_pointee, _),
             &ty::Ref(_, target_pointee, _) | &ty::RawPtr(target_pointee, _),
         )
-        | (&ty::RawPtr(source_pointee, _), &ty::RawPtr(target_pointee, _)) => tcx
+        | (&ty::RawPtr(source_pointee, _), &ty::RawPtr(target_pointee, _))
+        | (&ty::PtrMetadata(source_pointee), &ty::PtrMetadata(target_pointee)) => tcx
             .struct_or_union_lockstep_tails_for_codegen(source_pointee, target_pointee, typing_env),
 
         // `Box<T>` could go through the ADT code below, b/c it'll unpeel to `Unique<T>`,

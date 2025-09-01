@@ -68,6 +68,13 @@ impl<T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<*const U> for *
 #[unstable(feature = "coerce_unsized", issue = "18598")]
 impl<T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<*const U> for *const T {}
 
+// builtin # ptr_metadata(T) -> builtin # ptr_metadata(U)
+#[unstable(feature = "coerce_unsized", issue = "18598")]
+impl<T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<builtin!(ptr_metadata(U))>
+    for builtin!(ptr_metadata(T))
+{
+}
+
 /// `DispatchFromDyn` is used in the implementation of dyn-compatibility[^1] checks (specifically
 /// allowing arbitrary self types), to guarantee that a method's receiver type can be dispatched on.
 ///
@@ -132,3 +139,9 @@ impl<T: PointeeSized + Unsize<U>, U: PointeeSized> DispatchFromDyn<*const U> for
 // *mut T -> *mut U
 #[unstable(feature = "dispatch_from_dyn", issue = "none")]
 impl<T: PointeeSized + Unsize<U>, U: PointeeSized> DispatchFromDyn<*mut U> for *mut T {}
+// builtin # ptr_metadata(T) -> builtin # ptr_metadata(U)
+#[unstable(feature = "coerce_unsized", issue = "18598")]
+impl<T: PointeeSized + Unsize<U>, U: PointeeSized> DispatchFromDyn<builtin!(ptr_metadata(U))>
+    for builtin!(ptr_metadata(T))
+{
+}
