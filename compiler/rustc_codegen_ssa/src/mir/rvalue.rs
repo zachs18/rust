@@ -50,23 +50,24 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 ref source,
                 _,
             ) => {
-                // The destination necessarily contains a wide pointer, so if
-                // it's a scalar pair, it's a wide pointer or newtype thereof.
+                // The destination necessarily contains a pointer metadata,
+                // but it could be a nontrivial struct or a multi-wide metadata
+                // even if it's a scalar pair, not necessarily just a wide pointer
+                // or newtype thereof.
                 if bx.cx().is_backend_scalar_pair(dest.layout) {
-                    // Into-coerce of a thin pointer to a wide pointer -- just
+                    // Into-coerce of something small enough for an operand -- just
                     // use the operand path.
                     let temp = self.codegen_rvalue_operand(bx, rvalue);
                     temp.store_with_annotation(bx, dest);
                     return;
                 }
 
-                // Unsize of a nontrivial struct. I would prefer for
-                // this to be eliminated by MIR building, but
-                // `CoerceUnsized` can be passed by a where-clause,
-                // so the (generic) MIR may not be able to expand it.
+                // Unsize into a non-trivial struct, or a multi-wide pointer.
                 let operand = self.codegen_operand(bx, source);
                 match operand.val {
-                    OperandValue::Pair(..) | OperandValue::Immediate(_) => {
+                    OperandValue::Pair(..)
+                    | OperandValue::Immediate(_)
+                    | OperandValue::ZeroSized => {
                         // Unsize from an immediate structure. We don't
                         // really need a temporary alloca here, but
                         // avoiding it would require us to have
@@ -85,9 +86,6 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             bug!("unsized coercion on an unsized rvalue");
                         }
                         base::coerce_unsized_into(bx, val.with_type(operand.layout), dest);
-                    }
-                    OperandValue::ZeroSized => {
-                        bug!("unsized coercion on a ZST rvalue");
                     }
                 }
             }
@@ -439,11 +437,21 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         operand.val
                     }
                     mir::CastKind::PointerCoercion(PointerCoercion::Unsize, _) => {
-                        assert!(bx.cx().is_backend_scalar_pair(cast));
-                        let (lldata, llextra) = operand.val.pointer_parts();
-                        let (lldata, llextra) =
-                            base::unsize_ptr(bx, lldata, operand.layout.ty, cast.ty, llextra);
-                        OperandValue::Pair(lldata, llextra)
+                        if !bx.cx().is_backend_ref(cast) {
+                            return self.codegen_coerce_unsized_into_operand(bx, operand, cast);
+                        } else {
+                            // I think this should be unreachable. `codegen_rvalue_operand`
+                            // is only called for things that can be operands, right?
+                            tracing::warn!("FIXME(ptr_metadata_v2): This is unreachable, right?");
+                            let scratch = PlaceRef::alloca(bx, operand.layout);
+                            let result = PlaceRef::alloca(bx, cast);
+                            scratch.storage_live(bx);
+                            result.storage_live(bx);
+                            operand.val.store(bx, scratch);
+                            base::coerce_unsized_into(bx, scratch, result.clone());
+                            scratch.storage_dead(bx);
+                            return bx.load_operand(result);
+                        }
                     }
                     mir::CastKind::PointerCoercion(
                         PointerCoercion::MutToConstPointer | PointerCoercion::ArrayToPointer, _
@@ -461,6 +469,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                                 OperandValue::Immediate(data_ptr)
                             }
                         } else {
+                            // FIXME(ptr_metadata_v2): this will probably get hit when multi-wide pointers exist,
+                            // and we cast from a multi-wide pointer to a thin pointer (discarding the metadata).
                             bug!("unexpected non-pair operand");
                         }
                     }
@@ -711,6 +721,78 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 OperandRef { val: operand.val, layout, move_annotation: None }
             }
             mir::Rvalue::CopyForDeref(_) => bug!("`CopyForDeref` in codegen"),
+        }
+    }
+
+    /// Coerces `src`, which is a reference to a value of type `src_ty`,
+    /// to a value of type `dst_ty`, and returns it as an operand.
+    ///
+    /// Like [`crate::base::coerce_unsized_into`], but for immediate operands instead of places.
+    ///
+    /// The source and result must both not be `is_backend_ref`.
+    pub(crate) fn codegen_coerce_unsized_into_operand(
+        &mut self,
+        bx: &mut Bx,
+        src: OperandRef<'tcx, Bx::Value>,
+        dst_layout: TyAndLayout<'tcx>,
+    ) -> OperandRef<'tcx, Bx::Value> {
+        let src_ty = src.layout.ty;
+        let dst_ty = dst_layout.ty;
+        debug!("coerce_unsized_into_operand: {src_ty:?} -> {dst_ty:?}");
+        match (src_ty.kind(), dst_ty.kind()) {
+            (
+                &ty::Ref(_, src_pointee_ty, _),
+                &ty::Ref(_, dst_pointee_ty, _) | &ty::RawPtr(dst_pointee_ty, _),
+            )
+            | (&ty::RawPtr(src_pointee_ty, _), &ty::RawPtr(dst_pointee_ty, _)) => {
+                let (base, old_info) = match src.val {
+                    OperandValue::Pair(base, info) => (base, Some(info)),
+                    OperandValue::Immediate(base) => (base, None),
+                    OperandValue::Ref(..) | OperandValue::ZeroSized => bug!(),
+                };
+                let info = base::unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
+                OperandRef {
+                    val: OperandValue::Pair(base, info),
+                    layout: dst_layout,
+                    move_annotation: None,
+                }
+            }
+            (&ty::PtrMetadata(src_pointee_ty), &ty::PtrMetadata(dst_pointee_ty)) => {
+                let old_info = match src.val {
+                    OperandValue::Immediate(info) => Some(info),
+                    OperandValue::ZeroSized => None,
+                    OperandValue::Pair(..) | OperandValue::Ref(..) => bug!(),
+                };
+                let info = base::unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
+                OperandRef {
+                    val: OperandValue::Immediate(info),
+                    layout: dst_layout,
+                    move_annotation: None,
+                }
+            }
+
+            (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {
+                assert_eq!(def_a, def_b); // implies same number of fields
+
+                let mut dst = OperandRefBuilder::new(dst_layout);
+
+                for i in def_a.variant(FIRST_VARIANT).fields.indices() {
+                    let src_f = src.extract_field(self, bx, i.as_usize());
+                    let dst_f_layout = dst_layout.field(bx, i.as_usize());
+
+                    let dst_f_op = if src_f.layout.ty == dst_f_layout.ty {
+                        src_f
+                    } else {
+                        self.codegen_coerce_unsized_into_operand(bx, src_f, dst_f_layout)
+                    };
+                    dst.insert_field(bx, FIRST_VARIANT, i, dst_f_op);
+                }
+
+                dst.build(bx.cx())
+            }
+            _ => {
+                bug!("coerce_unsized_into_operand: invalid coercion {:?} -> {:?}", src_ty, dst_ty,)
+            }
         }
     }
 
