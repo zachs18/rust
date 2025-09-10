@@ -2446,6 +2446,7 @@ impl<'a> Formatter<'a> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
+    #[lang = "formatter_debug_struct_method"]
     pub fn debug_struct<'b>(&'b mut self, name: &str) -> DebugStruct<'b, 'a> {
         builders::debug_struct_new(self, name)
     }
@@ -3074,25 +3075,7 @@ impl<T: PointeeSized> Debug for *mut T {
         Pointer::fmt(self, f)
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
-impl<T: PointeeSized> Debug for core::ptr::Metadata<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        // FIXME(ptr_metadata_v2): make this a builtin impl that actually formats
-        // the metadata fields. The current impl is just a hack to avoid panicking while
-        // still printing *something*.
-
-        // SAFETY: this is currently sound, all ptr metadata is either:
-        // * (), which is 0 bytes,
-        // * usize, which is 8 initialized bytes,
-        // * DynMetadata, which is 8 initialized bytes
-        let data = unsafe {
-            let ptr = self as *const Self as *const usize;
-            let len = size_of::<Self>() / 8;
-            crate::slice::from_raw_parts(ptr, len)
-        };
-        data.fmt(f)
-    }
-}
+// impl<T: PointeeSized> Debug for core::ptr::Metadata<T> is a builtin impl
 
 macro_rules! peel {
     ($name:ident, $($other:ident,)*) => (tuple! { $($other,)* })

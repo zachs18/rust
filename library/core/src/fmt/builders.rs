@@ -85,6 +85,7 @@ impl fmt::Write for PadAdapter<'_, '_> {
 #[allow(missing_debug_implementations)]
 #[stable(feature = "debug_builders", since = "1.2.0")]
 #[rustc_diagnostic_item = "DebugStruct"]
+#[lang = "DebugStruct"]
 pub struct DebugStruct<'a, 'b: 'a> {
     fmt: &'a mut fmt::Formatter<'b>,
     result: fmt::Result,
@@ -128,6 +129,7 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     ///     r#"Bar { bar: 10, another: "Hello World", nonexistent_field: 1 }"#,
     /// );
     /// ```
+    #[lang = "debug_struct_field"]
     #[stable(feature = "debug_builders", since = "1.2.0")]
     pub fn field(&mut self, name: &str, value: &dyn fmt::Debug) -> &mut Self {
         self.field_with(name, |f| value.fmt(f))
@@ -193,6 +195,7 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     ///     "Bar { bar: 10, .. }",
     /// );
     /// ```
+    #[lang = "debug_struct_finish_non_exhaustive"]
     #[stable(feature = "debug_non_exhaustive", since = "1.53.0")]
     pub fn finish_non_exhaustive(&mut self) -> fmt::Result {
         self.result = self.result.and_then(|_| {
@@ -240,6 +243,7 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     ///     r#"Bar { bar: 10, baz: "Hello World" }"#,
     /// );
     /// ```
+    #[lang = "debug_struct_finish"]
     #[stable(feature = "debug_builders", since = "1.2.0")]
     pub fn finish(&mut self) -> fmt::Result {
         if self.has_fields {

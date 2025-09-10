@@ -35,6 +35,7 @@ pub enum SolverTraitLangItem {
     Clone,
     Copy,
     Coroutine,
+    DebugTrait,
     Destruct,
     DiscriminantKind,
     Drop,

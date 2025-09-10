@@ -796,6 +796,7 @@ bidirectional_lang_item_map! {
     Clone,
     Copy,
     Coroutine,
+    DebugTrait,
     Destruct,
     DiscriminantKind,
     Drop,
