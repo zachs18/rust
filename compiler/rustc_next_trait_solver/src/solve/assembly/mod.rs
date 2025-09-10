@@ -259,6 +259,12 @@ where
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolution>;
 
+    /// `builtin # ptr_metadata(T)` implements `Debug` for all `T`.
+    fn consider_builtin_debug_candidate(
+        ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution>;
+
     /// A type is a `FnPtr` if it is of `FnPtr` type.
     fn consider_builtin_fn_ptr_trait_candidate(
         ecx: &mut EvalCtxt<'_, D>,
@@ -592,6 +598,9 @@ where
                     | SolverTraitLangItem::TrivialClone,
                 ) => G::consider_builtin_copy_clone_candidate(self, goal),
                 Some(SolverTraitLangItem::Ord) => G::consider_builtin_ord_candidate(self, goal),
+                Some(SolverTraitLangItem::DebugTrait) => {
+                    G::consider_builtin_debug_candidate(self, goal)
+                }
                 Some(SolverTraitLangItem::Fn) => {
                     G::consider_builtin_fn_trait_candidates(self, goal, ty::ClosureKind::Fn)
                 }

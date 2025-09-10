@@ -418,6 +418,22 @@ fn resolve_associated_item<'tcx>(
                     def: ty::InstanceKind::PtrMetadataCmpShim(trait_item_id, pointee_ty),
                     args,
                 })
+            } else if tcx.is_lang_item(trait_ref.def_id, LangItem::DebugTrait) {
+                let name = tcx.item_name(trait_item_id);
+                assert_eq!(name, sym::fmt);
+                let args = tcx.erase_and_anonymize_regions(rcvr_args);
+                let &ty::PtrMetadata(pointee_ty) = trait_ref.self_ty().kind() else {
+                    bug!("non-PtrMetadata self ty for builtin Debug impl")
+                };
+                let ty::layout::MetadataFields::KnownFields(..) =
+                    pointee_ty.metadata_fields_for_pointee(tcx, None)
+                else {
+                    return Ok(None);
+                };
+                Some(ty::Instance {
+                    def: ty::InstanceKind::PtrMetadataDebugShim(trait_item_id, pointee_ty),
+                    args,
+                })
             } else {
                 Instance::try_resolve_item_for_coroutine(tcx, trait_item_id, trait_id, rcvr_args)
             }

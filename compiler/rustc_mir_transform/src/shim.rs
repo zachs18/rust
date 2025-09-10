@@ -13,7 +13,7 @@ use rustc_middle::ty::{
     self, CoroutineArgs, CoroutineArgsExt, EarlyBinder, GenericArgs, Ty, TyCtxt,
 };
 use rustc_middle::{bug, span_bug};
-use rustc_span::{DUMMY_SP, Span, Spanned, dummy_spanned};
+use rustc_span::{DUMMY_SP, Span, Spanned, Symbol, dummy_spanned};
 use tracing::{debug, instrument};
 
 use crate::deref_separator::deref_finder;
@@ -165,7 +165,7 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<
         ty::InstanceKind::ThreadLocalShim(..) => build_thread_local_shim(tcx, instance),
         ty::InstanceKind::CloneShim(..) => build_clone_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataCmpShim(..) => build_ptr_metadata_cmp_shim(tcx, instance),
-        ty::InstanceKind::PtrMetadataDebugShim(def_id, ty) => todo!("{def_id:?} {ty:?}"),
+        ty::InstanceKind::PtrMetadataDebugShim(..) => build_ptr_metadata_fmt_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataHashShim(def_id, ty) => todo!("{def_id:?} {ty:?}"),
         ty::InstanceKind::FnPtrAddrShim(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::InstanceKind::FutureDropPollShim(def_id, proxy_ty, impl_ty) => {
@@ -1049,6 +1049,272 @@ impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
 
             self.block(vec![], TerminatorKind::Return, false);
         }
+    }
+}
+
+/// Builds a `Debug::fmt` shim for `builtin # ptr_metadata(pointee_ty)`. Here, `def_id` is `Debug::fmt`.
+fn build_ptr_metadata_fmt_shim<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: ty::InstanceKind<'tcx>,
+) -> Body<'tcx> {
+    let ty::InstanceKind::PtrMetadataDebugShim(def_id, pointee_ty) = instance else {
+        unreachable!()
+    };
+    debug!("build_ptr_metadata_fmt_shim(def_id={:?})", def_id);
+
+    let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
+    let fields = match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
+        MetadataFields::KnownFields(fields) => fields,
+        fields => bug!(
+            "ptr_metadata fmt shim for `{:?}` which is not monomorphic enough ({fields:?})",
+            pointee_ty
+        ),
+    };
+
+    let fields_to_print: Vec<_> = fields
+        .iter()
+        .zip(FieldIdx::ZERO..)
+        .filter_map(|((field_name, _, _, field_ty), field_idx)| match field_ty.kind() {
+            ty::PtrMetadata(field_pointee_ty) if field_pointee_ty.is_thin(tcx, typing_env) => None,
+            _ => Some((field_ty, field_idx, field_name)),
+        })
+        .collect();
+
+    // FIXME(ptr_metadata_v2): handle #[non_exhaustive] pointees here too.
+    let should_finish_non_exhaustive = fields_to_print.len() != fields.len();
+
+    let mut builder = PtrMetadataFmtShimBuilder::new(tcx, instance, def_id, pointee_ty);
+
+    let dest = Place::return_place();
+    let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+    let formatter_ref = Place::from(Local::new(2 + 0));
+
+    builder.print_fields(dest, this, formatter_ref, &fields_to_print, should_finish_non_exhaustive);
+
+    builder.into_mir()
+}
+
+struct PtrMetadataFmtShimExtra;
+type PtrMetadataFmtShimBuilder<'tcx> = ShimBuilder<'tcx, PtrMetadataFmtShimExtra>;
+
+impl<'tcx> PtrMetadataFmtShimBuilder<'tcx> {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        instance: ty::InstanceKind<'tcx>,
+        def_id: DefId,
+        pointee_ty: Ty<'tcx>,
+    ) -> Self {
+        let sig =
+            tcx.fn_sig(def_id).instantiate(tcx, &[Ty::new_ptr_metadata(tcx, pointee_ty).into()]);
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
+        let span = tcx.def_span(def_id);
+
+        PtrMetadataFmtShimBuilder {
+            tcx,
+            local_decls: local_decls_for_sig(&sig, span),
+            blocks: IndexVec::new(),
+            span,
+            sig,
+            instance,
+            extra: PtrMetadataFmtShimExtra,
+        }
+    }
+
+    fn print_fields(
+        &mut self,
+        dest: Place<'tcx>,
+        this: Place<'tcx>,
+        formatter_ref: Place<'tcx>,
+        fields: &[(Ty<'tcx>, FieldIdx, Symbol)],
+        should_finish_non_exhaustive: bool,
+    ) {
+        let debug_struct_type = self.tcx.require_lang_item(LangItem::DebugStruct, self.span);
+        let debug_struct_type = self.tcx.type_of(debug_struct_type);
+        let debug_struct_type =
+            self.tcx.erase_and_anonymize_regions(debug_struct_type.skip_binder());
+        let debug_struct_mut_ref_type =
+            Ty::new_mut_ref(self.tcx, self.tcx.lifetimes.re_erased, debug_struct_type);
+
+        let debug_trait = self.tcx.require_lang_item(LangItem::DebugTrait, self.span);
+        let debug_trait_ref =
+            ty::ExistentialTraitRef::new_from_args(self.tcx, debug_trait, ty::List::empty());
+        let debug_trait_predicate = ty::ExistentialPredicate::Trait(debug_trait_ref);
+        let obj =
+            self.tcx.mk_poly_existential_predicates(&[ty::Binder::dummy(debug_trait_predicate)]);
+        let dyn_debug_type = Ty::new_dynamic(self.tcx, obj, self.tcx.lifetimes.re_erased);
+        let dyn_debug_ref_type =
+            Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, dyn_debug_type);
+
+        let static_str_ref = Ty::new_static_str(self.tcx);
+
+        let make_const_str_operand = {
+            let tcx = self.tcx;
+            let span = self.span;
+            move |s: &str| -> Operand<'tcx> {
+                let s = s.as_bytes();
+                let len = s.len();
+                let allocation = tcx.allocate_bytes_dedup(s, interpret::CTFE_ALLOC_SALT);
+                let name_value =
+                    ConstValue::Slice { alloc_id: allocation, meta: len.try_into().unwrap() };
+
+                let name = Const::Val(name_value, static_str_ref);
+                Operand::Constant(Box::new(ConstOperand { span, user_ty: None, const_: name }))
+            }
+        };
+
+        // Create a `DebugStruct` using `fmt::Formatter::debug_struct`
+        // bb0:
+        //  _debug_struct = Formatter::debug_struct(move _formatter_ref, const "Metadata") [return -> bb1, unwind continue];
+
+        let name = make_const_str_operand("Metadata");
+
+        let debug_struct_place = self.make_place(Mutability::Mut, debug_struct_type);
+
+        let args = [
+            Spanned { node: Operand::Move(formatter_ref), span: DUMMY_SP },
+            Spanned { node: name, span: DUMMY_SP },
+        ];
+        let target = self.block_index_offset(1);
+        let terminator = TerminatorKind::Call {
+            func: Operand::function_handle(
+                self.tcx,
+                self.tcx.require_lang_item(LangItem::FormatterDebugStructMethod, self.span),
+                [self.tcx.lifetimes.re_erased.into()],
+                self.span,
+            ),
+            args: Box::new(args),
+            destination: debug_struct_place,
+            target: Some(target),
+            unwind: UnwindAction::Continue,
+            call_source: CallSource::Misc,
+            fn_span: self.span,
+        };
+
+        self.block(vec![], terminator, false);
+
+        for &(field_ty, field_idx, field_name) in fields {
+            // For each to-be-printed field, print it
+            // bbn:
+            //  _debug_struct_ref = &mut _debug_struct;
+            //  _field_ref = &(*this).field_idx;
+            //  _dyn_field_ref = move _field_ref as &dyn std::fmt::Debug (PointerCoercion(Unsize, Implicit));
+            //  _tmp_2 = DebugStruct::field(move _tmp, const field_name, move _dyn_field_ref) [return -> bbn+1, unwind continue];
+
+            let debug_struct_ref_place =
+                self.make_place(Mutability::Mut, debug_struct_mut_ref_type);
+            let unused_return_place = self.make_place(Mutability::Not, debug_struct_mut_ref_type);
+            let field_ref_place = self.make_place(
+                Mutability::Not,
+                Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, field_ty),
+            );
+            let dyn_field_ref_place = self.make_place(Mutability::Not, dyn_debug_ref_type);
+
+            let reborrow_debug_struct_stmt =
+                self.make_statement(StatementKind::Assign(Box::new((
+                    debug_struct_ref_place,
+                    Rvalue::Ref(
+                        self.tcx.lifetimes.re_erased,
+                        BorrowKind::Mut { kind: MutBorrowKind::Default },
+                        debug_struct_place,
+                    ),
+                ))));
+
+            let field_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                field_ref_place,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    this.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
+                ),
+            ))));
+
+            let dyn_field_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                dyn_field_ref_place,
+                Rvalue::Cast(
+                    CastKind::PointerCoercion(
+                        ty::adjustment::PointerCoercion::Unsize,
+                        CoercionSource::Implicit,
+                    ),
+                    Operand::Move(field_ref_place),
+                    dyn_debug_ref_type,
+                ),
+            ))));
+
+            let name = make_const_str_operand(field_name.as_str());
+            let args = [
+                Spanned { node: Operand::Move(debug_struct_ref_place), span: DUMMY_SP },
+                Spanned { node: name, span: DUMMY_SP },
+                Spanned { node: Operand::Move(dyn_field_ref_place), span: DUMMY_SP },
+            ];
+            let target = self.block_index_offset(1);
+            let terminator = TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    self.tcx.require_lang_item(LangItem::DebugStructField, self.span),
+                    [self.tcx.lifetimes.re_erased.into(); 2],
+                    self.span,
+                ),
+                args: Box::new(args),
+                destination: unused_return_place,
+                target: Some(target),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: self.span,
+            };
+
+            self.block(
+                vec![reborrow_debug_struct_stmt, field_ref_stmt, dyn_field_ref_stmt],
+                terminator,
+                false,
+            );
+        }
+
+        // Call `DebugStruct::finish` or `DebugString::finish_non_exhaustive`,
+        // writing into the return place,
+        // then return
+
+        // bbn:
+        //  _debug_struct_ref = &mut _debug_struct;
+        //  _0 = DebugStruct::finish/finish_non_exhaustive(move _debug_struct_ref) -> [return -> bbN+1, unwind continue];
+        // bbn+1:
+        //  return
+
+        let debug_struct_ref_place = self.make_place(Mutability::Mut, debug_struct_mut_ref_type);
+
+        let reborrow_debug_struct_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            debug_struct_ref_place,
+            Rvalue::Ref(
+                self.tcx.lifetimes.re_erased,
+                BorrowKind::Mut { kind: MutBorrowKind::Default },
+                debug_struct_place,
+            ),
+        ))));
+
+        let args = [Spanned { node: Operand::Move(debug_struct_ref_place), span: DUMMY_SP }];
+        let target = self.block_index_offset(1);
+        let finish = if should_finish_non_exhaustive {
+            self.tcx.require_lang_item(LangItem::DebugStructFinishNonExhaustive, self.span)
+        } else {
+            self.tcx.require_lang_item(LangItem::DebugStructFinish, self.span)
+        };
+        let terminator = TerminatorKind::Call {
+            func: Operand::function_handle(
+                self.tcx,
+                finish,
+                [self.tcx.lifetimes.re_erased.into(); 2],
+                self.span,
+            ),
+            args: Box::new(args),
+            destination: dest,
+            target: Some(target),
+            unwind: UnwindAction::Continue,
+            call_source: CallSource::Misc,
+            fn_span: self.span,
+        };
+
+        self.block(vec![reborrow_debug_struct_stmt], terminator, false);
+
+        self.block(vec![], TerminatorKind::Return, false);
     }
 }
 
