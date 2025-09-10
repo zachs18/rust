@@ -168,8 +168,7 @@ fn build_poll_switch<'tcx>(
             kind: TerminatorKind::SwitchInt {
                 discr: Operand::Move(poll_discr_place),
                 targets: SwitchTargets::new(
-                    [(poll_ready_discr, ready_block), (poll_pending_discr, yield_block)]
-                        .into_iter(),
+                    [(poll_ready_discr, ready_block), (poll_pending_discr, yield_block)],
                     unreachable_block,
                 ),
             },

@@ -1,5 +1,3 @@
-use std::iter;
-
 use rustc_middle::bug;
 use rustc_middle::mir::interpret::Scalar;
 use rustc_middle::mir::{
@@ -128,7 +126,7 @@ impl<'tcx> crate::MirPass<'tcx> for SimplifyComparisonIntegral {
                 e => bug!("expected 2 switch targets, got: {:?}", e),
             };
 
-            let targets = SwitchTargets::new(iter::once((new_value, bb_cond)), bb_otherwise);
+            let targets = SwitchTargets::new([(new_value, bb_cond)], bb_otherwise);
 
             let terminator = bb.terminator_mut();
             terminator.kind =

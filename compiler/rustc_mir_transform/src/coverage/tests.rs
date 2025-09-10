@@ -121,7 +121,7 @@ impl<'tcx> MockBlocks<'tcx> {
                         old_otherwise
                     }
                 };
-                *targets = SwitchTargets::new(branches.into_iter(), otherwise);
+                *targets = SwitchTargets::new(branches, otherwise);
             }
             ref invalid => bug!("Invalid BasicBlock kind or no to_block: {:?}", invalid),
         }
