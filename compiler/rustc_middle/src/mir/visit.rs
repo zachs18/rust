@@ -372,12 +372,15 @@ macro_rules! make_mir_visitor {
                         | ty::InstanceKind::CloneShim(_def_id, ty)
                         | ty::InstanceKind::PtrMetadataCmpShim(_def_id, ty)
                         | ty::InstanceKind::PtrMetadataDebugShim(_def_id, ty)
-                        | ty::InstanceKind::PtrMetadataHashShim(_def_id, ty)
                         | ty::InstanceKind::FnPtrAddrShim(_def_id, ty)
                         | ty::InstanceKind::AsyncDropGlue(_def_id, ty)
                         | ty::InstanceKind::AsyncDropGlueCtorShim(_def_id, ty) => {
                             // FIXME(eddyb) use a better `TyContext` here.
                             self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
+                        }
+                        ty::InstanceKind::PtrMetadataHashShim(_def_id, pointee_ty, hasher_ty) => {
+                            self.visit_ty($(& $mutability)? *pointee_ty, TyContext::Location(location));
+                            self.visit_ty($(& $mutability)? *hasher_ty, TyContext::Location(location));
                         }
                         ty::InstanceKind::FutureDropPollShim(_def_id, proxy_ty, impl_ty) => {
                             self.visit_ty($(& $mutability)? *proxy_ty, TyContext::Location(location));
