@@ -800,6 +800,7 @@ bidirectional_lang_item_map! {
     FnPtrTrait,
     FusedIterator,
     Future,
+    HashTrait,
     Iterator,
     MetaSized,
     Ord,

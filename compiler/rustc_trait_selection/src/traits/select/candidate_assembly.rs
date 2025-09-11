@@ -106,6 +106,17 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         &mut candidates,
                     );
                 }
+                Some(LangItem::HashTrait) => {
+                    // User-defined Hash impls are permitted for everything but `builtin # ptr_metadata(T)`
+                    self.assemble_candidates_from_impls(obligation, &mut candidates);
+                    // Hash is not object-safe, so no `assemble_candidates_from_object_ty`
+
+                    // For `builtin # ptr_metadata(T)`, we'll use the builtin rule.
+                    self.assemble_builtin_hash_candidate(
+                        obligation.predicate.self_ty().skip_binder(),
+                        &mut candidates,
+                    );
+                }
                 Some(LangItem::DiscriminantKind) => {
                     // `DiscriminantKind` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate);
@@ -1368,6 +1379,20 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     /// generically in the surface language.
     #[instrument(level = "debug", skip(self, candidates))]
     fn assemble_builtin_debug_candidate(
+        &mut self,
+        self_ty: Ty<'tcx>,
+        candidates: &mut SelectionCandidateSet<'tcx>,
+    ) {
+        let ty::PtrMetadata(..) = self_ty.kind() else {
+            return;
+        };
+        candidates.vec.push(BuiltinCandidate);
+    }
+
+    /// Assembles the `Hash` trait candidate for `builtin # ptr_metadata(T)` which cannot be written
+    /// generically in the surface language.
+    #[instrument(level = "debug", skip(self, candidates))]
+    fn assemble_builtin_hash_candidate(
         &mut self,
         self_ty: Ty<'tcx>,
         candidates: &mut SelectionCandidateSet<'tcx>,

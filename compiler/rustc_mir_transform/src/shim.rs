@@ -166,7 +166,7 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<
         ty::InstanceKind::CloneShim(..) => build_clone_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataCmpShim(..) => build_ptr_metadata_cmp_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataDebugShim(..) => build_ptr_metadata_fmt_shim(tcx, instance),
-        ty::InstanceKind::PtrMetadataHashShim(def_id, ty) => todo!("{def_id:?} {ty:?}"),
+        ty::InstanceKind::PtrMetadataHashShim(..) => build_ptr_metadata_hash_shim(tcx, instance),
         ty::InstanceKind::FnPtrAddrShim(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::InstanceKind::FutureDropPollShim(def_id, proxy_ty, impl_ty) => {
             let mut body =
@@ -1313,6 +1313,138 @@ impl<'tcx> PtrMetadataFmtShimBuilder<'tcx> {
         };
 
         self.block(vec![reborrow_debug_struct_stmt], terminator, false);
+
+        self.block(vec![], TerminatorKind::Return, false);
+    }
+}
+
+/// Builds a `Hash::hash` shim for `builtin # ptr_metadata(pointee_ty)`. Here, `def_id` is `Hash::hash`.
+fn build_ptr_metadata_hash_shim<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: ty::InstanceKind<'tcx>,
+) -> Body<'tcx> {
+    let ty::InstanceKind::PtrMetadataHashShim(def_id, pointee_ty, hasher_ty) = instance else {
+        unreachable!()
+    };
+    debug!("build_ptr_metadata_hash_shim(def_id={:?})", def_id);
+
+    let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
+    let fields = match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
+        MetadataFields::KnownFields(fields) => fields,
+        fields => bug!(
+            "ptr_metadata hash shim for `{:?}` which is not monomorphic enough ({fields:?})",
+            pointee_ty
+        ),
+    };
+
+    let fields_to_hash: Vec<_> = fields
+        .iter()
+        .zip(FieldIdx::ZERO..)
+        .filter_map(|((_, _, _, field_ty), field_idx)| match field_ty.kind() {
+            ty::PtrMetadata(field_pointee_ty) if field_pointee_ty.is_thin(tcx, typing_env) => None,
+            _ => Some((field_ty, field_idx)),
+        })
+        .collect();
+
+    let mut builder = PtrMetadataHashShimBuilder::new(tcx, instance, def_id, pointee_ty, hasher_ty);
+
+    let dest = Place::return_place();
+    let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+    let hasher_mut_ref = Place::from(Local::new(2 + 0));
+
+    builder.hash_fields(dest, this, hasher_mut_ref, &fields_to_hash);
+
+    builder.into_mir()
+}
+
+struct PtrMetadataHashShimExtra<'tcx> {
+    hasher_ty: Ty<'tcx>,
+}
+type PtrMetadataHashShimBuilder<'tcx> = ShimBuilder<'tcx, PtrMetadataHashShimExtra<'tcx>>;
+
+impl<'tcx> PtrMetadataHashShimBuilder<'tcx> {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        instance: ty::InstanceKind<'tcx>,
+        def_id: DefId,
+        pointee_ty: Ty<'tcx>,
+        hasher_ty: Ty<'tcx>,
+    ) -> Self {
+        // we must instantiate the pointee_ty because it's
+        // otherwise going to be TySelf and we can't index
+        // or access fields of a Place of type TySelf.
+        // FIXME(ptr_metadata_v2): is the above comment still accuate?
+        let sig = tcx
+            .fn_sig(def_id)
+            .instantiate(tcx, &[Ty::new_ptr_metadata(tcx, pointee_ty).into(), hasher_ty.into()]);
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
+        let span = tcx.def_span(def_id);
+
+        PtrMetadataHashShimBuilder {
+            tcx,
+            local_decls: local_decls_for_sig(&sig, span),
+            blocks: IndexVec::new(),
+            span,
+            sig,
+            instance,
+            extra: PtrMetadataHashShimExtra { hasher_ty },
+        }
+    }
+
+    fn hash_fields(
+        &mut self,
+        dest: Place<'tcx>,
+        this: Place<'tcx>,
+        hasher_mut_ref: Place<'tcx>,
+        fields: &[(Ty<'tcx>, FieldIdx)],
+    ) {
+        for &(field_ty, field_idx) in fields {
+            // For each to-be-hashed field, hash it
+            // bbn:
+            //  _field_ref = &(*this).field_idx;
+            //  _0 = DebugStruct::(move _field_ref, copy _hasher_mut_ref) [return -> bbn+1, unwind continue];
+
+            let field_ref_place = self.make_place(
+                Mutability::Not,
+                Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, field_ty),
+            );
+
+            let field_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                field_ref_place,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    this.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
+                ),
+            ))));
+
+            let args = [
+                Spanned { node: Operand::Move(field_ref_place), span: DUMMY_SP },
+                Spanned { node: Operand::Copy(hasher_mut_ref), span: DUMMY_SP },
+            ];
+            let target = self.block_index_offset(1);
+            let terminator = TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    self.tcx.require_lang_item(LangItem::HashMethod, self.span),
+                    [field_ty.into(), self.extra.hasher_ty.into()],
+                    self.span,
+                ),
+                args: Box::new(args),
+                destination: dest,
+                target: Some(target),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: self.span,
+            };
+
+            self.block(vec![field_ref_stmt], terminator, false);
+        }
+
+        // Just return. The return place is `()` which doesn't need need to be initialized.
+
+        // bbn+1:
+        //  return
 
         self.block(vec![], TerminatorKind::Return, false);
     }
