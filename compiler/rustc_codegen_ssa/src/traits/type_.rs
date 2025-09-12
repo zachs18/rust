@@ -161,12 +161,24 @@ pub trait TypeMembershipCodegenMethods<'tcx>: BackendTypes {
 }
 
 pub trait ArgAbiBuilderMethods<'tcx>: BackendTypes {
+    /// Stores a value described by this ArgAbi into a
+    /// place for the original Rust type of this argument/return.
+    /// Can be used for both storing formal arguments into Rust variables
+    /// or results of call/invoke instructions into their destinations.
+    ///
+    /// Cannot be used for unsized `ArgAbi`. For `PassMode::Pair`, this "consumes" two backend-level arguments.
     fn store_fn_arg(
         &mut self,
         arg_abi: &ArgAbi<'tcx, Ty<'tcx>>,
         idx: &mut usize,
         dst: PlaceRef<'tcx, Self::Value>,
     );
+    /// Stores a direct/indirect value described by this ArgAbi into a
+    /// place for the original Rust type of this argument/return.
+    /// Can be used for both storing formal arguments into Rust variables
+    /// or results of call/invoke instructions into their destinations.
+    ///
+    /// Cannot be used for unsized `ArgAbi`. For `PassMode::Pair`, expects a packed pair `val`.
     fn store_arg(
         &mut self,
         arg_abi: &ArgAbi<'tcx, Ty<'tcx>>,
