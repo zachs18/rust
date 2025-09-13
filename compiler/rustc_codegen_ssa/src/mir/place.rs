@@ -68,7 +68,7 @@ impl<V: CodegenObject> PlaceValue<V> {
     /// Gets the pointer to this place as an [`OperandValue::Immediate`]
     /// or, for those needing metadata, an [`OperandValue::Pair`].
     ///
-    /// This is the inverse of [`OperandValue::deref`].
+    /// This is the inverse of [`OperandRef::deref`](super::operand::OperandRef::deref).
     pub fn address(self) -> OperandValue<V> {
         if let Some(llextra) = self.llextra {
             OperandValue::Pair(self.llval, llextra)

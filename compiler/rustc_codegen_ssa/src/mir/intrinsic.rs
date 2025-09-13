@@ -82,10 +82,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 // into the (unoptimized) direct swapping implementation, so we disable it.
                 || bx.sess().target.arch == Arch::SpirV
             {
-                let align = pointee_layout.align.abi;
-                let x_place = args[0].val.deref(align);
-                let y_place = args[1].val.deref(align);
-                bx.typed_place_swap(x_place, y_place, pointee_layout);
+                let x_place = args[0].deref(bx.cx());
+                let y_place = args[1].deref(bx.cx());
+                bx.typed_place_swap(x_place.val, y_place.val, pointee_layout);
                 return Ok(());
             }
         }
