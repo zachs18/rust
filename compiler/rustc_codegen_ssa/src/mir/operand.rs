@@ -3,7 +3,7 @@ use std::fmt;
 use itertools::Either;
 use rustc_abi as abi;
 use rustc_abi::{
-    Align, BackendRepr, FIRST_VARIANT, FieldIdx, Primitive, Size, TagEncoding, VariantIdx, Variants,
+    BackendRepr, FIRST_VARIANT, FieldIdx, Primitive, Size, TagEncoding, VariantIdx, Variants,
 };
 use rustc_hir::LangItem;
 use rustc_middle::mir::interpret::{Pointer, Scalar, alloc_range};
@@ -85,22 +85,10 @@ impl<V: CodegenObject> OperandValue<V> {
     /// Treat this value as a pointer and return the data pointer and
     /// optional metadata as backend values.
     ///
-    /// If you're making a place, use [`Self::deref`] instead.
+    /// If you're making a place, use [`OperandRef::deref`] instead.
     pub(crate) fn pointer_parts(self) -> (V, Option<V>) {
         self.try_pointer_parts()
             .unwrap_or_else(|| bug!("OperandValue cannot be a pointer: {self:?}"))
-    }
-
-    /// Treat this value as a pointer and return the place to which it points.
-    ///
-    /// The pointer immediate doesn't inherently know its alignment,
-    /// so you need to pass it in. If you want to get it from a type's ABI
-    /// alignment, then maybe you want [`OperandRef::deref`] instead.
-    ///
-    /// This is the inverse of [`PlaceValue::address`].
-    pub(crate) fn deref(self, align: Align) -> PlaceValue<V> {
-        let (llval, llextra) = self.pointer_parts();
-        PlaceValue { llval, llextra, align }
     }
 
     pub(crate) fn is_expected_variant_for_type<'tcx, Cx: LayoutTypeCodegenMethods<'tcx>>(
@@ -269,8 +257,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
     /// This uses [`Ty::builtin_deref`] to include the type of the place and
     /// assumes the place is aligned to the pointee's usual ABI alignment.
     ///
-    /// If you don't need the type, see [`OperandValue::pointer_parts`]
-    /// or [`OperandValue::deref`].
+    /// If you don't need the type, see [`OperandValue::pointer_parts`].
     pub fn deref<Cx: CodegenMethods<'tcx>>(self, cx: &Cx) -> PlaceRef<'tcx, V> {
         if self.layout.ty.is_box() {
             // Derefer should have removed all Box derefs
@@ -284,7 +271,10 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
             .unwrap_or_else(|| bug!("deref of non-pointer {:?}", self));
 
         let layout = cx.layout_of(projected_ty);
-        self.val.deref(layout.align.abi).with_type(layout)
+
+        let (llval, llextra) = self.val.pointer_parts();
+
+        PlaceValue { llval, llextra, align: layout.align.abi }.with_type(layout)
     }
 
     /// Store this operand into a place, applying move/copy annotation if present.
