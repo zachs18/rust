@@ -19,13 +19,14 @@ use super::rvalue::transmute_scalar;
 use super::{FunctionCx, LocalRef};
 use crate::MemFlags;
 use crate::common::IntPredicate;
+use crate::mir::{AnyPlace, AnyPlaceMeta, PlaceMetadata, PlaceSizedness, SizedPlace};
 use crate::traits::*;
 
 /// The representation of a Rust value. The enum variant is in fact
 /// uniquely determined by the value's type, but is kept as a
 /// safety check.
 #[derive(Copy, Clone, Debug)]
-pub enum OperandValue<V> {
+pub enum OperandValue<'tcx, V: CodegenObject, Sizedness: PlaceSizedness = AnyPlace> {
     /// A reference to the actual operand. The data is guaranteed
     /// to be valid for the operand's lifetime.
     /// The second value, if any, is the extra data (vtable or length)
@@ -38,7 +39,7 @@ pub enum OperandValue<V> {
     /// This holds a [`PlaceValue`] (like a [`PlaceRef`] does) with a pointer
     /// to the location holding the value. The type behind that pointer is the
     /// one returned by [`LayoutTypeCodegenMethods::backend_type`].
-    Ref(PlaceValue<V>),
+    Ref(PlaceValue<'tcx, V, Sizedness>),
     /// A single LLVM immediate value.
     ///
     /// An `OperandValue` *must* be this variant for any type for which
@@ -71,7 +72,37 @@ pub enum OperandValue<V> {
     ZeroSized,
 }
 
-impl<V: CodegenObject> OperandValue<V> {
+impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> OperandValue<'tcx, V, Sizedness> {
+    fn change_sizedness<NewSizedness: PlaceSizedness>(self) -> OperandValue<'tcx, V, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, V>: Into<NewSizedness::Metadata<'tcx, V>>,
+    {
+        match self {
+            OperandValue::Ref(place_value) => OperandValue::Ref(place_value.change_sizedness()),
+            OperandValue::Immediate(a) => OperandValue::Immediate(a),
+            OperandValue::Pair(a, b) => OperandValue::Pair(a, b),
+            OperandValue::ZeroSized => OperandValue::ZeroSized,
+        }
+    }
+
+    pub fn try_to_sized(self) -> Option<OperandValue<'tcx, V, SizedPlace>> {
+        Some(match self {
+            OperandValue::Ref(place_value) => OperandValue::Ref(place_value.try_to_sized()?),
+            OperandValue::Immediate(a) => OperandValue::Immediate(a),
+            OperandValue::Pair(a, b) => OperandValue::Pair(a, b),
+            OperandValue::ZeroSized => OperandValue::ZeroSized,
+        })
+    }
+
+    /// If this PlaceValue has no metadata, return it as a PlaceValue with SizedPlaceMeta,
+    /// otherwise panic
+    #[track_caller]
+    pub fn expect_sized(self, msg: &str) -> OperandValue<'tcx, V, SizedPlace> {
+        self.try_to_sized().expect(msg)
+    }
+}
+
+impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> OperandValue<'tcx, V, Sizedness> {
     /// Return the data pointer and optional metadata as backend values
     /// if this value can be treat as a pointer.
     pub(crate) fn try_pointer_parts(self) -> Option<(V, Option<V>)> {
@@ -91,7 +122,7 @@ impl<V: CodegenObject> OperandValue<V> {
             .unwrap_or_else(|| bug!("OperandValue cannot be a pointer: {self:?}"))
     }
 
-    pub(crate) fn is_expected_variant_for_type<'tcx, Cx: LayoutTypeCodegenMethods<'tcx>>(
+    pub(crate) fn is_expected_variant_for_type<Cx: LayoutTypeCodegenMethods<'tcx>>(
         &self,
         cx: &Cx,
         ty: TyAndLayout<'tcx>,
@@ -114,9 +145,9 @@ impl<V: CodegenObject> OperandValue<V> {
 /// directly is sure to cause problems -- use `OperandRef::store`
 /// instead.
 #[derive(Copy, Clone)]
-pub struct OperandRef<'tcx, V> {
+pub struct OperandRef<'tcx, V: CodegenObject, Sizedness: PlaceSizedness = AnyPlace> {
     /// The value.
-    pub val: OperandValue<V>,
+    pub val: OperandValue<'tcx, V, Sizedness>,
 
     /// The layout of value, based on its Rust type.
     pub layout: TyAndLayout<'tcx>,
@@ -126,9 +157,37 @@ pub struct OperandRef<'tcx, V> {
     pub move_annotation: Option<ty::Instance<'tcx>>,
 }
 
-impl<V: CodegenObject> fmt::Debug for OperandRef<'_, V> {
+impl<V: CodegenObject, Sizedness: PlaceSizedness> fmt::Debug for OperandRef<'_, V, Sizedness> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "OperandRef({:?} @ {:?})", self.val, self.layout)
+    }
+}
+
+impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> OperandRef<'tcx, V, Sizedness> {
+    pub fn change_sizedness<NewSizedness: PlaceSizedness>(self) -> OperandRef<'tcx, V, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, V>: Into<NewSizedness::Metadata<'tcx, V>>,
+    {
+        OperandRef {
+            val: self.val.change_sizedness(),
+            layout: self.layout,
+            move_annotation: self.move_annotation,
+        }
+    }
+
+    pub fn try_to_sized(self) -> Option<OperandRef<'tcx, V, SizedPlace>> {
+        Some(OperandRef {
+            val: self.val.try_to_sized()?,
+            layout: self.layout,
+            move_annotation: self.move_annotation,
+        })
+    }
+
+    /// If this PlaceValue has no metadata, return it as a PlaceValue with SizedPlaceMeta,
+    /// otherwise panic
+    #[track_caller]
+    pub fn expect_sized(self, msg: &str) -> OperandRef<'tcx, V, SizedPlace> {
+        self.try_to_sized().expect(msg)
     }
 }
 
@@ -272,9 +331,22 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
 
         let layout = cx.layout_of(projected_ty);
 
+        // FIXME(ptr_metadata_v2): project_field here
         let (llval, llextra) = self.val.pointer_parts();
 
-        PlaceValue { llval, llextra, align: layout.align.abi }.with_type(layout)
+        let llextra = llextra.map(|llextra| {
+            let meta: OperandRef<'tcx, V> = OperandRef {
+                val: OperandValue::Immediate(llextra),
+                layout: {
+                    let metadata_ty = Ty::new_ptr_metadata(cx.tcx(), projected_ty);
+                    cx.layout_of(metadata_ty)
+                },
+                move_annotation: None,
+            };
+            meta.expect_sized("pointer metadata must be sized")
+        });
+        PlaceValue { llval, llextra: AnyPlaceMeta(llextra), align: layout.align.abi }
+            .with_type(layout)
     }
 
     /// Store this operand into a place, applying move/copy annotation if present.
@@ -377,6 +449,75 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                     let Some(in_scalar) = in_scalar else {
                         span_bug!(
                             fx.mir.span,
+                            "OperandRef::extract_field({:?}): missing input scalar for output scalar",
+                            self
+                        )
+                    };
+                    if in_scalar != out_scalar {
+                        // If the backend and backend_immediate types might differ,
+                        // flip back to the backend type then to the new immediate.
+                        // This avoids nop truncations, but still handles things like
+                        // Bools in union fields needs to be truncated.
+                        let backend = bx.from_immediate(imm);
+                        bx.to_immediate_scalar(backend, out_scalar)
+                    } else {
+                        imm
+                    }
+                }
+                BackendRepr::ScalarPair(_, _)
+                | BackendRepr::Memory { .. }
+                | BackendRepr::SimdScalableVector { .. } => bug!(),
+            })
+        };
+
+        OperandRef { val, layout: field, move_annotation: None }
+    }
+
+    /// FIXME(ptr_metadata_v2): This exists to be used in `PlaceRef::project_field` which needs
+    /// it (or something like it) to extract a fields' pointer metadata from a container's
+    /// possibly-multi-wide pointer metadata, but does not have a `FunctionCx` to pass around.
+    /// Maybe it should just be inlined into that function?
+    pub(crate) fn extract_field_simple<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
+        &self,
+        bx: &mut Bx,
+        i: usize,
+    ) -> Self {
+        let field = self.layout.field(bx.cx(), i);
+        let offset = self.layout.fields.offset(i);
+
+        if !bx.is_backend_ref(self.layout) && bx.is_backend_ref(field) {
+            // Part of https://github.com/rust-lang/compiler-team/issues/838
+            bug!("Non-ref type {self:?} cannot project to ref field type {field:?}",);
+        }
+
+        let val = if field.is_zst() {
+            OperandValue::ZeroSized
+        } else if field.size == self.layout.size {
+            assert_eq!(offset.bytes(), 0);
+            self.val
+        } else {
+            let (in_scalar, imm) = match (self.val, self.layout.backend_repr) {
+                // Extract a scalar component from a pair.
+                (OperandValue::Pair(a_llval, b_llval), BackendRepr::ScalarPair(a, b)) => {
+                    if offset.bytes() == 0 {
+                        assert_eq!(field.size, a.size(bx.cx()));
+                        (Some(a), a_llval)
+                    } else {
+                        assert_eq!(offset, a.size(bx.cx()).align_to(b.align(bx.cx()).abi));
+                        assert_eq!(field.size, b.size(bx.cx()));
+                        (Some(b), b_llval)
+                    }
+                }
+
+                _ => {
+                    bug!("OperandRef::extract_field({:?}): not applicable", self)
+                }
+            };
+            OperandValue::Immediate(match field.backend_repr {
+                BackendRepr::SimdVector { .. } => imm,
+                BackendRepr::Scalar(out_scalar) => {
+                    let Some(in_scalar) = in_scalar else {
+                        bug!(
                             "OperandRef::extract_field({:?}): missing input scalar for output scalar",
                             self
                         )
@@ -849,7 +990,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRefBuilder<'tcx, V> {
 /// annotate copies larger than this.
 const MOVE_ANNOTATION_DEFAULT_LIMIT: u64 = 65;
 
-impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
+impl<'a, 'tcx, V: CodegenObject> OperandValue<'tcx, V> {
     /// Returns an `OperandValue` that's generally UB to use in any way.
     ///
     /// Depending on the `layout`, returns `ZeroSized` for ZSTs, an `Immediate` or
@@ -859,7 +1000,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
     pub fn poison<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
         bx: &mut Bx,
         layout: TyAndLayout<'tcx>,
-    ) -> OperandValue<V> {
+    ) -> OperandValue<'tcx, V> {
         assert!(layout.is_sized());
         if layout.is_zst() {
             OperandValue::ZeroSized
@@ -922,7 +1063,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
             }
             OperandValue::Ref(val) => {
                 assert!(dest.layout.is_sized(), "cannot directly store unsized values");
-                if val.llextra.is_some() {
+                if val.llextra.has_metadata() {
                     bug!("cannot directly store unsized values");
                 }
                 bx.typed_place_copy_with_flags(dest.val, val, dest.layout, flags);
