@@ -11,6 +11,7 @@ use super::FunctionCx;
 use super::operand::{OperandRef, OperandRefBuilder, OperandValue};
 use super::place::{PlaceRef, PlaceValue, codegen_tag_value};
 use crate::common::TypeKind;
+use crate::mir::PlaceMetadata;
 use crate::traits::*;
 use crate::{MemFlags, base};
 
@@ -82,7 +83,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         scratch.storage_dead(bx);
                     }
                     OperandValue::Ref(val) => {
-                        if val.llextra.is_some() {
+                        if val.llextra.has_metadata() {
                             bug!("unsized coercion on an unsized rvalue");
                         }
                         base::coerce_unsized_into(bx, val.with_type(operand.layout), dest);
@@ -234,7 +235,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         bx: &mut Bx,
         operand: OperandRef<'tcx, Bx::Value>,
         cast: TyAndLayout<'tcx>,
-    ) -> OperandValue<Bx::Value> {
+    ) -> OperandValue<'tcx, Bx::Value> {
         if let abi::BackendRepr::Memory { .. } = cast.backend_repr
             && !cast.is_zst()
         {
@@ -276,7 +277,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         match (operand.val, operand.layout.backend_repr, cast.backend_repr) {
             _ if cast.is_zst() => OperandValue::ZeroSized,
             (OperandValue::Ref(source_place_val), abi::BackendRepr::Memory { .. }, _) => {
-                assert_eq!(source_place_val.llextra, None);
+                assert!(!source_place_val.llextra.has_metadata());
                 // The existing alignment is part of `source_place_val`,
                 // so that alignment will be used, not `cast`'s.
                 bx.load_operand(source_place_val.with_type(cast)).val
@@ -928,7 +929,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         lhs: Bx::Value,
         rhs: Bx::Value,
         input_ty: Ty<'tcx>,
-    ) -> OperandValue<Bx::Value> {
+    ) -> OperandValue<'tcx, Bx::Value> {
         let (val, of) = match op {
             // These are checked using intrinsics
             mir::BinOp::Add | mir::BinOp::Sub | mir::BinOp::Mul => {

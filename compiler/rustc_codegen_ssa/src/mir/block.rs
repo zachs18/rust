@@ -23,6 +23,7 @@ use super::{CachedLlbb, FunctionCx, LocalRef};
 use crate::base::{self, is_call_from_compiler_builtins_to_upstream_monomorphization};
 use crate::common::{self, IntPredicate};
 use crate::errors::CompilerBuiltinsCannotCall;
+use crate::mir::{AnyPlaceMeta, PlaceMetadata};
 use crate::traits::*;
 use crate::{MemFlags, meth};
 
@@ -613,7 +614,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         let place = self.codegen_place(bx, location.as_ref());
         let (args1, args2);
-        let mut args = if let Some(llextra) = place.val.llextra {
+        let mut args = if let Some(llextra) = place.val.llextra.get_metadata() {
+            let llextra = llextra.change_sizedness().immediate();
             args2 = [place.val.llval, llextra];
             &args2[..]
         } else {
@@ -1223,7 +1225,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         llargs.push(data_ptr);
                         continue 'make_args;
                     }
-                    Ref(PlaceValue { llval: data_ptr, llextra: Some(meta), .. }) => {
+                    Ref(PlaceValue {
+                        llval: data_ptr, llextra: AnyPlaceMeta(Some(meta)), ..
+                    }) => {
+                        let meta = meta.change_sizedness().immediate();
                         // by-value dynamic dispatch
                         llfn = Some(meth::VirtualIndex::from_index(idx).get_fn(
                             bx,
@@ -1245,7 +1250,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // The callee needs to own the argument memory if we pass it
                     // by-ref, so make a local copy of non-immediate constants.
                     if let &mir::Operand::Copy(_) | &mir::Operand::Constant(_) = &arg.node
-                        && let Ref(PlaceValue { llextra: None, .. }) = op.val
+                        && let Ref(PlaceValue { llextra: AnyPlaceMeta(None), .. }) = op.val
                     {
                         let tmp = PlaceRef::alloca(bx, op.layout);
                         bx.lifetime_start(tmp.val.llval, tmp.layout.size);
@@ -1668,9 +1673,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 _ => bug!("codegen_argument: {:?} invalid for pair argument", op),
             },
             PassMode::Indirect { attrs: _, meta_attrs: Some(_), on_stack: _ } => match op.val {
-                Ref(PlaceValue { llval: a, llextra: Some(b), .. }) => {
+                Ref(PlaceValue { llval: a, llextra: AnyPlaceMeta(Some(meta)), .. }) => {
+                    let meta = meta.change_sizedness().immediate();
                     llargs.push(a);
-                    llargs.push(b);
+                    llargs.push(meta);
                     return;
                 }
                 _ => bug!("codegen_argument: {:?} invalid for unsized indirect argument", op),
@@ -1803,7 +1809,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         // Handle both by-ref and immediate tuples.
         if let Ref(place_val) = tuple.val {
-            if place_val.llextra.is_some() {
+            if place_val.llextra.has_metadata() {
                 bug!("closure arguments must be sized");
             }
             let tuple_ptr = place_val.with_type(tuple.layout);
@@ -2109,7 +2115,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
     }
 }
 
-enum ReturnDest<'tcx, V> {
+enum ReturnDest<'tcx, V: CodegenObject> {
     /// Do nothing; the return value is indirect or ignored.
     Nothing,
     /// Store the return value to the pointer.

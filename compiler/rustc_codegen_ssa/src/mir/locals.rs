@@ -10,13 +10,13 @@ use rustc_middle::ty::print::with_no_trimmed_paths;
 use tracing::{debug, warn};
 
 use crate::mir::{FunctionCx, LocalRef};
-use crate::traits::BuilderMethods;
+use crate::traits::{BuilderMethods, CodegenObject};
 
-pub(super) struct Locals<'tcx, V> {
+pub(super) struct Locals<'tcx, V: CodegenObject> {
     values: IndexVec<mir::Local, LocalRef<'tcx, V>>,
 }
 
-impl<'tcx, V> Index<mir::Local> for Locals<'tcx, V> {
+impl<'tcx, V: CodegenObject> Index<mir::Local> for Locals<'tcx, V> {
     type Output = LocalRef<'tcx, V>;
     #[inline]
     fn index(&self, index: mir::Local) -> &LocalRef<'tcx, V> {
@@ -25,9 +25,9 @@ impl<'tcx, V> Index<mir::Local> for Locals<'tcx, V> {
 }
 
 /// To mutate locals, use `FunctionCx::overwrite_local` instead.
-impl<'tcx, V, Idx: ?Sized> !IndexMut<Idx> for Locals<'tcx, V> {}
+impl<'tcx, V: CodegenObject, Idx: ?Sized> !IndexMut<Idx> for Locals<'tcx, V> {}
 
-impl<'tcx, V> Locals<'tcx, V> {
+impl<'tcx, V: CodegenObject> Locals<'tcx, V> {
     pub(super) fn empty() -> Locals<'tcx, V> {
         Locals { values: IndexVec::default() }
     }

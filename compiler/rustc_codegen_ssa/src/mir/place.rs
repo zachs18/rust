@@ -13,6 +13,8 @@ use tracing::{debug, instrument};
 use super::operand::OperandValue;
 use super::{FunctionCx, LocalRef};
 use crate::common::IntPredicate;
+use crate::mir::operand::OperandRef;
+use crate::mir::{AnyPlace, AnyPlaceMeta, PlaceMetadata, PlaceSizedness, SizedPlace};
 use crate::size_of_val;
 use crate::traits::*;
 
@@ -23,42 +25,64 @@ use crate::traits::*;
 /// As a location in memory, this has no specific type. If you want to
 /// load or store it using a typed operation, use [`Self::with_type`].
 #[derive(Copy, Clone, Debug)]
-pub struct PlaceValue<V> {
+pub struct PlaceValue<'tcx, V: CodegenObject, Sizedness: PlaceSizedness = AnyPlace> {
     /// A pointer to the contents of the place.
     pub llval: V,
 
     /// This place's extra data if it is unsized, or `None` if null.
-    pub llextra: Option<V>,
+    pub llextra: Sizedness::Metadata<'tcx, V>,
 
     /// The alignment we know for this place.
     pub align: Align,
 }
 
-impl<V: CodegenObject> PlaceValue<V> {
+impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> PlaceValue<'tcx, V, Sizedness> {
     /// Constructor for the ordinary case of `Sized` types.
     ///
     /// Sets `llextra` to `None`.
-    pub fn new_sized(llval: V, align: Align) -> PlaceValue<V> {
-        PlaceValue { llval, llextra: None, align }
+    pub fn new_sized(llval: V, align: Align) -> Self {
+        PlaceValue { llval, llextra: Default::default(), align }
     }
 
     /// Allocates a stack slot in the function for a value
     /// of the specified size and alignment.
     ///
     /// The allocation itself is untyped.
-    pub fn alloca<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx, Value = V>>(
+    pub fn alloca<'a, Bx: BuilderMethods<'a, 'tcx, Value = V>>(
         bx: &mut Bx,
         size: Size,
         align: Align,
-    ) -> PlaceValue<V> {
+    ) -> Self {
         let llval = bx.alloca(size, align);
         PlaceValue::new_sized(llval, align)
     }
 
+    /// If this PlaceValue has no metadata, return it as a PlaceValue with SizedPlaceMeta
+    pub fn try_to_sized(self) -> Option<PlaceValue<'tcx, V, SizedPlace>> {
+        Some(PlaceValue {
+            llval: self.llval,
+            llextra: self.llextra.try_to_sized()?,
+            align: self.align,
+        })
+    }
+
+    /// If this PlaceValue has no metadata, return it as a PlaceValue with SizedPlaceMeta,
+    /// otherwise panic
+    pub fn expect_sized(self, msg: &str) -> PlaceValue<'tcx, V, SizedPlace> {
+        self.try_to_sized().expect(msg)
+    }
+
+    pub fn change_sizedness<NewSizedness: PlaceSizedness>(self) -> PlaceValue<'tcx, V, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, V>: Into<NewSizedness::Metadata<'tcx, V>>,
+    {
+        PlaceValue { llval: self.llval, llextra: self.llextra.into(), align: self.align }
+    }
+
     /// Creates a `PlaceRef` to this location with the given type.
-    pub fn with_type<'tcx>(self, layout: TyAndLayout<'tcx>) -> PlaceRef<'tcx, V> {
+    pub fn with_type(self, layout: TyAndLayout<'tcx>) -> PlaceRef<'tcx, V, Sizedness> {
         assert!(
-            layout.is_unsized() || layout.is_uninhabited() || self.llextra.is_none(),
+            layout.is_unsized() || layout.is_uninhabited() || !self.llextra.has_metadata(),
             "Had pointer metadata {:?} for sized type {layout:?}",
             self.llextra,
         );
@@ -69,8 +93,9 @@ impl<V: CodegenObject> PlaceValue<V> {
     /// or, for those needing metadata, an [`OperandValue::Pair`].
     ///
     /// This is the inverse of [`OperandRef::deref`](super::operand::OperandRef::deref).
-    pub fn address(self) -> OperandValue<V> {
-        if let Some(llextra) = self.llextra {
+    pub fn address(self) -> OperandValue<'tcx, V> {
+        if let Some(llextra) = self.llextra.get_metadata() {
+            let llextra = llextra.change_sizedness().immediate();
             OperandValue::Pair(self.llval, llextra)
         } else {
             OperandValue::Immediate(self.llval)
@@ -79,9 +104,9 @@ impl<V: CodegenObject> PlaceValue<V> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PlaceRef<'tcx, V> {
+pub struct PlaceRef<'tcx, V: CodegenObject, Sizedness: PlaceSizedness = AnyPlace> {
     /// The location and extra runtime properties of the place.
-    pub val: PlaceValue<V>,
+    pub val: PlaceValue<'tcx, V, Sizedness>,
 
     /// The monomorphized type of this place, including variant information.
     ///
@@ -91,16 +116,30 @@ pub struct PlaceRef<'tcx, V> {
     pub layout: TyAndLayout<'tcx>,
 }
 
+impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> PlaceRef<'tcx, V, Sizedness> {
+    pub fn try_to_sized(self) -> Option<PlaceRef<'tcx, V, SizedPlace>> {
+        Some(PlaceRef { val: self.val.try_to_sized()?, layout: self.layout })
+    }
+
+    #[track_caller]
+    pub fn expect_sized(self, msg: &str) -> PlaceRef<'tcx, V, SizedPlace> {
+        self.try_to_sized().expect(msg)
+    }
+
+    pub fn change_sizedness<NewSizedness: PlaceSizedness>(self) -> PlaceRef<'tcx, V, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, V>: Into<NewSizedness::Metadata<'tcx, V>>,
+    {
+        PlaceRef { val: self.val.change_sizedness(), layout: self.layout }
+    }
+}
+
 impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
-    pub fn new_sized(llval: V, layout: TyAndLayout<'tcx>) -> PlaceRef<'tcx, V> {
+    pub fn new_sized(llval: V, layout: TyAndLayout<'tcx>) -> Self {
         PlaceRef::new_sized_aligned(llval, layout, layout.align.abi)
     }
 
-    pub fn new_sized_aligned(
-        llval: V,
-        layout: TyAndLayout<'tcx>,
-        align: Align,
-    ) -> PlaceRef<'tcx, V> {
+    pub fn new_sized_aligned(llval: V, layout: TyAndLayout<'tcx>, align: Align) -> Self {
         assert!(layout.is_sized());
         PlaceValue::new_sized(llval, align).with_type(layout)
     }
@@ -144,7 +183,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         if let FieldsShape::Array { count, .. } = self.layout.fields {
             if self.layout.is_unsized() {
                 assert_eq!(count, 0);
-                self.val.llextra.unwrap()
+                self.val.llextra.immediate()
             } else {
                 cx.const_usize(count)
             }
@@ -172,6 +211,30 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         let offset = self.layout.fields.offset(ix);
         let effective_field_align = self.val.align.restrict_for_offset(offset);
 
+        let field_llextra = if bx.cx().tcx().type_has_metadata(field.ty, bx.cx().typing_env()) {
+            debug_assert!(
+                self.val.llextra.has_metadata(),
+                "field projection from thin container to non-thin field",
+            );
+            self.val.llextra.map_metadata(|meta| {
+                let meta = meta.change_sizedness();
+                match meta.val {
+                    OperandValue::Ref(_) => {
+                        let orig_meta_place = PlaceRef::alloca(bx, meta.layout);
+                        meta.val.store(bx, orig_meta_place);
+                        let field_meta_place = orig_meta_place.project_field(bx, ix);
+                        bx.load_operand(field_meta_place)
+                            .expect_sized("pointer metadata must be sized")
+                    }
+                    _ => meta
+                        .extract_field_simple(bx, ix)
+                        .expect_sized("pointer metadata must be sized"),
+                }
+            })
+        } else {
+            AnyPlaceMeta(None)
+        };
+
         // `simple` is called when we don't need to adjust the offset to
         // the dynamic alignment of the field.
         let mut simple = || {
@@ -180,15 +243,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             } else {
                 bx.inbounds_ptradd(self.val.llval, bx.const_usize(offset.bytes()))
             };
-            let val = PlaceValue {
-                llval,
-                llextra: if bx.cx().tcx().type_has_metadata(field.ty, bx.cx().typing_env()) {
-                    self.val.llextra
-                } else {
-                    None
-                },
-                align: effective_field_align,
-            };
+            let val = PlaceValue { llval, llextra: field_llextra, align: effective_field_align };
             val.with_type(field)
         };
 
@@ -224,7 +279,11 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         let unaligned_offset = bx.cx().const_usize(offset.bytes());
 
         // Get the alignment of the field
-        let (_, mut unsized_align) = size_of_val::size_and_align_of_dst(bx, field.ty, meta);
+        let (_, mut unsized_align) = size_of_val::size_and_align_of_dst(
+            bx,
+            field.ty,
+            meta.get_metadata().map(|opref| opref.change_sizedness().immediate()),
+        );
 
         // For packed types, we need to cap alignment.
         if let ty::Adt(def, _) = self.layout.ty.kind()
@@ -242,8 +301,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
 
         // Adjust pointer.
         let ptr = bx.inbounds_ptradd(self.val.llval, offset);
-        let val =
-            PlaceValue { llval: ptr, llextra: self.val.llextra, align: effective_field_align };
+        let val = PlaceValue { llval: ptr, llextra: field_llextra, align: effective_field_align };
         val.with_type(field)
     }
 
@@ -322,13 +380,13 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         &mut self,
         bx: &mut Bx,
         place_ref: mir::PlaceRef<'tcx>,
-    ) -> PlaceRef<'tcx, Bx::Value> {
+    ) -> PlaceRef<'tcx, Bx::Value, AnyPlace> {
         let cx = self.cx;
         let tcx = self.cx.tcx();
 
         let mut base = 0;
         let mut cg_base = match self.locals[place_ref.local] {
-            LocalRef::Place(place) => place,
+            LocalRef::Place(place) => place.change_sizedness(),
             LocalRef::UnsizedPlace(place) => bx.load_operand(place).deref(cx),
             LocalRef::Operand(..) => {
                 if place_ref.is_indirect_first_projection() {
@@ -375,16 +433,21 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     cg_base.project_index(bx, llindex)
                 }
                 mir::ProjectionElem::Subslice { from, to, from_end } => {
-                    let mut subslice = cg_base.project_index(bx, bx.cx().const_usize(from));
+                    let mut subslice =
+                        cg_base.project_index(bx, bx.cx().const_usize(from)).change_sizedness();
                     let projected_ty =
                         PlaceTy::from_ty(cg_base.layout.ty).projection_ty(tcx, *elem).ty;
                     subslice.layout = bx.cx().layout_of(self.monomorphize(projected_ty));
 
                     if subslice.layout.is_unsized() {
                         assert!(from_end, "slice subslices should be `from_end`");
-                        subslice.val.llextra = Some(
-                            bx.sub(cg_base.val.llextra.unwrap(), bx.cx().const_usize(from + to)),
-                        );
+                        let len =
+                            bx.sub(cg_base.val.llextra.immediate(), bx.cx().const_usize(from + to));
+                        subslice.val.llextra = AnyPlaceMeta(Some(OperandRef {
+                            val: OperandValue::Immediate(len),
+                            layout: bx.cx().layout_of(bx.tcx().types.usize),
+                            move_annotation: None,
+                        }));
                     }
 
                     subslice

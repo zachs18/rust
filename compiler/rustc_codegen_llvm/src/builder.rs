@@ -10,6 +10,7 @@ use libc::{c_char, c_uint};
 use rustc_abi::{self as abi, Align, Size, WrappingRange};
 use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::common::{IntPredicate, RealPredicate, SynchronizationScope, TypeKind};
+use rustc_codegen_ssa::mir::PlaceMetadata;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::PlaceRef;
 use rustc_codegen_ssa::traits::*;
@@ -673,7 +674,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 panic!("unsized locals must not be `extern` types");
             }
         }
-        assert_eq!(place.val.llextra.is_some(), place.layout.is_unsized());
+        assert_eq!(place.val.llextra.has_metadata(), place.layout.is_unsized());
 
         if place.layout.is_zst() {
             return OperandRef::zero_sized(place.layout);
@@ -717,7 +718,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
             }
         }
 
-        let val = if let Some(_) = place.val.llextra {
+        let val = if place.val.llextra.has_metadata() {
             // FIXME: Merge with the `else` below?
             OperandValue::Ref(place.val)
         } else if place.layout.is_llvm_immediate() {

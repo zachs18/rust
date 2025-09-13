@@ -21,6 +21,7 @@ use super::type_::{ArgAbiBuilderMethods, BaseTypeCodegenMethods, LayoutTypeCodeg
 use super::{CodegenMethods, StaticBuilderMethods};
 use crate::MemFlags;
 use crate::common::{AtomicRmwBinOp, IntPredicate, RealPredicate, SynchronizationScope, TypeKind};
+use crate::mir::PlaceMetadata;
 use crate::mir::operand::{OperandRef, OperandValue};
 use crate::mir::place::{PlaceRef, PlaceValue};
 
@@ -246,8 +247,12 @@ pub trait BuilderMethods<'a, 'tcx>:
         order: AtomicOrdering,
         size: Size,
     ) -> Self::Value;
-    fn load_from_place(&mut self, ty: Self::Type, place: PlaceValue<Self::Value>) -> Self::Value {
-        assert_eq!(place.llextra, None);
+    fn load_from_place(
+        &mut self,
+        ty: Self::Type,
+        place: PlaceValue<'tcx, Self::Value>,
+    ) -> Self::Value {
+        assert!(!place.llextra.has_metadata());
         self.load(ty, place.llval, place.align)
     }
     fn load_operand(&mut self, place: PlaceRef<'tcx, Self::Value>)
@@ -299,8 +304,12 @@ pub trait BuilderMethods<'a, 'tcx>:
     fn nonnull_metadata(&mut self, load: Self::Value);
 
     fn store(&mut self, val: Self::Value, ptr: Self::Value, align: Align) -> Self::Value;
-    fn store_to_place(&mut self, val: Self::Value, place: PlaceValue<Self::Value>) -> Self::Value {
-        assert_eq!(place.llextra, None);
+    fn store_to_place(
+        &mut self,
+        val: Self::Value,
+        place: PlaceValue<'tcx, Self::Value>,
+    ) -> Self::Value {
+        assert!(!place.llextra.has_metadata());
         self.store(val, place.llval, place.align)
     }
     fn store_with_flags(
@@ -313,10 +322,10 @@ pub trait BuilderMethods<'a, 'tcx>:
     fn store_to_place_with_flags(
         &mut self,
         val: Self::Value,
-        place: PlaceValue<Self::Value>,
+        place: PlaceValue<'tcx, Self::Value>,
         flags: MemFlags,
     ) -> Self::Value {
-        assert_eq!(place.llextra, None);
+        assert!(!place.llextra.has_metadata());
         self.store_with_flags(val, place.llval, place.align, flags)
     }
     fn atomic_store(
@@ -480,8 +489,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     /// (For example, typed load-stores with alias metadata.)
     fn typed_place_copy(
         &mut self,
-        dst: PlaceValue<Self::Value>,
-        src: PlaceValue<Self::Value>,
+        dst: PlaceValue<'tcx, Self::Value>,
+        src: PlaceValue<'tcx, Self::Value>,
         layout: TyAndLayout<'tcx>,
     ) {
         self.typed_place_copy_with_flags(dst, src, layout, MemFlags::empty());
@@ -489,14 +498,14 @@ pub trait BuilderMethods<'a, 'tcx>:
 
     fn typed_place_copy_with_flags(
         &mut self,
-        dst: PlaceValue<Self::Value>,
-        src: PlaceValue<Self::Value>,
+        dst: PlaceValue<'tcx, Self::Value>,
+        src: PlaceValue<'tcx, Self::Value>,
         layout: TyAndLayout<'tcx>,
         flags: MemFlags,
     ) {
         assert!(layout.is_sized(), "cannot typed-copy an unsigned type");
-        assert!(src.llextra.is_none(), "cannot directly copy from unsized values");
-        assert!(dst.llextra.is_none(), "cannot directly copy into unsized values");
+        assert!(!src.llextra.has_metadata(), "cannot directly copy from unsized values");
+        assert!(!dst.llextra.has_metadata(), "cannot directly copy into unsized values");
         if flags.contains(MemFlags::NONTEMPORAL) {
             // HACK(nox): This is inefficient but there is no nontemporal memcpy.
             let ty = self.backend_type(layout);
@@ -522,8 +531,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     /// cases (in non-debug), preferring the fallback body instead.
     fn typed_place_swap(
         &mut self,
-        left: PlaceValue<Self::Value>,
-        right: PlaceValue<Self::Value>,
+        left: PlaceValue<'tcx, Self::Value>,
+        right: PlaceValue<'tcx, Self::Value>,
         layout: TyAndLayout<'tcx>,
     ) {
         let mut temp = self.load_operand(left.with_type(layout));
