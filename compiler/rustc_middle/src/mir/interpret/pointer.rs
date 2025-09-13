@@ -56,7 +56,7 @@ impl<T: HasDataLayout> PointerArithmetic for T {}
 /// mostly opaque; the `Machine` trait extends it with some more operations that also have access to
 /// some global state.
 /// The `Debug` rendering is used to display bare provenance, and for the default impl of `fmt`.
-pub trait Provenance: Copy + PartialEq + fmt::Debug + 'static {
+pub trait Provenance: Copy + Eq + std::hash::Hash + fmt::Debug + 'static {
     /// Says whether the `offset` field of `Pointer`s with this provenance is the actual physical address.
     /// - If `false`, the offset *must* be relative. This means the bytes representing a pointer are
     ///   different from what the Abstract Machine prescribes, so the interpreter must prevent any

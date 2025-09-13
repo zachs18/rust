@@ -2,8 +2,6 @@
 //! into a place.
 //! All high-level functions to write to memory work on places as destinations.
 
-use std::assert_matches;
-
 use either::{Either, Left, Right};
 use rustc_abi::{BackendRepr, HasDataLayout, Size};
 use rustc_middle::ty::layout::TyAndLayout;
@@ -19,48 +17,154 @@ use super::{
 };
 use crate::enter_trace_span;
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
-/// Information required for the sound usage of a `MemPlace`.
-pub enum MemPlaceMeta<Prov: Provenance = CtfeProvenance> {
-    /// The unsized payload (e.g. length for slices or vtable pointer for trait objects).
-    Meta(Scalar<Prov>),
-    /// `Sized` types or unsized `extern type`
-    None,
+pub trait MemPlaceSizedness: Copy + std::fmt::Debug + std::hash::Hash + Eq {
+    // The default value should be valid for any `Sized` place.
+    type Metadata<'tcx, Prov: Provenance>: MemPlaceMetadata<'tcx, Prov>;
 }
 
-impl<Prov: Provenance> MemPlaceMeta<Prov> {
-    #[cfg_attr(debug_assertions, track_caller)] // only in debug builds due to perf (see #98980)
-    pub fn unwrap_meta(self) -> Scalar<Prov> {
-        match self {
-            Self::Meta(s) => s,
-            Self::None => {
-                bug!("expected wide pointer extra data (e.g. slice length or trait object vtable)")
-            }
+/// `Default::default()` must give the metadata for any sized place
+pub trait MemPlaceMetadata<'tcx, Prov: Provenance = CtfeProvenance>:
+    Default
+    + Copy
+    + std::fmt::Debug
+    + From<SizedMemPlaceMeta>
+    + Into<AnyMemPlaceMeta<'tcx, Prov>>
+    + Eq
+    + std::hash::Hash
+{
+    fn has_metadata(&self) -> bool;
+    fn try_to_sized(self) -> Option<SizedMemPlaceMeta>;
+    fn to_unsized(self) -> AnyMemPlaceMeta<'tcx, Prov>;
+
+    fn scalar(self) -> Scalar<Prov> {
+        match self.to_unsized().0 {
+            Some(meta) => match meta.op() {
+                Operand::Immediate(immediate) => immediate.to_scalar(),
+                _ => bug!("not immediate: {:?}", self),
+            },
+            _ => bug!("not immediate: {:?}", self),
         }
     }
 
-    #[inline(always)]
-    pub fn has_meta(self) -> bool {
-        match self {
-            Self::Meta(_) => true,
-            Self::None => false,
+    fn map_metadata(
+        self,
+        f: impl FnOnce(OpTy<'tcx, Prov, SizedMemPlace>) -> OpTy<'tcx, Prov, SizedMemPlace>,
+    ) -> Self;
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct SizedMemPlace;
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct AnyMemPlace;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SizedMemPlaceMeta;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AnyMemPlaceMeta<'tcx, Prov: Provenance = CtfeProvenance>(
+    pub Option<OpTy<'tcx, Prov, SizedMemPlace>>,
+);
+
+impl<'tcx, Prov: Provenance> Default for AnyMemPlaceMeta<'tcx, Prov> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<'tcx, Prov: Provenance> From<SizedMemPlaceMeta> for AnyMemPlaceMeta<'tcx, Prov> {
+    fn from(_: SizedMemPlaceMeta) -> Self {
+        AnyMemPlaceMeta(None)
+    }
+}
+
+impl MemPlaceSizedness for SizedMemPlace {
+    type Metadata<'tcx, Prov: Provenance> = SizedMemPlaceMeta;
+}
+
+impl MemPlaceSizedness for AnyMemPlace {
+    type Metadata<'tcx, Prov: Provenance> = AnyMemPlaceMeta<'tcx, Prov>;
+}
+
+impl<'tcx, Prov: Provenance> MemPlaceMetadata<'tcx, Prov> for SizedMemPlaceMeta {
+    fn has_metadata(&self) -> bool {
+        false
+    }
+
+    fn try_to_sized(self) -> Option<SizedMemPlaceMeta> {
+        Some(self)
+    }
+
+    fn to_unsized(self) -> AnyMemPlaceMeta<'tcx, Prov> {
+        AnyMemPlaceMeta(None)
+    }
+
+    fn map_metadata(
+        self,
+        _f: impl FnOnce(OpTy<'tcx, Prov, SizedMemPlace>) -> OpTy<'tcx, Prov, SizedMemPlace>,
+    ) -> Self {
+        self
+    }
+}
+impl<'tcx, Prov: Provenance> MemPlaceMetadata<'tcx, Prov> for AnyMemPlaceMeta<'tcx, Prov> {
+    fn has_metadata(&self) -> bool {
+        self.0.is_some()
+    }
+
+    fn try_to_sized(self) -> Option<SizedMemPlaceMeta> {
+        match self.0 {
+            None => Some(SizedMemPlaceMeta),
+            Some(_) => None,
         }
+    }
+
+    fn to_unsized(self) -> AnyMemPlaceMeta<'tcx, Prov> {
+        self
+    }
+
+    fn map_metadata(
+        self,
+        f: impl FnOnce(OpTy<'tcx, Prov, SizedMemPlace>) -> OpTy<'tcx, Prov, SizedMemPlace>,
+    ) -> Self {
+        Self(self.0.map(f))
     }
 }
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
-pub(super) struct MemPlace<Prov: Provenance = CtfeProvenance> {
+pub(super) struct MemPlace<
+    'tcx,
+    Prov: Provenance = CtfeProvenance,
+    Sizedness: MemPlaceSizedness = AnyMemPlace,
+> {
     /// The pointer can be a pure integer, with the `None` provenance.
     pub ptr: Pointer<Option<Prov>>,
     /// Metadata for unsized places. Interpretation is up to the type.
     /// Must not be present for sized types, but can be missing for unsized types
     /// (e.g., `extern type`).
-    pub meta: MemPlaceMeta<Prov>,
+    pub meta: Sizedness::Metadata<'tcx, Prov>,
     /// Stores whether this place was created based on a sufficiently aligned pointer.
     misaligned: Option<Misalignment>,
 }
 
-impl<Prov: Provenance> MemPlace<Prov> {
+impl<'tcx, Prov: Provenance, Sizedness: MemPlaceSizedness> MemPlace<'tcx, Prov, Sizedness> {
+    pub(super) fn change_sizedness<NewSizedness: MemPlaceSizedness>(
+        self,
+    ) -> MemPlace<'tcx, Prov, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, Prov>: Into<NewSizedness::Metadata<'tcx, Prov>>,
+    {
+        MemPlace { ptr: self.ptr, meta: self.meta.into(), misaligned: self.misaligned }
+    }
+
+    pub(super) fn try_to_sized(self) -> Option<MemPlace<'tcx, Prov, SizedMemPlace>> {
+        Some(MemPlace {
+            ptr: self.ptr,
+            meta: self.meta.try_to_sized()?,
+            misaligned: self.misaligned,
+        })
+    }
+}
+
+impl<'tcx, Prov: Provenance> MemPlace<'tcx, Prov> {
     /// Adjust the provenance of the main pointer (metadata is unaffected).
     fn map_provenance(self, f: impl FnOnce(Prov) -> Prov) -> Self {
         MemPlace { ptr: self.ptr.map_provenance(|p| p.map(f)), ..self }
@@ -69,20 +173,23 @@ impl<Prov: Provenance> MemPlace<Prov> {
     /// Turn a mplace into a (thin or wide) pointer, as a reference, pointing to the same space.
     #[inline]
     fn to_ref(self, cx: &impl HasDataLayout) -> Immediate<Prov> {
-        Immediate::new_pointer_with_meta(self.ptr, self.meta, cx)
+        let meta = self.meta;
+        let meta = meta.has_metadata().then(|| meta.scalar());
+
+        Immediate::new_pointer_with_meta(self.ptr, meta, cx)
     }
 
     #[inline]
     // Not called `offset_with_meta` to avoid confusion with the trait method.
-    fn offset_with_meta_<'tcx, M: Machine<'tcx, Provenance = Prov>>(
+    fn offset_with_meta_<M: Machine<'tcx, Provenance = Prov>>(
         self,
         offset: Size,
         mode: OffsetMode,
-        meta: MemPlaceMeta<Prov>,
+        meta: AnyMemPlaceMeta<'tcx, Prov>,
         ecx: &InterpCx<'tcx, M>,
     ) -> InterpResult<'tcx, Self> {
         debug_assert!(
-            !meta.has_meta() || self.meta.has_meta(),
+            !meta.has_metadata() || self.meta.has_metadata(),
             "cannot use `offset_with_meta` to add metadata to a place"
         );
         let ptr = match mode {
@@ -96,19 +203,47 @@ impl<Prov: Provenance> MemPlace<Prov> {
 }
 
 /// A MemPlace with its layout. Constructing it is only possible in this module.
-#[derive(Clone, Hash, Eq, PartialEq)]
-pub struct MPlaceTy<'tcx, Prov: Provenance = CtfeProvenance> {
-    mplace: MemPlace<Prov>,
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct MPlaceTy<
+    'tcx,
+    Prov: Provenance = CtfeProvenance,
+    Sizedness: MemPlaceSizedness = AnyMemPlace,
+> {
+    mplace: MemPlace<'tcx, Prov, Sizedness>,
     pub layout: TyAndLayout<'tcx>,
 }
 
-impl<Prov: Provenance> std::fmt::Debug for MPlaceTy<'_, Prov> {
+impl<Prov: Provenance, Sizedness: MemPlaceSizedness> std::fmt::Debug
+    for MPlaceTy<'_, Prov, Sizedness>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Printing `layout` results in too much noise; just print a nice version of the type.
         f.debug_struct("MPlaceTy")
             .field("mplace", &self.mplace)
             .field("ty", &format_args!("{}", self.layout.ty))
             .finish()
+    }
+}
+
+impl<'tcx, Prov: Provenance, Sizedness: MemPlaceSizedness> MPlaceTy<'tcx, Prov, Sizedness> {
+    pub fn change_sizedness<NewSizedness: MemPlaceSizedness>(
+        self,
+    ) -> MPlaceTy<'tcx, Prov, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, Prov>: Into<NewSizedness::Metadata<'tcx, Prov>>,
+    {
+        MPlaceTy { mplace: self.mplace.change_sizedness(), layout: self.layout }
+    }
+
+    pub fn try_to_sized(self) -> Option<MPlaceTy<'tcx, Prov, SizedMemPlace>> {
+        Some(MPlaceTy { mplace: self.mplace.try_to_sized()?, layout: self.layout })
+    }
+
+    /// If this MPlaceTy has no metadata, return it as a MPlaceTy with SizedMemPlaceMeta,
+    /// otherwise panic
+    #[track_caller]
+    pub fn expect_sized(self, msg: &str) -> MPlaceTy<'tcx, Prov, SizedMemPlace> {
+        self.try_to_sized().expect(msg)
     }
 }
 
@@ -121,7 +256,7 @@ impl<'tcx, Prov: Provenance> MPlaceTy<'tcx, Prov> {
         assert!(layout.is_zst());
         let align = layout.align.abi;
         let ptr = Pointer::without_provenance(align.bytes()); // no provenance, absolute address
-        MPlaceTy { mplace: MemPlace { ptr, meta: MemPlaceMeta::None, misaligned: None }, layout }
+        MPlaceTy { mplace: MemPlace { ptr, meta: Default::default(), misaligned: None }, layout }
     }
 
     /// Adjust the provenance of the main pointer (metadata is unaffected).
@@ -130,7 +265,7 @@ impl<'tcx, Prov: Provenance> MPlaceTy<'tcx, Prov> {
     }
 
     #[inline(always)]
-    pub(super) fn mplace(&self) -> &MemPlace<Prov> {
+    pub(super) fn mplace(&self) -> &MemPlace<'tcx, Prov> {
         &self.mplace
     }
 
@@ -152,7 +287,7 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for MPlaceTy<'tcx, Prov> {
     }
 
     #[inline(always)]
-    fn meta(&self) -> MemPlaceMeta<Prov> {
+    fn meta(&self) -> AnyMemPlaceMeta<'tcx, Prov> {
         self.mplace.meta
     }
 
@@ -160,7 +295,7 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for MPlaceTy<'tcx, Prov> {
         &self,
         offset: Size,
         mode: OffsetMode,
-        meta: MemPlaceMeta<Prov>,
+        meta: AnyMemPlaceMeta<'tcx, Prov>,
         layout: TyAndLayout<'tcx>,
         ecx: &InterpCx<'tcx, M>,
     ) -> InterpResult<'tcx, Self> {
@@ -180,9 +315,13 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for MPlaceTy<'tcx, Prov> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub(super) enum Place<Prov: Provenance = CtfeProvenance> {
+pub(super) enum Place<
+    'tcx,
+    Prov: Provenance = CtfeProvenance,
+    Sizedness: MemPlaceSizedness = AnyMemPlace,
+> {
     /// A place referring to a value allocated in the `Memory` system.
-    Ptr(MemPlace<Prov>),
+    Ptr(MemPlace<'tcx, Prov, Sizedness>),
 
     /// To support alloc-free locals, we are able to write directly to a local. The offset indicates
     /// where in the local this place is located; if it is `None`, no projection has been applied
@@ -198,6 +337,22 @@ pub(super) enum Place<Prov: Provenance = CtfeProvenance> {
     Local { local: mir::Local, offset: Option<Size>, locals_addr: usize },
 }
 
+impl<'tcx, Prov: Provenance, Sizedness: MemPlaceSizedness> Place<'tcx, Prov, Sizedness> {
+    pub(super) fn change_sizedness<NewSizedness: MemPlaceSizedness>(
+        self,
+    ) -> Place<'tcx, Prov, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, Prov>: Into<NewSizedness::Metadata<'tcx, Prov>>,
+    {
+        match self {
+            Place::Ptr(mem_place) => Place::Ptr(mem_place.change_sizedness()),
+            Place::Local { local, offset, locals_addr } => {
+                Place::Local { local, offset, locals_addr }
+            }
+        }
+    }
+}
+
 /// An evaluated place, together with its type.
 ///
 /// This may reference a stack frame by its index, so `PlaceTy` should generally not be kept around
@@ -205,12 +360,18 @@ pub(super) enum Place<Prov: Provenance = CtfeProvenance> {
 /// point to the wrong destination. If the interpreter has multiple stacks, stack switching will
 /// also invalidate a `PlaceTy`.
 #[derive(Clone)]
-pub struct PlaceTy<'tcx, Prov: Provenance = CtfeProvenance> {
-    place: Place<Prov>, // Keep this private; it helps enforce invariants.
+pub struct PlaceTy<
+    'tcx,
+    Prov: Provenance = CtfeProvenance,
+    Sizedness: MemPlaceSizedness = AnyMemPlace,
+> {
+    place: Place<'tcx, Prov, Sizedness>, // Keep this private; it helps enforce invariants.
     pub layout: TyAndLayout<'tcx>,
 }
 
-impl<Prov: Provenance> std::fmt::Debug for PlaceTy<'_, Prov> {
+impl<Prov: Provenance, Sizedness: MemPlaceSizedness> std::fmt::Debug
+    for PlaceTy<'_, Prov, Sizedness>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Printing `layout` results in too much noise; just print a nice version of the type.
         f.debug_struct("PlaceTy")
@@ -227,9 +388,18 @@ impl<'tcx, Prov: Provenance> From<MPlaceTy<'tcx, Prov>> for PlaceTy<'tcx, Prov> 
     }
 }
 
-impl<'tcx, Prov: Provenance> PlaceTy<'tcx, Prov> {
+impl<'tcx, Prov: Provenance, Sizedness: MemPlaceSizedness> PlaceTy<'tcx, Prov, Sizedness> {
+    pub fn change_sizedness<NewSizedness: MemPlaceSizedness>(
+        self,
+    ) -> PlaceTy<'tcx, Prov, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, Prov>: Into<NewSizedness::Metadata<'tcx, Prov>>,
+    {
+        PlaceTy { place: self.place.change_sizedness(), layout: self.layout }
+    }
+
     #[inline(always)]
-    pub(super) fn place(&self) -> &Place<Prov> {
+    pub(super) fn place(&self) -> &Place<'tcx, Prov, Sizedness> {
         &self.place
     }
 
@@ -243,7 +413,8 @@ impl<'tcx, Prov: Provenance> PlaceTy<'tcx, Prov> {
     #[inline(always)]
     pub fn as_mplace_or_local(
         &self,
-    ) -> Either<MPlaceTy<'tcx, Prov>, (mir::Local, Option<Size>, usize, TyAndLayout<'tcx>)> {
+    ) -> Either<MPlaceTy<'tcx, Prov, Sizedness>, (mir::Local, Option<Size>, usize, TyAndLayout<'tcx>)>
+    {
         match self.place {
             Place::Ptr(mplace) => Left(MPlaceTy { mplace, layout: self.layout }),
             Place::Local { local, offset, locals_addr } => {
@@ -254,7 +425,7 @@ impl<'tcx, Prov: Provenance> PlaceTy<'tcx, Prov> {
 
     #[inline(always)]
     #[cfg_attr(debug_assertions, track_caller)] // only in debug builds due to perf (see #98980)
-    pub fn assert_mem_place(&self) -> MPlaceTy<'tcx, Prov> {
+    pub fn assert_mem_place(&self) -> MPlaceTy<'tcx, Prov, Sizedness> {
         self.as_mplace_or_local().left().unwrap_or_else(|| {
             bug!(
                 "PlaceTy of type {} was a local when it was expected to be an MPlace",
@@ -271,12 +442,12 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for PlaceTy<'tcx, Prov> {
     }
 
     #[inline]
-    fn meta(&self) -> MemPlaceMeta<Prov> {
+    fn meta(&self) -> AnyMemPlaceMeta<'tcx, Prov> {
         match self.as_mplace_or_local() {
             Left(mplace) => mplace.meta(),
             Right(_) => {
                 debug_assert!(self.layout.is_sized(), "unsized locals should live in memory");
-                MemPlaceMeta::None
+                AnyMemPlaceMeta(None)
             }
         }
     }
@@ -285,7 +456,7 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for PlaceTy<'tcx, Prov> {
         &self,
         offset: Size,
         mode: OffsetMode,
-        meta: MemPlaceMeta<Prov>,
+        meta: AnyMemPlaceMeta<'tcx, Prov>,
         layout: TyAndLayout<'tcx>,
         ecx: &InterpCx<'tcx, M>,
     ) -> InterpResult<'tcx, Self> {
@@ -293,7 +464,7 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for PlaceTy<'tcx, Prov> {
             Left(mplace) => mplace.offset_with_meta(offset, mode, meta, layout, ecx)?.into(),
             Right((local, old_offset, locals_addr, _)) => {
                 debug_assert!(layout.is_sized(), "unsized locals should live in memory");
-                assert_matches!(meta, MemPlaceMeta::None); // we couldn't store it anyway...
+                assert!(!meta.has_metadata()); // we couldn't store it anyway...
                 // `Place::Local` are always in-bounds of their surrounding local, so we can just
                 // check directly if this remains in-bounds. This cannot actually be violated since
                 // projections are type-checked and bounds-checked.
@@ -390,7 +561,7 @@ where
     fn ptr_with_meta_to_mplace(
         &self,
         ptr: Pointer<Option<M::Provenance>>,
-        meta: MemPlaceMeta<M::Provenance>,
+        meta: AnyMemPlaceMeta<'tcx, M::Provenance>,
         layout: TyAndLayout<'tcx>,
         unaligned: bool,
     ) -> MPlaceTy<'tcx, M::Provenance> {
@@ -405,7 +576,7 @@ where
         layout: TyAndLayout<'tcx>,
     ) -> MPlaceTy<'tcx, M::Provenance> {
         assert!(layout.is_sized());
-        self.ptr_with_meta_to_mplace(ptr, MemPlaceMeta::None, layout, /*unaligned*/ false)
+        self.ptr_with_meta_to_mplace(ptr, AnyMemPlaceMeta(None), layout, /*unaligned*/ false)
     }
 
     pub fn ptr_to_mplace_unaligned(
@@ -414,7 +585,7 @@ where
         layout: TyAndLayout<'tcx>,
     ) -> MPlaceTy<'tcx, M::Provenance> {
         assert!(layout.is_sized());
-        self.ptr_with_meta_to_mplace(ptr, MemPlaceMeta::None, layout, /*unaligned*/ true)
+        self.ptr_with_meta_to_mplace(ptr, AnyMemPlaceMeta(None), layout, /*unaligned*/ true)
     }
 
     /// Take a value, which represents a (thin or wide) pointer, and make it a place.
@@ -426,16 +597,30 @@ where
     pub fn imm_ptr_to_mplace(
         &self,
         val: &ImmTy<'tcx, M::Provenance>,
-    ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance>> {
+    ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance, AnyMemPlace>> {
         let pointee_type =
             val.layout.ty.builtin_deref(true).expect("`imm_ptr_to_mplace` called on non-ptr type");
         let layout = self.layout_of(pointee_type)?;
         let (ptr, meta) = val.to_scalar_and_meta();
+        let meta = meta
+            .map(|meta| {
+                let meta_ty = Ty::new_ptr_metadata(*self.tcx, pointee_type);
+                self.layout_of(meta_ty).map(|meta_ty| {
+                    let meta = ImmTy::from_scalar(meta, meta_ty);
+                    OpTy::from(meta).expect_sized("pointer metadata must be sized")
+                })
+            })
+            .transpose()?;
 
         // `imm_ptr_to_mplace` is called on raw pointers even if they don't actually get dereferenced;
         // we hence can't call `size_and_align_of` since that asserts more validity than we want.
         let ptr = ptr.to_pointer(self)?;
-        interp_ok(self.ptr_with_meta_to_mplace(ptr, meta, layout, /*unaligned*/ false))
+        interp_ok(self.ptr_with_meta_to_mplace(
+            ptr,
+            AnyMemPlaceMeta(meta),
+            layout,
+            /*unaligned*/ false,
+        ))
     }
 
     /// Turn a mplace into a (thin or wide) mutable raw pointer, pointing to the same space.
@@ -699,7 +884,7 @@ where
         &mut self,
         value: Immediate<M::Provenance>,
         layout: TyAndLayout<'tcx>,
-        dest: MemPlace<M::Provenance>,
+        dest: MemPlace<'tcx, M::Provenance>,
     ) -> InterpResult<'tcx> {
         // We use the sizes from `value` below.
         // Ensure that matches the type of the place it is written to.
@@ -1025,7 +1210,7 @@ where
                     whole_local.offset_with_meta_(
                         offset,
                         OffsetMode::Wrapping,
-                        MemPlaceMeta::None,
+                        AnyMemPlaceMeta(None),
                         self,
                     )?
                 } else {
@@ -1043,7 +1228,7 @@ where
         &mut self,
         layout: TyAndLayout<'tcx>,
         kind: MemoryKind<M::MemoryKind>,
-        meta: MemPlaceMeta<M::Provenance>,
+        meta: AnyMemPlaceMeta<'tcx, M::Provenance>,
     ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance>> {
         let Some((size, align)) = self.size_and_align_from_meta(&meta, &layout)? else {
             span_bug!(self.cur_span(), "cannot allocate space for `extern` type, size is not known")
@@ -1058,7 +1243,7 @@ where
         kind: MemoryKind<M::MemoryKind>,
     ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance>> {
         assert!(layout.is_sized());
-        self.allocate_dyn(layout, kind, MemPlaceMeta::None)
+        self.allocate_dyn(layout, kind, AnyMemPlaceMeta(None))
     }
 
     /// Allocates a sequence of bytes in the interpreter's memory with alignment 1.
@@ -1089,6 +1274,9 @@ where
 
         // Create length metadata for the string.
         let meta = Scalar::from_target_usize(u64::try_from(bytes.len()).unwrap(), self);
+        let layout = self.layout_of(Ty::new_ptr_metadata(*self.tcx, self.tcx.types.str_))?;
+        let meta = ImmTy::from_scalar(meta, layout);
+        let meta = OpTy::from(meta).expect_sized("pointer metadata must be sized");
 
         // Get layout for Rust's str type.
         let layout = self.layout_of(self.tcx.types.str_).unwrap();
@@ -1096,7 +1284,7 @@ where
         // Combine pointer and metadata into a wide pointer.
         interp_ok(self.ptr_with_meta_to_mplace(
             ptr.into(),
-            MemPlaceMeta::Meta(meta),
+            AnyMemPlaceMeta(Some(meta)),
             layout,
             /*unaligned*/ false,
         ))
@@ -1121,10 +1309,10 @@ mod size_asserts {
 
     use super::*;
     // tidy-alphabetical-start
-    static_assert_size!(MPlaceTy<'_>, 64);
-    static_assert_size!(MemPlace, 48);
-    static_assert_size!(MemPlaceMeta, 24);
-    static_assert_size!(Place, 48);
-    static_assert_size!(PlaceTy<'_>, 64);
+    static_assert_size!(AnyMemPlaceMeta<'_>, 64);
+    static_assert_size!(MPlaceTy<'_>, 104);
+    static_assert_size!(MemPlace<'_>, 88);
+    static_assert_size!(Place<'_>, 88);
+    static_assert_size!(PlaceTy<'_>, 104);
     // tidy-alphabetical-end
 }

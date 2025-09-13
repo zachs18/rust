@@ -1,8 +1,6 @@
 //! Functions concerning immediate values and operands, and reading from operands.
 //! All high-level functions to read from memory work on operands as sources.
 
-use std::assert_matches;
-
 use either::{Either, Left, Right};
 use rustc_abi as abi;
 use rustc_abi::{BackendRepr, HasDataLayout, Size};
@@ -17,11 +15,13 @@ use tracing::field::Empty;
 use tracing::trace;
 
 use super::{
-    CtfeProvenance, Frame, InterpCx, InterpResult, MPlaceTy, Machine, MemPlace, MemPlaceMeta,
-    OffsetMode, PlaceTy, Pointer, Projectable, Provenance, Scalar, alloc_range, err_ub,
-    from_known_layout, interp_ok, mir_assign_valid_types, throw_ub,
+    CtfeProvenance, Frame, InterpCx, InterpResult, MPlaceTy, Machine, MemPlace, OffsetMode,
+    PlaceTy, Pointer, Projectable, Provenance, Scalar, alloc_range, err_ub, from_known_layout,
+    interp_ok, mir_assign_valid_types, throw_ub,
 };
 use crate::enter_trace_span;
+use crate::interpret::place::{MemPlaceSizedness, SizedMemPlace};
+use crate::interpret::{AnyMemPlace, AnyMemPlaceMeta, MemPlaceMetadata};
 
 /// An `Immediate` represents a single immediate self-contained Rust value.
 ///
@@ -30,7 +30,7 @@ use crate::enter_trace_span;
 /// operations and wide pointers. This idea was taken from rustc's codegen.
 /// In particular, thanks to `ScalarPair`, arithmetic operations and casts can be entirely
 /// defined on `Immediate`, and do not have to work with a `Place`.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Immediate<Prov: Provenance = CtfeProvenance> {
     /// A single scalar value (must have *initialized* `Scalar` ABI).
     Scalar(Scalar<Prov>),
@@ -51,13 +51,13 @@ impl<Prov: Provenance> From<Scalar<Prov>> for Immediate<Prov> {
 impl<Prov: Provenance> Immediate<Prov> {
     pub fn new_pointer_with_meta(
         ptr: Pointer<Option<Prov>>,
-        meta: MemPlaceMeta<Prov>,
+        meta: Option<Scalar<Prov>>,
         cx: &impl HasDataLayout,
     ) -> Self {
         let ptr = Scalar::from_maybe_pointer(ptr, cx);
         match meta {
-            MemPlaceMeta::None => Immediate::from(ptr),
-            MemPlaceMeta::Meta(meta) => Immediate::ScalarPair(ptr, meta),
+            None => Immediate::from(ptr),
+            Some(meta) => Immediate::ScalarPair(ptr, meta),
         }
     }
 
@@ -108,10 +108,10 @@ impl<Prov: Provenance> Immediate<Prov> {
     /// Returns the scalar from the first component and optionally the 2nd component as metadata.
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)] // only in debug builds due to perf (see #98980)
-    pub fn to_scalar_and_meta(self) -> (Scalar<Prov>, MemPlaceMeta<Prov>) {
+    pub fn to_scalar_and_meta(self) -> (Scalar<Prov>, Option<Scalar<Prov>>) {
         match self {
-            Immediate::ScalarPair(val1, val2) => (val1, MemPlaceMeta::Meta(val2)),
-            Immediate::Scalar(val) => (val, MemPlaceMeta::None),
+            Immediate::ScalarPair(val1, val2) => (val1, Some(val2)),
+            Immediate::Scalar(val) => (val, None),
             Immediate::Uninit => bug!("Got uninit where a scalar or scalar pair was expected"),
         }
     }
@@ -452,20 +452,20 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for ImmTy<'tcx, Prov> {
     }
 
     #[inline(always)]
-    fn meta(&self) -> MemPlaceMeta<Prov> {
+    fn meta(&self) -> AnyMemPlaceMeta<'tcx, Prov> {
         debug_assert!(self.layout.is_sized()); // unsized ImmTy can only exist temporarily and should never reach this here
-        MemPlaceMeta::None
+        AnyMemPlaceMeta(None)
     }
 
     fn offset_with_meta<M: Machine<'tcx, Provenance = Prov>>(
         &self,
         offset: Size,
         _mode: OffsetMode,
-        meta: MemPlaceMeta<Prov>,
+        meta: AnyMemPlaceMeta<'tcx, Prov>,
         layout: TyAndLayout<'tcx>,
         ecx: &InterpCx<'tcx, M>,
     ) -> InterpResult<'tcx, Self> {
-        assert_matches!(meta, MemPlaceMeta::None); // we can't store this anywhere anyway
+        assert!(!meta.has_metadata()); // we can't store this anywhere anyway
         interp_ok(self.offset_(offset, layout, ecx))
     }
 
@@ -481,19 +481,43 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for ImmTy<'tcx, Prov> {
 /// An `Operand` is the result of computing a `mir::Operand`. It can be immediate,
 /// or still in memory. The latter is an optimization, to delay reading that chunk of
 /// memory and to avoid having to store arbitrary-sized data here.
-#[derive(Copy, Clone, Debug)]
-pub(super) enum Operand<Prov: Provenance = CtfeProvenance> {
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) enum Operand<
+    'tcx,
+    Prov: Provenance = CtfeProvenance,
+    Sizedness: MemPlaceSizedness = AnyMemPlace,
+> {
     Immediate(Immediate<Prov>),
-    Indirect(MemPlace<Prov>),
+    Indirect(MemPlace<'tcx, Prov, Sizedness>),
 }
 
-#[derive(Clone)]
-pub struct OpTy<'tcx, Prov: Provenance = CtfeProvenance> {
-    op: Operand<Prov>, // Keep this private; it helps enforce invariants.
+impl<'tcx, Prov: Provenance, Sizedness: MemPlaceSizedness> Operand<'tcx, Prov, Sizedness> {
+    fn change_sizedness<NewSizedness: MemPlaceSizedness>(self) -> Operand<'tcx, Prov, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, Prov>: Into<NewSizedness::Metadata<'tcx, Prov>>,
+    {
+        match self {
+            Operand::Immediate(immediate) => Operand::Immediate(immediate),
+            Operand::Indirect(mem_place) => Operand::Indirect(mem_place.change_sizedness()),
+        }
+    }
+
+    fn try_to_sized(self) -> Option<Operand<'tcx, Prov, SizedMemPlace>> {
+        Some(match self {
+            Operand::Immediate(immediate) => Operand::Immediate(immediate),
+            Operand::Indirect(mem_place) => Operand::Indirect(mem_place.try_to_sized()?),
+        })
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OpTy<'tcx, Prov: Provenance = CtfeProvenance, Sizedness: MemPlaceSizedness = AnyMemPlace>
+{
+    op: Operand<'tcx, Prov, Sizedness>, // Keep this private; it helps enforce invariants.
     pub layout: TyAndLayout<'tcx>,
 }
 
-impl<Prov: Provenance> std::fmt::Debug for OpTy<'_, Prov> {
+impl<Prov: Provenance, Sizedness: MemPlaceSizedness> std::fmt::Debug for OpTy<'_, Prov, Sizedness> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Printing `layout` results in too much noise; just print a nice version of the type.
         f.debug_struct("OpTy")
@@ -513,13 +537,31 @@ impl<'tcx, Prov: Provenance> From<ImmTy<'tcx, Prov>> for OpTy<'tcx, Prov> {
 impl<'tcx, Prov: Provenance> From<MPlaceTy<'tcx, Prov>> for OpTy<'tcx, Prov> {
     #[inline(always)]
     fn from(mplace: MPlaceTy<'tcx, Prov>) -> Self {
-        OpTy { op: Operand::Indirect(*mplace.mplace()), layout: mplace.layout }
+        OpTy { op: Operand::Indirect(mplace.mplace().change_sizedness()), layout: mplace.layout }
     }
 }
 
-impl<'tcx, Prov: Provenance> OpTy<'tcx, Prov> {
+impl<'tcx, Prov: Provenance, Sizedness: MemPlaceSizedness> OpTy<'tcx, Prov, Sizedness> {
+    pub fn change_sizedness<NewSizedness: MemPlaceSizedness>(self) -> OpTy<'tcx, Prov, NewSizedness>
+    where
+        Sizedness::Metadata<'tcx, Prov>: Into<NewSizedness::Metadata<'tcx, Prov>>,
+    {
+        OpTy { op: self.op.change_sizedness(), layout: self.layout }
+    }
+
+    pub fn try_to_sized(self) -> Option<OpTy<'tcx, Prov, SizedMemPlace>> {
+        Some(OpTy { op: self.op.try_to_sized()?, layout: self.layout })
+    }
+
+    /// If this OpTy has no metadata, return it as a OpTy with SizedMemPlaceMeta,
+    /// otherwise panic
+    #[track_caller]
+    pub fn expect_sized(self, msg: &str) -> OpTy<'tcx, Prov, SizedMemPlace> {
+        self.try_to_sized().expect(msg)
+    }
+
     #[inline(always)]
-    pub(super) fn op(&self) -> &Operand<Prov> {
+    pub(super) fn op(&self) -> &Operand<'tcx, Prov, Sizedness> {
         &self.op
     }
 
@@ -535,12 +577,12 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for OpTy<'tcx, Prov> {
     }
 
     #[inline]
-    fn meta(&self) -> MemPlaceMeta<Prov> {
+    fn meta(&self) -> AnyMemPlaceMeta<'tcx, Prov> {
         match self.as_mplace_or_imm() {
             Left(mplace) => mplace.meta(),
             Right(_) => {
                 debug_assert!(self.layout.is_sized(), "unsized immediates are not a thing");
-                MemPlaceMeta::None
+                AnyMemPlaceMeta(None)
             }
         }
     }
@@ -549,7 +591,7 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for OpTy<'tcx, Prov> {
         &self,
         offset: Size,
         mode: OffsetMode,
-        meta: MemPlaceMeta<Prov>,
+        meta: AnyMemPlaceMeta<'tcx, Prov>,
         layout: TyAndLayout<'tcx>,
         ecx: &InterpCx<'tcx, M>,
     ) -> InterpResult<'tcx, Self> {
@@ -558,7 +600,7 @@ impl<'tcx, Prov: Provenance> Projectable<'tcx, Prov> for OpTy<'tcx, Prov> {
                 interp_ok(mplace.offset_with_meta(offset, mode, meta, layout, ecx)?.into())
             }
             Right(imm) => {
-                assert_matches!(meta, MemPlaceMeta::None); // no place to store metadata here
+                assert!(!meta.has_metadata()); // no place to store metadata here
                 // Every part of an uninit is uninit.
                 interp_ok(imm.offset_(offset, layout, ecx).into())
             }
@@ -912,7 +954,7 @@ mod size_asserts {
     // tidy-alphabetical-start
     static_assert_size!(ImmTy<'_>, 64);
     static_assert_size!(Immediate, 48);
-    static_assert_size!(OpTy<'_>, 72);
-    static_assert_size!(Operand, 56);
+    static_assert_size!(OpTy<'_>, 104);
+    static_assert_size!(Operand<'_>, 88);
     // tidy-alphabetical-end
 }

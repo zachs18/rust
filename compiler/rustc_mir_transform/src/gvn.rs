@@ -102,7 +102,7 @@ use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx, Primitive, Si
 use rustc_arena::DroplessArena;
 use rustc_const_eval::const_eval::DummyMachine;
 use rustc_const_eval::interpret::{
-    ImmTy, Immediate, InterpCx, MemPlaceMeta, MemoryKind, OpTy, Projectable, Scalar,
+    ImmTy, Immediate, InterpCx, MemoryKind, OpTy, Projectable, Scalar,
     intern_const_alloc_for_constprop,
 };
 use rustc_data_structures::fx::FxHasher;
@@ -634,9 +634,9 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 // Pointers don't have fields, so don't `project_field` them.
                 let data = self.ecx.read_pointer(pointer).discard_err()?;
                 let meta = if metadata.layout.is_zst() {
-                    MemPlaceMeta::None
+                    None
                 } else {
-                    MemPlaceMeta::Meta(self.ecx.read_scalar(metadata).discard_err()?)
+                    Some(self.ecx.read_scalar(metadata).discard_err()?)
                 };
                 let ptr_imm = Immediate::new_pointer_with_meta(data, meta, &self.ecx);
                 ImmTy::from_immediate(ptr_imm, ty).into()
