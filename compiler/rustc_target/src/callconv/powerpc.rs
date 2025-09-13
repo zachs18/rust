@@ -3,7 +3,7 @@ use rustc_abi::TyAbiInterface;
 use crate::callconv::{ArgAbi, FnAbi};
 use crate::spec::{Env, HasTargetSpec, Os};
 
-fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
+fn classify_ret<Ty: std::fmt::Display>(ret: &mut ArgAbi<'_, Ty>) {
     if ret.layout.is_aggregate() {
         ret.make_indirect();
     } else {

@@ -1672,15 +1672,28 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 }
                 _ => bug!("codegen_argument: {:?} invalid for pair argument", op),
             },
-            PassMode::Indirect { attrs: _, meta_attrs: Some(_), on_stack: _ } => match op.val {
-                Ref(PlaceValue { llval: a, llextra: AnyPlaceMeta(Some(meta)), .. }) => {
-                    let meta = meta.change_sizedness().immediate();
-                    llargs.push(a);
-                    llargs.push(meta);
-                    return;
+            PassMode::Indirect { attrs: _, meta_abi: Some(ref meta_abi), on_stack: _ } => {
+                match op.val {
+                    Ref(PlaceValue { llval: a, llextra: AnyPlaceMeta(Some(meta_op)), .. }) => {
+                        // The data pointer and pointer metadata are passed as separate arguments,
+                        // so we push the data pointer, then recurse for the metadata.
+
+                        llargs.push(a);
+
+                        let meta_op = meta_op.change_sizedness();
+                        self.codegen_argument(
+                            bx,
+                            meta_op,
+                            llargs,
+                            meta_abi,
+                            lifetime_ends_after_call,
+                        );
+
+                        return;
+                    }
+                    _ => bug!("codegen_argument: {:?} invalid for unsized indirect argument", op),
                 }
-                _ => bug!("codegen_argument: {:?} invalid for unsized indirect argument", op),
-            },
+            }
             _ => {}
         }
 

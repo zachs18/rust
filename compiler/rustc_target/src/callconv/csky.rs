@@ -8,7 +8,7 @@ use rustc_abi::TyAbiInterface;
 
 use crate::callconv::{ArgAbi, FnAbi, Reg, Uniform};
 
-fn classify_ret<Ty>(arg: &mut ArgAbi<'_, Ty>) {
+fn classify_ret<Ty: std::fmt::Display>(arg: &mut ArgAbi<'_, Ty>) {
     if !arg.layout.is_sized() {
         // Not touching this...
         return;

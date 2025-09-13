@@ -35,8 +35,8 @@ mod x86_win32;
 mod x86_win64;
 mod xtensa;
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
-pub enum PassMode {
+#[derive(Clone, PartialEq, Eq, Hash, HashStable_Generic)]
+pub enum PassMode<'a, Ty> {
     /// Ignore the argument.
     ///
     /// The argument is a ZST.
@@ -58,7 +58,7 @@ pub enum PassMode {
     Cast { pad_i32: bool, cast: Box<CastTarget> },
     /// Pass the argument indirectly via a hidden pointer.
     ///
-    /// The `meta_attrs` value, if any, is for the metadata (vtable, length, etc) of an unsized
+    /// The `meta_abi` value, if any, is for the metadata (vtable, length, etc) of an unsized
     /// argument. (This is the only mode that supports unsized arguments.)
     ///
     /// `on_stack` defines that the value should be passed at a fixed stack offset in accordance to
@@ -69,15 +69,38 @@ pub enum PassMode {
     /// alignment (if `None`). This means that the alignment will not always
     /// match the Rust type's alignment; see documentation of `pass_by_stack_offset` for more info.
     ///
-    /// `on_stack` cannot be true for unsized arguments, i.e., when `meta_attrs` is `Some`.
-    Indirect { attrs: ArgAttributes, meta_attrs: Option<ArgAttributes>, on_stack: bool },
+    /// `on_stack` cannot be true for unsized arguments, i.e., when `meta_abi` is `Some`.
+    Indirect { attrs: ArgAttributes, meta_abi: Option<Box<ArgAbi<'a, Ty>>>, on_stack: bool },
 }
 
-impl PassMode {
+// Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
+impl<'a, Ty: fmt::Display> fmt::Debug for PassMode<'a, Ty> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ignore => write!(f, "Ignore"),
+            Self::Direct(arg0) => f.debug_tuple("Direct").field(arg0).finish(),
+            Self::Pair(arg0, arg1) => f.debug_tuple("Pair").field(arg0).field(arg1).finish(),
+            Self::Cast { pad_i32, cast } => {
+                f.debug_struct("Cast").field("pad_i32", pad_i32).field("cast", cast).finish()
+            }
+            Self::Indirect { attrs, meta_abi, on_stack } => f
+                .debug_struct("Indirect")
+                .field("attrs", attrs)
+                .field("meta_abi", meta_abi)
+                .field("on_stack", on_stack)
+                .finish(),
+        }
+    }
+}
+
+impl<'a, Ty: fmt::Display> PassMode<'a, Ty> {
     /// Checks if these two `PassMode` are equal enough to be considered "the same for all
     /// function call ABIs". However, the `Layout` can also impact ABI decisions,
     /// so that needs to be compared as well!
-    pub fn eq_abi(&self, other: &Self) -> bool {
+    pub fn eq_abi(&self, other: &Self) -> bool
+    where
+        Ty: PartialEq,
+    {
         match (self, other) {
             (PassMode::Ignore, PassMode::Ignore) => true,
             (PassMode::Direct(a1), PassMode::Direct(a2)) => a1.eq_abi(a2),
@@ -87,12 +110,12 @@ impl PassMode {
                 PassMode::Cast { cast: c2, pad_i32: pad2 },
             ) => c1.eq_abi(c2) && pad1 == pad2,
             (
-                PassMode::Indirect { attrs: a1, meta_attrs: None, on_stack: s1 },
-                PassMode::Indirect { attrs: a2, meta_attrs: None, on_stack: s2 },
+                PassMode::Indirect { attrs: a1, meta_abi: None, on_stack: s1 },
+                PassMode::Indirect { attrs: a2, meta_abi: None, on_stack: s2 },
             ) => a1.eq_abi(a2) && s1 == s2,
             (
-                PassMode::Indirect { attrs: a1, meta_attrs: Some(e1), on_stack: s1 },
-                PassMode::Indirect { attrs: a2, meta_attrs: Some(e2), on_stack: s2 },
+                PassMode::Indirect { attrs: a1, meta_abi: Some(e1), on_stack: s1 },
+                PassMode::Indirect { attrs: a2, meta_abi: Some(e2), on_stack: s2 },
             ) => a1.eq_abi(a2) && e1.eq_abi(e2) && s1 == s2,
             _ => false,
         }
@@ -365,7 +388,7 @@ impl CastTarget {
 #[derive(Clone, PartialEq, Eq, Hash, HashStable_Generic)]
 pub struct ArgAbi<'a, Ty> {
     pub layout: TyAndLayout<'a, Ty>,
-    pub mode: PassMode,
+    pub mode: PassMode<'a, Ty>,
 }
 
 // Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
@@ -376,12 +399,27 @@ impl<'a, Ty: fmt::Display> fmt::Debug for ArgAbi<'a, Ty> {
     }
 }
 
-impl<'a, Ty> ArgAbi<'a, Ty> {
+impl<'a, Ty: fmt::Display> ArgAbi<'a, Ty> {
+    /// If `self` is sized, returns `[self]`.
+    /// Otherwise, returns `[self, meta_abi]`.
+    ///
+    /// Pointer metadata is always sized, so there's never any need for more than two `ArgAbi`s for an unsized argument.
+    pub fn iter_metadata(&self) -> impl ExactSizeIterator<Item = &Self> {
+        let mut these = [self, self];
+        if let PassMode::Indirect { meta_abi: Some(ref meta_abi), .. } = self.mode {
+            these[1] = &meta_abi;
+            these.into_iter().take(2)
+        } else {
+            these.into_iter().take(1)
+        }
+    }
+
     /// This defines the "default ABI" for that type, that is then later adjusted in `fn_abi_adjust_for_abi`.
     pub fn new(
         cx: &impl HasDataLayout,
         layout: TyAndLayout<'a, Ty>,
         scalar_attrs: impl Fn(Scalar, Size) -> ArgAttributes,
+        arg_abi_of_ptr_metadata: impl FnOnce() -> ArgAbi<'a, Ty>,
     ) -> Self {
         let mode = match layout.backend_repr {
             _ if layout.is_zst() => PassMode::Ignore,
@@ -391,13 +429,18 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
                 scalar_attrs(b, a.size(cx).align_to(b.align(cx).abi)),
             ),
             BackendRepr::SimdVector { .. } => PassMode::Direct(ArgAttributes::new()),
-            BackendRepr::Memory { .. } => Self::indirect_pass_mode(&layout),
+            BackendRepr::Memory { .. } => {
+                Self::indirect_pass_mode(&layout, arg_abi_of_ptr_metadata)
+            }
             BackendRepr::SimdScalableVector { .. } => PassMode::Direct(ArgAttributes::new()),
         };
         ArgAbi { layout, mode }
     }
 
-    fn indirect_pass_mode(layout: &TyAndLayout<'a, Ty>) -> PassMode {
+    fn indirect_pass_mode(
+        layout: &TyAndLayout<'a, Ty>,
+        arg_abi_of_ptr_metadata: impl FnOnce() -> ArgAbi<'a, Ty>,
+    ) -> PassMode<'a, Ty> {
         let mut attrs = ArgAttributes::new();
 
         // For non-immediate arguments the callee gets its own copy of
@@ -411,9 +454,9 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
         attrs.pointee_size = layout.size;
         attrs.pointee_align = Some(layout.align.abi);
 
-        let meta_attrs = layout.is_unsized().then_some(ArgAttributes::new());
+        let meta_attrs = layout.is_unsized().then(|| Box::new(arg_abi_of_ptr_metadata()));
 
-        PassMode::Indirect { attrs, meta_attrs, on_stack: false }
+        PassMode::Indirect { attrs, meta_abi: meta_attrs, on_stack: false }
     }
 
     /// Pass this argument directly instead. Should NOT be used!
@@ -436,9 +479,11 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
     pub fn make_indirect(&mut self) {
         match self.mode {
             PassMode::Direct(_) | PassMode::Pair(_, _) => {
-                self.mode = Self::indirect_pass_mode(&self.layout);
+                self.mode = Self::indirect_pass_mode(&self.layout, || {
+                    unreachable!("non-sized PassMode would already be Indirect")
+                });
             }
-            PassMode::Indirect { attrs: _, meta_attrs: _, on_stack: false } => {
+            PassMode::Indirect { attrs: _, meta_abi: _, on_stack: false } => {
                 // already indirect
             }
             _ => panic!("Tried to make {:?} indirect", self.mode),
@@ -451,9 +496,11 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
     pub fn make_indirect_from_ignore(&mut self) {
         match self.mode {
             PassMode::Ignore => {
-                self.mode = Self::indirect_pass_mode(&self.layout);
+                self.mode = Self::indirect_pass_mode(&self.layout, || {
+                    unreachable!("non-sized PassMode would already be Indirect")
+                });
             }
-            PassMode::Indirect { attrs: _, meta_attrs: _, on_stack: false } => {
+            PassMode::Indirect { attrs: _, meta_abi: _, on_stack: false } => {
                 // already indirect
             }
             _ => panic!("Tried to make {:?} indirect (expected `PassMode::Ignore`)", self.mode),
@@ -480,7 +527,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
         assert!(!self.layout.is_unsized(), "used byval ABI for unsized layout");
         self.make_indirect();
         match self.mode {
-            PassMode::Indirect { ref mut attrs, meta_attrs: _, ref mut on_stack } => {
+            PassMode::Indirect { ref mut attrs, meta_abi: _, ref mut on_stack } => {
                 *on_stack = true;
 
                 // Some platforms, like 32-bit x86, change the alignment of the type when passing
@@ -528,11 +575,11 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
     }
 
     pub fn is_sized_indirect(&self) -> bool {
-        matches!(self.mode, PassMode::Indirect { attrs: _, meta_attrs: None, on_stack: _ })
+        matches!(self.mode, PassMode::Indirect { attrs: _, meta_abi: None, on_stack: _ })
     }
 
     pub fn is_unsized_indirect(&self) -> bool {
-        matches!(self.mode, PassMode::Indirect { attrs: _, meta_attrs: Some(_), on_stack: _ })
+        matches!(self.mode, PassMode::Indirect { attrs: _, meta_abi: Some(_), on_stack: _ })
     }
 
     pub fn is_ignore(&self) -> bool {
@@ -626,7 +673,7 @@ impl<'a, Ty: fmt::Display> fmt::Debug for FnAbi<'a, Ty> {
     }
 }
 
-impl<'a, Ty> FnAbi<'a, Ty> {
+impl<'a, Ty: fmt::Display> FnAbi<'a, Ty> {
     pub fn adjust_for_foreign_abi<C>(&mut self, cx: &C, abi: ExternAbi)
     where
         Ty: TyAbiInterface<'a, C> + Copy,

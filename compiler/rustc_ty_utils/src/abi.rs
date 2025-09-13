@@ -521,14 +521,14 @@ fn fn_abi_sanity_check<'tcx>(
                 // `Cast` means "transmute to `CastType`"; that only makes sense for sized types.
                 assert!(arg.layout.is_sized());
             }
-            PassMode::Indirect { meta_attrs: None, .. } => {
+            PassMode::Indirect { meta_abi: None, .. } => {
                 // No metadata, must be sized.
                 // Conceptually, unsized arguments must be copied around, which requires dynamically
                 // determining their size, which we cannot do without metadata. Consult
                 // t-opsem before removing this check.
                 assert!(arg.layout.is_sized());
             }
-            PassMode::Indirect { meta_attrs: Some(_), on_stack, .. } => {
+            PassMode::Indirect { meta_abi: Some(_), on_stack, .. } => {
                 // With metadata. Must be unsized and not on the stack.
                 assert!(arg.layout.is_unsized() && !on_stack);
                 // Also, must not be `extern` type.
@@ -539,6 +539,9 @@ fn fn_abi_sanity_check<'tcx>(
                     // determining their size. Therefore, we cannot allow `extern` types here. Consult
                     // t-opsem before removing this check.
                     panic!("unsized arguments must not be `extern` types");
+                    // FIXME(ptr_metadata_v2): now that we have a full ArgAbi for the metadata,
+                    // could it just be PassMode::Ignore instead of being disallowed?
+                    // We can't determine their size, but IDK if that's still necessary.
                 }
             }
         }
@@ -614,18 +617,43 @@ fn fn_abi_new_uncached<'tcx>(
             layout
         };
 
-        Ok(ArgAbi::new(cx, layout, |scalar, offset| {
-            arg_attrs_for_rust_scalar(
-                *cx,
-                scalar,
-                layout,
-                offset,
-                is_return,
-                // Only set `drop_target_pointee` for the data part of a wide pointer.
-                // See `arg_attrs_for_rust_scalar` docs for more information.
-                drop_target_pointee.filter(|_| offset == Size::ZERO),
-            )
-        }))
+        Ok(ArgAbi::new(
+            cx,
+            layout,
+            |scalar, offset| {
+                arg_attrs_for_rust_scalar(
+                    *cx,
+                    scalar,
+                    layout,
+                    offset,
+                    is_return,
+                    // Only set `drop_target_pointee` for the data part of a wide pointer.
+                    // See `arg_attrs_for_rust_scalar` docs for more information.
+                    // FIXME(ptr_metadata_v2): this probably isn't needed anymore
+                    // since ptr metadata has its own ArgAbi now.
+                    drop_target_pointee.filter(|_| offset == Size::ZERO),
+                )
+            },
+            || {
+                let ptr_metadata_layout =
+                    cx.layout_of(Ty::new_ptr_metadata(cx.tcx(), layout.ty)).unwrap();
+                ArgAbi::new(
+                    cx,
+                    ptr_metadata_layout,
+                    |scalar, offset| {
+                        arg_attrs_for_rust_scalar(
+                            *cx,
+                            scalar,
+                            ptr_metadata_layout,
+                            offset,
+                            is_return,
+                            /* drop_target_pointee */ None,
+                        )
+                    },
+                    || unreachable!("ptr metadata must be sized"),
+                )
+            },
+        ))
     };
 
     let mut fn_abi = FnAbi {

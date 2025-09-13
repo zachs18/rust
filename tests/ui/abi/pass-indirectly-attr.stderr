@@ -47,7 +47,7 @@ error: fn_abi_of(extern_c) = FnAbi {
                                Align(1 bytes),
                            ),
                        },
-                       meta_attrs: None,
+                       meta_abi: None,
                        on_stack: false,
                    },
                },

@@ -585,7 +585,7 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             match arg.mode {
                 // Sized indirect arguments
-                PassMode::Indirect { attrs, meta_attrs: None, on_stack: _ } => {
+                PassMode::Indirect { attrs, meta_abi: None, on_stack: _ } => {
                     // Don't copy an indirect argument to an alloca, the caller already put it
                     // in a temporary alloca and gave it up.
                     // FIXME: lifetimes
@@ -604,17 +604,24 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                     }
                 }
                 // Unsized indirect arguments
-                PassMode::Indirect { attrs: _, meta_attrs: Some(_), on_stack: _ } => {
+                PassMode::Indirect { attrs: _, meta_abi: Some(ref meta_abi), on_stack: _ } => {
                     // As the storage for the indirect argument lives during
                     // the whole function call, we just copy the wide pointer.
+
+                    // The data pointer and pointer metadata are passed as separate arguments,
+                    // so we project to the two fields of the unsized place indirect pointer
+                    // and store the arguments there separately.
+
                     let llarg = bx.get_param(llarg_idx);
                     llarg_idx += 1;
-                    let llextra = bx.get_param(llarg_idx);
-                    llarg_idx += 1;
-                    let indirect_operand = OperandValue::Pair(llarg, llextra);
 
                     let tmp = PlaceRef::alloca_unsized_indirect(bx, arg.layout);
-                    indirect_operand.store(bx, tmp);
+                    let tmp_arg = tmp.project_field(bx, 0);
+                    OperandValue::Immediate(llarg).store(bx, tmp_arg);
+
+                    let tmp_extra = tmp.project_field(bx, 1);
+                    bx.store_fn_arg(meta_abi, &mut llarg_idx, tmp_extra);
+
                     LocalRef::UnsizedPlace(tmp)
                 }
                 _ => {

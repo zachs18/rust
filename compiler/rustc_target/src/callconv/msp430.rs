@@ -11,7 +11,7 @@ use crate::callconv::{ArgAbi, FnAbi};
 // returned by reference. To pass a structure or union by reference, the caller
 // places its address in the appropriate location: either in a register or on
 // the stack, according to its position in the argument list. (..)"
-fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
+fn classify_ret<Ty: std::fmt::Display>(ret: &mut ArgAbi<'_, Ty>) {
     if ret.layout.is_aggregate() && ret.layout.size.bits() > 32 {
         ret.make_indirect();
     } else {

@@ -153,7 +153,7 @@ impl<'tcx> Stable<'tcx> for CanonAbi {
     }
 }
 
-impl<'tcx> Stable<'tcx> for callconv::PassMode {
+impl<'tcx> Stable<'tcx> for callconv::PassMode<'tcx, ty::Ty<'tcx>> {
     type T = PassMode;
 
     fn stable(&self, _: &mut Tables<'_, BridgeTys>, _: &CompilerCtxt<'_, BridgeTys>) -> Self::T {
@@ -166,11 +166,13 @@ impl<'tcx> Stable<'tcx> for callconv::PassMode {
             callconv::PassMode::Cast { pad_i32, cast } => {
                 PassMode::Cast { pad_i32: *pad_i32, cast: opaque(cast) }
             }
-            callconv::PassMode::Indirect { attrs, meta_attrs, on_stack } => PassMode::Indirect {
-                attrs: opaque(attrs),
-                meta_attrs: opaque(meta_attrs),
-                on_stack: *on_stack,
-            },
+            callconv::PassMode::Indirect { attrs, meta_abi: meta_attrs, on_stack } => {
+                PassMode::Indirect {
+                    attrs: opaque(attrs),
+                    meta_abi: opaque(meta_attrs),
+                    on_stack: *on_stack,
+                }
+            }
         }
     }
 }
