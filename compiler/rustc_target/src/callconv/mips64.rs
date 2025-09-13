@@ -4,7 +4,7 @@ use rustc_abi::{
 
 use crate::callconv::{ArgAbi, ArgExtension, CastTarget, FnAbi, PassMode, Uniform};
 
-fn extend_integer_width_mips<Ty>(arg: &mut ArgAbi<'_, Ty>, bits: u64) {
+fn extend_integer_width_mips<Ty: std::fmt::Display>(arg: &mut ArgAbi<'_, Ty>, bits: u64) {
     // Always sign extend u32 values on 64-bit mips
     if let BackendRepr::Scalar(scalar) = arg.layout.backend_repr
         && let Primitive::Int(i, signed) = scalar.primitive()

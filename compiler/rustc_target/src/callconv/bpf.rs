@@ -3,7 +3,7 @@ use rustc_abi::TyAbiInterface;
 
 use crate::callconv::{ArgAbi, FnAbi};
 
-fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
+fn classify_ret<Ty: std::fmt::Display>(ret: &mut ArgAbi<'_, Ty>) {
     if ret.layout.is_aggregate() || ret.layout.size.bits() > 64 {
         ret.make_indirect();
     } else {
@@ -42,7 +42,7 @@ where
     }
 }
 
-pub(crate) fn compute_rust_abi_info<Ty>(fn_abi: &mut FnAbi<'_, Ty>) {
+pub(crate) fn compute_rust_abi_info<Ty: std::fmt::Display>(fn_abi: &mut FnAbi<'_, Ty>) {
     if !fn_abi.ret.is_ignore() {
         classify_ret(&mut fn_abi.ret);
     }

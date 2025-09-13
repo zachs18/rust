@@ -2,8 +2,9 @@ use rustc_abi::{HasDataLayout, Size, TyAbiInterface};
 
 use crate::callconv::{ArgAbi, FnAbi, Reg, Uniform};
 
-fn classify_ret<Ty, C>(cx: &C, ret: &mut ArgAbi<'_, Ty>, offset: &mut Size)
+fn classify_ret<'a, Ty, C>(cx: &C, ret: &mut ArgAbi<'a, Ty>, offset: &mut Size)
 where
+    Ty: TyAbiInterface<'a, C>,
     C: HasDataLayout,
 {
     if !ret.layout.is_aggregate() {
