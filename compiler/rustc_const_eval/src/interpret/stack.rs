@@ -18,9 +18,11 @@ use tracing::{info_span, instrument, trace};
 
 use super::{
     AllocId, CtfeProvenance, FnArg, Immediate, InterpCx, InterpResult, MPlaceTy, Machine, MemPlace,
-    MemPlaceMeta, MemoryKind, Operand, PlaceTy, Pointer, Provenance, ReturnAction, Scalar,
-    from_known_layout, interp_ok, throw_ub, throw_unsup,
+    MemoryKind, Operand, PlaceTy, Pointer, Provenance, ReturnAction, Scalar, from_known_layout,
+    interp_ok, throw_ub, throw_unsup,
 };
+use crate::interpret::MemPlaceMetadata;
+use crate::interpret::place::{AnyMemPlace, AnyMemPlaceMeta};
 use crate::{enter_trace_span, errors};
 
 // The Phantomdata exists to prevent this type from being `Send`. If it were sent across a thread
@@ -130,7 +132,7 @@ pub enum ReturnContinuation {
 /// State of a local variable including a memoized layout
 #[derive(Clone)]
 pub struct LocalState<'tcx, Prov: Provenance = CtfeProvenance> {
-    value: LocalValue<Prov>,
+    value: LocalValue<'tcx, Prov>,
     /// Don't modify if `Some`, this is only used to prevent computing the layout twice.
     /// Avoids computing the layout of locals that are never actually initialized.
     layout: Cell<Option<TyAndLayout<'tcx>>>,
@@ -150,7 +152,7 @@ impl<Prov: Provenance> std::fmt::Debug for LocalState<'_, Prov> {
 /// This does not store the type of the local; the type is given by `body.local_decls` and can never
 /// change, so by not storing here we avoid having to maintain that as an invariant.
 #[derive(Copy, Clone, Debug)] // Miri debug-prints these
-pub(super) enum LocalValue<Prov: Provenance = CtfeProvenance> {
+pub(super) enum LocalValue<'tcx, Prov: Provenance = CtfeProvenance> {
     /// This local is not currently alive, and cannot be used at all.
     Dead,
     /// A normal, live local.
@@ -158,7 +160,7 @@ pub(super) enum LocalValue<Prov: Provenance = CtfeProvenance> {
     /// This is an optimization over just always having a pointer here;
     /// we can thus avoid doing an allocation when the local just stores
     /// immediate values *and* never has its address taken.
-    Live(Operand<Prov>),
+    Live(Operand<'tcx, Prov, AnyMemPlace>),
 }
 
 impl<'tcx, Prov: Provenance> LocalState<'tcx, Prov> {
@@ -171,7 +173,7 @@ impl<'tcx, Prov: Provenance> LocalState<'tcx, Prov> {
     /// private.
     pub fn as_mplace_or_imm(
         &self,
-    ) -> Option<Either<(Pointer<Option<Prov>>, MemPlaceMeta<Prov>), Immediate<Prov>>> {
+    ) -> Option<Either<(Pointer<Option<Prov>>, AnyMemPlaceMeta<'tcx, Prov>), Immediate<Prov>>> {
         match self.value {
             LocalValue::Dead => None,
             LocalValue::Live(Operand::Indirect(mplace)) => Some(Left((mplace.ptr, mplace.meta))),
@@ -181,7 +183,7 @@ impl<'tcx, Prov: Provenance> LocalState<'tcx, Prov> {
 
     /// Read the local's value or error if the local is not yet live or not live anymore.
     #[inline(always)]
-    pub(super) fn access(&self) -> InterpResult<'tcx, &Operand<Prov>> {
+    pub(super) fn access(&self) -> InterpResult<'tcx, &Operand<'tcx, Prov, AnyMemPlace>> {
         match &self.value {
             LocalValue::Dead => throw_ub!(DeadLocal), // could even be "invalid program"?
             LocalValue::Live(val) => interp_ok(val),
@@ -191,7 +193,9 @@ impl<'tcx, Prov: Provenance> LocalState<'tcx, Prov> {
     /// Overwrite the local. If the local can be overwritten in place, return a reference
     /// to do so; otherwise return the `MemPlace` to consult instead.
     #[inline(always)]
-    pub(super) fn access_mut(&mut self) -> InterpResult<'tcx, &mut Operand<Prov>> {
+    pub(super) fn access_mut(
+        &mut self,
+    ) -> InterpResult<'tcx, &mut Operand<'tcx, Prov, AnyMemPlace>> {
         match &mut self.value {
             LocalValue::Dead => throw_ub!(DeadLocal), // could even be "invalid program"?
             LocalValue::Live(val) => interp_ok(val),
@@ -489,7 +493,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     pub fn storage_live_dyn(
         &mut self,
         local: mir::Local,
-        meta: MemPlaceMeta<M::Provenance>,
+        meta: AnyMemPlaceMeta<'tcx, M::Provenance>,
     ) -> InterpResult<'tcx> {
         trace!("{:?} is now live", local);
 
@@ -549,7 +553,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         };
 
         let local_val = LocalValue::Live(if let Some(layout) = unsized_ {
-            if !meta.has_meta() {
+            if !meta.has_metadata() {
                 throw_unsup!(UnsizedLocal);
             }
             // Need to allocate some memory, since `Immediate::Uninit` cannot be unsized.
@@ -557,7 +561,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             Operand::Indirect(*dest_place.mplace())
         } else {
             // Just make this an efficient immediate.
-            assert!(!meta.has_meta()); // we're dropping the metadata
+            assert!(!meta.has_metadata()); // we're dropping the metadata
             // Make sure the machine knows this "write" is happening. (This is important so that
             // races involving local variable allocation can be detected by Miri.)
             M::after_local_write(self, local, /*storage_live*/ true)?;
@@ -578,7 +582,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     /// Mark a storage as live, killing the previous content.
     #[inline(always)]
     pub fn storage_live(&mut self, local: mir::Local) -> InterpResult<'tcx> {
-        self.storage_live_dyn(local, MemPlaceMeta::None)
+        self.storage_live_dyn(local, AnyMemPlaceMeta(None))
     }
 
     pub fn storage_dead(&mut self, local: mir::Local) -> InterpResult<'tcx> {
@@ -591,7 +595,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         interp_ok(())
     }
 
-    fn deallocate_local(&mut self, local: LocalValue<M::Provenance>) -> InterpResult<'tcx> {
+    fn deallocate_local(&mut self, local: LocalValue<'tcx, M::Provenance>) -> InterpResult<'tcx> {
         if let LocalValue::Live(Operand::Indirect(MemPlace { ptr, .. })) = local {
             // All locals have a backing allocation, even if the allocation is empty
             // due to the local having ZST type. Hence we can `unwrap`.
@@ -701,8 +705,8 @@ impl<'tcx, Prov: Provenance> LocalState<'tcx, Prov> {
                     fmt,
                     " by {} ref {:?}:",
                     match mplace.meta {
-                        MemPlaceMeta::Meta(meta) => format!(" meta({meta:?})"),
-                        MemPlaceMeta::None => String::new(),
+                        AnyMemPlaceMeta(Some(meta)) => format!(" meta({meta:?})"),
+                        AnyMemPlaceMeta(None) => String::new(),
                     },
                     mplace.ptr,
                 )?;

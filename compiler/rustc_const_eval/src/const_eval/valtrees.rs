@@ -13,8 +13,8 @@ use super::eval_queries::{mk_eval_cx_to_read_const_val, op_to_const};
 use super::machine::CompileTimeInterpCx;
 use crate::const_eval::CanAccessMutGlobal;
 use crate::interpret::{
-    ImmTy, Immediate, InternKind, MPlaceTy, MemPlaceMeta, MemoryKind, PlaceTy, Projectable, Scalar,
-    intern_const_alloc_recursive,
+    AnyMemPlaceMeta, ImmTy, Immediate, InternKind, MPlaceTy, MemoryKind, OpTy, PlaceTy,
+    Projectable, Scalar, intern_const_alloc_recursive,
 };
 
 #[instrument(skip(ecx), level = "debug")]
@@ -194,12 +194,13 @@ fn const_to_valtree_inner<'tcx>(
 /// Valtrees don't store the `MemPlaceMeta` that all dynamically sized values have in the interpreter.
 /// This function reconstructs it.
 fn reconstruct_place_meta<'tcx>(
+    ecx: &mut CompileTimeInterpCx<'tcx>,
     layout: TyAndLayout<'tcx>,
     valtree: ty::ValTree<'tcx>,
     tcx: TyCtxt<'tcx>,
-) -> MemPlaceMeta {
+) -> AnyMemPlaceMeta<'tcx> {
     if layout.is_sized() {
-        return MemPlaceMeta::None;
+        return AnyMemPlaceMeta(None);
     }
 
     let mut last_valtree = valtree;
@@ -222,7 +223,11 @@ fn reconstruct_place_meta<'tcx>(
 
     // Get the number of elements in the unsized field.
     let num_elems = last_valtree.to_branch().len();
-    MemPlaceMeta::Meta(Scalar::from_target_usize(num_elems as u64, &tcx))
+    let meta = Scalar::from_target_usize(num_elems as u64, &tcx);
+    let meta_layout = ecx.layout_of(ecx.tcx.types.usize).unwrap();
+    let meta = ImmTy::from_scalar(meta, meta_layout);
+    let meta = OpTy::from(meta).expect_sized("pointer metadata must be sized");
+    AnyMemPlaceMeta(Some(meta))
 }
 
 #[instrument(skip(ecx), level = "debug", ret)]
@@ -231,7 +236,7 @@ fn create_valtree_place<'tcx>(
     layout: TyAndLayout<'tcx>,
     valtree: ty::ValTree<'tcx>,
 ) -> MPlaceTy<'tcx> {
-    let meta = reconstruct_place_meta(layout, valtree, ecx.tcx.tcx);
+    let meta = reconstruct_place_meta(ecx, layout, valtree, ecx.tcx.tcx);
     ecx.allocate_dyn(layout, MemoryKind::Stack, meta).unwrap()
 }
 

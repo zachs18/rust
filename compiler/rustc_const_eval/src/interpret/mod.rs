@@ -33,7 +33,10 @@ pub use self::machine::{AllocMap, Machine, MayLeak, ReturnAction, compile_time_m
 pub use self::memory::{AllocInfo, AllocKind, AllocRef, AllocRefMut, FnVal, Memory, MemoryKind};
 use self::operand::Operand;
 pub use self::operand::{ImmTy, Immediate, OpTy};
-pub use self::place::{MPlaceTy, MemPlaceMeta, PlaceTy, Writeable};
+pub use self::place::{
+    AnyMemPlace, AnyMemPlaceMeta, MPlaceTy, MemPlaceMetadata, MemPlaceSizedness, PlaceTy,
+    SizedMemPlace, SizedMemPlaceMeta, Writeable,
+};
 use self::place::{MemPlace, Place};
 pub use self::projection::{OffsetMode, Projectable};
 pub use self::stack::{Frame, FrameInfo, LocalState, ReturnContinuation};
