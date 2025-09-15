@@ -1,5 +1,5 @@
 use super::*;
-use crate::cmp::Ordering::{Equal, Greater, Less};
+use crate::cmp::Ordering::{Greater, Less};
 use crate::intrinsics::const_eval_select;
 use crate::marker::MetaSized;
 use crate::mem::{self, SizedTypeProperties};
@@ -1605,7 +1605,10 @@ impl<T, const N: usize> *const [T; N] {
     }
 }
 
-/// Pointer equality is by address, as produced by the [`<*const T>::addr`](pointer::addr) method.
+/// Thin pointer equality is by address, as produced by the [`<*mut T>::addr`](pointer::addr)
+/// method.
+///
+/// Wite pointer equality is by address and metadata.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1615,7 +1618,10 @@ impl<T: PointeeSized> PartialEq for *const T {
     #[inline]
     #[allow(ambiguous_wide_pointer_comparisons)]
     fn eq(&self, other: &*const T) -> bool {
-        *self == *other
+        let (self_addr, self_meta) = self.to_raw_parts();
+        let (other_addr, other_meta) = other.to_raw_parts();
+        // Thin pointer comparisons are primitive.
+        self_addr == other_addr && self_meta == other_meta
     }
 }
 
@@ -1627,7 +1633,10 @@ impl<T: PointeeSized> PartialEq for *const T {
 )]
 impl<T: PointeeSized> Eq for *const T {}
 
-/// Pointer comparison is by address, as produced by the `[`<*const T>::addr`](pointer::addr)` method.
+/// Thin pointer comparison is by address, as produced by the [`<*mut T>::addr`](pointer::addr)
+/// method.
+///
+/// Wide pointer comparison is by address then by the pointer metadata, if the addresses are equal.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1637,17 +1646,23 @@ impl<T: PointeeSized> Ord for *const T {
     #[inline]
     #[allow(ambiguous_wide_pointer_comparisons)]
     fn cmp(&self, other: &*const T) -> Ordering {
-        if self < other {
+        let (self_addr, self_meta) = self.to_raw_parts();
+        let (other_addr, other_meta) = other.to_raw_parts();
+        // Thin pointer comparisons are primitive.
+        if self_addr < other_addr {
             Less
-        } else if self == other {
-            Equal
-        } else {
+        } else if self_addr > other_addr {
             Greater
+        } else {
+            Ord::cmp(&self_meta, &other_meta)
         }
     }
 }
 
-/// Pointer comparison is by address, as produced by the `[`<*const T>::addr`](pointer::addr)` method.
+/// Thin pointer comparison is by address, as produced by the [`<*mut T>::addr`](pointer::addr)
+/// method.
+///
+/// Wide pointer comparison is by address then by the pointer metadata, if the addresses are equal.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1660,28 +1675,28 @@ impl<T: PointeeSized> PartialOrd for *const T {
         Some(self.cmp(other))
     }
 
-    #[inline]
+    #[inline(always)]
     #[allow(ambiguous_wide_pointer_comparisons)]
     fn lt(&self, other: &*const T) -> bool {
-        *self < *other
+        self.cmp(other).is_lt()
     }
 
-    #[inline]
+    #[inline(always)]
     #[allow(ambiguous_wide_pointer_comparisons)]
     fn le(&self, other: &*const T) -> bool {
-        *self <= *other
+        self.cmp(other).is_le()
     }
 
-    #[inline]
+    #[inline(always)]
     #[allow(ambiguous_wide_pointer_comparisons)]
     fn gt(&self, other: &*const T) -> bool {
-        *self > *other
+        self.cmp(other).is_gt()
     }
 
-    #[inline]
+    #[inline(always)]
     #[allow(ambiguous_wide_pointer_comparisons)]
     fn ge(&self, other: &*const T) -> bool {
-        *self >= *other
+        self.cmp(other).is_ge()
     }
 }
 

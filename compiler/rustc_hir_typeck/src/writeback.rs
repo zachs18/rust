@@ -161,7 +161,11 @@ impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
                 let lhs_ty = self.typeck_results.node_type(lhs.hir_id);
                 let rhs_ty = self.typeck_results.node_type(rhs.hir_id);
 
-                if lhs_ty.is_scalar() && rhs_ty.is_scalar() {
+                if let ty::RawPtr(pointee_ty, _) = lhs_ty.kind()
+                    && !pointee_ty.has_trivial_sizedness(self.tcx(), ty::SizedTraitKind::Thin)
+                {
+                    // Wide (and not-trivially-known-to-be-thin) pointers use the impl, not the primitive operator
+                } else if lhs_ty.is_scalar() && rhs_ty.is_scalar() {
                     self.typeck_results.type_dependent_defs_mut().remove(e.hir_id);
                     self.typeck_results.node_args_mut().remove(e.hir_id);
 

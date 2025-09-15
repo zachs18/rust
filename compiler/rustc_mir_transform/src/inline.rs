@@ -762,6 +762,9 @@ fn check_mir_is_available<'tcx, I: Inliner<'tcx>>(
         | InstanceKind::ConstructCoroutineInClosureShim { .. }
         | InstanceKind::DropGlue(..)
         | InstanceKind::CloneShim(..)
+        | InstanceKind::PtrMetadataCmpShim(..)
+        | InstanceKind::PtrMetadataDebugShim(..)
+        | InstanceKind::PtrMetadataHashShim(..)
         | InstanceKind::ThreadLocalShim(..)
         | InstanceKind::FnPtrAddrShim(..) => return Ok(()),
     }

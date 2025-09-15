@@ -808,6 +808,7 @@ bidirectional_lang_item_map! {
     Future,
     Iterator,
     MetaSized,
+    Ord,
     PointeeSized,
     PointeeTrait,
     Sized,
