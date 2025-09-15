@@ -638,6 +638,9 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 | ty::InstanceKind::DropGlue(..)
                 | ty::InstanceKind::Virtual(..)
                 | ty::InstanceKind::CloneShim(..)
+                | ty::InstanceKind::PtrMetadataCmpShim(..)
+                | ty::InstanceKind::PtrMetadataDebugShim(..)
+                | ty::InstanceKind::PtrMetadataHashShim(..)
                 | ty::InstanceKind::ThreadLocalShim(..)
                 | ty::InstanceKind::FnPtrAddrShim(..)
                 | ty::InstanceKind::FutureDropPollShim(..)
@@ -814,6 +817,9 @@ fn mono_item_visibility<'tcx>(
         | InstanceKind::ConstructCoroutineInClosureShim { .. }
         | InstanceKind::DropGlue(..)
         | InstanceKind::CloneShim(..)
+        | InstanceKind::PtrMetadataCmpShim(..)
+        | InstanceKind::PtrMetadataDebugShim(..)
+        | InstanceKind::PtrMetadataHashShim(..)
         | InstanceKind::FnPtrAddrShim(..) => return Visibility::Hidden,
     };
 

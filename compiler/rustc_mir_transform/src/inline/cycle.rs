@@ -32,7 +32,10 @@ fn should_recurse<'tcx>(tcx: TyCtxt<'tcx>, callee: ty::Instance<'tcx>) -> bool {
         | InstanceKind::ClosureOnceShim { .. }
         | InstanceKind::ConstructCoroutineInClosureShim { .. }
         | InstanceKind::ThreadLocalShim { .. }
-        | InstanceKind::CloneShim(..) => {}
+        | InstanceKind::CloneShim(..)
+        | InstanceKind::PtrMetadataCmpShim(..)
+        | InstanceKind::PtrMetadataDebugShim(..)
+        | InstanceKind::PtrMetadataHashShim(..) => {}
 
         // This shim does not call any other functions, thus there can be no recursion.
         InstanceKind::FnPtrAddrShim(..) => return false,

@@ -531,6 +531,9 @@ impl<'tcx> CodegenUnit<'tcx> {
                     | InstanceKind::ConstructCoroutineInClosureShim { .. }
                     | InstanceKind::DropGlue(..)
                     | InstanceKind::CloneShim(..)
+                    | InstanceKind::PtrMetadataCmpShim(..)
+                    | InstanceKind::PtrMetadataHashShim(..)
+                    | InstanceKind::PtrMetadataDebugShim(..)
                     | InstanceKind::ThreadLocalShim(..)
                     | InstanceKind::FnPtrAddrShim(..)
                     | InstanceKind::AsyncDropGlue(..)

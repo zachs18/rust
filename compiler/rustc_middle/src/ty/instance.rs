@@ -169,6 +169,27 @@ pub enum InstanceKind<'tcx> {
     /// The `DefId` is for `FnPtr::addr`, the `Ty` is the type `T`.
     FnPtrAddrShim(DefId, Ty<'tcx>),
 
+    /// Compiler-generated `<builtin # ptr_metadata(T) as Ord>::cmp` implementation.
+    ///
+    /// Automatically generated for all `T`.
+    ///
+    /// The `DefId` is for `Ord::cmp`, the `Ty` is the type `T`.
+    PtrMetadataCmpShim(DefId, Ty<'tcx>),
+
+    /// Compiler-generated `<builtin # ptr_metadata(T) as Hash>::hash` implementation.
+    ///
+    /// Automatically generated for all `T`.
+    ///
+    /// The `DefId` is for `Hash::hash`, the `Ty` is the type `T`.
+    PtrMetadataHashShim(DefId, Ty<'tcx>),
+
+    /// Compiler-generated `<builtin # ptr_metadata(T) as Debug>::fmt` implementation.
+    ///
+    /// Automatically generated for all `T`.
+    ///
+    /// The `DefId` is for `Debug::fmt`, the `Ty` is the type `T`.
+    PtrMetadataDebugShim(DefId, Ty<'tcx>),
+
     /// `core::future::async_drop::async_drop_in_place::<'_, T>`.
     ///
     /// The `DefId` is for `core::future::async_drop::async_drop_in_place`, the `Ty`
@@ -255,6 +276,9 @@ impl<'tcx> InstanceKind<'tcx> {
             }
             | InstanceKind::DropGlue(def_id, _)
             | InstanceKind::CloneShim(def_id, _)
+            | InstanceKind::PtrMetadataCmpShim(def_id, _)
+            | InstanceKind::PtrMetadataHashShim(def_id, _)
+            | InstanceKind::PtrMetadataDebugShim(def_id, _)
             | InstanceKind::FnPtrAddrShim(def_id, _)
             | InstanceKind::FutureDropPollShim(def_id, _, _)
             | InstanceKind::AsyncDropGlue(def_id, _)
@@ -280,6 +304,9 @@ impl<'tcx> InstanceKind<'tcx> {
             | ty::InstanceKind::ConstructCoroutineInClosureShim { .. }
             | InstanceKind::DropGlue(..)
             | InstanceKind::CloneShim(..)
+            | InstanceKind::PtrMetadataCmpShim(..)
+            | InstanceKind::PtrMetadataHashShim(..)
+            | InstanceKind::PtrMetadataDebugShim(..)
             | InstanceKind::FnPtrAddrShim(..) => None,
         }
     }
@@ -325,6 +352,9 @@ impl<'tcx> InstanceKind<'tcx> {
     pub fn has_polymorphic_mir_body(&self) -> bool {
         match *self {
             InstanceKind::CloneShim(..)
+            | InstanceKind::PtrMetadataCmpShim(..)
+            | InstanceKind::PtrMetadataHashShim(..)
+            | InstanceKind::PtrMetadataDebugShim(..)
             | InstanceKind::ThreadLocalShim(..)
             | InstanceKind::FnPtrAddrShim(..)
             | InstanceKind::FnPtrShim(..)

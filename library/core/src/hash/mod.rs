@@ -195,6 +195,7 @@ pub trait Hash: marker::PointeeSized {
     /// println!("Hash is {:x}!", hasher.finish());
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
+    #[lang = "hash_method"]
     fn hash<H: Hasher>(&self, state: &mut H);
 
     /// Feeds a slice of this type into the given [`Hasher`].

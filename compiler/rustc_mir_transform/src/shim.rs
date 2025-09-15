@@ -8,6 +8,7 @@ use rustc_index::{Idx, IndexVec};
 use rustc_middle::mir::visit::{MutVisitor, PlaceContext};
 use rustc_middle::mir::*;
 use rustc_middle::query::Providers;
+use rustc_middle::ty::layout::MetadataFields;
 use rustc_middle::ty::{
     self, CoroutineArgs, CoroutineArgsExt, EarlyBinder, GenericArgs, Ty, TyCtxt,
 };
@@ -163,6 +164,9 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<
         }
         ty::InstanceKind::ThreadLocalShim(..) => build_thread_local_shim(tcx, instance),
         ty::InstanceKind::CloneShim(..) => build_clone_shim(tcx, instance),
+        ty::InstanceKind::PtrMetadataCmpShim(..) => build_ptr_metadata_cmp_shim(tcx, instance),
+        ty::InstanceKind::PtrMetadataDebugShim(def_id, ty) => todo!("{def_id:?} {ty:?}"),
+        ty::InstanceKind::PtrMetadataHashShim(def_id, ty) => todo!("{def_id:?} {ty:?}"),
         ty::InstanceKind::FnPtrAddrShim(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::InstanceKind::FutureDropPollShim(def_id, proxy_ty, impl_ty) => {
             let mut body =
@@ -801,6 +805,249 @@ impl<'tcx> CloneShimBuilder<'tcx> {
                 };
             }
             BasicBlockData { terminator: None, .. } => unreachable!(),
+        }
+    }
+}
+
+/// Builds a `Ord::cmp` shim for `builtin # ptr_metadata(pointee_ty)`. Here, `def_id` is `Ord::cmp`.
+fn build_ptr_metadata_cmp_shim<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: ty::InstanceKind<'tcx>,
+) -> Body<'tcx> {
+    let ty::InstanceKind::PtrMetadataCmpShim(def_id, pointee_ty) = instance else { unreachable!() };
+    debug!("build_ptr_metadata_cmp_shim(def_id={:?})", def_id);
+
+    let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
+    let fields = match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
+        MetadataFields::KnownFields(fields) => fields,
+        fields => bug!(
+            "ptr_metadata cmp shim for `{:?}` which is not monomorphic enough ({fields:?})",
+            pointee_ty
+        ),
+    };
+
+    let fields_to_compare: Vec<_> = fields
+        .iter()
+        .zip(FieldIdx::ZERO..)
+        .filter_map(|((_, _, _, field_ty), field_idx)| match field_ty.kind() {
+            ty::PtrMetadata(field_pointee_ty) if field_pointee_ty.is_thin(tcx, typing_env) => None,
+            _ => Some((field_ty, field_idx)),
+        })
+        .collect();
+
+    let mut builder = PtrMetadataCmpShimBuilder::new(tcx, instance, def_id, pointee_ty);
+
+    let dest = Place::return_place();
+    let lhs = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+    let rhs = tcx.mk_place_deref(Place::from(Local::new(2 + 0)));
+
+    builder.compare_fields(dest, lhs, rhs, &fields_to_compare);
+
+    builder.into_mir()
+}
+
+struct PtrMetadataCmpShimExtra;
+type PtrMetadataCmpShimBuilder<'tcx> = ShimBuilder<'tcx, PtrMetadataCmpShimExtra>;
+
+impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        instance: ty::InstanceKind<'tcx>,
+        def_id: DefId,
+        pointee_ty: Ty<'tcx>,
+    ) -> Self {
+        let sig =
+            tcx.fn_sig(def_id).instantiate(tcx, &[Ty::new_ptr_metadata(tcx, pointee_ty).into()]);
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
+        let span = tcx.def_span(def_id);
+
+        PtrMetadataCmpShimBuilder {
+            tcx,
+            local_decls: local_decls_for_sig(&sig, span),
+            blocks: IndexVec::new(),
+            span,
+            sig,
+            instance,
+            extra: PtrMetadataCmpShimExtra,
+        }
+    }
+
+    fn compare_fields(
+        &mut self,
+        dest: Place<'tcx>,
+        lhs: Place<'tcx>,
+        rhs: Place<'tcx>,
+        fields: &[(Ty<'tcx>, FieldIdx)],
+    ) {
+        let ordering_enum = self.tcx.ty_ordering_enum(self.span);
+
+        let [prefix_fields @ .., last_field] = fields else {
+            // Thin pointees' metadatas are trivially always equal.
+
+            let equal_const = Operand::const_from_scalar(
+                self.tcx,
+                ordering_enum,
+                interpret::Scalar::from_i8(0),
+                self.span,
+            );
+
+            let retval_stmt = self
+                .make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(equal_const)))));
+
+            self.block(vec![retval_stmt], TerminatorKind::Return, false);
+            return;
+        };
+
+        // For n fields, create 3*(n-1)+2 blocks.
+
+        // For the (n-1) prefix fields:
+        // bb0:
+        //  _lhs_field = &(*_lhs).field_idx;
+        //  _rhs_field = &(*_lhs).field_idx;
+        //  _tmp_ordering = Call(<field_ty as Ord>::cmp, _lhs_field, _rhs_field) [return -> bb1, unwind resume]
+        // bb1:
+        //  _tmp = discriminant(_tmp_ordering);
+        //  switchInt(_tmp) -> [0: bb3, otherwise: bb2]
+        // bb2:
+        //  _0 = copy _tmp_ordering;
+        //  return;
+        // bb3: (other prefix fields)
+        //  ...
+        // bb(3*(n-1)):
+        //  _lhs_field = &(*_lhs).field_idx;
+        //  _rhs_field = &(*_lhs).field_idx;
+        //  _0 = Call(<field_ty as Ord>::cmp, _lhs_field, _rhs_field) [return -> return_block, unwind resume]
+        // return_block = bb(3*(n-1)+1):
+        //  return;
+
+        let cmp_method = self.tcx.require_lang_item(LangItem::OrdCmp, self.span);
+
+        for &(field_ty, field_idx) in prefix_fields {
+            let field_ref_ty = Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, field_ty);
+            let lhs_ref = self.make_place(Mutability::Not, field_ref_ty);
+            let rhs_ref = self.make_place(Mutability::Not, field_ref_ty);
+            let tmp_ordering = self.make_place(Mutability::Not, ordering_enum);
+            let tmp_discriminant = self.make_place(Mutability::Not, self.tcx.types.i8);
+
+            // `let lhs_ref: &ty = &(*lhs).field_idx;`
+            let lhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                lhs_ref,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    lhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
+                ),
+            ))));
+            // `let rhs_ref: &ty = &(*rhs).field_idx;`
+            let rhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                rhs_ref,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    rhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
+                ),
+            ))));
+
+            let discriminant_check_block = self.block_index_offset(1);
+            let return_this_ordering_block = self.block_index_offset(2);
+            let next_compare_block = self.block_index_offset(3);
+
+            let args = [lhs_ref, rhs_ref]
+                .into_iter()
+                .map(|p| Spanned { node: Operand::Copy(p), span: DUMMY_SP })
+                .collect();
+            let cmp_call = TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    cmp_method,
+                    [ty::GenericArg::from(field_ty)],
+                    self.span,
+                ),
+                args,
+                destination: tmp_ordering,
+                target: Some(discriminant_check_block),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: DUMMY_SP,
+            };
+
+            self.block(vec![lhs_ref_stmt, rhs_ref_stmt], cmp_call, false);
+
+            let tmp_discriminant_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                tmp_discriminant,
+                Rvalue::Discriminant(tmp_ordering),
+            ))));
+
+            let discriminant_switch_int = TerminatorKind::SwitchInt {
+                discr: Operand::Copy(tmp_discriminant),
+                targets: SwitchTargets::static_if(
+                    0,
+                    next_compare_block,
+                    return_this_ordering_block,
+                ),
+            };
+
+            self.block(vec![tmp_discriminant_stmt], discriminant_switch_int, false);
+
+            let retval_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                dest,
+                Rvalue::Use(Operand::Copy(tmp_ordering)),
+            ))));
+
+            self.block(vec![retval_stmt], TerminatorKind::Return, false);
+        }
+
+        // Compare the last field
+        {
+            let &(field_ty, field_idx) = last_field;
+
+            let field_ref_ty = Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, field_ty);
+            let lhs_ref = self.make_place(Mutability::Not, field_ref_ty);
+            let rhs_ref = self.make_place(Mutability::Not, field_ref_ty);
+
+            // `let lhs_ref: &ty = &(*lhs).field_idx;`
+            let lhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                lhs_ref,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    lhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
+                ),
+            ))));
+            // `let rhs_ref: &ty = &(*rhs).field_idx;`
+            let rhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                rhs_ref,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    rhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
+                ),
+            ))));
+
+            let return_block = self.block_index_offset(1);
+
+            let args = [lhs_ref, rhs_ref]
+                .into_iter()
+                .map(|p| Spanned { node: Operand::Copy(p), span: DUMMY_SP })
+                .collect();
+            let cmp_call = TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    cmp_method,
+                    [ty::GenericArg::from(field_ty)],
+                    self.span,
+                ),
+                args,
+                destination: dest,
+                target: Some(return_block),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: DUMMY_SP,
+            };
+
+            self.block(vec![lhs_ref_stmt, rhs_ref_stmt], cmp_call, false);
+
+            self.block(vec![], TerminatorKind::Return, false);
         }
     }
 }

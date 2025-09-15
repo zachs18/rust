@@ -250,6 +250,13 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             Some(LangItem::ThinPointeeTrait) => {
                 self.sizedness_conditions(self_ty, SizedTraitKind::Thin)
             }
+            Some(LangItem::Ord) => {
+                if self_ty.is_ptr_metadata() {
+                    ty::Binder::dummy(vec![])
+                } else {
+                    unreachable!("tried to assemble `Ord` for non-PtrMetadata type");
+                }
+            }
             Some(LangItem::FusedIterator) => {
                 if self.coroutine_is_gen(self_ty) {
                     ty::Binder::dummy(vec![])
