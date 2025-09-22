@@ -246,8 +246,9 @@ impl<'tcx> InstSimplifyContext<'_, 'tcx> {
     /// Simplify `size_of_val` and `align_of_val` if we don't actually need
     /// to look at the value in order to calculate the result:
     /// - For `Sized` types we can always do this for both,
-    /// - For `align_of_val::<[T]>` we can return `align_of::<T>()`, since it
-    ///   doesn't depend on the slice's length and the elements are sized.
+    /// - For `align_of_val::<[T]>` where `T: Sized`, we can return `align_of::<T>()`,
+    ///   since it doesn't depend on the slice's length and the elements are sized.
+    // FIXME(more_unsized): lower to `align_of_val::<T>(ptr.as_ptr())` or something.
     ///
     /// This is here so it can run after inlining, where it's more useful.
     /// (LowerIntrinsics is done in cleanup, before the optimization passes.)
@@ -278,6 +279,7 @@ impl<'tcx> InstSimplifyContext<'_, 'tcx> {
                 generic_ty
             } else if let LangItem::AlignOf = lang_item
                 && let ty::Slice(elem_ty) = *generic_ty.kind()
+                && elem_ty.is_sized(self.tcx, self.typing_env)
             {
                 elem_ty
             } else {

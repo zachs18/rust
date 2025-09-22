@@ -245,6 +245,8 @@ declare_features! (
     (internal, link_cfg, "1.14.0", None),
     /// Allows using `?Trait` trait bounds in more contexts.
     (internal, more_maybe_bounds, "1.82.0", None),
+    /// Allows using unsized types in more contexts.
+    (unstable, more_unsized, "CURRENT_RUSTC_VERSION", None),
     /// Allow negative trait bounds. This is an internal-only feature for testing the trait solver!
     (internal, negative_bounds, "1.71.0", None),
     /// Set the maximum pattern complexity allowed (not limited by default).

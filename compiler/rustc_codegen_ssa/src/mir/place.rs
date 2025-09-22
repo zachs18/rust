@@ -274,15 +274,13 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         // The type `Foo<Foo<Trait>>` is represented in LLVM as `{ u16, { u16, u8 }}`, meaning that
         // the `y` field has 16-bit alignment.
 
-        let meta = self.val.llextra;
-
         let unaligned_offset = bx.cx().const_usize(offset.bytes());
 
         // Get the alignment of the field
         let (_, mut unsized_align) = size_of_val::size_and_align_of_dst(
             bx,
             field.ty,
-            meta.get_metadata().map(|opref| opref.change_sizedness().immediate()),
+            field_llextra.0.map(|meta| meta.change_sizedness().immediate()),
         );
 
         // For packed types, we need to cap alignment.

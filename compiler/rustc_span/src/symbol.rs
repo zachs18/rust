@@ -1330,6 +1330,7 @@ symbols! {
         more_maybe_bounds,
         more_qualified_paths,
         more_struct_aliases,
+        more_unsized,
         movbe_target_feature,
         move_ref_pattern,
         move_size_limit,

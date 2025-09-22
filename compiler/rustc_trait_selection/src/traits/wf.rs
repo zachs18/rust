@@ -554,6 +554,24 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
         }
     }
 
+    fn require_metasized(&mut self, subty: Ty<'tcx>, cause: traits::ObligationCauseCode<'tcx>) {
+        if !subty.has_escaping_bound_vars() {
+            let cause = self.cause(cause);
+            let trait_ref = ty::TraitRef::new(
+                self.tcx(),
+                self.tcx().require_lang_item(LangItem::MetaSized, cause.span),
+                [subty],
+            );
+            self.out.push(traits::Obligation::with_depth(
+                self.tcx(),
+                cause,
+                self.recursion_depth,
+                self.param_env,
+                ty::Binder::dummy(trait_ref),
+            ));
+        }
+    }
+
     /// Pushes all the predicates needed to validate that `term` is WF into `out`.
     #[instrument(level = "debug", skip(self))]
     fn add_wf_preds_for_term(&mut self, term: Term<'tcx>) {
@@ -744,11 +762,19 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
             ty::Infer(ty::FloatVar(_)) => {}
 
             ty::Slice(subty) => {
-                self.require_sized(subty, ObligationCauseCode::SliceOrArrayElem);
+                if tcx.features().more_unsized() {
+                    self.require_metasized(subty, ObligationCauseCode::SliceOrArrayElem);
+                } else {
+                    self.require_sized(subty, ObligationCauseCode::SliceOrArrayElem);
+                }
             }
 
             ty::Array(subty, len) => {
-                self.require_sized(subty, ObligationCauseCode::SliceOrArrayElem);
+                if tcx.features().more_unsized() {
+                    self.require_metasized(subty, ObligationCauseCode::SliceOrArrayElem);
+                } else {
+                    self.require_sized(subty, ObligationCauseCode::SliceOrArrayElem);
+                }
                 // Note that the len being WF is implicitly checked while visiting.
                 // Here we just check that it's of type usize.
                 let cause = self.cause(ObligationCauseCode::ArrayLen(t));
@@ -772,7 +798,13 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
             ty::Tuple(tys) => {
                 if let Some((last, rest)) = tys.split_last() {
                     for &elem in rest {
-                        self.require_sized(elem, ObligationCauseCode::TupleElem);
+                        // FIXME(extern_types): FIXME(more_unsized): Do we want to restrict all fields of
+                        // tuples (including the last) to be MetaSized?
+                        if tcx.features().more_unsized() {
+                            self.require_metasized(elem, ObligationCauseCode::TupleElem);
+                        } else {
+                            self.require_sized(elem, ObligationCauseCode::TupleElem);
+                        }
                         if elem.is_scalable_vector() && !self.span.is_dummy() {
                             self.tcx()
                                 .dcx()
@@ -783,7 +815,6 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
                                 .emit();
                         }
                     }
-
                     if last.is_scalable_vector() && !self.span.is_dummy() {
                         self.tcx()
                             .dcx()
