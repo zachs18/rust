@@ -35,7 +35,6 @@ fn sizedness_constraints_for_ty<'tcx>(
         | ty::PtrMetadata(..)
         | ty::FnDef(..)
         | ty::FnPtr(..)
-        | ty::Array(..)
         | ty::Closure(..)
         | ty::CoroutineClosure(..)
         | ty::Coroutine(..)
@@ -68,6 +67,9 @@ fn sizedness_constraints_for_ty<'tcx>(
 
         // Recursive cases
         ty::Pat(ty, _) => sizedness_constraints_for_ty(tcx, sizedness, *ty),
+
+        // Has the sizedness of the element
+        ty::Array(elem, _) => sizedness_constraints_for_ty(tcx, sizedness, *elem),
 
         ty::Tuple(tys) => {
             // Try to avoid returning the same type multiple times

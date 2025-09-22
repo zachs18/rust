@@ -1,0 +1,9 @@
+error[E0606]: casting `&[_; 0]` as `*const Data` is invalid
+  --> $DIR/wrapper-of-array-of-unsized.rs:10:37
+   |
+LL | const _: &'static Data = unsafe { &*(&[] as *const Data) };
+   |                                     ^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0606`.

@@ -180,16 +180,18 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
     pub fn array_like<FieldIdx: Idx, VariantIdx: Idx, F>(
         &self,
         element: &LayoutData<FieldIdx, VariantIdx>,
-        count_if_sized: Option<u64>, // None for slices
+        count_if_array: Option<u64>, // None for slices
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
-        let count = count_if_sized.unwrap_or(0);
+        let count = count_if_array.unwrap_or(0);
         let size =
             element.size.checked_mul(count, &self.cx).ok_or(LayoutCalculatorError::SizeOverflow)?;
 
         Ok(LayoutData {
             variants: Variants::Single { index: VariantIdx::new(0) },
             fields: FieldsShape::Array { stride: element.size, count },
-            backend_repr: BackendRepr::Memory { sized: count_if_sized.is_some() },
+            backend_repr: BackendRepr::Memory {
+                sized: element.is_sized() && count_if_array.is_some(),
+            },
             largest_niche: element.largest_niche.filter(|_| count != 0),
             uninhabited: element.uninhabited && count != 0,
             align: element.align,
