@@ -73,7 +73,9 @@ pub enum OperandValue<'tcx, V: CodegenObject, Sizedness: PlaceSizedness = AnyPla
 }
 
 impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> OperandValue<'tcx, V, Sizedness> {
-    fn change_sizedness<NewSizedness: PlaceSizedness>(self) -> OperandValue<'tcx, V, NewSizedness>
+    pub fn change_sizedness<NewSizedness: PlaceSizedness>(
+        self,
+    ) -> OperandValue<'tcx, V, NewSizedness>
     where
         Sizedness::Metadata<'tcx, V>: Into<NewSizedness::Metadata<'tcx, V>>,
     {
@@ -103,25 +105,6 @@ impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> OperandValue<'tcx, V, Si
 }
 
 impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> OperandValue<'tcx, V, Sizedness> {
-    /// Return the data pointer and optional metadata as backend values
-    /// if this value can be treat as a pointer.
-    pub(crate) fn try_pointer_parts(self) -> Option<(V, Option<V>)> {
-        match self {
-            OperandValue::Immediate(llptr) => Some((llptr, None)),
-            OperandValue::Pair(llptr, llextra) => Some((llptr, Some(llextra))),
-            OperandValue::Ref(_) | OperandValue::ZeroSized => None,
-        }
-    }
-
-    /// Treat this value as a pointer and return the data pointer and
-    /// optional metadata as backend values.
-    ///
-    /// If you're making a place, use [`OperandRef::deref`] instead.
-    pub(crate) fn pointer_parts(self) -> (V, Option<V>) {
-        self.try_pointer_parts()
-            .unwrap_or_else(|| bug!("OperandValue cannot be a pointer: {self:?}"))
-    }
-
     pub(crate) fn is_expected_variant_for_type<Cx: LayoutTypeCodegenMethods<'tcx>>(
         &self,
         cx: &Cx,
@@ -315,9 +298,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
     ///
     /// This uses [`Ty::builtin_deref`] to include the type of the place and
     /// assumes the place is aligned to the pointee's usual ABI alignment.
-    ///
-    /// If you don't need the type, see [`OperandValue::pointer_parts`].
-    pub fn deref<Cx: CodegenMethods<'tcx>>(self, cx: &Cx) -> PlaceRef<'tcx, V> {
+    pub fn deref<Bx: BuilderMethods<'a, 'tcx, Value = V>>(self, bx: &mut Bx) -> PlaceRef<'tcx, V> {
         if self.layout.ty.is_box() {
             // Derefer should have removed all Box derefs
             bug!("dereferencing {:?} in codegen", self.layout.ty);
@@ -328,25 +309,44 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
             .ty
             .builtin_deref(true)
             .unwrap_or_else(|| bug!("deref of non-pointer {:?}", self));
+        let metadata_ty = Ty::new_ptr_metadata(bx.tcx(), projected_ty);
 
-        let layout = cx.layout_of(projected_ty);
+        let layout = bx.layout_of(projected_ty);
+        let metadata_layout = bx.layout_of(metadata_ty);
 
-        // FIXME(ptr_metadata_v2): project_field here
-        let (llval, llextra) = self.val.pointer_parts();
+        let (llval, llextra) = match self.val {
+            OperandValue::Immediate(llval) if layout.is_sized() => (llval, AnyPlaceMeta(None)),
+            OperandValue::Immediate(llval) => (
+                llval,
+                AnyPlaceMeta(Some(OperandRef {
+                    val: OperandValue::ZeroSized,
+                    layout: metadata_layout,
+                    move_annotation: None,
+                })),
+            ),
+            OperandValue::Pair(llval, llextra) => (
+                llval,
+                AnyPlaceMeta(Some(OperandRef {
+                    val: OperandValue::Immediate(llextra),
+                    layout: metadata_layout,
+                    move_annotation: None,
+                })),
+            ),
+            OperandValue::ZeroSized => bug!("pointer cannot be zero-sized"),
+            OperandValue::Ref(place_value) => {
+                let place_ref = PlaceRef { val: place_value, layout: self.layout };
+                let llval = place_ref.project_field(bx, 0);
+                let llextra = place_ref.project_field(bx, 1);
+                (
+                    bx.load_operand(llval).immediate(),
+                    AnyPlaceMeta(Some(
+                        bx.load_operand(llextra).expect_sized("pointer metadata must be sized"),
+                    )),
+                )
+            }
+        };
 
-        let llextra = llextra.map(|llextra| {
-            let meta: OperandRef<'tcx, V> = OperandRef {
-                val: OperandValue::Immediate(llextra),
-                layout: {
-                    let metadata_ty = Ty::new_ptr_metadata(cx.tcx(), projected_ty);
-                    cx.layout_of(metadata_ty)
-                },
-                move_annotation: None,
-            };
-            meta.expect_sized("pointer metadata must be sized")
-        });
-        PlaceValue { llval, llextra: AnyPlaceMeta(llextra), align: layout.align.abi }
-            .with_type(layout)
+        PlaceValue { llval, llextra, align: layout.align.abi }.with_type(layout)
     }
 
     /// Store this operand into a place, applying move/copy annotation if present.
@@ -473,10 +473,10 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
         OperandRef { val, layout: field, move_annotation: None }
     }
 
-    /// FIXME(ptr_metadata_v2): This exists to be used in `PlaceRef::project_field` which needs
-    /// it (or something like it) to extract a fields' pointer metadata from a container's
-    /// possibly-multi-wide pointer metadata, but does not have a `FunctionCx` to pass around.
-    /// Maybe it should just be inlined into that function?
+    /// FIXME(ptr_metadata_v2): This exists to be used in `PlaceRef::project_field` and
+    /// `rustc_codegen_ssa::size_and_align_of_dst` which need it (or something like it)
+    /// to extract a fields' pointer metadata from a container's possibly-multi-wide pointer
+    /// metadata, but does not have a `FunctionCx` to pass around.
     pub(crate) fn extract_field_simple<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
         &self,
         bx: &mut Bx,
