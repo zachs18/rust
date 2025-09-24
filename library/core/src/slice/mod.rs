@@ -98,7 +98,7 @@ enum Direction {
     Back,
 }
 
-impl<T> [T] {
+impl<T: ?Sized> [T] {
     /// Returns the number of elements in the slice.
     ///
     /// # Examples
@@ -136,7 +136,9 @@ impl<T> [T] {
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
+}
 
+impl<T> [T] {
     /// Returns the first element of the slice, or `None` if it is empty.
     ///
     /// # Examples
