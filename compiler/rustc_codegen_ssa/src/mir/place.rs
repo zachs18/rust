@@ -6,7 +6,7 @@ use rustc_abi::{
 use rustc_middle::mir::PlaceTy;
 use rustc_middle::mir::interpret::Scalar;
 use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
-use rustc_middle::ty::{self, Ty};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::{bug, mir};
 use tracing::{debug, instrument};
 
@@ -87,19 +87,6 @@ impl<'tcx, V: CodegenObject, Sizedness: PlaceSizedness> PlaceValue<'tcx, V, Size
             self.llextra,
         );
         PlaceRef { val: self, layout }
-    }
-
-    /// Gets the pointer to this place as an [`OperandValue::Immediate`]
-    /// or, for those needing metadata, an [`OperandValue::Pair`].
-    ///
-    /// This is the inverse of [`OperandRef::deref`](super::operand::OperandRef::deref).
-    pub fn address(self) -> OperandValue<'tcx, V> {
-        if let Some(llextra) = self.llextra.get_metadata() {
-            let llextra = llextra.change_sizedness().immediate();
-            OperandValue::Pair(self.llval, llextra)
-        } else {
-            OperandValue::Immediate(self.llval)
-        }
     }
 }
 
@@ -277,11 +264,8 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         let unaligned_offset = bx.cx().const_usize(offset.bytes());
 
         // Get the alignment of the field
-        let (_, mut unsized_align) = size_of_val::size_and_align_of_dst(
-            bx,
-            field.ty,
-            field_llextra.0.map(|meta| meta.change_sizedness().immediate()),
-        );
+        let (_, mut unsized_align) =
+            size_of_val::size_and_align_of_dst(bx, field.ty, field_llextra);
 
         // For packed types, we need to cap alignment.
         if let ty::Adt(def, _) = self.layout.ty.kind()
@@ -370,6 +354,46 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
     pub fn storage_dead<Bx: BuilderMethods<'a, 'tcx, Value = V>>(&self, bx: &mut Bx) {
         bx.lifetime_end(self.val.llval, self.layout.size);
     }
+
+    pub fn address<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
+        &self,
+        bx: &mut Bx,
+        mk_ptr_ty: impl FnOnce(TyCtxt<'tcx>, Ty<'tcx>) -> Ty<'tcx>,
+    ) -> OperandRef<'tcx, V> {
+        let pointer_ty = mk_ptr_ty(bx.tcx(), self.layout.ty);
+        let pointer_layout = bx.layout_of(pointer_ty);
+
+        let AnyPlaceMeta(Some(meta)) = self.val.llextra else {
+            return OperandRef {
+                val: OperandValue::Immediate(self.val.llval),
+                layout: pointer_layout,
+                move_annotation: None,
+            };
+        };
+
+        match meta.val {
+            OperandValue::ZeroSized => OperandRef {
+                val: OperandValue::Immediate(self.val.llval),
+                layout: pointer_layout,
+                move_annotation: None,
+            },
+            OperandValue::Immediate(llextra) => OperandRef {
+                val: OperandValue::Pair(self.val.llval, llextra),
+                layout: pointer_layout,
+                move_annotation: None,
+            },
+            meta_val => {
+                let ptr_place = PlaceRef::alloca(bx, pointer_layout);
+                let ptr_data = ptr_place.project_field(bx, 0);
+                let ptr_meta = ptr_place.project_field(bx, 1);
+
+                OperandValue::Immediate(self.val.llval).store(bx, ptr_data);
+                meta_val.change_sizedness().store(bx, ptr_meta);
+
+                bx.load_operand(ptr_place)
+            }
+        }
+    }
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -379,13 +403,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         bx: &mut Bx,
         place_ref: mir::PlaceRef<'tcx>,
     ) -> PlaceRef<'tcx, Bx::Value, AnyPlace> {
-        let cx = self.cx;
         let tcx = self.cx.tcx();
 
         let mut base = 0;
         let mut cg_base = match self.locals[place_ref.local] {
             LocalRef::Place(place) => place.change_sizedness(),
-            LocalRef::UnsizedPlace(place) => bx.load_operand(place).deref(cx),
+            LocalRef::UnsizedPlace(place) => bx.load_operand(place).deref(bx),
             LocalRef::Operand(..) => {
                 if place_ref.is_indirect_first_projection() {
                     base = 1;
@@ -393,7 +416,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         bx,
                         mir::PlaceRef { projection: &place_ref.projection[..0], ..place_ref },
                     );
-                    cg_base.deref(bx.cx())
+                    cg_base.deref(bx)
                 } else {
                     bug!("using operand local {:?} as place", place_ref);
                 }
@@ -404,7 +427,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         };
         for elem in place_ref.projection[base..].iter() {
             cg_base = match *elem {
-                mir::ProjectionElem::Deref => bx.load_operand(cg_base).deref(bx.cx()),
+                mir::ProjectionElem::Deref => bx.load_operand(cg_base).deref(bx),
                 mir::ProjectionElem::Field(ref field, _) => {
                     cg_base.project_field(bx, field.index())
                 }

@@ -174,7 +174,7 @@ pub struct AnyPlace;
 pub struct SizedPlaceMeta;
 
 #[derive(Debug, Clone, Copy)]
-pub struct AnyPlaceMeta<'tcx, V: CodegenObject>(Option<OperandRef<'tcx, V, SizedPlace>>);
+pub struct AnyPlaceMeta<'tcx, V: CodegenObject>(pub Option<OperandRef<'tcx, V, SizedPlace>>);
 
 impl<'tcx, V: CodegenObject> Default for AnyPlaceMeta<'tcx, V> {
     fn default() -> Self {

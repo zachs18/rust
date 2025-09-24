@@ -11,7 +11,7 @@ use super::operand::OperandRef;
 use super::place::PlaceRef;
 use crate::common::{AtomicRmwBinOp, SynchronizationScope};
 use crate::errors::InvalidMonomorphization;
-use crate::mir::operand::OperandValue;
+use crate::mir::AnyPlaceMeta;
 use crate::traits::*;
 use crate::{MemFlags, meth, size_of_val};
 
@@ -83,8 +83,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 // into the (unoptimized) direct swapping implementation, so we disable it.
                 || bx.sess().target.arch == Arch::SpirV
             {
-                let x_place = args[0].deref(bx.cx());
-                let y_place = args[1].deref(bx.cx());
+                let x_place = args[0].deref(bx);
+                let y_place = args[1].deref(bx);
                 bx.typed_place_swap(x_place.val, y_place.val, pointee_layout);
                 return Ok(());
             }
@@ -151,23 +151,20 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             sym::va_end => bx.va_end(args[0].immediate()),
             sym::size_of_val => {
                 let tp_ty = fn_args.type_at(0);
-                let (_, meta) = args[0].val.pointer_parts();
+                let meta = args[0].deref(bx).val.llextra;
                 let (llsize, _) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
                 llsize
             }
             sym::align_of_val => {
                 let tp_ty = fn_args.type_at(0);
-                let (_, meta) = args[0].val.pointer_parts();
+                let meta = args[0].deref(bx).val.llextra;
                 let (_, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
                 llalign
             }
             sym::unchecked_size_for_meta | sym::unchecked_align_for_meta => {
                 let tp_ty = fn_args.type_at(0);
-                let meta = match args[0].val {
-                    OperandValue::Immediate(meta) => Some(meta),
-                    OperandValue::ZeroSized => None,
-                    val => bug!("OperandValue cannot be pointer metadata: {val:?}"),
-                };
+                let meta =
+                    AnyPlaceMeta(Some(args[0].expect_sized("pointer metadata must be sized")));
                 let (llsize, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
                 match name {
                     sym::unchecked_size_for_meta => llsize,
@@ -177,11 +174,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
             sym::checked_size_for_meta | sym::checked_align_for_meta => {
                 let tp_ty = fn_args.type_at(0);
-                let meta = match args[0].val {
-                    OperandValue::Immediate(meta) => Some(meta),
-                    OperandValue::ZeroSized => None,
-                    val => bug!("OperandValue cannot be pointer metadata: {val:?}"),
-                };
+                let meta =
+                    AnyPlaceMeta(Some(args[0].expect_sized("pointer metadata must be sized")));
                 let (llvalid, llsize, llalign) =
                     size_of_val::checked_size_and_align_of_dst(bx, tp_ty, meta);
                 let llvalid = bx.from_immediate(llvalid); // required for Rust bool
@@ -293,12 +287,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 return Ok(());
             }
             sym::volatile_store => {
-                let dst = args[0].deref(bx.cx());
+                let dst = args[0].deref(bx);
                 args[1].val.volatile_store(bx, dst);
                 return Ok(());
             }
             sym::unaligned_volatile_store => {
-                let dst = args[0].deref(bx.cx());
+                let dst = args[0].deref(bx);
                 args[1].val.unaligned_volatile_store(bx, dst);
                 return Ok(());
             }
@@ -587,7 +581,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
 
             sym::nontemporal_store => {
-                let dst = args[0].deref(bx.cx());
+                let dst = args[0].deref(bx);
                 args[1].val.nontemporal_store(bx, dst);
                 return Ok(());
             }

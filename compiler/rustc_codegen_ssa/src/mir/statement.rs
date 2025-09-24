@@ -114,7 +114,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // For an rvalue like `&((*_1).1)`, we are calculating the address of `_1.1`.
                     // The deref projection is no-op here.
                     LocalRef::Operand(operand_ref) if place.is_indirect_first_projection() => {
-                        Some((operand_ref.deref(bx.cx()), &place.projection[1..]))
+                        Some((operand_ref.deref(bx), &place.projection[1..]))
                     }
                     // For an rvalue like `&1`, when `BackendRepr` is `BackendRepr::Scalar`,
                     // we cannot get the address.

@@ -1,7 +1,7 @@
 use itertools::Itertools as _;
 use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx, Size};
 use rustc_middle::ty::adjustment::PointerCoercion;
-use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
+use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
 use rustc_middle::{bug, mir, span_bug};
 use rustc_session::config::OptLevel;
@@ -878,23 +878,20 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         mk_ptr_ty: impl FnOnce(TyCtxt<'tcx>, Ty<'tcx>) -> Ty<'tcx>,
     ) -> OperandRef<'tcx, Bx::Value> {
         let cg_place = self.codegen_place(bx, place.as_ref());
-        let val = cg_place.val.address();
+        let ptr = cg_place.address(bx, mk_ptr_ty);
 
-        let ty = cg_place.layout.ty;
-        assert!(
-            if bx.cx().tcx().type_has_metadata(ty, bx.cx().typing_env()) {
-                matches!(val, OperandValue::Pair(..))
-            } else {
-                matches!(val, OperandValue::Immediate(..))
-            },
-            "Address of place was unexpectedly {val:?} for pointee type {ty:?}",
-        );
+        // FIXME(ptr_metadata_v2): re-add some form of this check
+        // let ty = cg_place.layout.ty;
+        // assert!(
+        //     if bx.cx().tcx().type_has_metadata(ty, bx.cx().typing_env()) {
+        //         matches!(val, OperandValue::Pair(..))
+        //     } else {
+        //         matches!(val, OperandValue::Immediate(..))
+        //     },
+        //     "Address of place was unexpectedly {val:?} for pointee type {ty:?}",
+        // );
 
-        OperandRef {
-            val,
-            layout: self.cx.layout_of(mk_ptr_ty(self.cx.tcx(), ty)),
-            move_annotation: None,
-        }
+        ptr
     }
 
     fn codegen_scalar_binop(

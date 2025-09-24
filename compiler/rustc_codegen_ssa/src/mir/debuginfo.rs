@@ -104,7 +104,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'tcx, Bx>
     for PlaceRef<'tcx, Bx::Value>
 {
     fn deref(&self, bx: &mut Bx) -> Self {
-        bx.load_operand(*self).deref(bx.cx())
+        bx.load_operand(*self).deref(bx)
     }
 
     fn layout(&self) -> TyAndLayout<'tcx> {
