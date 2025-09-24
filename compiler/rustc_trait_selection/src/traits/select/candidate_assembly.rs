@@ -1131,6 +1131,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates.vec.push(BuiltinUnsizeCandidate);
             }
 
+            // `[T; n]` -> `[U; n]` or `[T]` -> `[U]` unsizing where `T: Unsize<U>`
+            (&ty::Array(..), &ty::Array(..)) | (&ty::Slice(_), &ty::Slice(_)) => {
+                candidates.vec.push(BuiltinUnsizeCandidate);
+            }
+
             // `Struct<T>` -> `Struct<U>`
             (&ty::Adt(def_id_a, _), &ty::Adt(def_id_b, _))
                 if def_id_a.is_struct() || def_id_a.is_union() =>

@@ -894,8 +894,20 @@ where
                 ),
 
                 // `[T; N]` -> `[T]` unsizing
-                (ty::Array(a_elem_ty, ..), ty::Slice(b_elem_ty)) => {
-                    result_to_single(ecx.consider_builtin_array_unsize(goal, a_elem_ty, b_elem_ty))
+                (ty::Array(a_elem_ty, ..), ty::Slice(b_elem_ty)) => result_to_single(
+                    ecx.consider_builtin_array_to_slice_unsize(goal, a_elem_ty, b_elem_ty),
+                ),
+
+                // `[T]` -> `[U]` is only unsizing if `T: Unsize<U>`
+                (ty::Slice(a_elem_ty), ty::Slice(b_elem_ty)) => result_to_single(
+                    ecx.consider_builtin_slice_element_unsize(goal, a_elem_ty, b_elem_ty),
+                ),
+
+                // `[T; N]` -> `[U; M]` is only unsizing if `T: Unsize<U>` and `N == M`
+                (ty::Array(a_elem_ty, a_len), ty::Array(b_elem_ty, b_len)) => {
+                    result_to_single(ecx.consider_builtin_array_element_unsize(
+                        goal, a_elem_ty, b_elem_ty, a_len, b_len,
+                    ))
                 }
 
                 // `Struct<T>` -> `Struct<U>` where `T: Unsize<U>`
@@ -1189,7 +1201,7 @@ where
         })
     }
 
-    /// We have the following builtin impls for arrays:
+    /// We have the following builtin impl for arrays:
     /// ```ignore (builtin impl example)
     /// impl<T: ?Sized, const N: usize> Unsize<[T]> for [T; N] {}
     /// ```
@@ -1197,13 +1209,76 @@ where
     /// the actual unsizing behavior is builtin. Its also easier to
     /// make all impls of `Unsize` builtin as we're able to use
     /// `#[rustc_deny_explicit_impl]` in this case.
-    fn consider_builtin_array_unsize(
+    fn consider_builtin_array_to_slice_unsize(
         &mut self,
         goal: Goal<I, (I::Ty, I::Ty)>,
         a_elem_ty: I::Ty,
         b_elem_ty: I::Ty,
     ) -> Result<Candidate<I>, NoSolution> {
         self.eq(goal.param_env, a_elem_ty, b_elem_ty)?;
+        self.probe_builtin_trait_candidate(BuiltinImplSource::Misc)
+            .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
+    }
+
+    /// We have the following builtin impl for slices:
+    /// ```ignore (builtin impl example)
+    /// impl<T: ?Sized, U: ?Sized + Unsize<T>> Unsize<[T]> for [U] {}
+    /// ```
+    /// While the impl itself could theoretically not be builtin,
+    /// the actual unsizing behavior is builtin. Its also easier to
+    /// make all impls of `Unsize` builtin as we're able to use
+    /// `#[rustc_deny_explicit_impl]` in this case.
+    fn consider_builtin_slice_element_unsize(
+        &mut self,
+        goal: Goal<I, (I::Ty, I::Ty)>,
+        a_elem_ty: I::Ty,
+        b_elem_ty: I::Ty,
+    ) -> Result<Candidate<I>, NoSolution> {
+        let cx = self.cx();
+        self.add_goal(
+            GoalSource::ImplWhereBound,
+            goal.with(
+                cx,
+                ty::TraitRef::new(
+                    cx,
+                    cx.require_trait_lang_item(SolverTraitLangItem::Unsize),
+                    [a_elem_ty, b_elem_ty],
+                ),
+            ),
+        );
+        self.probe_builtin_trait_candidate(BuiltinImplSource::Misc)
+            .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
+    }
+
+    /// We have the following builtin impl for arrays:
+    /// ```ignore (builtin impl example)
+    /// impl<T: ?Sized, U: ?Sized + Unsize<T>, const N: usize> Unsize<[T; N]> for [U; N] {}
+    /// ```
+    /// While the impl itself could theoretically not be builtin,
+    /// the actual unsizing behavior is builtin. Its also easier to
+    /// make all impls of `Unsize` builtin as we're able to use
+    /// `#[rustc_deny_explicit_impl]` in this case.
+    fn consider_builtin_array_element_unsize(
+        &mut self,
+        goal: Goal<I, (I::Ty, I::Ty)>,
+        a_elem_ty: I::Ty,
+        b_elem_ty: I::Ty,
+        a_len: I::Const,
+        b_len: I::Const,
+    ) -> Result<Candidate<I>, NoSolution> {
+        let cx = self.cx();
+        self.eq(goal.param_env, a_len, b_len)?;
+        self.add_goal(
+            GoalSource::ImplWhereBound,
+            goal.with(
+                cx,
+                ty::TraitRef::new(
+                    cx,
+                    cx.require_trait_lang_item(SolverTraitLangItem::Unsize),
+                    [a_elem_ty, b_elem_ty],
+                ),
+            ),
+        );
         self.probe_builtin_trait_candidate(BuiltinImplSource::Misc)
             .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
     }
