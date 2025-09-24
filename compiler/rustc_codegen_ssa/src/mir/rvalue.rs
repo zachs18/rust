@@ -1,5 +1,5 @@
 use itertools::Itertools as _;
-use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT};
+use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx};
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -714,34 +714,113 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         let dst_ty = dst_layout.ty;
         debug!("coerce_unsized_into_operand: {src_ty:?} -> {dst_ty:?}");
         match (src_ty.kind(), dst_ty.kind()) {
-            (
-                &ty::Ref(_, src_pointee_ty, _),
-                &ty::Ref(_, dst_pointee_ty, _) | &ty::RawPtr(dst_pointee_ty, _),
-            )
-            | (&ty::RawPtr(src_pointee_ty, _), &ty::RawPtr(dst_pointee_ty, _)) => {
-                let (base, old_info) = match src.val {
-                    OperandValue::Pair(base, info) => (base, Some(info)),
-                    OperandValue::Immediate(base) => (base, None),
-                    OperandValue::Ref(..) | OperandValue::ZeroSized => bug!(),
-                };
-                let info = base::unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
-                OperandRef {
-                    val: OperandValue::Pair(base, info),
-                    layout: dst_layout,
-                    move_annotation: None,
-                }
+            (&ty::Ref(..), &ty::Ref(..) | &ty::RawPtr(..)) | (&ty::RawPtr(..), &ty::RawPtr(..)) => {
+                let src_data = src.extract_field(self, bx, 0);
+                let src_extra = src.extract_field(self, bx, 1);
+
+                let mut dst = OperandRefBuilder::new(dst_layout);
+
+                dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ZERO, src_data);
+
+                let dst_extra_layout = dst_layout.field(bx.cx(), 1);
+                let unsized_extra =
+                    self.codegen_coerce_unsized_into_operand(bx, src_extra, dst_extra_layout);
+                dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ONE, unsized_extra);
+
+                dst.build(bx.cx())
             }
             (&ty::PtrMetadata(src_pointee_ty), &ty::PtrMetadata(dst_pointee_ty)) => {
-                let old_info = match src.val {
-                    OperandValue::Immediate(info) => Some(info),
-                    OperandValue::ZeroSized => None,
-                    OperandValue::Pair(..) | OperandValue::Ref(..) => bug!(),
-                };
-                let info = base::unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
-                OperandRef {
-                    val: OperandValue::Immediate(info),
-                    layout: dst_layout,
-                    move_annotation: None,
+                match (src_pointee_ty.kind(), dst_pointee_ty.kind()) {
+                    (ty::Slice(..), ty::Slice(..)) => {
+                        let mut dst = OperandRefBuilder::new(dst_layout);
+                        // Unsize the element type, keep the length
+                        let src_len = src.extract_field(self, bx, 0);
+                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ZERO, src_len);
+
+                        let src_elem = src.extract_field(self, bx, 1);
+                        let dst_elem_meta_layout = dst_layout.field(bx.cx(), 1);
+                        let unsized_elem = self.codegen_coerce_unsized_into_operand(
+                            bx,
+                            src_elem,
+                            dst_elem_meta_layout,
+                        );
+                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ONE, unsized_elem);
+
+                        dst.build(bx.cx())
+                    }
+                    (ty::Array(..), ty::Array(..)) => {
+                        let mut dst = OperandRefBuilder::new(dst_layout);
+                        // Unsize the element type
+                        let src_elem = src.extract_field(self, bx, 0);
+                        let dst_elem_meta_layout = dst_layout.field(bx.cx(), 0);
+                        let unsized_elem = self.codegen_coerce_unsized_into_operand(
+                            bx,
+                            src_elem,
+                            dst_elem_meta_layout,
+                        );
+                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ZERO, unsized_elem);
+
+                        dst.build(bx.cx())
+                    }
+                    (ty::Array(_, len), ty::Slice(..)) => {
+                        let cx = bx.cx();
+                        // Unsize array to slice, keep element type
+                        let src_len = cx.const_usize(
+                            len.try_to_target_usize(cx.tcx())
+                                .expect("expected monomorphic const in codegen"),
+                        );
+                        let src_len = OperandRef {
+                            val: OperandValue::Immediate(src_len),
+                            layout: bx.layout_of(bx.tcx().types.usize),
+                            move_annotation: None,
+                        };
+                        let mut dst = OperandRefBuilder::new(dst_layout);
+                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ZERO, src_len);
+
+                        let src_elem = src.extract_field(self, bx, 0);
+                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ONE, src_elem);
+
+                        dst.build(bx.cx())
+                    }
+                    (_, &ty::Dynamic(..)) => {
+                        let old_info = match src.val {
+                            OperandValue::Immediate(old_info) => Some(old_info),
+                            OperandValue::ZeroSized => None,
+                            _ => bug!("invalid vtable ptr {src:?}"),
+                        };
+                        let new_info =
+                            base::dyn_unsize_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
+
+                        OperandRef {
+                            val: OperandValue::Immediate(new_info),
+                            layout: dst_layout,
+                            move_annotation: None,
+                        }
+                    }
+                    (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {
+                        assert_eq!(def_a, def_b); // implies same number of metadata fields
+
+                        let mut dst = OperandRefBuilder::new(dst_layout);
+
+                        for i in def_a.variant(FIRST_VARIANT).fields.indices() {
+                            let src_f = src.extract_field(self, bx, i.as_usize());
+                            let dst_f_layout = dst_layout.field(bx, i.as_usize());
+
+                            let dst_f_op = if src_f.layout.ty == dst_f_layout.ty {
+                                src_f
+                            } else {
+                                self.codegen_coerce_unsized_into_operand(bx, src_f, dst_f_layout)
+                            };
+                            dst.insert_field(bx, FIRST_VARIANT, i, dst_f_op);
+                        }
+
+                        dst.build(bx.cx())
+                    }
+                    _ => bug!(
+                        "unsized_info: invalid unsizing {:?} -> {:?}",
+                        src_pointee_ty,
+                        dst_pointee_ty
+                    ),
                 }
             }
 

@@ -152,11 +152,11 @@ pub fn validate_trivial_unsize<'tcx>(
 }
 
 /// Retrieves the information we are losing (making dynamic) in an unsizing
-/// adjustment.
+/// adjustment to `dyn Trait`.
 ///
 /// The `old_info` argument is a bit odd. It is intended for use in an upcast,
 /// where the new vtable for an object will be derived from the old one.
-pub(crate) fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+pub(crate) fn dyn_unsize_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     source: Ty<'tcx>,
     target: Ty<'tcx>,
@@ -166,9 +166,6 @@ pub(crate) fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let (source, target) =
         cx.tcx().struct_or_union_lockstep_tails_for_codegen(source, target, bx.typing_env());
     match (source.kind(), target.kind()) {
-        (&ty::Array(_, len), &ty::Slice(_)) => cx.const_usize(
-            len.try_to_target_usize(cx.tcx()).expect("expected monomorphic const in codegen"),
-        ),
         (&ty::Dynamic(data_a, _), &ty::Dynamic(data_b, _)) => {
             let old_info =
                 old_info.expect("unsized_info: missing old info for trait upcasting coercion");
@@ -213,7 +210,7 @@ pub(crate) fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             data.principal()
                 .map(|principal| bx.tcx().instantiate_bound_regions_with_erased(principal)),
         ),
-        _ => bug!("unsized_info: invalid unsizing {:?} -> {:?}", source, target),
+        _ => bug!("unsized_info: invalid dyn unsizing {:?} -> {:?}", source, target),
     }
 }
 
@@ -233,27 +230,83 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             let dst_f = dst.project_field(bx, 0);
             coerce_unsized_into(bx, src_f, dst_f);
         }
-        (
-            &ty::Ref(_, src_pointee_ty, _),
-            &ty::Ref(_, dst_pointee_ty, _) | &ty::RawPtr(dst_pointee_ty, _),
-        )
-        | (&ty::RawPtr(src_pointee_ty, _), &ty::RawPtr(dst_pointee_ty, _)) => {
-            let (base, old_info) = match bx.load_operand(src).val {
-                OperandValue::Pair(base, info) => (base, Some(info)),
-                OperandValue::Immediate(base) => (base, None),
-                OperandValue::Ref(..) | OperandValue::ZeroSized => bug!(),
-            };
-            let info = unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
-            OperandValue::Pair(base, info).store(bx, dst);
+        (&ty::Ref(..), &ty::Ref(..) | &ty::RawPtr(..)) | (&ty::RawPtr(..), &ty::RawPtr(..)) => {
+            let src_data = src.project_field(bx, 0);
+            let src_extra = src.project_field(bx, 1);
+
+            let dst_data = dst.project_field(bx, 0);
+            let dst_extra = dst.project_field(bx, 1);
+
+            bx.load_operand(src_data).val.store(bx, dst_data);
+            coerce_unsized_into(bx, src_extra, dst_extra);
         }
         (&ty::PtrMetadata(src_pointee_ty), &ty::PtrMetadata(dst_pointee_ty)) => {
-            let old_info = match bx.load_operand(src).val {
-                OperandValue::Immediate(info) => Some(info),
-                OperandValue::ZeroSized => None,
-                OperandValue::Pair(..) | OperandValue::Ref(..) => bug!(),
-            };
-            let info = unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
-            OperandValue::Immediate(info).store(bx, dst);
+            match (src_pointee_ty.kind(), dst_pointee_ty.kind()) {
+                (ty::Slice(..), ty::Slice(..)) => {
+                    // Unsize the element type, keep the length
+                    let src_len = src.project_field(bx, 0);
+                    let dst_len = dst.project_field(bx, 0);
+                    bx.typed_place_copy(dst_len.val, src_len.val, src_len.layout);
+
+                    let src_elem = src.project_field(bx, 1);
+                    let dst_elem = dst.project_field(bx, 1);
+                    coerce_unsized_into(bx, src_elem, dst_elem);
+                }
+                (ty::Array(..), ty::Array(..)) => {
+                    // Unsize the element type
+                    let src_elem = src.project_field(bx, 0);
+                    let dst_elem = dst.project_field(bx, 0);
+                    coerce_unsized_into(bx, src_elem, dst_elem);
+                }
+                (ty::Array(_, len), ty::Slice(..)) => {
+                    let cx = bx.cx();
+                    // Unsize array to slice, keep element type
+                    let src_len = cx.const_usize(
+                        len.try_to_target_usize(cx.tcx())
+                            .expect("expected monomorphic const in codegen"),
+                    );
+                    let dst_len = dst.project_field(bx, 0);
+                    OperandValue::Immediate(src_len).store(bx, dst_len);
+
+                    let src_elem = src.project_field(bx, 0);
+                    let dst_elem = dst.project_field(bx, 1);
+                    bx.typed_place_copy(dst_elem.val, src_elem.val, src_elem.layout);
+                }
+                (_, &ty::Dynamic(..)) => {
+                    let old_info = match bx.load_operand(src).val {
+                        OperandValue::Immediate(old_info) => Some(old_info),
+                        OperandValue::ZeroSized => None,
+                        _ => bug!("invalid vtable ptr {src:?}"),
+                    };
+                    let new_info = dyn_unsize_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
+
+                    OperandValue::Immediate(new_info).store(bx, dst)
+                }
+                (ty::Adt(def_a, _), ty::Adt(def_b, _)) => {
+                    assert_eq!(def_a, def_b); // implies same number of metadata fields
+
+                    for i in def_a.variant(FIRST_VARIANT).fields.indices() {
+                        let src_f = src.project_field(bx, i.as_usize());
+                        let dst_f = dst.project_field(bx, i.as_usize());
+
+                        if dst_f.layout.is_zst() {
+                            // No data here, nothing to copy/coerce.
+                            continue;
+                        }
+
+                        if src_f.layout.ty == dst_f.layout.ty {
+                            bx.typed_place_copy(dst_f.val, src_f.val, src_f.layout);
+                        } else {
+                            coerce_unsized_into(bx, src_f, dst_f);
+                        }
+                    }
+                }
+                _ => bug!(
+                    "unsized_info: invalid unsizing {:?} -> {:?}",
+                    src_pointee_ty,
+                    dst_pointee_ty
+                ),
+            }
         }
 
         (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {
