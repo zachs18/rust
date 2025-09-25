@@ -48,9 +48,18 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
     ) -> InterpResult<'tcx, u64> {
         let layout = self.layout();
         if layout.is_unsized() {
-            // We need to consult `meta` metadata
             match layout.ty.kind() {
-                ty::Slice(..) | ty::Str => self.meta().scalar(ecx)?.to_target_usize(ecx),
+                // Reachable for arrays of unsized elements
+                ty::Array(_, len) => interp_ok(
+                    len.try_to_target_usize(*ecx.tcx).expect("expected monomorphic const"),
+                ),
+                // We need to consult `meta` metadata
+                ty::Str => self.meta().scalar(ecx)?.to_target_usize(ecx),
+                ty::Slice(..) => {
+                    let meta = self.meta().0.unwrap().change_sizedness();
+                    let len = ecx.project_field(&meta, FieldIdx::ZERO)?;
+                    ecx.read_immediate(&len)?.to_scalar().to_target_usize(ecx)
+                }
                 _ => bug!("len not supported on unsized type {:?}", layout.ty),
             }
         } else {
@@ -249,7 +258,7 @@ where
         index: u64,
     ) -> InterpResult<'tcx, P> {
         // Not using the layout method because we want to compute on u64
-        let (offset, field_layout) = match base.layout().fields {
+        let (offset, field_layout, field_meta) = match base.layout().fields {
             abi::FieldsShape::Array { stride, count: _ } => {
                 // `count` is nonsense for slices, use the dynamic length instead.
                 let len = base.len(self)?;
@@ -257,14 +266,44 @@ where
                     // This can only be reached in ConstProp and non-rustc-MIR.
                     throw_ub!(BoundsCheckFailed { len, index });
                 }
-                // With raw slices, `len` can be so big that this *can* overflow.
-                let offset = self
-                    .compute_size_in_bytes(stride, index)
-                    .ok_or_else(|| err_ub!(PointerArithOverflow))?;
-
                 // All fields have the same layout.
                 let field_layout = base.layout().field(self, 0);
-                (offset, field_layout)
+
+                if field_layout.is_sized() {
+                    // With raw slices, `len` can be so big that this *can* overflow.
+                    let offset = self
+                        .compute_size_in_bytes(stride, index)
+                        .ok_or_else(|| err_ub!(PointerArithOverflow))?;
+                    (offset, field_layout, AnyMemPlaceMeta(None))
+                } else {
+                    let field_meta_idx = match base.layout().ty.kind() {
+                        ty::Array(..) => FieldIdx::ZERO,
+                        ty::Slice(..) => FieldIdx::ONE,
+                        _ => bug!("project_index on non-slice non-array unsized type"),
+                    };
+                    let array_meta = base.meta().0.unwrap().change_sizedness();
+                    let field_meta = self
+                        .project_field(&array_meta, field_meta_idx)?
+                        .expect_sized("pointer metadata must be sized");
+                    let field_meta = AnyMemPlaceMeta(Some(field_meta));
+
+                    let (stride, _) = self
+                        .size_and_align_from_meta(
+                            &field_meta,
+                            &field_layout,
+                            SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                        )?
+                        .expect(
+                            "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) \
+                            should never return None",
+                        );
+
+                    // With raw slices, `len` can be so big that this *can* overflow.
+                    let offset = self
+                        .compute_size_in_bytes(stride, index)
+                        .ok_or_else(|| err_ub!(PointerArithOverflow))?;
+                    (offset, field_layout, field_meta)
+                }
             }
             _ => span_bug!(
                 self.cur_span(),
@@ -273,7 +312,11 @@ where
             ),
         };
 
-        base.offset(offset, field_layout, self)
+        if field_layout.is_sized() {
+            base.offset(offset, field_layout, self)
+        } else {
+            base.offset_with_meta(offset, OffsetMode::Inbounds, field_meta, field_layout, self)
+        }
     }
 
     /// Converts a repr(simd) value into an array of the right size, such that `project_index`
@@ -375,17 +418,37 @@ where
 
         // Compute meta and new layout
         let inner_len = actual_to.checked_sub(from).unwrap();
-        let (meta, ty) = match base.layout().ty.kind() {
+        let base_layout = base.layout();
+        let (meta, ty) = match base_layout.ty.kind() {
             // It is not nice to match on the type, but that seems to be the only way to
             // implement this.
-            ty::Array(inner, _) => {
-                (AnyMemPlaceMeta(None), Ty::new_array(self.tcx.tcx, *inner, inner_len))
+            ty::Array(elem, _) => {
+                let meta = if elem.is_thin(*self.tcx, self.typing_env) {
+                    AnyMemPlaceMeta(None)
+                } else {
+                    // will probably need to change `&self` to `&mut self` and make an alloca
+                    // in the general case. Or maybe just `transmute`
+                    unimplemented!(
+                        "FIXME(ptr_metadata_v2): implement subslice projection for unsized elements"
+                    )
+                };
+                (meta, Ty::new_array(self.tcx.tcx, *elem, inner_len))
             }
-            ty::Slice(..) => {
+            ty::Slice(elem) => {
                 let len = Scalar::from_target_usize(inner_len, self);
-                let len = ImmTy::from_scalar(len, self.layout_of(self.tcx.types.usize)?);
-                let len = OpTy::from(len).expect_sized("ptr metadata must be sized");
-                (AnyMemPlaceMeta(Some(len)), base.layout().ty)
+                let meta_ty = Ty::new_ptr_metadata(*self.tcx, base_layout.ty);
+                let meta = if elem.is_thin(*self.tcx, self.typing_env) {
+                    let meta = ImmTy::from_scalar(len, self.layout_of(meta_ty)?);
+                    let meta = OpTy::from(meta).expect_sized("ptr metadata must be sized");
+                    AnyMemPlaceMeta(Some(meta))
+                } else {
+                    // will probably need to change `&self` to `&mut self` and make an alloca
+                    // in the general case
+                    unimplemented!(
+                        "FIXME(ptr_metadata_v2): implement subslice projection for unsized elements"
+                    )
+                };
+                (meta, base_layout.ty)
             }
             _ => {
                 span_bug!(
