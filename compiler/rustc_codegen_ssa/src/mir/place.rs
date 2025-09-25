@@ -166,13 +166,15 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         Self::alloca(bx, ptr_layout)
     }
 
-    pub fn len<Cx: ConstCodegenMethods<Value = V>>(&self, cx: &Cx) -> V {
+    pub fn len<Bx: BuilderMethods<'a, 'tcx, Value = V>>(&self, bx: &mut Bx) -> V {
         if let FieldsShape::Array { count, .. } = self.layout.fields {
             if self.layout.is_unsized() {
                 assert_eq!(count, 0);
-                self.val.llextra.immediate()
+                let slice_meta = self.val.llextra.0.unwrap().change_sizedness();
+                let slice_len = slice_meta.extract_or_load_field(bx, 0);
+                slice_len.immediate()
             } else {
-                cx.const_usize(count)
+                bx.const_usize(count)
             }
         } else {
             bug!("unexpected layout `{:#?}` in PlaceRef::len", self.layout)
@@ -459,7 +461,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 }
                 mir::ProjectionElem::ConstantIndex { offset, from_end: true, min_length: _ } => {
                     let lloffset = bx.cx().const_usize(offset);
-                    let lllen = cg_base.len(bx.cx());
+                    let lllen = cg_base.len(bx);
                     let llindex = bx.sub(lllen, lloffset);
                     cg_base.project_index(bx, llindex)
                 }
