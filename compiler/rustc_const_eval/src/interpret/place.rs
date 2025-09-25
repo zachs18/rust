@@ -16,6 +16,7 @@ use super::{
     Projectable, Provenance, Scalar, alloc_range, interp_ok, mir_assign_valid_types,
 };
 use crate::enter_trace_span;
+use crate::interpret::eval_context::SizeAndAlignSemantics;
 
 pub trait MemPlaceSizedness: Copy + std::fmt::Debug + std::hash::Hash + Eq {
     // The default value should be valid for any `Sized` place.
@@ -673,8 +674,8 @@ where
     ) -> InterpResult<'tcx, Option<AllocRef<'_, 'tcx, M::Provenance, M::AllocExtra, M::Bytes>>>
     {
         let (size, _align) = self
-            .size_and_align_of_val(mplace)?
-            .unwrap_or((mplace.layout.size, mplace.layout.align.abi));
+            .size_and_align_of_val(mplace, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+            .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
         // We check alignment separately, and *after* checking everything else.
         // If an access is both OOB and misaligned, we want to see the bounds error.
         let a = self.get_ptr_alloc(mplace.ptr(), size)?;
@@ -689,8 +690,8 @@ where
     ) -> InterpResult<'tcx, Option<AllocRefMut<'_, 'tcx, M::Provenance, M::AllocExtra, M::Bytes>>>
     {
         let (size, _align) = self
-            .size_and_align_of_val(mplace)?
-            .unwrap_or((mplace.layout.size, mplace.layout.align.abi));
+            .size_and_align_of_val(mplace, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+            .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
         // We check alignment separately, and raise that error *after* checking everything else.
         // If an access is both OOB and misaligned, we want to see the bounds error.
         // However we have to call `check_misalign` first to make the borrow checker happy.
@@ -1138,11 +1139,19 @@ where
         trace!("copy_op: {:?} <- {:?}: {}", *dest, src, dest.layout().ty);
 
         let dest = dest.force_mplace(self)?;
-        let Some((dest_size, _)) = self.size_and_align_of_val(&dest)? else {
-            span_bug!(self.cur_span(), "copy_op needs (dynamically) sized values")
+        let Some((dest_size, _)) =
+            self.size_and_align_of_val(&dest, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+        else {
+            span_bug!(
+                self.cur_span(),
+                "size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None"
+            )
         };
         if cfg!(debug_assertions) {
-            let src_size = self.size_and_align_of_val(&src)?.unwrap().0;
+            let src_size = self
+                .size_and_align_of_val(&src, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+                .unwrap()
+                .0;
             assert_eq!(src_size, dest_size, "Cannot copy differently-sized data");
         } else {
             // As a cheap approximation, we compare the fixed parts of the size.
@@ -1230,8 +1239,16 @@ where
         kind: MemoryKind<M::MemoryKind>,
         meta: AnyMemPlaceMeta<'tcx, M::Provenance>,
     ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance>> {
-        let Some((size, align)) = self.size_and_align_from_meta(&meta, &layout)? else {
-            span_bug!(self.cur_span(), "cannot allocate space for `extern` type, size is not known")
+        let Some((size, align)) = self.size_and_align_from_meta(
+            &meta,
+            &layout,
+            SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+        )?
+        else {
+            span_bug!(
+                self.cur_span(),
+                "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None"
+            )
         };
         let ptr = self.allocate_ptr(size, align, kind, AllocInit::Uninit)?;
         interp_ok(self.ptr_with_meta_to_mplace(ptr.into(), meta, layout, /*unaligned*/ false))
