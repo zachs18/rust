@@ -313,18 +313,45 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
         bx: &mut Bx,
         llindex: V,
     ) -> Self {
-        // Statically compute the offset if we can, otherwise just use the element size,
-        // as this will yield the lowest alignment.
         let layout = self.layout.field(bx, 0);
-        let offset = if let Some(llindex) = bx.const_to_opt_uint(llindex) {
-            layout.size.checked_mul(llindex, bx).unwrap_or(layout.size)
-        } else {
-            layout.size
-        };
+        if layout.is_sized() {
+            // Statically compute the offset if we can, otherwise just use the element size,
+            // as this will yield the lowest alignment.
+            let offset = if let Some(llindex) = bx.const_to_opt_uint(llindex) {
+                layout.size.checked_mul(llindex, bx).unwrap_or(layout.size)
+            } else {
+                layout.size
+            };
 
-        let llval = bx.inbounds_nuw_gep(bx.cx().backend_type(layout), self.val.llval, &[llindex]);
-        let align = self.val.align.restrict_for_offset(offset);
-        PlaceValue::new_sized(llval, align).with_type(layout)
+            let llval =
+                bx.inbounds_nuw_gep(bx.cx().backend_type(layout), self.val.llval, &[llindex]);
+            let align = self.val.align.restrict_for_offset(offset);
+            PlaceValue::new_sized(llval, align).with_type(layout)
+        } else {
+            let (&elem_ty, elem_meta_idx) = match self.layout.ty.kind() {
+                ty::Array(elem_ty, _) => (elem_ty, 0),
+                ty::Slice(elem_ty) => (elem_ty, 1),
+                _ => bug!("project_index on non-slice non-array type"),
+            };
+            let array_meta = self.val.llextra.0.unwrap().change_sizedness();
+            let elem_meta = if let OperandValue::Ref(val) = array_meta.val {
+                let array_meta = PlaceRef { val, layout: array_meta.layout };
+                let elem_meta = array_meta.project_field(bx, elem_meta_idx);
+                bx.load_operand(elem_meta)
+            } else {
+                array_meta.extract_field_simple(bx, elem_meta_idx)
+            };
+            let elem_meta =
+                AnyPlaceMeta(Some(elem_meta.expect_sized("pointer metadata must be sized")));
+
+            let (elem_size, _elem_align) =
+                size_of_val::size_and_align_of_dst(bx, elem_ty, elem_meta);
+
+            let byte_idx = bx.mul(elem_size, llindex);
+
+            let llval = bx.inbounds_nuw_gep(bx.cx().type_i8(), self.val.llval, &[byte_idx]);
+            PlaceValue { llval, llextra: elem_meta, align: layout.align.abi }.with_type(layout)
+        }
     }
 
     pub fn project_downcast<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
