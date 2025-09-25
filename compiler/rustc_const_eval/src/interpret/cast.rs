@@ -1,6 +1,6 @@
 use std::assert_matches;
 
-use rustc_abi::{FieldIdx, Integer};
+use rustc_abi::{FIRST_VARIANT, FieldIdx, Integer};
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
 use rustc_apfloat::{Float, FloatConvert};
 use rustc_middle::mir::CastKind;
@@ -389,23 +389,41 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     fn unsize_into_ptr_metadata(
         &mut self,
         src: &OpTy<'tcx, M::Provenance>,
-        dest: &impl Writeable<'tcx, M::Provenance>,
+        dst: &impl Writeable<'tcx, M::Provenance>,
         // The pointee types
         source_ty: Ty<'tcx>,
         cast_ty: Ty<'tcx>,
     ) -> InterpResult<'tcx> {
-        // A<Struct> -> A<Trait> conversion
-        let (src_pointee_ty, dest_pointee_ty) = self
-            .tcx
-            .struct_or_union_lockstep_tails_for_codegen(source_ty, cast_ty, self.typing_env);
+        match (source_ty.kind(), cast_ty.kind()) {
+            (&ty::Slice(source_ty, ..), &ty::Slice(cast_ty, ..)) => {
+                // Unsize the element type, keep the length
+                let src_len = self.project_field(src, FieldIdx::ZERO)?;
+                let dst_len = self.project_field(dst, FieldIdx::ZERO)?;
+                self.copy_op(&src_len, &dst_len)?;
 
-        match (src_pointee_ty.kind(), dest_pointee_ty.kind()) {
+                let src_elem = self.project_field(src, FieldIdx::ONE)?;
+                let dst_elem = self.project_field(dst, FieldIdx::ONE)?;
+                self.unsize_into_ptr_metadata(&src_elem, &dst_elem, source_ty, cast_ty)
+            }
+            (&ty::Array(source_ty, _), &ty::Array(cast_ty, _)) => {
+                // Unsize the element type
+                let src_elem = self.project_field(src, FieldIdx::ZERO)?;
+                let dst_elem = self.project_field(dst, FieldIdx::ZERO)?;
+                self.unsize_into_ptr_metadata(&src_elem, &dst_elem, source_ty, cast_ty)
+            }
             (&ty::Array(_, length), &ty::Slice(_)) => {
+                // Unsize array to slice, keep element type
                 let len = length
                     .try_to_target_usize(*self.tcx)
                     .expect("expected monomorphic const in const eval");
-                let val = Immediate::Scalar(Scalar::from_target_usize(len, self));
-                self.write_immediate(val, dest)
+                let len = Immediate::Scalar(Scalar::from_target_usize(len, self));
+
+                let dst_len = self.project_field(dst, FieldIdx::ZERO)?;
+                self.write_immediate(len, &dst_len)?;
+
+                let src_elem = self.project_field(src, FieldIdx::ZERO)?;
+                let dst_elem = self.project_field(dst, FieldIdx::ONE)?;
+                self.copy_op(&src_elem, &dst_elem)
             }
             (ty::Dynamic(data_a, _), ty::Dynamic(data_b, _)) => {
                 let val = self.read_immediate(src)?;
@@ -413,7 +431,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // See <https://github.com/rust-lang/rust/issues/128880>.
                 // FIXME: ideally we wouldn't have to do this.
                 if data_a == data_b {
-                    return self.write_immediate(*val, dest);
+                    return self.write_immediate(*val, dst);
                 }
                 // Take apart the old pointer, and find the dynamic type.
                 let old_vptr = val.to_scalar();
@@ -422,8 +440,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 // Sanity-check that `supertrait_vtable_slot` in this type's vtable indeed produces
                 // our destination trait.
-                let vptr_entry_idx =
-                    self.tcx.supertrait_vtable_slot((src_pointee_ty, dest_pointee_ty));
+                let vptr_entry_idx = self.tcx.supertrait_vtable_slot((source_ty, cast_ty));
                 let vtable_entries = self.vtable_entries(data_a.principal(), ty);
                 if let Some(entry_idx) = vptr_entry_idx {
                     let Some(&ty::VtblEntry::TraitVPtr(upcast_trait_ref)) =
@@ -432,8 +449,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         span_bug!(
                             self.cur_span(),
                             "invalid vtable entry index in {} -> {} upcast",
-                            src_pointee_ty,
-                            dest_pointee_ty
+                            source_ty,
+                            cast_ty
                         );
                     };
                     let erased_trait_ref =
@@ -456,14 +473,43 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let new_vptr = self.get_vtable_ptr(ty, data_b)?;
                 self.write_immediate(
                     Immediate::Scalar(Scalar::from_maybe_pointer(new_vptr, self)),
-                    dest,
+                    dst,
                 )
             }
             (_, &ty::Dynamic(data, _)) => {
                 // Initial cast from sized to dyn trait
-                let vtable = self.get_vtable_ptr(src_pointee_ty, data)?;
+                let vtable = self.get_vtable_ptr(source_ty, data)?;
                 let val = Immediate::Scalar(Scalar::from_maybe_pointer(vtable, self));
-                self.write_immediate(val, dest)
+                self.write_immediate(val, dst)
+            }
+
+            (ty::Adt(def_a, _), ty::Adt(def_b, _)) => {
+                assert_eq!(def_a, def_b); // implies same number of metadata fields
+
+                for i in def_a.variant(FIRST_VARIANT).fields.indices() {
+                    let src_f = self.project_field(src, i)?;
+                    let dst_f = self.project_field(dst, i)?;
+
+                    if dst_f.layout().is_zst() {
+                        // No data here, nothing to copy/coerce.
+                        continue;
+                    }
+
+                    if src_f.layout.ty == dst_f.layout().ty {
+                        self.copy_op(&src_f, &dst_f)?;
+                    } else {
+                        let (&ty::PtrMetadata(source_f_ty), &ty::PtrMetadata(cast_f_ty)) =
+                            (src_f.layout.ty.kind(), dst_f.layout().ty.kind())
+                        else {
+                            bug!(
+                                "unexpected PtrMetadata fields during unsizing: {src_f:?} -> {dst_f:?}"
+                            );
+                        };
+                        self.unsize_into_ptr_metadata(&src_f, &dst_f, source_f_ty, cast_f_ty)?;
+                    }
+                }
+
+                interp_ok(())
             }
             _ => {
                 // Do not ICE if we are not monomorphic enough.
