@@ -276,10 +276,7 @@ where
     #[inline]
     #[track_caller]
     pub const fn from_slice(slice: &[T]) -> Self {
-        assert!(
-            slice.len() >= Self::LEN,
-            "slice length must be at least the number of elements"
-        );
+        assert!(slice.len() >= Self::LEN, "slice length must be at least the number of elements");
         // SAFETY: We just checked that the slice contains
         // at least `N` elements.
         unsafe { Self::load(slice.as_ptr().cast()) }
@@ -1174,7 +1171,7 @@ impl<T> Sealed for *const T {}
 // Fat pointers may be supported in the future.
 unsafe impl<T> SimdElement for *const T
 where
-    T: core::ptr::Pointee<Metadata = ()>,
+    T: core::ptr::Thin,
 {
     type Mask = isize;
 }
@@ -1186,7 +1183,7 @@ impl<T> Sealed for *mut T {}
 // Fat pointers may be supported in the future.
 unsafe impl<T> SimdElement for *mut T
 where
-    T: core::ptr::Pointee<Metadata = ()>,
+    T: core::ptr::Thin,
 {
     type Mask = isize;
 }

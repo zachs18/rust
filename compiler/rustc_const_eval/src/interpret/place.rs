@@ -632,8 +632,8 @@ where
             BackendRepr::ScalarPair(..) => {
                 let meta = mplace.mplace.meta.scalar(self)?;
                 interp_ok(ImmTy::from_scalar_pair(data_ptr, meta, layout))
-            },
-            _ => unreachable!("mplace_to_imm_ptr can only be called for Scalar or ScalarPair ptrs")
+            }
+            _ => unreachable!("mplace_to_imm_ptr can only be called for Scalar or ScalarPair ptrs"),
         }
     }
 

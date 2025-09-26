@@ -1,11 +1,12 @@
 #![feature(ptr_metadata)]
 // This test is the result of minimizing the `emplacable` crate to reproduce
 // <https://github.com/rust-lang/miri/issues/3541>.
+// FIXME(ptr_metadata_v2): No idea if this is still testing what it should be.
 
 use std::ops::FnMut;
-use std::ptr::Pointee;
+use std::ptr::Metadata;
 
-pub type EmplacerFn<'a, T> = dyn for<'b> FnMut(<T as Pointee>::Metadata) + 'a;
+pub type EmplacerFn<'a, T> = dyn for<'b> FnMut(Metadata<T>) + 'a;
 
 #[repr(transparent)]
 pub struct Emplacer<'a, T>(EmplacerFn<'a, T>)

@@ -61,7 +61,7 @@ impl<T> ThinBox<T> {
     /// let five = ThinBox::new(5);
     /// ```
     ///
-    /// [`Metadata`]: core::ptr::Pointee::Metadata
+    /// [`Metadata`]: core::ptr::Metadata
     #[cfg(not(no_global_oom_handling))]
     pub fn new(value: T) -> Self {
         let meta = ptr::metadata(&value);
@@ -83,7 +83,7 @@ impl<T> ThinBox<T> {
     /// # Ok::<(), std::alloc::AllocError>(())
     /// ```
     ///
-    /// [`Metadata`]: core::ptr::Pointee::Metadata
+    /// [`Metadata`]: core::ptr::Metadata
     pub fn try_new(value: T) -> Result<Self, core::alloc::AllocError> {
         let meta = ptr::metadata(&value);
         WithHeader::try_new(meta, value).map(|ptr| ThinBox { ptr, _marker: PhantomData })
@@ -104,7 +104,7 @@ impl<Dyn: ?Sized> ThinBox<Dyn> {
     /// let thin_slice = ThinBox::<[i32]>::new_unsize([1, 2, 3, 4]);
     /// ```
     ///
-    /// [`Metadata`]: core::ptr::Pointee::Metadata
+    /// [`Metadata`]: core::ptr::Metadata
     #[cfg(not(no_global_oom_handling))]
     pub fn new_unsize<T>(value: T) -> Self
     where
@@ -363,7 +363,7 @@ impl<H> WithHeader<H> {
                 _marker: PhantomData::<H>,
             };
 
-            // We only drop the value because the Pointee trait requires that the metadata is copy
+            // We only drop the value because the pointer metadata is copy
             // aka trivially droppable.
             ptr::drop_in_place::<T>(value);
         }

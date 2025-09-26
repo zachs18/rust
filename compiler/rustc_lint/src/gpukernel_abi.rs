@@ -95,6 +95,7 @@ declare_lint_pass!(ImproperGpuKernelLint => [
 /// Check for valid and invalid types.
 struct CheckGpuKernelTypes<'tcx> {
     tcx: TyCtxt<'tcx>,
+    typing_env: ty::TypingEnv<'tcx>,
     // If one or more invalid types were encountered while folding.
     has_invalid: bool,
 }
@@ -108,8 +109,8 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for CheckGpuKernelTypes<'tcx> {
         match ty.kind() {
             ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_) => {}
             // Thin pointers are allowed but fat pointers with metadata are not
-            ty::RawPtr(_, _) => {
-                if !ty.pointee_metadata_ty_or_projection(self.tcx).is_unit() {
+            ty::RawPtr(pointee_ty, _) => {
+                if !pointee_ty.is_thin(self.tcx, self.typing_env) {
                     self.has_invalid = true;
                 }
             }
@@ -170,7 +171,11 @@ impl<'tcx> LateLintPass<'tcx> for ImproperGpuKernelLint {
         let sig = cx.tcx.instantiate_bound_regions_with_erased(sig);
 
         for (input_ty, input_hir) in iter::zip(sig.inputs(), decl.inputs) {
-            let mut checker = CheckGpuKernelTypes { tcx: cx.tcx, has_invalid: false };
+            let mut checker = CheckGpuKernelTypes {
+                tcx: cx.tcx,
+                typing_env: cx.typing_env(),
+                has_invalid: false,
+            };
             input_ty.fold_with(&mut checker);
             if checker.has_invalid {
                 cx.tcx.emit_node_span_lint(

@@ -4,9 +4,16 @@ use crate::clone::TrivialClone;
 use crate::fmt;
 use crate::hash::{Hash, Hasher};
 use crate::intrinsics::{aggregate_raw_ptr, ptr_metadata};
-use crate::marker::{Freeze, MetaSized, PointeeSized};
+use crate::marker::{MetaSized, PointeeSized};
 use crate::ptr::NonNull;
 
+/// `Metadata<T>` implements [`Copy`], [`Ord`], [`Hash`], [`Debug`](core::fmt::Debug), [`Send`],
+/// [`Sync`], [`Unpin`], and [`Freeze`](core::marker::Freeze) for all `T`.
+///
+/// FIXME(ptr_metadata_v2): fix these docs to be about `builtin # ptr_metadata(T)` type.
+///
+/// FIXME(ptr_metadata_v2): consider whether to reintroduce `Pointee` as `SimplePointee`
+///
 /// Provides the pointer metadata type of any pointed-to type.
 ///
 /// # Pointer metadata
@@ -53,23 +60,6 @@ use crate::ptr::NonNull;
 /// with [`from_raw_parts`] or [`from_raw_parts_mut`].
 ///
 /// [`to_raw_parts`]: *const::to_raw_parts
-#[lang = "pointee_trait"]
-#[rustc_deny_explicit_impl]
-#[rustc_dyn_incompatible_trait]
-pub trait Pointee: PointeeSized {
-    /// The type for metadata in pointers and references to `Self`.
-    #[lang = "metadata_type"]
-    // NOTE: Keep trait bounds in `static_assert_expected_bounds_for_metadata`
-    // in `library/core/src/ptr/metadata.rs`
-    // in sync with those here:
-    // NOTE: The metadata of `dyn Trait + 'a` is `DynMetadata<dyn Trait + 'a>`
-    // so a `'static` bound must not be added.
-    type Metadata: fmt::Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze;
-}
-
-/// FIXME(ptr_metadata_v2): add docs
-///
-/// Typed pointer metadata
 pub type Metadata<T> = builtin!(ptr_metadata(T));
 
 /// FIXME(ptr_metadata_v2): add docs
@@ -99,8 +89,15 @@ pub macro build_metadata {
 /// }
 /// ```
 #[unstable(feature = "ptr_metadata", issue = "81513")]
+#[fundamental]
+#[rustc_specialization_trait]
+#[rustc_deny_explicit_impl]
+#[rustc_dyn_incompatible_trait]
+// `Thin` being coinductive is okay for the same reasons as
+// `Sized`.
+#[rustc_coinductive]
 #[lang = "thin_pointee_trait"]
-pub trait Thin: Pointee<Metadata = ()> + PointeeSized {}
+pub trait Thin: PointeeSized {}
 
 /// Extracts the metadata component of a pointer.
 ///
@@ -303,7 +300,7 @@ impl<T: PointeeSized> PartialOrd for Metadata<T> {
 // Ord for Metadata<T> is a builtin impl, because it cannot be written
 // fully generically in the surface language.
 
-impl<T: PointeeSized + Thin> Default for builtin!(ptr_metadata(T)) {
+impl<T: PointeeSized + Thin> Default for Metadata<T> {
     fn default() -> Self {
         builtin!(ptr_metadata(..))
     }

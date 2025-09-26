@@ -307,16 +307,6 @@ where
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolution>;
 
-    /// `Pointee` is always implemented.
-    ///
-    /// See the projection implementation for the `Metadata` types for all of
-    /// the built-in types. For structs, the metadata type is given by the struct
-    /// tail.
-    fn consider_builtin_pointee_candidate(
-        ecx: &mut EvalCtxt<'_, D>,
-        goal: Goal<I, Self>,
-    ) -> Result<Candidate<I>, NoSolution>;
-
     /// A coroutine (that comes from an `async` desugaring) is known to implement
     /// `Future<Output = O>`, where `O` is given by the coroutine's return type
     /// that was computed during type-checking.
@@ -643,9 +633,6 @@ where
                     G::consider_builtin_async_fn_kind_helper_candidate(self, goal)
                 }
                 Some(SolverTraitLangItem::Tuple) => G::consider_builtin_tuple_candidate(self, goal),
-                Some(SolverTraitLangItem::PointeeTrait) => {
-                    G::consider_builtin_pointee_candidate(self, goal)
-                }
                 Some(SolverTraitLangItem::Future) => {
                     G::consider_builtin_future_candidate(self, goal)
                 }

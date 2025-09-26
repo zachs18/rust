@@ -287,7 +287,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | LangItem::DiscriminantKind
                 | LangItem::Field
                 | LangItem::FnPtrTrait
-                | LangItem::PointeeTrait
                 | LangItem::Tuple
                 | LangItem::Unpin,
             ) => ty::Binder::dummy(vec![]),

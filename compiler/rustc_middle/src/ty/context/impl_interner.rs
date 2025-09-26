@@ -769,7 +769,6 @@ bidirectional_lang_item_map! {
     FieldBase,
     FieldType,
     FutureOutput,
-    Metadata,
 // tidy-alphabetical-end
 }
 
@@ -812,7 +811,6 @@ bidirectional_lang_item_map! {
     MetaSized,
     Ord,
     PointeeSized,
-    PointeeTrait,
     Sized,
     ThinPointeeTrait,
     TransmuteTrait,

@@ -106,8 +106,8 @@ impl !Send for builtin!(untyped_ptr(nullable)) {}
 
 // Typed pointers are !Send + !Sync as a lint. Their metadata still needs to be Send + Sync.
 // Maybe we could imagine a future where `Metadata<T>: Send + Sync`
-// iff `T: Sync` or `T: Send`, but the specifics would be muddy, and the existing
-// `Pointee::Metadata` also requires `Send + Sync`, so it's good enough for now.
+// iff `T: Sync` or `T: Send`, but the specifics would be muddy, and assumptions would need to
+// be updated everywhere else, so it's good enough for now.
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
 unsafe impl<T: PointeeSized> Send for core::ptr::Metadata<T> {}
 
@@ -704,7 +704,8 @@ impl !Sync for builtin!(untyped_ptr(nullable)) {}
 // Typed pointers are !Send + !Sync as a lint. Their metadata still needs to be Send + Sync.
 // Maybe we could imagine a future where `Metadata<T>: Send + Sync`
 // iff `T: Sync` or `T: Send`, but the specifics would be muddy, and the existing
-// `Pointee::Metadata` also requires `Send + Sync`, so it's good enough for now.
+// iff `T: Sync` or `T: Send`, but the specifics would be muddy, and assumptions would need to
+// be updated everywhere else, so it's good enough for now.
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
 unsafe impl<T: PointeeSized> Sync for core::ptr::Metadata<T> {}
 

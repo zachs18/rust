@@ -1,5 +1,5 @@
 error[E0080]: entering unreachable code
-  --> $DIR/unknown-when-ptr-metadata-is-DST.rs:8:10
+  --> $DIR/unknown-when-ptr-metadata-is-DST.rs:9:10
    |
 LL |     [(); { let _a: Option<&str> = None; 0 }];
    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `return_str::{constant#0}` failed here

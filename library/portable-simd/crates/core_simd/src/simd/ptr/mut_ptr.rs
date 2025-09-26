@@ -103,9 +103,9 @@ impl<T, const N: usize> SimdMutPtr for Simd<*mut T, N> {
     fn cast<U>(self) -> Self::CastPtr<U> {
         // SimdElement currently requires zero-sized metadata, so this should never fail.
         // If this ever changes, `simd_cast_ptr` should produce a post-mono error.
-        use core::ptr::Pointee;
-        assert_eq!(size_of::<<T as Pointee>::Metadata>(), 0);
-        assert_eq!(size_of::<<U as Pointee>::Metadata>(), 0);
+        use core::ptr::Metadata;
+        assert_eq!(size_of::<Metadata<T>>(), 0);
+        assert_eq!(size_of::<Metadata<U>>(), 0);
 
         // Safety: pointers can be cast
         unsafe { core::intrinsics::simd::simd_cast_ptr(self) }
@@ -140,9 +140,7 @@ impl<T, const N: usize> SimdMutPtr for Simd<*mut T, N> {
         // In the mean-time, this operation is defined to be "as if" it was
         // a wrapping_offset, so we can emulate it as such. This should properly
         // restore pointer provenance even under today's compiler.
-        self.cast::<u8>()
-            .wrapping_offset(addr.cast::<isize>() - self.addr().cast::<isize>())
-            .cast()
+        self.cast::<u8>().wrapping_offset(addr.cast::<isize>() - self.addr().cast::<isize>()).cast()
     }
 
     #[inline]
