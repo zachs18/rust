@@ -634,7 +634,9 @@ impl<T, const N: usize> [T; N] {
         let mut f = unsafe { drain::Drain::new(&mut me, &mut f) };
         try_from_fn(&mut f)
     }
+}
 
+impl<T: ?Sized, const N: usize> [T; N] {
     /// Returns a slice containing the entire array. Equivalent to `&s[..]`.
     #[stable(feature = "array_as_slice", since = "1.57.0")]
     #[rustc_const_stable(feature = "array_as_slice", since = "1.57.0")]
@@ -649,7 +651,9 @@ impl<T, const N: usize> [T; N] {
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
         self
     }
+}
 
+impl<T, const N: usize> [T; N] {
     /// Borrows each element and returns an array of references with the same
     /// size as `self`.
     ///
