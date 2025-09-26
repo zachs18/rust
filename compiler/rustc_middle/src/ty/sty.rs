@@ -1942,31 +1942,6 @@ impl<'tcx> Ty<'tcx> {
         })
     }
 
-    /// Given a pointer or reference type, returns the type of the *pointee*'s
-    /// metadata. If it can't be determined exactly (perhaps due to still
-    /// being generic) then a projection through `ptr::Pointee` will be returned.
-    ///
-    /// Panics if `self` is not dereferenceable.
-    ///
-    /// FIXME(ptr_metadata_v2): audit/remove all uses
-    #[track_caller]
-    pub fn pointee_metadata_ty_or_projection(self, tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
-        let Some(pointee_ty) = self.builtin_deref(true) else {
-            bug!("Type {self:?} is not a pointer or reference type")
-        };
-        if pointee_ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized) {
-            tcx.types.unit
-        } else {
-            match pointee_ty.ptr_metadata_ty_or_tail(tcx, |x| x) {
-                Ok(metadata_ty) => metadata_ty,
-                Err(tail_ty) => {
-                    let metadata_def_id = tcx.require_lang_item(LangItem::Metadata, DUMMY_SP);
-                    Ty::new_projection(tcx, metadata_def_id, [tail_ty])
-                }
-            }
-        }
-    }
-
     /// When we create a closure, we record its kind (i.e., what trait
     /// it implements, constrained by how it uses its borrows) into its
     /// [`ty::ClosureArgs`] or [`ty::CoroutineClosureArgs`] using a type

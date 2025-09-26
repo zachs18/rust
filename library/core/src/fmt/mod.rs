@@ -2997,15 +2997,18 @@ impl Display for char {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> Pointer for *const T {
+    default fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        f.debug_struct("Pointer")
+            .field_with("addr", |f| pointer_fmt_inner(self.expose_provenance(), f))
+            .field("metadata", &core::ptr::metadata(*self))
+            .finish()
+    }
+}
+
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T: PointeeSized + crate::ptr::Thin> Pointer for *const T {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if <<T as core::ptr::Pointee>::Metadata as core::unit::IsUnit>::is_unit() {
-            pointer_fmt_inner(self.expose_provenance(), f)
-        } else {
-            f.debug_struct("Pointer")
-                .field_with("addr", |f| pointer_fmt_inner(self.expose_provenance(), f))
-                .field("metadata", &core::ptr::metadata(*self))
-                .finish()
-        }
+        pointer_fmt_inner(self.expose_provenance(), f)
     }
 }
 

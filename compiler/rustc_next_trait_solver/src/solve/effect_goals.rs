@@ -359,13 +359,6 @@ where
         unreachable!("Tuple trait is not const")
     }
 
-    fn consider_builtin_pointee_candidate(
-        _ecx: &mut EvalCtxt<'_, D>,
-        _goal: Goal<I, Self>,
-    ) -> Result<Candidate<I>, NoSolution> {
-        unreachable!("Pointee is not const")
-    }
-
     fn consider_builtin_future_candidate(
         _ecx: &mut EvalCtxt<'_, D>,
         _goal: Goal<I, Self>,

@@ -1466,14 +1466,15 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
         let lhs_ty = self.ty(lhs);
 
         // If we're comparing pointers, remove `PtrToPtr` casts if the from
-        // types of both casts and the metadata all match.
+        // types of both casts all match and everything is Thin pointers.
         if let BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge = op
             && lhs_ty.is_any_ptr()
             && let Value::Cast { kind: CastKind::PtrToPtr, value: lhs_value } = self.get(lhs)
             && let Value::Cast { kind: CastKind::PtrToPtr, value: rhs_value } = self.get(rhs)
             && let lhs_from = self.ty(lhs_value)
             && lhs_from == self.ty(rhs_value)
-            && self.pointers_have_same_metadata(lhs_from, lhs_ty)
+            && lhs_from.builtin_deref(true).unwrap().is_thin(self.tcx, self.typing_env())
+            && lhs_ty.builtin_deref(true).unwrap().is_thin(self.tcx, self.typing_env())
         {
             lhs = lhs_value;
             rhs = rhs_value;
@@ -1650,7 +1651,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             if let Transmute = kind
                 && from.is_raw_ptr()
                 && to.is_raw_ptr()
-                && self.pointers_have_same_metadata(from, to)
+                && self.pointers_have_trivially_transmutable_metadata(from, to)
             {
                 kind = PtrToPtr;
                 was_updated_this_iteration = true;
@@ -1697,12 +1698,16 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                     // PtrToPtr-then-Transmute is fine so long as the pointer cast is identity:
                     // `*const T -> *mut T -> NonNull<T>` is fine, but we need to check for narrowing
                     // to skip things like `*const [i32] -> *const i32 -> NonNull<T>`.
-                    (PtrToPtr, Transmute) if self.pointers_have_same_metadata(inner_from, from) => {
+                    (PtrToPtr, Transmute)
+                        if self.pointers_have_trivially_transmutable_metadata(inner_from, from) =>
+                    {
                         Some(Transmute)
                     }
                     // Similarly, for Transmute-then-PtrToPtr. Note that we need to check different
                     // variables for their metadata, and thus this can't merge with the previous arm.
-                    (Transmute, PtrToPtr) if self.pointers_have_same_metadata(from, to) => {
+                    (Transmute, PtrToPtr)
+                        if self.pointers_have_trivially_transmutable_metadata(from, to) =>
+                    {
                         Some(Transmute)
                     }
                     // It would be legal to always do this, but we don't want to hide information
@@ -1742,20 +1747,35 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
         Some(self.insert(to, Value::Cast { kind, value }))
     }
 
-    fn pointers_have_same_metadata(&self, left_ptr_ty: Ty<'tcx>, right_ptr_ty: Ty<'tcx>) -> bool {
-        let left_meta_ty = left_ptr_ty.pointee_metadata_ty_or_projection(self.tcx);
-        let right_meta_ty = right_ptr_ty.pointee_metadata_ty_or_projection(self.tcx);
-        if left_meta_ty == right_meta_ty {
-            true
-        } else if let Ok(left) =
-            self.tcx.try_normalize_erasing_regions(self.typing_env(), left_meta_ty)
-            && let Ok(right) =
-                self.tcx.try_normalize_erasing_regions(self.typing_env(), right_meta_ty)
-        {
-            left == right
-        } else {
-            false
+    fn pointees_have_trivially_transmutable_metadata(
+        &self,
+        left_pointee: Ty<'tcx>,
+        right_pointee: Ty<'tcx>,
+    ) -> bool {
+        match (
+            left_pointee.is_thin(self.tcx, self.typing_env()),
+            right_pointee.is_thin(self.tcx, self.typing_env()),
+        ) {
+            (true, true) => return true,
+            (false, true) | (true, false) => return false,
+            (false, false) => {}
         }
+        match (left_pointee.kind(), right_pointee.kind()) {
+            (&ty::Slice(left_elem), &ty::Slice(right_elem)) => {
+                self.pointees_have_trivially_transmutable_metadata(left_elem, right_elem)
+            }
+            _ => false,
+        }
+    }
+
+    fn pointers_have_trivially_transmutable_metadata(
+        &self,
+        left_ptr_ty: Ty<'tcx>,
+        right_ptr_ty: Ty<'tcx>,
+    ) -> bool {
+        let left_pointee_ty = left_ptr_ty.builtin_deref(true).expect("should be pointer");
+        let right_pointee_ty = right_ptr_ty.builtin_deref(true).expect("should be pointer");
+        self.pointees_have_trivially_transmutable_metadata(left_pointee_ty, right_pointee_ty)
     }
 
     /// Returns `false` if we're confident that the middle type doesn't have an
