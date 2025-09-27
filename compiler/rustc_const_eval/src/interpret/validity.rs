@@ -561,29 +561,26 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
         val: &PlaceTy<'tcx, M::Provenance>,
         expected: ExpectedKind,
     ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance>> {
+        let data_ptr = self.ecx.project_field(val, FieldIdx::ZERO)?;
         // Not using `ecx.deref_pointer` since we want to use our `read_immediate` wrapper.
-        let imm = self.read_immediate(val, expected)?;
+        let imm = self.read_immediate(&data_ptr, expected)?;
         // Reset provenance: ensure slice tail metadata does not preserve provenance,
         // and ensure all pointers do not preserve partial provenance.
         if self.reset_provenance_and_padding {
-            if matches!(imm.layout.backend_repr, BackendRepr::Scalar(..)) {
-                // A thin pointer. If it has provenance, we don't have to do anything.
-                // If it does not, ensure we clear the provenance in memory.
-                if matches!(imm.to_scalar(), Scalar::Int(..)) {
-                    self.ecx.clear_provenance(val)?;
-                }
-            } else {
-                // A wide pointer. This means we have to worry both about the pointer itself and the
-                // metadata. We do the lazy thing and just write back the value we got. Just
-                // clearing provenance in a targeted manner would be more efficient, but unless this
-                // is a perf hotspot it's just not worth the effort.
-                self.ecx.write_immediate_no_validate(*imm, val)?;
+            // The data pointer is a thin pointer. If it has provenance, we don't have to do anything.
+            // If it does not, ensure we clear the provenance in memory.
+            if matches!(imm.to_scalar(), Scalar::Int(..)) {
+                self.ecx.clear_provenance(&data_ptr)?;
             }
-            // The entire thing is data, not padding.
-            self.add_data_range_place(val);
+            // The data ptr is data, not padding.
+            self.add_data_range_place(&data_ptr);
+
+            let meta = self.ecx.project_field(val, FieldIdx::ONE)?;
+            // Visit the metadata to reset its provenance and padding
+            self.visit_value(&meta)?;
         }
         // Now turn it into a place.
-        self.ecx.imm_ptr_to_mplace(&imm)
+        self.ecx.typed_ptr_to_mplace(&val.to_op(self.ecx)?)
     }
 
     fn check_wide_ptr_meta(

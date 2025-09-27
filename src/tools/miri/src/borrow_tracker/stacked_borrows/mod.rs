@@ -856,14 +856,15 @@ trait EvalContextPrivExt<'tcx, 'ecx>: crate::MiriInterpCxExt<'tcx> {
     /// `kind` indicates what kind of reference is being created.
     fn sb_retag_reference(
         &mut self,
-        val: &ImmTy<'tcx>,
+        val: &OpTy<'tcx>,
         new_perm: NewPermission,
         info: RetagInfo, // diagnostics info about this retag
-    ) -> InterpResult<'tcx, ImmTy<'tcx>> {
+    ) -> InterpResult<'tcx, OpTy<'tcx>> {
         let this = self.eval_context_mut();
-        let place = this.imm_ptr_to_mplace(val)?;
+        let place = this.typed_ptr_to_mplace(val)?;
         let new_place = this.sb_retag_place(&place, new_perm, info)?;
-        interp_ok(ImmTy::from_immediate(new_place.to_ref(this), val.layout))
+        let new_ref = this.mplace_to_ref(&new_place, Some(val.layout.ty))?;
+        interp_ok(new_ref)
     }
 }
 
@@ -872,8 +873,8 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
     fn sb_retag_ptr_value(
         &mut self,
         kind: RetagKind,
-        val: &ImmTy<'tcx>,
-    ) -> InterpResult<'tcx, ImmTy<'tcx>> {
+        val: &OpTy<'tcx>,
+    ) -> InterpResult<'tcx, OpTy<'tcx>> {
         let this = self.eval_context_mut();
         let new_perm = NewPermission::from_ref_ty(val.layout.ty, kind, this);
         let cause = match kind {
@@ -912,13 +913,13 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 place: &PlaceTy<'tcx>,
                 new_perm: NewPermission,
             ) -> InterpResult<'tcx> {
-                let val = self.ecx.read_immediate(&self.ecx.place_to_op(place)?)?;
+                let val = self.ecx.place_to_op(place)?;
                 let val = self.ecx.sb_retag_reference(
                     &val,
                     new_perm,
                     RetagInfo { cause: self.retag_cause, in_field: self.in_field },
                 )?;
-                self.ecx.write_immediate(*val, place)?;
+                self.ecx.copy_op(&val, place)?;
 
                 interp_ok(())
             }

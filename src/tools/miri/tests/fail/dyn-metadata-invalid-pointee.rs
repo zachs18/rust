@@ -7,6 +7,5 @@ impl Trait for u32 {}
 fn main() {
     let valid: DynMetadata<dyn Trait> = std::ptr::metadata(&42_u32 as &dyn Trait).vtable;
     let _: DynMetadata<()> = unsafe { std::mem::transmute(valid) };
-    //~^ ERROR: Undefined Behavior: constructing invalid value: wrong pointee for DynMetadata: expected a trait object type, but encountered `()`
-
+    // this is allowed for `try_as_dyn` support
 }

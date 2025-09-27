@@ -3,7 +3,7 @@
 //! All high-level functions to write to memory work on places as destinations.
 
 use either::{Either, Left, Right};
-use rustc_abi::{BackendRepr, HasDataLayout, Size};
+use rustc_abi::{BackendRepr, FieldIdx, Size};
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::{self, Ty};
 use rustc_middle::{bug, mir, span_bug};
@@ -37,13 +37,13 @@ pub trait MemPlaceMetadata<'tcx, Prov: Provenance = CtfeProvenance>:
     fn try_to_sized(self) -> Option<SizedMemPlaceMeta>;
     fn to_unsized(self) -> AnyMemPlaceMeta<'tcx, Prov>;
 
-    fn scalar(self) -> Scalar<Prov> {
+    fn scalar<M: Machine<'tcx, Provenance = Prov>>(
+        self,
+        ecx: &InterpCx<'tcx, M>,
+    ) -> InterpResult<'tcx, Scalar<Prov>> {
         match self.to_unsized().0 {
-            Some(meta) => match meta.op() {
-                Operand::Immediate(immediate) => immediate.to_scalar(),
-                _ => bug!("not immediate: {:?}", self),
-            },
-            _ => bug!("not immediate: {:?}", self),
+            Some(meta) => ecx.read_scalar(&meta.change_sizedness()),
+            None => bug!("expected scalar metadata, got no metadata"),
         }
     }
 
@@ -171,15 +171,6 @@ impl<'tcx, Prov: Provenance> MemPlace<'tcx, Prov> {
         MemPlace { ptr: self.ptr.map_provenance(|p| p.map(f)), ..self }
     }
 
-    /// Turn a mplace into a (thin or wide) pointer, as a reference, pointing to the same space.
-    #[inline]
-    fn to_ref(self, cx: &impl HasDataLayout) -> Immediate<Prov> {
-        let meta = self.meta;
-        let meta = meta.has_metadata().then(|| meta.scalar());
-
-        Immediate::new_pointer_with_meta(self.ptr, meta, cx)
-    }
-
     #[inline]
     // Not called `offset_with_meta` to avoid confusion with the trait method.
     fn offset_with_meta_<M: Machine<'tcx, Provenance = Prov>>(
@@ -273,11 +264,6 @@ impl<'tcx, Prov: Provenance> MPlaceTy<'tcx, Prov> {
     #[inline(always)]
     pub fn ptr(&self) -> Pointer<Option<Prov>> {
         self.mplace.ptr
-    }
-
-    #[inline(always)]
-    pub fn to_ref(&self, cx: &impl HasDataLayout) -> Immediate<Prov> {
-        self.mplace.to_ref(cx)
     }
 }
 
@@ -595,39 +581,37 @@ where
     /// Only call this if you are sure the place is "valid" (aligned and inbounds), or do not
     /// want to ever use the place for memory access!
     /// Generally prefer `deref_pointer`.
-    pub fn imm_ptr_to_mplace(
+    pub fn typed_ptr_to_mplace(
         &self,
-        val: &ImmTy<'tcx, M::Provenance>,
+        val: &impl Projectable<'tcx, M::Provenance>,
     ) -> InterpResult<'tcx, MPlaceTy<'tcx, M::Provenance, AnyMemPlace>> {
-        let pointee_type =
-            val.layout.ty.builtin_deref(true).expect("`imm_ptr_to_mplace` called on non-ptr type");
+        let pointee_type = val
+            .layout()
+            .ty
+            .builtin_deref(true)
+            .expect("`typed_ptr_to_mplace` called on non-ptr type");
         let layout = self.layout_of(pointee_type)?;
-        let (ptr, meta) = val.to_scalar_and_meta();
-        let meta = meta
-            .map(|meta| {
-                let meta_ty = Ty::new_ptr_metadata(*self.tcx, pointee_type);
-                self.layout_of(meta_ty).map(|meta_ty| {
-                    let meta = ImmTy::from_scalar(meta, meta_ty);
-                    OpTy::from(meta).expect_sized("pointer metadata must be sized")
-                })
-            })
-            .transpose()?;
 
-        // `imm_ptr_to_mplace` is called on raw pointers even if they don't actually get dereferenced;
+        let ptr = self.project_field(val, FieldIdx::ZERO)?;
+        let ptr = self.read_immediate(&ptr)?;
+
+        let meta = AnyMemPlaceMeta(if pointee_type.is_thin(*self.tcx, self.typing_env) {
+            None
+        } else {
+            let meta = self.project_field(val, FieldIdx::ONE)?;
+            Some(meta.to_op(self)?.expect_sized("pointer metadata must be sized"))
+        });
+
+        // `typed_ptr_to_mplace` is called on raw pointers even if they don't actually get dereferenced;
         // we hence can't call `size_and_align_of` since that asserts more validity than we want.
-        let ptr = ptr.to_pointer(self)?;
-        interp_ok(self.ptr_with_meta_to_mplace(
-            ptr,
-            AnyMemPlaceMeta(meta),
-            layout,
-            /*unaligned*/ false,
-        ))
+        let ptr = ptr.to_scalar().to_pointer(self)?;
+        interp_ok(self.ptr_with_meta_to_mplace(ptr, meta, layout, /*unaligned*/ false))
     }
 
-    /// Turn a mplace into a (thin or wide) mutable raw pointer, pointing to the same space.
+    /// Turn a mplace into a (thin or single-wide) mutable raw pointer, pointing to the same space.
     ///
     /// `align` information is lost!
-    /// This is the inverse of `imm_ptr_to_mplace`.
+    /// This is the inverse of `typed_ptr_to_mplace`.
     ///
     /// If `ptr_ty` is provided, the resulting pointer will be of that type. Otherwise, it defaults to `*mut _`.
     /// `ptr_ty` must be a type with builtin deref which derefs to the type of `mplace` (`mplace.layout.ty`).
@@ -636,14 +620,60 @@ where
         mplace: &MPlaceTy<'tcx, M::Provenance>,
         ptr_ty: Option<Ty<'tcx>>,
     ) -> InterpResult<'tcx, ImmTy<'tcx, M::Provenance>> {
-        let imm = mplace.mplace.to_ref(self);
+        let data_ptr = Scalar::from_maybe_pointer(mplace.mplace.ptr, self);
 
         let ptr_ty = ptr_ty
             .inspect(|t| assert_eq!(t.builtin_deref(true), Some(mplace.layout.ty)))
             .unwrap_or_else(|| Ty::new_mut_ptr(self.tcx.tcx, mplace.layout.ty));
 
         let layout = self.layout_of(ptr_ty)?;
-        interp_ok(ImmTy::from_immediate(imm, layout))
+        match layout.backend_repr {
+            BackendRepr::Scalar(..) => interp_ok(ImmTy::from_scalar(data_ptr, layout)),
+            BackendRepr::ScalarPair(..) => {
+                let meta = mplace.mplace.meta.scalar(self)?;
+                interp_ok(ImmTy::from_scalar_pair(data_ptr, meta, layout))
+            },
+            _ => unreachable!("mplace_to_imm_ptr can only be called for Scalar or ScalarPair ptrs")
+        }
+    }
+
+    /// Turn a mplace into a (thin or wide) pointer, pointing to the same space.
+    ///
+    /// `align` information is lost!
+    /// This is the inverse of `typed_ptr_to_mplace`.
+    ///
+    /// If `ptr_ty` is provided, the resulting pointer will be of that type. Otherwise, it defaults to `*mut _`.
+    /// `ptr_ty` must be a type with builtin deref which derefs to the type of `mplace` (`mplace.layout.ty`).
+    pub fn mplace_to_ref(
+        &mut self,
+        mplace: &MPlaceTy<'tcx, M::Provenance>,
+        ptr_ty: Option<Ty<'tcx>>,
+    ) -> InterpResult<'tcx, OpTy<'tcx, M::Provenance>> {
+        let data_ptr = Scalar::from_maybe_pointer(mplace.mplace.ptr, self);
+
+        let ptr_ty = ptr_ty
+            .inspect(|t| assert_eq!(t.builtin_deref(true), Some(mplace.layout.ty)))
+            .unwrap_or_else(|| Ty::new_mut_ptr(self.tcx.tcx, mplace.layout.ty));
+
+        let layout = self.layout_of(ptr_ty)?;
+        let op = match mplace.mplace.meta.0 {
+            None => ImmTy::from_scalar(data_ptr, layout).into(),
+            Some(meta) => match meta.layout.backend_repr {
+                BackendRepr::Scalar(..) => {
+                    let meta = self.read_scalar(&meta.change_sizedness())?;
+                    ImmTy::from_scalar_pair(data_ptr, meta, layout).into()
+                }
+                _ => {
+                    let ref_place = self.allocate(layout, MemoryKind::Stack)?;
+                    let ref_data_ptr_place = self.project_field(&ref_place, FieldIdx::ZERO)?;
+                    let ref_meta_place = self.project_field(&ref_place, FieldIdx::ONE)?;
+                    self.write_scalar(data_ptr, &ref_data_ptr_place)?;
+                    self.copy_op(&meta.change_sizedness(), &ref_meta_place)?;
+                    ref_place.into()
+                }
+            },
+        };
+        interp_ok(op)
     }
 
     /// Take an operand, representing a pointer, and dereference it to a place.
@@ -660,10 +690,10 @@ where
             bug!("dereferencing {}", src.layout().ty);
         }
 
-        let val = self.read_immediate(src)?;
-        trace!("deref to {} on {:?}", val.layout.ty, *val);
+        let val = src.to_op(self)?;
+        trace!("deref to {} on {:?}", val.layout.ty, val);
 
-        let mplace = self.imm_ptr_to_mplace(&val)?;
+        let mplace = self.typed_ptr_to_mplace(&val)?;
         interp_ok(mplace)
     }
 

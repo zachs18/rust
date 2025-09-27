@@ -8,5 +8,5 @@ impl<T> Trait<T> for T {}
 
 fn main() {
     let x: &dyn Trait<i32> = &0;
-    let _y: *const dyn Trait<u32> = unsafe { mem::transmute(x) }; //~ERROR: wrong trait
+    let _y: *const dyn Trait<u32> = unsafe { mem::transmute(x) }; //~ERROR: at .vtable, using vtable for `Trait<i32>` but `Trait<u32>` was expected
 }

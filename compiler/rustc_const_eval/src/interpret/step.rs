@@ -214,7 +214,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             Ref(_, borrow_kind, place) => {
                 let src = self.eval_place(place)?;
                 let place = self.force_allocation(&src)?;
-                let val = ImmTy::from_immediate(place.to_ref(self), dest.layout);
+                let val = self.mplace_to_ref(&place, Some(dest.layout.ty))?;
                 // A fresh reference was created, make sure it gets retagged.
                 let val = M::retag_ptr_value(
                     self,
@@ -225,7 +225,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     },
                     &val,
                 )?;
-                self.write_immediate(*val, &dest)?;
+                self.copy_op(&val, &dest)?;
             }
 
             RawPtr(kind, place) => {
@@ -240,13 +240,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 let src = self.eval_place(place)?;
                 let place = self.force_allocation(&src)?;
-                let mut val = ImmTy::from_immediate(place.to_ref(self), dest.layout);
+                let mut val = self.mplace_to_ref(&place, Some(dest.layout.ty))?;
                 if !place_base_raw && !kind.is_fake() {
                     // If this was not already raw, it needs retagging -- except for "fake"
                     // raw borrows whose defining property is that they do not get retagged.
                     val = M::retag_ptr_value(self, mir::RetagKind::Raw, &val)?;
                 }
-                self.write_immediate(*val, &dest)?;
+                self.copy_op(&val, &dest)?;
             }
 
             Cast(cast_kind, ref operand, cast_ty) => {

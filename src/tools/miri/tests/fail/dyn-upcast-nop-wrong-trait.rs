@@ -8,7 +8,7 @@ use std::fmt;
 fn main() {
     // vtable_mismatch_nop_cast
     let ptr: &dyn fmt::Display = &0;
-    let ptr: *const (dyn fmt::Debug + Send + Sync) = unsafe { std::mem::transmute(ptr) }; //~ERROR: wrong trait
+    let ptr: *const (dyn fmt::Debug + Send + Sync) = unsafe { std::mem::transmute(ptr) }; //~ERROR: at .vtable, using vtable for `std::fmt::Display` but `std::fmt::Debug + std::marker::Send + std::marker::Sync` was expected
     // Even though the vtable is for the wrong trait, this cast doesn't actually change the needed
     // vtable so it should still be allowed -- if we ever allow the line above.
     let _ptr2 = ptr as *const dyn fmt::Debug;

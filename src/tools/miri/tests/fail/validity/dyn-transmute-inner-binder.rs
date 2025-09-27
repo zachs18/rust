@@ -25,6 +25,6 @@ impl<T: Unsatisfied> HigherRanked for T {}
 fn main() {
     let x: &dyn Trait<fn(&'static ())> = &();
     let y: &dyn Trait<for<'a> fn(&'a ())> = unsafe { std::mem::transmute(x) };
-    //~^ ERROR: wrong trait in wide pointer vtable
+    //~^ ERROR: at .vtable, using vtable for `Trait<fn(&())>` but `Trait<for<'a> fn(&'a ())>` was expected
     y.foo();
 }
