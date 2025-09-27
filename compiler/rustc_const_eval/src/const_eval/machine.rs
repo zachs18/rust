@@ -2,7 +2,7 @@ use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::hash::Hash;
 
-use rustc_abi::{Align, FIRST_VARIANT, Size};
+use rustc_abi::{Align, FIRST_VARIANT, FieldIdx, Size};
 use rustc_ast::Mutability;
 use rustc_data_structures::fx::{FxHashMap, FxIndexMap, IndexEntry};
 use rustc_hir::def_id::{DefId, LocalDefId};
@@ -825,22 +825,25 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
     fn retag_ptr_value(
         ecx: &mut InterpCx<'tcx, Self>,
         _kind: mir::RetagKind,
-        val: &ImmTy<'tcx, CtfeProvenance>,
-    ) -> InterpResult<'tcx, ImmTy<'tcx, CtfeProvenance>> {
+        val: &OpTy<'tcx, CtfeProvenance>,
+    ) -> InterpResult<'tcx, OpTy<'tcx, CtfeProvenance>> {
+        // This does not retag any ptrs in the metadata of a wide pointer.
+
         // If it's a frozen shared reference that's not already immutable, potentially make it immutable.
         // (Do nothing on `None` provenance, that cannot store immutability anyway.)
         if let ty::Ref(_, ty, mutbl) = val.layout.ty.kind()
             && *mutbl == Mutability::Not
-            && val
-                .to_scalar_and_meta()
-                .0
+            && let ptr_field = ecx.project_field(val, FieldIdx::ZERO)?
+            && ecx
+                .read_immediate(&ptr_field)?
+                .to_scalar()
                 .to_pointer(ecx)?
                 .provenance
                 .is_some_and(|p| !p.immutable())
         {
             // That next check is expensive, that's why we have all the guards above.
             let is_immutable = ty.is_freeze(*ecx.tcx, ecx.typing_env());
-            let place = ecx.imm_ptr_to_mplace(val)?;
+            let place = ecx.typed_ptr_to_mplace(val)?;
             let new_place = if is_immutable {
                 place.map_provenance(CtfeProvenance::as_immutable)
             } else {
@@ -850,7 +853,7 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
                 // even when there is interior mutability.)
                 place.map_provenance(CtfeProvenance::as_shared_ref)
             };
-            interp_ok(ImmTy::from_immediate(new_place.to_ref(ecx), val.layout))
+            ecx.mplace_to_ref(&new_place, Some(val.layout.ty))
         } else {
             interp_ok(val.clone())
         }

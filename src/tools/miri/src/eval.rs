@@ -313,7 +313,9 @@ pub fn create_ecx<'tcx>(
                 ecx.allocate(ecx.layout_of(arg_type)?, MiriMemoryKind::Machine.into())?;
             ecx.write_os_str_to_c_str(OsStr::new(arg), arg_place.ptr(), size)?;
             ecx.mark_immutable(&arg_place);
-            argvs.push(arg_place.to_ref(&ecx));
+            let arg_op = ecx.mplace_to_ref(&arg_place, None)?;
+            let arg_imm = ecx.read_immediate(&arg_op)?;
+            argvs.push(*arg_imm);
         }
         // Make an array with all these pointers, in the Miri memory.
         let u8_ptr_type = Ty::new_imm_ptr(tcx, tcx.types.u8);
@@ -357,9 +359,10 @@ pub fn create_ecx<'tcx>(
             }
             ecx.mark_immutable(&cmd_place);
         }
-        let imm = argvs_place.to_ref(&ecx);
+        let argvs_op = ecx.mplace_to_ref(&argvs_place, None)?;
+        let argvs_imm = ecx.read_immediate(&argvs_op)?;
         let layout = ecx.layout_of(u8_ptr_ptr_type)?;
-        ImmTy::from_immediate(imm, layout)
+        ImmTy::from_immediate(*argvs_imm, layout)
     };
 
     // Some parts of initialization require a full `InterpCx`.

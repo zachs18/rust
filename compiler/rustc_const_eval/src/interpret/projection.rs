@@ -50,7 +50,7 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
         if layout.is_unsized() {
             // We need to consult `meta` metadata
             match layout.ty.kind() {
-                ty::Slice(..) | ty::Str => self.meta().scalar().to_target_usize(ecx),
+                ty::Slice(..) | ty::Str => self.meta().scalar(ecx)?.to_target_usize(ecx),
                 _ => bug!("len not supported on unsized type {:?}", layout.ty),
             }
         } else {

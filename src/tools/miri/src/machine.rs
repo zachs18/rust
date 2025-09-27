@@ -1657,8 +1657,8 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
     fn retag_ptr_value(
         ecx: &mut InterpCx<'tcx, Self>,
         kind: mir::RetagKind,
-        val: &ImmTy<'tcx>,
-    ) -> InterpResult<'tcx, ImmTy<'tcx>> {
+        val: &OpTy<'tcx>,
+    ) -> InterpResult<'tcx, OpTy<'tcx>> {
         if ecx.machine.borrow_tracker.is_some() {
             ecx.retag_ptr_value(kind, val)
         } else {

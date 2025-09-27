@@ -663,8 +663,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                     let elem = elem.try_map(|_| None, |ty| ty)?;
                     mplace = self.ecx.project(&mplace, elem).discard_err()?;
                 }
-                let pointer = mplace.to_ref(&self.ecx);
-                ImmTy::from_immediate(pointer, ty).into()
+                self.ecx.mplace_to_ref(&mplace, Some(ty.ty)).discard_err()?
             }
 
             Discriminant(base) => {

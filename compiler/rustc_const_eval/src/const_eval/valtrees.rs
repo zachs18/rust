@@ -312,12 +312,8 @@ pub fn valtree_to_const_value<'tcx>(
         ty::Ref(_, inner_ty, _) => {
             let mut ecx =
                 mk_eval_cx_to_read_const_val(tcx, DUMMY_SP, typing_env, CanAccessMutGlobal::No);
-            let imm = valtree_to_ref(&mut ecx, cv.valtree, inner_ty);
-            let imm = ImmTy::from_immediate(
-                imm,
-                tcx.layout_of(typing_env.as_query_input(cv.ty)).unwrap(),
-            );
-            op_to_const(&ecx, &imm.into(), /* for diagnostics */ false)
+            let ref_op = valtree_to_ref(&mut ecx, cv.valtree, inner_ty);
+            op_to_const(&ecx, &ref_op, /* for diagnostics */ false)
         }
         ty::Tuple(_) | ty::Array(_, _) | ty::Adt(..) => {
             let layout = tcx.layout_of(typing_env.as_query_input(cv.ty)).unwrap();
@@ -385,7 +381,7 @@ fn valtree_to_ref<'tcx>(
     ecx: &mut CompileTimeInterpCx<'tcx>,
     valtree: ty::ValTree<'tcx>,
     pointee_ty: Ty<'tcx>,
-) -> Immediate {
+) -> OpTy<'tcx> {
     let pointee_place = create_valtree_place(ecx, ecx.layout_of(pointee_ty).unwrap(), valtree);
     debug!(?pointee_place);
 
@@ -393,7 +389,9 @@ fn valtree_to_ref<'tcx>(
     dump_place(ecx, &pointee_place);
     intern_const_alloc_recursive(ecx, InternKind::Constant, &pointee_place).unwrap();
 
-    pointee_place.to_ref(&ecx.tcx)
+    // we want `&T`, not `*mut T`
+    let immref_ty = Ty::new_imm_ref(*ecx.tcx, ecx.tcx.lifetimes.re_erased, pointee_ty);
+    ecx.mplace_to_ref(&pointee_place, Some(immref_ty)).unwrap()
 }
 
 #[instrument(skip(ecx), level = "debug")]
@@ -417,9 +415,9 @@ fn valtree_into_mplace<'tcx>(
             ecx.write_immediate(Immediate::Scalar(scalar_int.into()), place).unwrap();
         }
         ty::Ref(_, inner_ty, _) => {
-            let imm = valtree_to_ref(ecx, valtree, *inner_ty);
-            debug!(?imm);
-            ecx.write_immediate(imm, place).unwrap();
+            let ref_op = valtree_to_ref(ecx, valtree, *inner_ty);
+            debug!(?ref_op);
+            ecx.copy_op(&ref_op, place).unwrap();
         }
         ty::Adt(_, _) | ty::Tuple(_) | ty::Array(_, _) | ty::Str | ty::Slice(_) => {
             let branches = valtree.to_branch();
