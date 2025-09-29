@@ -703,7 +703,7 @@ mod impls {
 
     #[unstable(feature = "ptr_metadata_v2", issue = "none")]
     #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
-    impl<T: PointeeSized> const Clone for builtin!(ptr_metadata(T)) {
+    impl<T: PointeeSized> const Clone for core::ptr::Metadata<T> {
         #[inline(always)]
         fn clone(&self) -> Self {
             *self
@@ -712,7 +712,7 @@ mod impls {
     #[doc(hidden)]
     #[unstable(feature = "trivial_clone", issue = "none")]
     #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
-    unsafe impl<T: PointeeSized> const TrivialClone for builtin!(ptr_metadata(T)) {}
+    unsafe impl<T: PointeeSized> const TrivialClone for core::ptr::Metadata<T> {}
 
     /// Shared references can be cloned, but mutable references *cannot*!
     #[stable(feature = "rust1", since = "1.0.0")]

@@ -625,7 +625,7 @@ mod prim_untyped_ptr {}
 
 #[rustc_doc_primitive = "ptr_metadata"]
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-/// Typed pointer metadata primitive, `builtin # ptr_metadata(T)`.
+/// Typed pointer metadata primitive, [`core::ptr::Metadata`].
 mod prim_ptr_metadata {}
 
 /// Allows using builtin # foo() syntax before the bootstrap tidy recognizes it.
@@ -649,7 +649,7 @@ impl builtin!(untyped_ptr(nullable)) {}
 // Required to make auto trait impls render.
 // See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
 #[doc(hidden)]
-impl<T: ?Sized> builtin!(ptr_metadata(T)) {}
+impl<T: ?Sized> core::ptr::Metadata<T> {}
 
 #[rustc_doc_primitive = "array"]
 #[doc(alias = "[]")]

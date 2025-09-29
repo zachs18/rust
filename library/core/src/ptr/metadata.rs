@@ -67,6 +67,24 @@ pub trait Pointee: PointeeSized {
     type Metadata: fmt::Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze;
 }
 
+/// FIXME(ptr_metadata_v2): add docs
+///
+/// Typed pointer metadata
+pub type Metadata<T> = builtin!(ptr_metadata(T));
+
+/// FIXME(ptr_metadata_v2): add docs
+///
+/// Macro to construct a [`Metadata`]
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+#[allow_internal_unstable(builtin_syntax)]
+pub macro build_metadata {
+    ($(for $pointee:ty $(;)?)?) => { builtin # ptr_metadata($(for $pointee)?) },
+    ($($field:ident $(: $value:expr)?,)* ..$($base:expr)?) => { builtin # ptr_metadata($($field $(: $value)?,)* .. $($base)?) },
+    (for $pointee:ty; $($field:ident $(: $value:expr)?,)* ..$($base:expr)?) => { builtin # ptr_metadata(for $pointee; $($field $(: $value)?,)* .. $($base)?) },
+    ($($field:ident $(: $value:expr)?),+ $(,)?) => { builtin # ptr_metadata($($field $(: $value)?,)+) },
+    (for $pointee:ty; $($field:ident $(: $value:expr)?),+ $(,)?) => { builtin # ptr_metadata(for $pointee; $($field $(: $value)?,)+) },
+}
+
 /// Pointers to types implementing this trait alias are “thin”.
 ///
 /// This includes statically-`Sized` types and `extern` types.

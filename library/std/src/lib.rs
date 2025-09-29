@@ -366,6 +366,7 @@
 #![feature(portable_simd)]
 #![feature(ptr_as_uninit)]
 #![feature(ptr_mask)]
+#![feature(ptr_metadata)]
 #![feature(random)]
 #![feature(raw_os_error_ty)]
 #![feature(slice_internals)]
