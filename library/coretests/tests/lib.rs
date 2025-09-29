@@ -10,6 +10,7 @@
 #![feature(bool_to_result)]
 #![feature(borrowed_buf_init)]
 #![feature(bstr)]
+#![feature(builtin_syntax)]
 #![feature(cfg_target_has_reliable_f16_f128)]
 #![feature(char_internals)]
 #![feature(clone_to_uninit)]
@@ -96,9 +97,11 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(portable_simd)]
 #![feature(ptr_metadata)]
+#![feature(ptr_metadata_v2)]
 #![feature(result_option_map_or_default)]
 #![feature(rustc_attrs)]
 #![feature(signed_bigint_helpers)]
+#![feature(sized_hierarchy)]
 #![feature(slice_from_ptr_range)]
 #![feature(slice_index_methods)]
 #![feature(slice_internals)]
@@ -164,6 +167,11 @@ macro_rules! test_runtime_and_compiletime {
             const _: () = $block;
         )*
     }
+}
+
+/// Makes rust-analyzer not choke on `builtin # ptr_metadata()` syntax
+macro_rules! builtin {
+    ($($input:tt)*) => { builtin # $($input)* };
 }
 
 mod alloc;
