@@ -281,6 +281,35 @@ impl<Dyn: PointeeSized> Hash for DynMetadata<Dyn> {
     }
 }
 
+impl<T: MetaSized> Metadata<T> {
+    /// Returns the size of the pointee associated with this metadata, or `None`
+    /// if the layout calculation would overflow.
+    #[unstable(feature = "ptr_metadata_v2", issue = "none")]
+    //#[unstable(feature = "checked_layout_for_meta", issue = "none")]
+    pub const fn checked_size_of(self) -> Option<usize> {
+        crate::mem::checked_size_for_meta(self)
+    }
+
+    /// Returns the alignment of the pointee associated with this metadata, or `None`
+    /// if the layout calculation would overflow.
+    #[unstable(feature = "ptr_metadata_v2", issue = "none")]
+    //#[unstable(feature = "checked_layout_for_meta", issue = "none")]
+    pub const fn checked_align_of(self) -> Option<usize> {
+        crate::mem::checked_align_for_meta(self)
+    }
+
+    /// Returns the layout of the pointee associated with this metadata, or `None`
+    /// if the layout calculation would overflow.
+    #[unstable(feature = "ptr_metadata_v2", issue = "none")]
+    //#[unstable(feature = "checked_layout_for_meta", issue = "none")]
+    pub const fn checked_layout(self) -> Option<crate::alloc::Layout> {
+        let Some(size) = crate::mem::checked_size_for_meta(self) else { return None };
+        let align = crate::mem::checked_align_for_meta(self).unwrap();
+        // SAFETY: size and align came from size/align intrinsics for the same metadata
+        Some(unsafe { crate::alloc::Layout::from_size_align_unchecked(size, align) })
+    }
+}
+
 impl<T: PointeeSized> PartialEq for Metadata<T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
