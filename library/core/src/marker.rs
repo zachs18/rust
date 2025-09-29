@@ -105,11 +105,11 @@ impl !Send for builtin!(untyped_ptr(nonnull)) {}
 impl !Send for builtin!(untyped_ptr(nullable)) {}
 
 // Typed pointers are !Send + !Sync as a lint. Their metadata still needs to be Send + Sync.
-// Maybe we could imagine a future where `builtin!(ptr_metadata(T)): Send + Sync`
+// Maybe we could imagine a future where `Metadata<T>: Send + Sync`
 // iff `T: Sync` or `T: Send`, but the specifics would be muddy, and the existing
 // `Pointee::Metadata` also requires `Send + Sync`, so it's good enough for now.
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-unsafe impl<T: PointeeSized> Send for builtin!(ptr_metadata(T)) {}
+unsafe impl<T: PointeeSized> Send for core::ptr::Metadata<T> {}
 
 // Most instances arise automatically, but this instance is needed to link up `T: Sync` with
 // `&T: Send` (and it also removes the unsound default instance `T Send` -> `&T: Send` that would
@@ -500,7 +500,7 @@ impl Copy for builtin!(untyped_ptr(nonnull)) {}
 impl Copy for builtin!(untyped_ptr(nullable)) {}
 
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-impl<T: PointeeSized> Copy for builtin!(ptr_metadata(T)) {}
+impl<T: PointeeSized> Copy for core::ptr::Metadata<T> {}
 
 #[unstable(feature = "never_type", issue = "35121")]
 impl Copy for ! {}
@@ -702,11 +702,11 @@ impl !Sync for builtin!(untyped_ptr(nonnull)) {}
 impl !Sync for builtin!(untyped_ptr(nullable)) {}
 
 // Typed pointers are !Send + !Sync as a lint. Their metadata still needs to be Send + Sync.
-// Maybe we could imagine a future where `builtin!(ptr_metadata(T)): Send + Sync`
+// Maybe we could imagine a future where `Metadata<T>: Send + Sync`
 // iff `T: Sync` or `T: Send`, but the specifics would be muddy, and the existing
 // `Pointee::Metadata` also requires `Send + Sync`, so it's good enough for now.
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-unsafe impl<T: PointeeSized> Sync for builtin!(ptr_metadata(T)) {}
+unsafe impl<T: PointeeSized> Sync for core::ptr::Metadata<T> {}
 
 /// Zero-sized type used to mark things that "act like" they own a `T`.
 ///
@@ -959,7 +959,7 @@ unsafe impl Freeze for builtin!(untyped_ptr(nonnull)) {}
 unsafe impl Freeze for builtin!(untyped_ptr(nullable)) {}
 
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-unsafe impl<T: PointeeSized> Freeze for builtin!(ptr_metadata(T)) {}
+unsafe impl<T: PointeeSized> Freeze for core::ptr::Metadata<T> {}
 
 /// Used to determine whether a type contains any `UnsafePinned` (or `PhantomPinned`) internally,
 /// but not through an indirection. This affects, for example, whether we emit `noalias` metadata
@@ -990,7 +990,7 @@ unsafe impl UnsafeUnpin for builtin!(untyped_ptr(nonnull)) {}
 unsafe impl UnsafeUnpin for builtin!(untyped_ptr(nullable)) {}
 
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-unsafe impl<T: PointeeSized> UnsafeUnpin for builtin!(ptr_metadata(T)) {}
+unsafe impl<T: PointeeSized> UnsafeUnpin for core::ptr::Metadata<T> {}
 
 /// Types that do not require any pinning guarantees.
 ///
@@ -1107,7 +1107,7 @@ impl Unpin for builtin!(untyped_ptr(nonnull)) {}
 impl Unpin for builtin!(untyped_ptr(nullable)) {}
 
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
-impl<T: PointeeSized> Unpin for builtin!(ptr_metadata(T)) {}
+impl<T: PointeeSized> Unpin for core::ptr::Metadata<T> {}
 
 /// A marker for types that can be dropped.
 ///
