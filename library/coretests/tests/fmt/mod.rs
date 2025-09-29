@@ -61,12 +61,26 @@ fn test_fmt_debug_of_raw_pointers() {
     assert_eq!(format!("{:?}", ptr::without_provenance::<i32>(0x100)), "0x100");
 
     let slice = ptr::slice_from_raw_parts(ptr::without_provenance::<i32>(0x100), 3);
-    assert_eq!(format!("{:?}", slice as *mut [i32]), "Pointer { addr: 0x100, metadata: 3 }");
-    assert_eq!(format!("{:?}", slice as *const [i32]), "Pointer { addr: 0x100, metadata: 3 }");
+    assert_eq!(
+        format!("{:?}", slice as *mut [i32]),
+        "Pointer { addr: 0x100, metadata: Metadata { len: 3, .. } }"
+    );
+    assert_eq!(
+        format!("{:?}", slice as *const [i32]),
+        "Pointer { addr: 0x100, metadata: Metadata { len: 3, .. } }"
+    );
 
     let vtable = &mut 500 as &mut dyn Debug;
-    check_fmt(vtable as *mut dyn Debug, "Pointer { addr: ", ", metadata: DynMetadata(");
-    check_fmt(vtable as *const dyn Debug, "Pointer { addr: ", ", metadata: DynMetadata(");
+    check_fmt(
+        vtable as *mut dyn Debug,
+        "Pointer { addr: ",
+        ", metadata: Metadata { vtable: DynMetadata(",
+    );
+    check_fmt(
+        vtable as *const dyn Debug,
+        "Pointer { addr: ",
+        ", metadata: Metadata { vtable: DynMetadata(",
+    );
 }
 
 #[test]
