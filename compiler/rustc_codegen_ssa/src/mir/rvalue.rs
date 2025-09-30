@@ -764,7 +764,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     }
                     (ty::Array(_, len), ty::Slice(..)) => {
                         let cx = bx.cx();
-                        // Unsize array to slice, keep element type
+                        // Unsize array to slice, possibly unsize element type
                         let src_len = cx.const_usize(
                             len.try_to_target_usize(cx.tcx())
                                 .expect("expected monomorphic const in codegen"),
@@ -778,7 +778,18 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ZERO, src_len);
 
                         let src_elem = src.extract_field(self, bx, 0);
-                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ONE, src_elem);
+                        let dst_elem_meta_layout = dst_layout.field(bx.cx(), 1);
+                        let elem_op = if src_elem.layout == dst_elem_meta_layout {
+                            src_elem
+                        } else {
+                            self.codegen_coerce_unsized_into_operand(
+                                bx,
+                                src_elem,
+                                dst_elem_meta_layout,
+                            )
+                        };
+
+                        dst.insert_field(bx, FIRST_VARIANT, FieldIdx::ONE, elem_op);
 
                         dst.build(bx.cx())
                     }

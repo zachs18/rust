@@ -260,7 +260,7 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 }
                 (ty::Array(_, len), ty::Slice(..)) => {
                     let cx = bx.cx();
-                    // Unsize array to slice, keep element type
+                    // Unsize array to slice, possibly unsize element type
                     let src_len = cx.const_usize(
                         len.try_to_target_usize(cx.tcx())
                             .expect("expected monomorphic const in codegen"),
@@ -270,7 +270,11 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
                     let src_elem = src.project_field(bx, 0);
                     let dst_elem = dst.project_field(bx, 1);
-                    bx.typed_place_copy(dst_elem.val, src_elem.val, src_elem.layout);
+                    if src_elem.layout == dst_elem.layout {
+                        bx.typed_place_copy(dst_elem.val, src_elem.val, src_elem.layout);
+                    } else {
+                        coerce_unsized_into(bx, src_elem, dst_elem);
+                    }
                 }
                 (_, &ty::Dynamic(..)) => {
                     let old_info = match bx.load_operand(src).val {
