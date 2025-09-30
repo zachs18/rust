@@ -228,6 +228,10 @@ pub enum BuiltinImplSource {
     /// Some built-in impl we don't need to differentiate. This should be used
     /// unless more specific information is necessary.
     Misc,
+    /// A builtin `Unsize` impl. We need to differentiate the two possible unsizing impls
+    /// from `[T; N]` to `[U]`; where `T == U` or `T: Unsize<U>`,
+    /// so we can prefer the `T == U` one when we aren't sure.
+    Unsize { array_keep_elem: bool },
     /// A built-in impl for trait objects. The index is only used in winnowing.
     Object(usize),
     /// A built-in implementation of `Upcast` for trait objects to other trait objects.

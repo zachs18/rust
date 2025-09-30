@@ -127,7 +127,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, PredicateObligations::new())
             }
 
-            BuiltinUnsizeCandidate => self.confirm_builtin_unsize_candidate(obligation)?,
+            BuiltinUnsizeCandidate { array_keep_elem } => {
+                self.confirm_builtin_unsize_candidate(obligation, array_keep_elem)?
+            }
 
             TraitUpcastingUnsizeCandidate(idx) => {
                 self.confirm_trait_upcasting_unsize_candidate(obligation, idx)?
@@ -1058,6 +1060,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     fn confirm_builtin_unsize_candidate(
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
+        array_keep_elem: bool,
     ) -> Result<ImplSource<'tcx, PredicateObligation<'tcx>>, SelectionError<'tcx>> {
         let tcx = self.tcx();
 
@@ -1172,15 +1175,28 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, nested)
             }
 
-            // `[T; n]` -> `[T]`
+            // `[T; n]` -> `[U]` where `T == U` or `T: Unsize<T>`
             (&ty::Array(a, _), &ty::Slice(b)) => {
-                let InferOk { obligations, .. } = self
-                    .infcx
-                    .at(&obligation.cause, obligation.param_env)
-                    .eq(DefineOpaqueTypes::Yes, b, a)
-                    .map_err(|_| SelectionError::Unimplemented)?;
+                if array_keep_elem {
+                    // `T = U` case
+                    let InferOk { obligations, .. } = self
+                        .infcx
+                        .at(&obligation.cause, obligation.param_env)
+                        .eq(DefineOpaqueTypes::Yes, b, a)
+                        .map_err(|_| SelectionError::Unimplemented)?;
 
-                ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+                    ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+                } else {
+                    // `T: Unsize<U>` case
+                    let mut obligations = PredicateObligations::new();
+
+                    // Construct the nested element `T: Unsize<U>` predicate
+                    let elem_obligation = obligation
+                        .with(tcx, ty::TraitRef::new(tcx, obligation.predicate.def_id(), [a, b]));
+                    obligations.push(elem_obligation);
+
+                    ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+                }
             }
 
             // `[T; N]` -> `[U; M]` where `T: Unsize<U>` and `N == M`
