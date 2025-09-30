@@ -35,9 +35,7 @@ use crate::alloc::{self, Layout, LayoutError};
 /// ```
 #[unstable(feature = "thin_box", issue = "92791")]
 pub struct ThinBox<T: ?Sized> {
-    // This is essentially `WithHeader<Metadata<T>>`,
-    // FIXME(ptr_metadata_v2): make it that, since `Metadata<T>` is covariant in `T`.
-    ptr: WithOpaqueHeader,
+    ptr: WithHeader<Metadata<T>>,
     _marker: PhantomData<T>,
 }
 
@@ -67,7 +65,7 @@ impl<T> ThinBox<T> {
     #[cfg(not(no_global_oom_handling))]
     pub fn new(value: T) -> Self {
         let meta = ptr::metadata(&value);
-        let ptr = WithOpaqueHeader::new(meta, value);
+        let ptr = WithHeader::new(meta, value);
         ThinBox { ptr, _marker: PhantomData }
     }
 
@@ -88,7 +86,7 @@ impl<T> ThinBox<T> {
     /// [`Metadata`]: core::ptr::Pointee::Metadata
     pub fn try_new(value: T) -> Result<Self, core::alloc::AllocError> {
         let meta = ptr::metadata(&value);
-        WithOpaqueHeader::try_new(meta, value).map(|ptr| ThinBox { ptr, _marker: PhantomData })
+        WithHeader::try_new(meta, value).map(|ptr| ThinBox { ptr, _marker: PhantomData })
     }
 }
 
@@ -113,11 +111,11 @@ impl<Dyn: ?Sized> ThinBox<Dyn> {
         T: Unsize<Dyn>,
     {
         if size_of::<T>() == 0 {
-            let ptr = WithOpaqueHeader::new_unsize_zst::<Dyn, T>(value);
+            let ptr = WithHeader::new_unsize_zst(value);
             ThinBox { ptr, _marker: PhantomData }
         } else {
             let meta = ptr::metadata(&value as &Dyn);
-            let ptr = WithOpaqueHeader::new(meta, value);
+            let ptr = WithHeader::new(meta, value);
             ThinBox { ptr, _marker: PhantomData }
         }
     }
@@ -195,33 +193,6 @@ impl<T: ?Sized> ThinBox<T> {
 ///    pointed-to location.
 #[repr(transparent)]
 struct WithHeader<H>(NonNull<u8>, PhantomData<H>);
-
-/// An opaque representation of `WithHeader<H>`.
-/// FIXME(ptr_metadata_v2): get rid of this; `Metadata<T>` is covariant in `T`.
-#[repr(transparent)]
-struct WithOpaqueHeader(NonNull<u8>);
-
-impl WithOpaqueHeader {
-    #[cfg(not(no_global_oom_handling))]
-    fn new<H, T>(header: H, value: T) -> Self {
-        let ptr = WithHeader::new(header, value);
-        Self(ptr.0)
-    }
-
-    #[cfg(not(no_global_oom_handling))]
-    fn new_unsize_zst<Dyn, T>(value: T) -> Self
-    where
-        Dyn: ?Sized,
-        T: Unsize<Dyn>,
-    {
-        let ptr = WithHeader::<Metadata<Dyn>>::new_unsize_zst::<Dyn, T>(value);
-        Self(ptr.0)
-    }
-
-    fn try_new<H, T>(header: H, value: T) -> Result<Self, core::alloc::AllocError> {
-        WithHeader::try_new(header, value).map(|ptr| Self(ptr.0))
-    }
-}
 
 impl<H> WithHeader<H> {
     #[cfg(not(no_global_oom_handling))]
@@ -303,12 +274,13 @@ impl<H> WithHeader<H> {
             Ok(result)
         }
     }
+}
 
+impl<Dyn: ?Sized> WithHeader<Metadata<Dyn>> {
     // `Dyn` is `?Sized` type like `[u32]`, and `T` is ZST type like `[u32; 0]`.
     #[cfg(not(no_global_oom_handling))]
-    fn new_unsize_zst<Dyn, T>(value: T) -> WithHeader<Metadata<Dyn>>
+    fn new_unsize_zst<T>(value: T) -> WithHeader<Metadata<Dyn>>
     where
-        Dyn: ?Sized,
         T: Unsize<Dyn>,
     {
         assert!(size_of::<T>() == 0);
@@ -351,7 +323,9 @@ impl<H> WithHeader<H> {
         mem::forget(value);
         WithHeader(NonNull::new(value_ptr.cast()).unwrap(), PhantomData)
     }
+}
 
+impl<H> WithHeader<H> {
     // Safety:
     // - Assumes that either `value` can be dereferenced, or is the
     //   `NonNull::dangling()` we use when both `T` and `H` are ZSTs.
