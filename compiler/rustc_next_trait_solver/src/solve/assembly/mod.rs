@@ -681,7 +681,9 @@ where
         candidates.extend(result);
 
         // There may be multiple unsize candidates for a trait with several supertraits:
-        // `trait Foo: Bar<A> + Bar<B>` and `dyn Foo: Unsize<dyn Bar<_>>`
+        // `trait Foo: Bar<A> + Bar<B>` and `dyn Foo: Unsize<dyn Bar<_>>`,
+        // or for an array of unsizable elements:
+        //  `[u8; 4]: Unsize<[u8]> + Unsize<[dyn Debug]>`
         if cx.is_trait_lang_item(trait_def_id, SolverTraitLangItem::Unsize) {
             candidates.extend(G::consider_structural_builtin_unsize_candidates(self, goal));
         }

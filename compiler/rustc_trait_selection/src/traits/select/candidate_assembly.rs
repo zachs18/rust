@@ -1081,7 +1081,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         // All of a's auto traits need to be in b's auto traits.
                         .all(|b| a_auto_traits.contains(&b));
                     if auto_traits_compatible {
-                        candidates.vec.push(BuiltinUnsizeCandidate);
+                        candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
                     }
                 } else if principal_def_id_a.is_some() && principal_def_id_b.is_some() {
                     // not casual unsizing, now check whether this is trait upcasting coercion.
@@ -1115,7 +1115,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
             // `T` -> `Trait`
             (_, &ty::Dynamic(_, _)) => {
-                candidates.vec.push(BuiltinUnsizeCandidate);
+                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
             }
 
             // Ambiguous handling is below `T` -> `Trait`, because inference
@@ -1126,14 +1126,15 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates.ambiguous = true;
             }
 
-            // `[T; n]` -> `[T]`
+            // `[T; n]` -> `[U]` where `T = U` or `T: Unsize<U>`
             (&ty::Array(..), &ty::Slice(_)) => {
-                candidates.vec.push(BuiltinUnsizeCandidate);
+                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
+                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: true });
             }
 
             // `[T; n]` -> `[U; n]` or `[T]` -> `[U]` unsizing where `T: Unsize<U>`
             (&ty::Array(..), &ty::Array(..)) | (&ty::Slice(_), &ty::Slice(_)) => {
-                candidates.vec.push(BuiltinUnsizeCandidate);
+                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
             }
 
             // `Struct<T>` -> `Struct<U>`
@@ -1141,7 +1142,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 if def_id_a.is_struct() || def_id_a.is_union() =>
             {
                 if def_id_a == def_id_b {
-                    candidates.vec.push(BuiltinUnsizeCandidate);
+                    candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
                 }
             }
 
