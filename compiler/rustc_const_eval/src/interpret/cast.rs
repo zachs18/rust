@@ -411,8 +411,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let dst_elem = self.project_field(dst, FieldIdx::ZERO)?;
                 self.unsize_into_ptr_metadata(&src_elem, &dst_elem, source_ty, cast_ty)
             }
-            (&ty::Array(_, length), &ty::Slice(_)) => {
-                // Unsize array to slice, keep element type
+            (&ty::Array(source_ty, length), &ty::Slice(cast_ty)) => {
+                // Unsize array to slice, possibly unsize element type
                 let len = length
                     .try_to_target_usize(*self.tcx)
                     .expect("expected monomorphic const in const eval");
@@ -423,7 +423,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 let src_elem = self.project_field(src, FieldIdx::ZERO)?;
                 let dst_elem = self.project_field(dst, FieldIdx::ONE)?;
-                self.copy_op(&src_elem, &dst_elem)
+                if src_elem.layout == dst_elem.layout() {
+                    self.copy_op(&src_elem, &dst_elem)
+                } else {
+                    self.unsize_into_ptr_metadata(&src_elem, &dst_elem, source_ty, cast_ty)
+                }
             }
             (ty::Dynamic(data_a, _), ty::Dynamic(data_b, _)) => {
                 let val = self.read_immediate(src)?;
