@@ -27,7 +27,7 @@
           StorageLive(_5);
           _5 = copy _1;
 -         _4 = ptr_metadata::<i32>(move _5) -> [return: bb1, unwind unreachable];
-+         _4 = PtrMetadata(move _5);
++         _4 = copy (_5.1: {ptr metadata for i32});
 +         goto -> bb1;
       }
   
@@ -37,7 +37,7 @@
           StorageLive(_7);
           _7 = copy _2;
 -         _6 = ptr_metadata::<[u8]>(move _7) -> [return: bb2, unwind unreachable];
-+         _6 = PtrMetadata(move _7);
++         _6 = copy (_7.1: {ptr metadata for [u8]});
 +         goto -> bb2;
       }
   
@@ -47,7 +47,7 @@
           StorageLive(_9);
           _9 = copy _3;
 -         _8 = ptr_metadata::<dyn Debug>(move _9) -> [return: bb3, unwind unreachable];
-+         _8 = PtrMetadata(move _9);
++         _8 = copy (_9.1: {ptr metadata for dyn std::fmt::Debug});
 +         goto -> bb3;
       }
   

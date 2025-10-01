@@ -1594,10 +1594,6 @@ pub enum UnOp {
     Not,
     /// The `-` operator for negation
     Neg,
-    /// Gets the metadata `buiiltin # ptr_metadata(T)` from a `*const T`/`*mut T`/`&T`/`&mut T`.
-    ///
-    /// Allowed only in [`MirPhase::Runtime`]; earlier it's an intrinsic.
-    PtrMetadata,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

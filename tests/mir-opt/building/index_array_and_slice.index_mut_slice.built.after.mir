@@ -7,17 +7,15 @@ fn index_mut_slice(_1: &mut [i32], _2: usize) -> &i32 {
     let _3: &i32;
     let _4: usize;
     let mut _5: *const [i32];
-    let mut _6: {ptr metadata for [i32]};
-    let mut _7: bool;
+    let mut _6: bool;
 
     bb0: {
         StorageLive(_3);
         StorageLive(_4);
         _4 = copy _2;
         _5 = &raw const (fake) (*_1);
-        _6 = PtrMetadata(move _5);
-        _7 = Lt(copy _4, copy (_6.0: usize));
-        assert(move _7, "index out of bounds: the length is {} but the index is {}", move (_6.0: usize), copy _4) -> [success: bb1, unwind: bb2];
+        _6 = Lt(copy _4, copy ((_5.1: {ptr metadata for [i32]}).0: usize));
+        assert(move _6, "index out of bounds: the length is {} but the index is {}", copy ((_5.1: {ptr metadata for [i32]}).0: usize), copy _4) -> [success: bb1, unwind: bb2];
     }
 
     bb1: {

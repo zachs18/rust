@@ -161,11 +161,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 bx.write_operand_repeatedly(cg_elem, count, dest);
             }
 
-            // This implementation does field projection, so never use it for `RawPtr`,
-            // which will always be fine with the `codegen_rvalue_operand` path below.
-            mir::Rvalue::Aggregate(ref kind, ref operands)
-                if !matches!(**kind, mir::AggregateKind::RawPtr(..)) =>
-            {
+            mir::Rvalue::Aggregate(ref kind, ref operands) => {
                 let (variant_index, variant_dest, active_field_index) = match **kind {
                     mir::AggregateKind::Adt(_, variant_index, _, _, active_field_index) => {
                         let variant_dest = dest.project_downcast(bx, variant_index);
@@ -598,17 +594,6 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             bx.neg(operand.immediate())
                         };
                         (OperandValue::Immediate(llval), operand.layout)
-                    }
-                    mir::UnOp::PtrMetadata => {
-                        assert!(operand.layout.ty.is_raw_ptr() || operand.layout.ty.is_ref(),);
-                        let (_, meta) = operand.val.pointer_parts();
-                        let meta_ty = operand.layout.field(self.cx, 1);
-                        assert_eq!(meta_ty.is_1zst(), meta.is_none());
-                        if let Some(meta) = meta {
-                            (OperandValue::Immediate(meta), meta_ty)
-                        } else {
-                            (OperandValue::ZeroSized, meta_ty)
-                        }
                     }
                 };
                 assert!(

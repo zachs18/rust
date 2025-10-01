@@ -5,8 +5,8 @@
 #![feature(core_intrinsics, custom_mir, ptr_metadata)]
 use std::intrinsics::mir::*;
 
-// This disables validation and uses custom MIR hit exactly the UB in the intrinsic,
-// rather than getting UB from the typed load or parameter passing.
+// This disables validation and uses custom MIR hit exactly what used to be the UB in the intrinsic.
+// Since `PtrMetadata` is now a "normal" field access, the now UB comes from the typed load of `usize`.
 
 #[custom_mir(dialect = "runtime")]
 pub unsafe fn deref_meta(p: *const *const [i32]) -> std::ptr::Metadata<[i32]> {

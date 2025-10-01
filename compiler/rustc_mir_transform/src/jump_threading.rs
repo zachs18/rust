@@ -53,7 +53,7 @@
 
 use itertools::Itertools as _;
 use rustc_const_eval::const_eval::DummyMachine;
-use rustc_const_eval::interpret::{ImmTy, Immediate, InterpCx, OpTy, Projectable};
+use rustc_const_eval::interpret::{ImmTy, Immediate, InterpCx, OpTy};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
 use rustc_index::IndexVec;
 use rustc_index::bit_set::{DenseBitSet, GrowableBitSet};
@@ -437,12 +437,6 @@ impl<'a, 'tcx> TOFinder<'a, 'tcx> {
                     let discr_value =
                         self.ecx.discriminant_for_variant(op.layout.ty, variant).discard_err()?;
                     Some(discr_value.into())
-                }
-                TrackElem::DerefLen => {
-                    let op: OpTy<'_> = self.ecx.deref_pointer(op).discard_err()?.into();
-                    let len_usize = op.len(&self.ecx).discard_err()?;
-                    let layout = self.ecx.layout_of(self.tcx.types.usize).unwrap();
-                    Some(ImmTy::from_uint(len_usize, layout).into())
                 }
             },
             &mut |place, op| {

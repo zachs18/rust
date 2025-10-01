@@ -1,4 +1,4 @@
-//@ ignore-test: FIXME(ptr_metadata_v2)
+// FIXME(ptr_metadata_v2)
 // Tests to investigate on 'Use builtin # ptr_metadata(T) as pointer metadata'
 // (before ptr_metadata_fields) because there's a `const{transmute}`
 //@ test-mir-pass: GVN
@@ -806,44 +806,45 @@ fn non_freeze<T: Copy>(x: T) {
 // Check that we can const-prop into `from_raw_parts`
 fn slice_const_length(x: &[i32]) -> *const [i32] {
     // CHECK-LABEL: fn slice_const_length(
-    // CHECK: _0 = *const [i32] from (copy {{_[0-9]+}}, const 123_usize);
+    // CHECK: _0 = *const [i32] from (copy {{_[0-9]+}}, const {transmute(0x000000000000007b): {ptr metadata for [i32]}});
     let ptr = x.as_ptr();
     let len = 123;
-    std::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(ptr_metadata: len))
+    std::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(for [i32]; len, ..))
 }
 
 fn meta_of_ref_to_slice(x: *const i32) -> usize {
     // CHECK-LABEL: fn meta_of_ref_to_slice
     // CHECK: _0 = const 1_usize
     let ptr: *const [i32] =
-        std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: 1));
-    std::intrinsics::ptr_metadata(ptr).ptr_metadata
+        std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(for [i32]; len: 1, ..));
+    std::intrinsics::ptr_metadata(ptr).len
 }
 
 fn slice_from_raw_parts_as_ptr(x: *const u16, n: usize) -> (*const u16, *const f32) {
     // CHECK-LABEL: fn slice_from_raw_parts_as_ptr
-    // CHECK: _8 = copy _1 as *const f32 (PtrToPtr);
-    // CHECK: _0 = (copy _1, move _8);
+    // CHECK: _9 = copy _1 as *const f32 (PtrToPtr);
+    // CHECK: _0 = (copy _1, move _9);
     let ptr: *const [u16] =
-        std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: n));
+        std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(for [u16]; len: n, ..));
     (ptr as *const u16, ptr as *const f32)
 }
 
 fn casts_before_aggregate_raw_ptr(x: *const u32) -> *const [u8] {
     // CHECK-LABEL: fn casts_before_aggregate_raw_ptr
-    // CHECK: _0 = *const [u8] from (copy _1, const 4_usize);
+    // CHECK: _0 = *const [u8] from (copy _1, const {transmute(0x0000000000000004): {ptr metadata for [u8]}});
     let x = x as *const [u8; 4];
     let x = x as *const u8;
     let x = x as *const ();
-    std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: 4))
+    std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(for [u8]; len: 4, ..))
 }
 
 fn manual_slice_mut_len(x: &mut [i32]) -> usize {
+    // FIXME(ptr_metadata_v2): this gvn to work here again
     // CHECK-LABEL: fn manual_slice_mut_len
-    // CHECK: _0 = PtrMetadata(copy _1);
+    // CHECK: _0 = copy ((_1.1: {ptr metadata for [i32]}).0: usize);
     let x: *mut [i32] = x;
     let x: *const [i32] = x;
-    std::intrinsics::ptr_metadata(x).ptr_metadata
+    std::intrinsics::ptr_metadata(x).len
 }
 
 // `.len()` on arrays ends up being something like this
@@ -851,23 +852,22 @@ fn array_len(x: &mut [i32; 42]) -> usize {
     // CHECK-LABEL: fn array_len
     // CHECK: _0 = const 42_usize;
     let x: &[i32] = x;
-    std::intrinsics::ptr_metadata(x).ptr_metadata
+    std::intrinsics::ptr_metadata(x).len
 }
 
 // Check that we only load the length once, rather than all 3 times.
 fn dedup_multiple_bounds_checks_lengths(x: &[i32]) -> [i32; 3] {
     // CHECK-LABEL: fn dedup_multiple_bounds_checks_lengths
-    // CHECK: [[LEN:_.+]] = PtrMetadata(copy _1);
-    // CHECK: Lt(const 42_usize, copy [[LEN]]);
-    // CHECK: assert{{.+}}copy [[LEN]]
+    // CHECK: Lt(const 42_usize, copy ((_1.1: {ptr metadata for [i32]}).0: usize));
+    // CHECK: assert{{.+}}copy ((_1.1: {ptr metadata for [i32]}).0: usize)
     // CHECK: [[A:_.+]] = copy (*_1)[42 of 43];
     // CHECK-NOT: PtrMetadata
-    // CHECK: Lt(const 13_usize, copy [[LEN]]);
-    // CHECK: assert{{.+}}copy [[LEN]]
+    // CHECK: Lt(const 13_usize, copy ((_1.1: {ptr metadata for [i32]}).0: usize));
+    // CHECK: assert{{.+}}copy ((_1.1: {ptr metadata for [i32]}).0: usize)
     // CHECK: [[B:_.+]] = copy (*_1)[13 of 14];
     // CHECK-NOT: PtrMetadata
-    // CHECK: Lt(const 7_usize, copy [[LEN]]);
-    // CHECK: assert{{.+}}copy [[LEN]]
+    // CHECK: Lt(const 7_usize, copy ((_1.1: {ptr metadata for [i32]}).0: usize));
+    // CHECK: assert{{.+}}copy ((_1.1: {ptr metadata for [i32]}).0: usize)
     // CHECK: [[C:_.+]] = copy (*_1)[7 of 8];
     // CHECK: _0 = [move [[A]], move [[B]], move [[C]]]
     [x[42], x[13], x[7]]
@@ -880,40 +880,39 @@ fn generic_cast_metadata<T, A: ?Sized, B: ?Sized>(ps: *const [T], pa: *const A, 
         {
             // These tests check that we correctly do or don't elide casts
             // when the pointee metadata do or don't match, respectively.
+            // FIXME(ptr_metadata_v2): since all pointees have unique metadata type now,
+            // this is testing basically nothing.
+            // We could maybe make GVN transform "PtrToPtr; get metadata" into
+            // "PtrToPtr; PtrMetadataToPtrMetadata" or something.
 
-            // Metadata usize -> (), do not optimize.
+            // Wide -> thin, metadata is `const {..}`
             // CHECK: [[T:_.+]] = copy _1 as
-            // CHECK-NEXT: const ();
+            // CHECK-NEXT: const ZeroSized
             let t1 = CastPtrToPtr::<_, *const T>(ps);
             let m1 = PtrMetadata(t1);
 
-            // `(&A, [T])` has `usize` metadata, same as `[T]`, yes optimize.
             // CHECK: [[T:_.+]] = copy _1 as
-            // CHECK-NEXT: PtrMetadata(copy _1)
+            // CHECK-NEXT: copy ([[T]].1: {ptr metadata
             let t2 = CastPtrToPtr::<_, *const (&A, [T])>(ps);
             let m2 = PtrMetadata(t2);
 
-            // Tail `A` and tail `B`, do not optimize.
             // CHECK: [[T:_.+]] = copy _2 as
-            // CHECK-NEXT: PtrMetadata(copy [[T]])
+            // CHECK-NEXT: copy ([[T]].1: {ptr metadata
             let t3 = CastPtrToPtr::<_, *const (T, B)>(pa);
             let m3 = PtrMetadata(t3);
 
-            // Both have tail `A`, yes optimize.
             // CHECK: [[T:_.+]] = copy _2 as
-            // CHECK-NEXT: PtrMetadata(copy _2)
+            // CHECK-NEXT: copy ([[T]].1: {ptr metadata
             let t4 = CastPtrToPtr::<_, *const (T, A)>(pa);
             let m4 = PtrMetadata(t4);
 
-            // Tail `B` and tail `A`, do not optimize.
             // CHECK: [[T:_.+]] = copy _3 as
-            // CHECK-NEXT: PtrMetadata(copy [[T]])
+            // CHECK-NEXT: copy ([[T]].1: {ptr metadata
             let t5 = CastPtrToPtr::<_, *mut A>(pb);
             let m5 = PtrMetadata(t5);
 
-            // Both have tail `B`, yes optimize.
             // CHECK: [[T:_.+]] = copy _3 as
-            // CHECK-NEXT: PtrMetadata(copy _3)
+            // CHECK-NEXT: copy ([[T]].1: {ptr metadata
             let t6 = CastPtrToPtr::<_, *mut B>(pb);
             let m6 = PtrMetadata(t6);
 
@@ -999,7 +998,7 @@ unsafe fn aggregate_struct_then_transmute(id: u16, thin: *const u8) {
 
     // CHECK: opaque::<*const u8>(copy _2)
     let j: *const i32 =
-        std::intrinsics::aggregate_raw_ptr(thin, core::ptr::build_metadata!(ptr_metadata: ()));
+        std::intrinsics::aggregate_raw_ptr(thin, core::ptr::build_metadata!(for i32; ..));
     opaque(std::intrinsics::transmute::<_, *const u8>(j));
 }
 

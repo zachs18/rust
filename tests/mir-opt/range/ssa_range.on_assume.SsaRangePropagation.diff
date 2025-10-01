@@ -12,10 +12,9 @@
       let mut _7: usize;
       let mut _8: &[u8];
       let _9: usize;
-      let mut _10: {ptr metadata for [u8]};
-      let mut _11: bool;
+      let mut _10: bool;
       scope 1 (inlined core::slice::<impl [u8]>::len) {
-          let mut _12: {ptr metadata for [u8]};
+          let mut _11: {ptr metadata for [u8]};
           scope 2 (inlined std::ptr::metadata::<[u8]>) {
           }
       }
@@ -29,10 +28,10 @@
           nop;
           StorageLive(_8);
           _8 = &(*_2);
-          nop;
-          _12 = PtrMetadata(copy _2);
-          _7 = copy (_12.0: usize);
-          nop;
+          StorageLive(_11);
+          _11 = copy (_2.1: {ptr metadata for [u8]});
+          _7 = copy (_11.0: usize);
+          StorageDead(_11);
           StorageDead(_8);
           _5 = Lt(copy _1, copy _7);
           nop;
@@ -44,10 +43,9 @@
           StorageDead(_3);
           StorageLive(_9);
           _9 = copy _1;
-          _10 = copy _12;
--         _11 = copy _5;
+-         _10 = copy _5;
 -         assert(copy _5, "index out of bounds: the length is {} but the index is {}", copy _7, copy _1) -> [success: bb1, unwind unreachable];
-+         _11 = const true;
++         _10 = const true;
 +         assert(const true, "index out of bounds: the length is {} but the index is {}", copy _7, copy _1) -> [success: bb1, unwind unreachable];
       }
   

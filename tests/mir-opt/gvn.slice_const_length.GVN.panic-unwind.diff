@@ -7,7 +7,8 @@
       let _2: *const i32;
       let mut _3: &[i32];
       let mut _5: *const i32;
-      let mut _6: usize;
+      let mut _6: {ptr metadata for [i32]};
+      let mut _7: usize;
       scope 1 {
           debug ptr => _2;
           let _4: usize;
@@ -32,10 +33,14 @@
           StorageLive(_5);
           _5 = copy _2;
           StorageLive(_6);
--         _6 = copy _4;
+          StorageLive(_7);
+-         _7 = copy _4;
+-         _6 = builtin # ptr_metadata([i32]) from (move _7, const ZeroSized: {ptr metadata for i32});
++         _7 = const 123_usize;
++         _6 = const {transmute(0x000000000000007b): {ptr metadata for [i32]}};
+          StorageDead(_7);
 -         _0 = *const [i32] from (move _5, move _6);
-+         _6 = const 123_usize;
-+         _0 = *const [i32] from (copy _2, const 123_usize);
++         _0 = *const [i32] from (copy _2, const {transmute(0x000000000000007b): {ptr metadata for [i32]}});
           StorageDead(_6);
           StorageDead(_5);
 -         StorageDead(_4);

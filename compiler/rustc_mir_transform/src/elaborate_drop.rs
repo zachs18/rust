@@ -1257,7 +1257,7 @@ where
     fn drop_loop_trio_for_slice(&mut self, ety: Ty<'tcx>) -> BasicBlock {
         debug!("drop_loop_trio_for_slice({:?})", ety);
         let tcx = self.tcx();
-        let meta = self.new_temp(Ty::new_ptr_metadata(tcx, Ty::new_slice(tcx, ety)));
+        let meta_ty = Ty::new_ptr_metadata(tcx, Ty::new_slice(tcx, ety));
         let len = self.new_temp(tcx.types.usize);
         let cur = self.new_temp(tcx.types.usize);
 
@@ -1282,17 +1282,12 @@ where
         let block = BasicBlockData::new_stmts(
             vec![
                 self.assign(
-                    meta.into(),
-                    Rvalue::UnaryOp(
-                        UnOp::PtrMetadata,
-                        Operand::Copy(Place::from(self.place.local)),
-                    ),
-                ),
-                self.assign(
                     len.into(),
-                    Rvalue::Use(Operand::Move(Place::from(meta).project_deeper(
-                        // FIXME(ptr_metadata_v2_fields): implement multiple fields
-                        &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
+                    Rvalue::Use(Operand::Copy(Place::from(self.place.local).project_deeper(
+                        &[
+                            PlaceElem::Field(FieldIdx::ONE, meta_ty),
+                            PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize),
+                        ],
                         tcx,
                     ))),
                 ),
@@ -1307,6 +1302,7 @@ where
 
         let drop_block = self.elaborator.patch().new_block(block);
         // FIXME(#34708): handle partially-dropped array/slice elements.
+        // FIXME(more_unsized): make sure this supports slices of unsized elements.
         let reset_block = self.drop_flag_reset_block(DropFlagMode::Deep, drop_block, unwind);
         self.drop_flag_test_block(reset_block, self.succ, unwind)
     }

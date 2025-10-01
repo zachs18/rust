@@ -40,7 +40,8 @@ fn lower_slice_len_call<'tcx>(
     slice_len_fn_item_def_id: DefId,
     local_decls: &mut IndexVec<Local, LocalDecl<'tcx>>,
 ) {
-    let terminator = block.terminator();
+    // inline BasicBlockData::terminator due to borrow splitting
+    let terminator = block.terminator.as_ref().expect("invalid terminator state");
     if let TerminatorKind::Call {
         func,
         args,
@@ -59,33 +60,37 @@ fn lower_slice_len_call<'tcx>(
         // perform modifications from something like:
         //     _5 = core::slice::<impl [u8]>::len(move _6) -> bb1
         // into:
-        //     _tmp = PtrMetadata(move _6)
-        //     _5 = copy (_tmp.0: usize);
+        //     _tmp = copy _6; // if needed
+        //      // .0 is PtrMetadata field of ptr, .0 is len field of PtrMetadata<[u8]>
+        //     _5 = copy (_6.1.0: usize);
         //     goto bb1
 
-        // make new temp local for ptr metadata
-        let metadata_local =
-            local_decls.push(LocalDecl::new(Ty::new_ptr_metadata(tcx, pointee_ty), *fn_span));
+        let ptr_place = match arg.node {
+            Operand::Copy(place) | Operand::Move(place) => place,
+            ref op => {
+                let ptr_local = local_decls.push(LocalDecl::new(op.ty(local_decls, tcx), *fn_span));
+                let copy_ptr_statement =
+                    StatementKind::Assign(Box::new((ptr_local.into(), Rvalue::Use(op.clone()))));
+                block.statements.push(Statement::new(terminator.source_info, copy_ptr_statement));
+                ptr_local.into()
+            }
+        };
 
-        // make new RValue for PtrMetadata
-        let metadata_rvalue = Rvalue::UnaryOp(UnOp::PtrMetadata, arg.node.clone());
-        let metadata_statement_kind =
-            StatementKind::Assign(Box::new((Place::from(metadata_local), metadata_rvalue)));
-        let metadata_statement = Statement::new(terminator.source_info, metadata_statement_kind);
-
+        let meta_ty = Ty::new_ptr_metadata(tcx, pointee_ty);
         // make new RValue for usize length
-        // FIXME(ptr_metadata_v2_fields): implement multiple fields
-        let len_rvalue = Rvalue::Use(Operand::Copy(
-            Place::from(metadata_local)
-                .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx),
-        ));
+        let len_rvalue = Rvalue::Use(Operand::Copy(ptr_place.project_deeper(
+            &[
+                PlaceElem::Field(FieldIdx::ONE, meta_ty),
+                PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize),
+            ],
+            tcx,
+        )));
         let len_statement_kind = StatementKind::Assign(Box::new((*destination, len_rvalue)));
         let len_statement = Statement::new(terminator.source_info, len_statement_kind);
 
         // modify terminator into simple Goto
         let new_terminator_kind = TerminatorKind::Goto { target: *bb };
 
-        block.statements.push(metadata_statement);
         block.statements.push(len_statement);
         block.terminator_mut().kind = new_terminator_kind;
     }

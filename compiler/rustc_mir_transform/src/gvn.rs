@@ -115,7 +115,7 @@ use rustc_middle::bug;
 use rustc_middle::mir::interpret::{AllocRange, GlobalAlloc};
 use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
-use rustc_middle::ty::layout::HasTypingEnv;
+use rustc_middle::ty::layout::{HasTypingEnv, WIDE_PTR_EXTRA};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DUMMY_SP;
 use smallvec::SmallVec;
@@ -766,6 +766,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
     }
 
     /// Represent the *value* we obtain by dereferencing an `Address` value.
+    /// `projection` must not contain any `Deref` projection.
     #[instrument(level = "trace", skip(self), ret)]
     fn dereference_address(
         &mut self,
@@ -789,6 +790,94 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             (place_ty, value) = self.project(place_ty, value, proj)?;
         }
         Some(value)
+    }
+
+    /// Represent the *metadata* we obtain by with an `Address` value.
+    /// `projection` must not contain any `Deref` projection.
+    #[instrument(level = "trace", skip(self), ret)]
+    fn address_metadata(
+        &mut self,
+        base: AddressBase,
+        projection: &[ProjectionElem<VnIndex, Ty<'tcx>>],
+    ) -> Option<VnIndex> {
+        let (mut place_ty, mut meta_ty, mut meta) = match base {
+            // The base is a local, so we take the local's metadata and project from it
+            AddressBase::Local(local) => {
+                let local = self.locals[local]?;
+                let ty = self.ty(local);
+                debug_assert!(ty.is_sized(self.tcx, self.typing_env()), "unsized local?");
+                let meta_ty = Ty::new_ptr_metadata(self.tcx, ty);
+                let local_meta = self.insert_constant(Const::zero_sized(meta_ty));
+                (PlaceTy::from_ty(ty), PlaceTy::from_ty(meta_ty), local_meta)
+            }
+            // The base is a pointer's deref, so we introduce the implicit deref.
+            AddressBase::Deref(reborrow) => {
+                let ptr_ty = self.ty(reborrow);
+                let ty = ptr_ty.builtin_deref(true)?;
+                let meta_ty = Ty::new_ptr_metadata(self.tcx, ty);
+                let ptr_place_ty = PlaceTy::from_ty(ptr_ty);
+                let (meta_ty, meta) = self.project(
+                    ptr_place_ty,
+                    reborrow,
+                    ProjectionElem::Field(FieldIdx::ONE, meta_ty),
+                )?;
+                (PlaceTy::from_ty(ty), meta_ty, meta)
+            }
+        };
+        for &proj in projection {
+            (place_ty, meta_ty, meta) = match proj {
+                ProjectionElem::Downcast(_, variant) => {
+                    // Downcasting the pointee place does not change the metadata.
+                    place_ty.variant_index = Some(variant);
+                    continue;
+                }
+                ProjectionElem::Field(f, _) => {
+                    let new_place_ty = place_ty.projection_ty(self.tcx, proj);
+                    let new_meta_ty = Ty::new_ptr_metadata(self.tcx, new_place_ty.ty);
+                    if new_place_ty.ty.is_thin(self.tcx, self.typing_env()) {
+                        // If the field type is thin, then we just conjure the trivial thin metadata.
+                        (
+                            new_place_ty,
+                            PlaceTy::from_ty(new_meta_ty),
+                            self.insert_constant(Const::zero_sized(new_meta_ty)),
+                        )
+                    } else {
+                        // The only types that can have unsized fields are structs, unions, and tuples,
+                        // for which fields correspond one-to-one with metadata fields.
+                        let (new_meta_ty, new_meta) =
+                            self.project(meta_ty, meta, ProjectionElem::Field(f, new_meta_ty))?;
+                        (new_place_ty, new_meta_ty, new_meta)
+                    }
+                }
+                ProjectionElem::Index(_) => {
+                    match place_ty.ty.kind() {
+                        &ty::Slice(elem_ty) => {
+                            let elem_meta_ty = Ty::new_ptr_metadata(self.tcx, elem_ty);
+                            // for slice metadata: len is field 0, elem is field 1
+                            let (elem_meta_ty, meta) = self.project(
+                                meta_ty,
+                                meta,
+                                ProjectionElem::Field(FieldIdx::ONE, elem_meta_ty),
+                            )?;
+                            (PlaceTy::from_ty(elem_ty), elem_meta_ty, meta)
+                        }
+                        &ty::Array(elem_ty, _) => {
+                            let elem_meta_ty = Ty::new_ptr_metadata(self.tcx, elem_ty);
+                            // for array metadata: elem is field 1
+                            let (elem_meta_ty, meta) = self.project(
+                                meta_ty,
+                                meta,
+                                ProjectionElem::Field(FieldIdx::ZERO, elem_meta_ty),
+                            )?;
+                            (PlaceTy::from_ty(elem_ty), elem_meta_ty, meta)
+                        }
+                        _ => return None,
+                    }
+                }
+                _ => return None,
+            };
+        }
+        Some(meta)
     }
 
     #[instrument(level = "trace", skip(self), ret)]
@@ -856,6 +945,90 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 {
                     return Some((projection_ty, fields[f.as_usize()]));
                 }
+                Value::RawPtr { metadata, .. } if f.as_usize() == WIDE_PTR_EXTRA => {
+                    return Some((projection_ty, metadata));
+                }
+
+                Value::Address { base, projection, .. }
+                    if f.as_usize() == WIDE_PTR_EXTRA
+                        && let Some(metadata) = self.address_metadata(base, projection) =>
+                {
+                    return Some((projection_ty, metadata));
+                }
+
+                // Pointer cast between two slices of thin elements, propagate the length.
+                // FIXME(ptr_metadata_v2): maybe do something like this even for slices of non-thin elements.
+                Value::Cast { kind: CastKind::PtrToPtr, value: from_value }
+                    if f.as_usize() == WIDE_PTR_EXTRA
+                        && let Some(from) = self.ty(from_value).builtin_deref(true)
+                        && let ty::Slice(from_elem) = from.kind()
+                        && let Some(to) = self.ty(value).builtin_deref(true)
+                        && let ty::Slice(to_elem) = to.kind()
+                        && from_elem.is_thin(self.tcx, self.typing_env())
+                        && to_elem.is_thin(self.tcx, self.typing_env()) =>
+                {
+                    let from_meta_ty = Ty::new_ptr_metadata(self.tcx, from);
+                    let to_meta_ty = Ty::new_ptr_metadata(self.tcx, to);
+                    let to_elem_meta_ty = Ty::new_ptr_metadata(self.tcx, *to_elem);
+
+                    let (_, from_meta) = self.project(
+                        PlaceTy::from_ty(from),
+                        from_value,
+                        ProjectionElem::Field(FieldIdx::ONE, from_meta_ty),
+                    )?;
+                    let (_, len) = self.project(
+                        PlaceTy::from_ty(from_meta_ty),
+                        from_meta,
+                        ProjectionElem::Field(FieldIdx::ZERO, self.tcx.types.usize),
+                    )?;
+
+                    let const_to_elem_meta =
+                        self.insert_constant(Const::zero_sized(to_elem_meta_ty));
+                    let to_meta = Value::Aggregate(
+                        FIRST_VARIANT,
+                        self.arena.alloc_slice(&[len, const_to_elem_meta]),
+                    );
+
+                    return Some((projection_ty, self.insert(to_meta_ty, to_meta)));
+                }
+
+                // We have an unsizing cast, which creates wide pointer metadata with the length.
+                Value::Cast {
+                    kind: CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize, _),
+                    value: from_value,
+                } if f.as_usize() == WIDE_PTR_EXTRA
+                    && let from_ptr_ty = self.ty(from_value)
+                    && let Some(from) = from_ptr_ty.builtin_deref(true)
+                    && let ty::Array(from_elem, len) = from.kind()
+                    && let to_ptr_ty = self.ty(value)
+                    && let Some(to) = to_ptr_ty.builtin_deref(true)
+                    && let ty::Slice(to_elem) = to.kind()
+                    && from_elem == to_elem =>
+                {
+                    let array_meta_ty = Ty::new_ptr_metadata(self.tcx, from);
+                    let slice_meta_ty = Ty::new_ptr_metadata(self.tcx, to);
+                    let elem_meta_ty = Ty::new_ptr_metadata(self.tcx, *to_elem);
+
+                    let const_len = self.insert_constant(Const::Ty(self.tcx.types.usize, *len));
+                    let (_, from_meta) = self.project(
+                        PlaceTy::from_ty(from),
+                        from_value,
+                        ProjectionElem::Field(FieldIdx::ONE, array_meta_ty),
+                    )?;
+                    let (_, elem_meta) = self.project(
+                        PlaceTy::from_ty(array_meta_ty),
+                        from_meta,
+                        ProjectionElem::Field(FieldIdx::ZERO, elem_meta_ty),
+                    )?;
+
+                    let slice_meta = Value::Aggregate(
+                        FIRST_VARIANT,
+                        self.arena.alloc_slice(&[const_len, elem_meta]),
+                    );
+
+                    return Some((projection_ty, self.insert(slice_meta_ty, slice_meta)));
+                }
+
                 _ => ProjectionElem::Field(f, ()),
             },
             ProjectionElem::Index(idx) => {
@@ -1187,7 +1360,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
         }));
 
         let variant_index = match *kind {
-            AggregateKind::Array(..) | AggregateKind::Tuple => {
+            AggregateKind::Array(..) | AggregateKind::Tuple | AggregateKind::PtrMetadata(..) => {
                 assert!(!field_ops.is_empty());
                 FIRST_VARIANT
             }
@@ -1200,7 +1373,6 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 let field = *fields.first()?;
                 return Some(self.insert(ty, Value::Union(active_field, field)));
             }
-            AggregateKind::PtrMetadata(..) => FIRST_VARIANT,
             AggregateKind::RawPtr(..) => {
                 assert_eq!(field_ops.len(), 2);
                 let [mut pointer, metadata] = fields.try_into().unwrap();
@@ -1255,69 +1427,9 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
         arg_op: &mut Operand<'tcx>,
         location: Location,
     ) -> Option<VnIndex> {
-        let mut arg_index = self.simplify_operand(arg_op, location)?;
+        let arg_index = self.simplify_operand(arg_op, location)?;
         let arg_ty = self.ty(arg_index);
         let ret_ty = op.ty(self.tcx, arg_ty);
-
-        // PtrMetadata doesn't care about *const vs *mut vs & vs &mut,
-        // so start by removing those distinctions so we can update the `Operand`
-        if op == UnOp::PtrMetadata {
-            let mut was_updated = false;
-            loop {
-                arg_index = match self.get(arg_index) {
-                    // FIXME(ptr_metadata_v2): re-enable this in some form? disabled because
-                    // pointees have different pointer metadata types now.
-                    // Pointer casts that preserve metadata, such as
-                    // `*const [i32]` <-> `*mut [i32]` <-> `*mut [f32]`.
-                    // It's critical that this not eliminate cases like
-                    // `*const [T]` -> `*const T` which remove metadata.
-                    // We run on potentially-generic MIR, though, so unlike codegen
-                    // we can't always know exactly what the metadata are.
-                    // To allow things like `*mut (?A, ?T)` <-> `*mut (?B, ?T)`,
-                    // it's fine to get a projection as the type.
-                    Value::Cast { kind: CastKind::PtrToPtr, value: inner }
-                        if false && self.pointers_have_same_metadata(self.ty(inner), arg_ty) =>
-                    {
-                        inner
-                    }
-
-                    // FIXME(ptr_metadata_fields): change how this works once ptr metadata fields
-                    // are implemented.
-                    // We have an unsizing cast, which creates wide pointer metadata with the length.
-                    Value::Cast {
-                        kind: CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize, _),
-                        value: from,
-                    } if let Some(from) = self.ty(from).builtin_deref(true)
-                        && let ty::Array(_, len) = from.kind()
-                        && let Some(to) = self.ty(arg_index).builtin_deref(true)
-                        && let ty::Slice(..) = to.kind() =>
-                    {
-                        let slice_meta_ty = Ty::new_ptr_metadata(self.tcx, to);
-
-                        let const_len = self.insert_constant(Const::Ty(self.tcx.types.usize, *len));
-
-                        let slice_meta =
-                            Value::Aggregate(FIRST_VARIANT, self.arena.alloc_slice(&[const_len]));
-
-                        return Some(self.insert(slice_meta_ty, slice_meta));
-                    }
-
-                    // `&mut *p`, `&raw *p`, etc don't change metadata.
-                    Value::Address { base: AddressBase::Deref(reborrowed), projection, .. }
-                        if projection.is_empty() =>
-                    {
-                        reborrowed
-                    }
-
-                    _ => break,
-                };
-                was_updated = true;
-            }
-
-            if was_updated && let Some(op) = self.try_as_operand(arg_index, location) {
-                *arg_op = op;
-            }
-        }
 
         let value = match (op, self.get(arg_index)) {
             (UnOp::Not, Value::UnaryOp(UnOp::Not, inner)) => return Some(inner),
@@ -1327,29 +1439,6 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             }
             (UnOp::Not, Value::BinaryOp(BinOp::Ne, lhs, rhs)) => {
                 Value::BinaryOp(BinOp::Eq, lhs, rhs)
-            }
-            (UnOp::PtrMetadata, Value::RawPtr { metadata, .. }) => return Some(metadata),
-            // FIXME(ptr_metadata_fields): change how this works once ptr metadata fields
-            // are implemented.
-            // We have an unsizing cast, which creates wide pointer metadata with the length.
-            (
-                UnOp::PtrMetadata,
-                Value::Cast {
-                    kind: CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize, _),
-                    value: inner,
-                },
-            ) if let to = arg_ty.builtin_deref(true).unwrap()
-                && let ty::Slice(..) = to.kind()
-                && let ty::Array(_, len) = self.ty(inner).builtin_deref(true).unwrap().kind() =>
-            {
-                let slice_meta_ty = Ty::new_ptr_metadata(self.tcx, to);
-
-                let const_len = self.insert_constant(Const::Ty(self.tcx.types.usize, *len));
-
-                let slice_meta =
-                    Value::Aggregate(FIRST_VARIANT, self.arena.alloc_slice(&[const_len]));
-
-                return Some(self.insert(slice_meta_ty, slice_meta));
             }
             _ => Value::UnaryOp(op, arg_index),
         };

@@ -5,14 +5,16 @@
 #![feature(core_intrinsics, custom_mir, ptr_metadata)]
 use std::intrinsics::mir::*;
 
-// This disables validation and uses custom MIR hit exactly the UB in the intrinsic,
+// This disables validation and uses custom MIR hit exactly what used to be the UB in the intrinsic,
 // rather than getting UB from the typed load or parameter passing.
+// Since `PtrMetadata` is now a "normal" field access, it's not UB if fields other than the one
+// loaded are uninit.
 
 #[custom_mir(dialect = "runtime")]
 pub unsafe fn deref_meta(p: *const *const [i32]) -> std::ptr::Metadata<[i32]> {
     mir! {
         {
-            RET = PtrMetadata(*p); //~ ERROR: /Undefined Behavior: .* but memory is uninitialized/
+            RET = PtrMetadata(*p);
             Return()
         }
     }

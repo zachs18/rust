@@ -8,9 +8,8 @@
       let _3: &[i32; 3];
       let _4: [i32; 3];
       let _6: usize;
-      let mut _7: {ptr metadata for [i32]};
-      let mut _8: bool;
-      let mut _9: &[i32; 3];
+      let mut _7: bool;
+      let mut _8: &[i32; 3];
       scope 1 {
           debug a => _1;
           let _5: i32;
@@ -23,8 +22,8 @@
           StorageLive(_1);
           StorageLive(_2);
           StorageLive(_3);
-          _9 = const main::promoted[0];
-          _3 = &(*_9);
+          _8 = const main::promoted[0];
+          _3 = &(*_8);
           _2 = &raw const (*_3);
           _1 = move _2 as *const [i32] (PointerCoercion(Unsize, Implicit));
           StorageDead(_2);
@@ -32,11 +31,9 @@
           StorageLive(_5);
           StorageLive(_6);
           _6 = const 3_usize;
--         _7 = PtrMetadata(copy _1);
--         _8 = Lt(copy _6, copy (_7.0: usize));
--         assert(move _8, "index out of bounds: the length is {} but the index is {}", move (_7.0: usize), copy _6) -> [success: bb1, unwind unreachable];
-+         _7 = const {transmute(0x0000000000000003): {ptr metadata for [i32]}};
-+         _8 = const false;
+-         _7 = Lt(copy _6, copy ((_1.1: {ptr metadata for [i32]}).0: usize));
+-         assert(move _7, "index out of bounds: the length is {} but the index is {}", copy ((_1.1: {ptr metadata for [i32]}).0: usize), copy _6) -> [success: bb1, unwind unreachable];
++         _7 = const false;
 +         assert(const false, "index out of bounds: the length is {} but the index is {}", const 3_usize, const 3_usize) -> [success: bb1, unwind unreachable];
       }
   

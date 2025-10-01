@@ -9,6 +9,7 @@
       let mut _5: *const [u8; 4];
       let mut _7: *const u8;
       let mut _8: *const ();
+      let mut _9: {ptr metadata for [u8]};
       scope 1 {
           debug x => _2;
           let _4: *const u8;
@@ -45,8 +46,12 @@
           StorageDead(_7);
           StorageLive(_8);
           _8 = copy _6;
--         _0 = *const [u8] from (move _8, const 4_usize);
-+         _0 = *const [u8] from (copy _1, const 4_usize);
+          StorageLive(_9);
+-         _9 = builtin # ptr_metadata([u8]) from (const 4_usize, const ZeroSized: {ptr metadata for u8});
+-         _0 = *const [u8] from (move _8, move _9);
++         _9 = const {transmute(0x0000000000000004): {ptr metadata for [u8]}};
++         _0 = *const [u8] from (copy _1, const {transmute(0x0000000000000004): {ptr metadata for [u8]}});
+          StorageDead(_9);
           StorageDead(_8);
 -         StorageDead(_6);
 -         StorageDead(_4);

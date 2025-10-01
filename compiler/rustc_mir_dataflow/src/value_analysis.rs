@@ -625,7 +625,6 @@ impl<'tcx> Map<'tcx> {
             let ty = match tail {
                 TrackElem::Discriminant => ty.ty.discriminant_ty(tcx),
                 TrackElem::Variant(..) | TrackElem::Field(..) => todo!(),
-                TrackElem::DerefLen => tcx.types.usize,
             };
             place_index = self.register_place_index(ty, place_index, tail);
         }
@@ -643,10 +642,21 @@ impl<'tcx> Map<'tcx> {
         let place = self.register_place(tcx, body, place, None)?;
         let ty = self.places[place].ty;
 
-        if let ty::Ref(_, ref_ty, _) | ty::RawPtr(ref_ty, _) = ty.kind()
-            && let ty::Slice(..) = ref_ty.kind()
-        {
-            self.register_place_index(tcx.types.usize, place, TrackElem::DerefLen);
+        if let ty::Ref(_, ref_ty, _) | ty::RawPtr(ref_ty, _) = ty.kind() {
+            // Pointer metadata
+            let metadata = self.register_place_index(
+                Ty::new_ptr_metadata(tcx, *ref_ty),
+                place,
+                TrackElem::Field(FieldIdx::ONE),
+            );
+            // If it's a pointer to a slice, track the length
+            if let ty::Slice(..) = ref_ty.kind() {
+                self.register_place_index(
+                    tcx.types.usize,
+                    metadata,
+                    TrackElem::Field(FieldIdx::ZERO),
+                );
+            }
         } else if ty.is_enum() {
             let discriminant_ty = ty.discriminant_ty(tcx);
             self.register_place_index(discriminant_ty, place, TrackElem::Discriminant);
@@ -787,9 +797,11 @@ impl<'tcx> Map<'tcx> {
         self.find_extra(place, [TrackElem::Discriminant])
     }
 
-    /// Locates the given place and applies `DerefLen`, if it exists in the tree.
+    /// Locates the given place (which must be a pointer or reference to a slice) and gets the pointer metadata's length field,
+    /// if it exists in the tree.
     pub fn find_len(&self, place: PlaceRef<'_>) -> Option<PlaceIndex> {
-        self.find_extra(place, [TrackElem::DerefLen])
+        // metadata is field 1 of ptrs; length is field 0 of slice's metadata
+        self.find_extra(place, [TrackElem::Field(FieldIdx::ONE), TrackElem::Field(FieldIdx::ZERO)])
     }
 
     /// Locates the value corresponding to the given place.
@@ -1030,8 +1042,6 @@ pub enum TrackElem {
     Field(FieldIdx),
     Variant(VariantIdx),
     Discriminant,
-    // Length of a slice.
-    DerefLen,
 }
 
 impl<V, T> TryFrom<ProjectionElem<V, T>> for TrackElem {
@@ -1143,9 +1153,6 @@ fn debug_with_context_rec<V: Debug + Eq + HasBottom>(
                 } else {
                     format!("{}.{}", place_str, field.index())
                 }
-            }
-            TrackElem::DerefLen => {
-                format!("Len(*{})", place_str)
             }
         };
         debug_with_context_rec(child, &child_place_str, new, old, map, f)?;
