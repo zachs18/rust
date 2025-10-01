@@ -965,11 +965,6 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 for elem in place_ref.projection {
                     match *elem {
                         mir::ProjectionElem::Field(f, _) => {
-                            assert!(
-                                !o.layout.ty.is_any_ptr(),
-                                "Bad PlaceRef: destructing pointers should use cast/PtrMetadata, \
-                                 but tried to access field {f:?} of pointer {o:?}",
-                            );
                             o = o.extract_field(self, bx, f.index());
                         }
                         mir::PlaceElem::Downcast(_, vidx) => {

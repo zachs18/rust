@@ -1,7 +1,8 @@
 //! Lowers intrinsic calls
 
+use rustc_abi::FieldIdx;
 use rustc_middle::mir::*;
-use rustc_middle::ty::{self, TyCtxt};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_span::sym;
 
@@ -11,7 +12,7 @@ pub(super) struct LowerIntrinsics;
 
 impl<'tcx> crate::MirPass<'tcx> for LowerIntrinsics {
     fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
-        let local_decls = &body.local_decls;
+        let local_decls = &mut body.local_decls;
         for block in body.basic_blocks.as_mut() {
             let terminator = block.terminator.as_mut().unwrap();
             if let TerminatorKind::Call { func, args, destination, target, .. } =
@@ -319,12 +320,43 @@ impl<'tcx> crate::MirPass<'tcx> for LowerIntrinsics {
                                 "Wrong number of arguments for ptr_metadata intrinsic",
                             );
                         };
+                        let Some(pointee_ty) = ptr.node.ty(local_decls, tcx).builtin_deref(true)
+                        else {
+                            span_bug!(
+                                terminator.source_info.span,
+                                "Incorrect argument type for ptr_metadata intrinsic",
+                            );
+                        };
+
+                        let ptr_place = match ptr.node {
+                            Operand::Copy(place) | Operand::Move(place) => place,
+                            op => {
+                                let ptr_local = local_decls.push(LocalDecl::new(
+                                    op.ty(local_decls, tcx),
+                                    terminator.source_info.span,
+                                ));
+                                let copy_ptr_statement = StatementKind::Assign(Box::new((
+                                    ptr_local.into(),
+                                    Rvalue::Use(op),
+                                )));
+                                block.statements.push(Statement::new(
+                                    terminator.source_info,
+                                    copy_ptr_statement,
+                                ));
+                                ptr_local.into()
+                            }
+                        };
+                        let meta_ty = Ty::new_ptr_metadata(tcx, pointee_ty);
+
                         let target = target.unwrap();
                         block.statements.push(Statement::new(
                             terminator.source_info,
                             StatementKind::Assign(Box::new((
                                 *destination,
-                                Rvalue::UnaryOp(UnOp::PtrMetadata, ptr.node),
+                                Rvalue::Use(Operand::Copy(ptr_place.project_deeper(
+                                    &[PlaceElem::Field(FieldIdx::ONE, meta_ty)],
+                                    tcx,
+                                ))),
                             ))),
                         ));
                         terminator.kind = TerminatorKind::Goto { target };

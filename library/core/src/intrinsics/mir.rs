@@ -405,6 +405,12 @@ define!("mir_assume", fn Assume(operand: bool));
 define!("mir_checked", fn Checked<T>(binop: T) -> (T, bool));
 define!(
     "mir_ptr_metadata",
+    /// Get the metadata of a pointer.
+    ///
+    /// This is equivalent to `core::intrinsics::metadata`. It does not correspond to a MIR
+    /// operation directly, but is a field copy from the pointer which cannot be represented
+    /// in the surface language, so this function is provided to directly expand to the
+    /// field copy.
     fn PtrMetadata<P: ?Sized>(place: *const P) -> core::ptr::Metadata<P>
 );
 define!("mir_retag", fn Retag<T>(place: T));

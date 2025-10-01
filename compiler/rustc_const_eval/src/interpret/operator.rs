@@ -8,7 +8,7 @@ use rustc_middle::{bug, mir, span_bug};
 use rustc_span::sym;
 use tracing::trace;
 
-use super::{ImmTy, InterpCx, Machine, MemPlaceMeta, interp_ok, throw_ub};
+use super::{ImmTy, InterpCx, Machine, interp_ok, throw_ub};
 
 impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     fn three_way_compare<T: Ord>(&self, lhs: T, rhs: T) -> ImmTy<'tcx, M::Provenance> {
@@ -470,7 +470,6 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let res = match un_op {
                     Not => !val,
                     Neg => val.wrapping_neg(),
-                    _ => span_bug!(self.cur_span(), "Invalid integer op {:?}", un_op),
                 };
                 let res = ScalarInt::truncate_from_int(res, layout.size).0;
                 interp_ok(ImmTy::from_scalar(res.into(), layout))
@@ -483,16 +482,6 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 };
                 let res = ScalarInt::truncate_from_uint(res, layout.size).0;
                 interp_ok(ImmTy::from_scalar(res.into(), layout))
-            }
-            ty::RawPtr(..) | ty::Ref(..) => {
-                assert_eq!(un_op, PtrMetadata);
-                let (_, meta) = val.to_scalar_and_meta();
-                let ty = un_op.ty(*self.tcx, val.layout.ty);
-                let layout = self.layout_of(ty)?;
-                interp_ok(match meta {
-                    MemPlaceMeta::Meta(scalar) => ImmTy::from_scalar(scalar, layout),
-                    MemPlaceMeta::None => ImmTy::uninit(layout),
-                })
             }
             _ => {
                 bug!("Unexpected unary op argument {val:?}")

@@ -9,7 +9,6 @@
       let _4: &[u8; N];
       let mut _6: &[u8];
       let _7: &[u8];
-      let mut _8: {ptr metadata for [u8]};
       scope 1 {
           debug arr => _2;
           let _5: *const [u8];
@@ -33,8 +32,7 @@
           StorageLive(_7);
           _7 = &(*_5);
           _6 = &(*_7);
-          _8 = PtrMetadata(move _6);
--         _0 = copy (_8.0: usize);
+-         _0 = copy ((_6.1: {ptr metadata for [u8]}).0: usize);
 +         _0 = const N;
           goto -> bb1;
       }

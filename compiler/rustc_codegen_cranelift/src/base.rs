@@ -678,13 +678,6 @@ fn codegen_stmt<'tcx>(fx: &mut FunctionCx<'_, '_, 'tcx>, cur_block: Block, stmt:
                                 _ => unreachable!("un op Neg for {:?}", layout.ty),
                             }
                         }
-                        UnOp::PtrMetadata => match layout.backend_repr {
-                            BackendRepr::Scalar(_) => CValue::zst(dest_layout),
-                            BackendRepr::ScalarPair(_, _) => {
-                                CValue::by_val(operand.load_scalar_pair(fx).1, dest_layout)
-                            }
-                            _ => bug!("Unexpected `PtrToMetadata` operand: {operand:?}"),
-                        },
                     };
                     lval.write_cvalue(fx, res);
                 }
