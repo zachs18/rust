@@ -36,6 +36,7 @@ where
 {
     pub fn new() -> Self {
         //~^ ERROR the trait bound `<T1 as Trait1>::Associated: Clone` is not satisfied
+        //~| ERROR the trait bound `<T1 as Trait1>::Associated: Clone` is not satisfied
         todo!()
     }
 }
