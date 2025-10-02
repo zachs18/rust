@@ -10,8 +10,6 @@ pub struct Warns<T> {
 pub fn test<T>(w: Warns<T>) {
     //~^ ERROR expected a `FnMut()` closure, found `T`
     _ = || w.field
-    //~^ ERROR expected a `FnMut()` closure, found `T`
-    //~| ERROR expected a `FnMut()` closure, found `T`
-    //~| WARN: changes to closure capture in Rust 2021 will affect drop order
+    //~^ WARN: changes to closure capture in Rust 2021 will affect drop order
 }
 fn main() {}
