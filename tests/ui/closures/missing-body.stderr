@@ -1,19 +1,21 @@
-error[E0121]: the placeholder `_` is not allowed within types on item signatures for closures
-  --> $DIR/missing-body.rs:5:23
-   |
-LL | fn main() { |b: [str; _]| {}; }
-   |                       ^ not allowed in type signatures
-
 error[E0277]: the size for values of type `str` cannot be known at compilation time
-  --> $DIR/missing-body.rs:5:17
+  --> $DIR/missing-body.rs:6:9
    |
-LL | fn main() { |b: [str; _]| {}; }
-   |                 ^^^^^^^^ doesn't have a size known at compile-time
+LL |     |b: [str; _]| {};
+   |         ^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `str`
    = note: slice and array elements must have `Sized` type
 
+error[E0284]: type annotations needed
+  --> $DIR/missing-body.rs:10:6
+   |
+LL |     |b: [u8; _]| {};
+   |      ^^^^^^^^^^ cannot infer the value of the constant `_`
+   |
+   = note: the length of array `[u8; _]` must be type `usize`
+
 error: aborting due to 2 previous errors
 
-Some errors have detailed explanations: E0121, E0277.
-For more information about an error, try `rustc --explain E0121`.
+Some errors have detailed explanations: E0277, E0284.
+For more information about an error, try `rustc --explain E0277`.

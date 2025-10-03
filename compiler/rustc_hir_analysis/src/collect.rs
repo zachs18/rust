@@ -342,8 +342,19 @@ impl<'tcx> HirTyLowerer<'tcx> for ItemCtxt<'tcx> {
     }
 
     fn ct_infer(&self, _: Option<&ty::GenericParamDef>, span: Span) -> Const<'tcx> {
-        self.report_placeholder_type_error(vec![span], vec![]);
-        ty::Const::new_error_with_message(self.tcx(), span, "bad placeholder constant")
+        if self.tcx.is_closure_like(self.item_def_id.to_def_id()) {
+            // Closures can have `_` consts in their signature.
+            // Closures are only used with ItemCtxt during diagnostic_hir_wf_check,
+            // which only happens during error diagnostics
+            ty::Const::new_error_with_message(
+                self.tcx(),
+                span,
+                "placeholder constant in closure during diagnostic_hir_wf_check",
+            )
+        } else {
+            self.report_placeholder_type_error(vec![span], vec![]);
+            ty::Const::new_error_with_message(self.tcx(), span, "bad placeholder constant")
+        }
     }
 
     fn register_trait_ascription_bounds(

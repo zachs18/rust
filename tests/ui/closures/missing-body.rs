@@ -2,6 +2,16 @@
 // crash.
 // This is a regression test for <https://github.com/rust-lang/rust/issues/143128>.
 
-fn main() { |b: [str; _]| {}; }
-//~^ ERROR the placeholder `_` is not allowed within types on item signatures for closures
-//~| ERROR the size for values of type `str` cannot be known at compilation time
+fn foo() {
+    |b: [str; _]| {};
+    //~^ ERROR the size for values of type `str` cannot be known at compilation time
+}
+fn bar() {
+    |b: [u8; _]| {};
+    //~^ ERROR type annotations needed
+}
+fn works() {
+    let _: fn([_; 42]) = |b: [u8; _]| {};
+}
+
+fn main() {}
