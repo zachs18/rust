@@ -1,6 +1,6 @@
 use crate::any::type_name;
 use crate::clone::TrivialClone;
-use crate::marker::Destruct;
+use crate::marker::{Destruct, MetaSized};
 use crate::mem::ManuallyDrop;
 use crate::{fmt, intrinsics, ptr, slice};
 
@@ -352,7 +352,7 @@ use crate::{fmt, intrinsics, ptr, slice};
 #[derive(Copy)]
 #[repr(transparent)]
 #[rustc_pub_transparent]
-pub union MaybeUninit<T> {
+pub union MaybeUninit<T: MetaSized> {
     uninit: (),
     value: ManuallyDrop<T>,
 }
@@ -372,7 +372,7 @@ impl<T: Copy> Clone for MaybeUninit<T> {
 unsafe impl<T> TrivialClone for MaybeUninit<T> where MaybeUninit<T>: Clone {}
 
 #[stable(feature = "maybe_uninit_debug", since = "1.41.0")]
-impl<T> fmt::Debug for MaybeUninit<T> {
+impl<T: MetaSized> fmt::Debug for MaybeUninit<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // NB: there is no `.pad_fmt` so we can't use a simpler `format_args!("MaybeUninit<{..}>").
         let full_name = type_name::<Self>();
@@ -575,7 +575,9 @@ impl<T> MaybeUninit<T> {
         // SAFETY: We just initialized this value.
         unsafe { self.assume_init_mut() }
     }
+}
 
+impl<T: MetaSized> MaybeUninit<T> {
     /// Gets a pointer to the contained value. Reading from this pointer or turning it
     /// into a reference is undefined behavior unless the `MaybeUninit<T>` is initialized.
     /// Writing to memory that this pointer (non-transitively) points to is undefined behavior
@@ -718,7 +720,10 @@ impl<T> MaybeUninit<T> {
     #[inline(always)]
     #[rustc_diagnostic_item = "assume_init"]
     #[track_caller]
-    pub const unsafe fn assume_init(self) -> T {
+    pub const unsafe fn assume_init(self) -> T
+    where
+        T: Sized,
+    {
         // SAFETY: the caller must guarantee that `self` is initialized.
         // This also means that `self` must be a `value` variant.
         unsafe {
@@ -790,7 +795,10 @@ impl<T> MaybeUninit<T> {
     #[rustc_const_stable(feature = "const_maybe_uninit_assume_init_read", since = "1.75.0")]
     #[inline(always)]
     #[track_caller]
-    pub const unsafe fn assume_init_read(&self) -> T {
+    pub const unsafe fn assume_init_read(&self) -> T
+    where
+        T: Sized,
+    {
         // SAFETY: the caller must guarantee that `self` is initialized.
         // Reading from `self.as_ptr()` is safe since `self` should be initialized.
         unsafe {
@@ -1044,7 +1052,10 @@ impl<T> MaybeUninit<T> {
     #[unstable(feature = "maybe_uninit_array_assume_init", issue = "96097")]
     #[inline(always)]
     #[track_caller]
-    pub const unsafe fn array_assume_init<const N: usize>(array: [Self; N]) -> [T; N] {
+    pub const unsafe fn array_assume_init<const N: usize>(array: [Self; N]) -> [T; N]
+    where
+        T: Sized,
+    {
         // SAFETY:
         // * The caller guarantees that all elements of the array are initialized
         // * `MaybeUninit<T>` and T are guaranteed to have the same layout
@@ -1075,10 +1086,9 @@ impl<T> MaybeUninit<T> {
     /// ```
     #[unstable(feature = "maybe_uninit_as_bytes", issue = "93092")]
     pub const fn as_bytes(&self) -> &[MaybeUninit<u8>] {
+        let len = super::size_of_val(self);
         // SAFETY: MaybeUninit<u8> is always valid, even for padding bytes
-        unsafe {
-            slice::from_raw_parts(self.as_ptr().cast::<MaybeUninit<u8>>(), super::size_of::<T>())
-        }
+        unsafe { slice::from_raw_parts(self.as_ptr().cast::<MaybeUninit<u8>>(), len) }
     }
 
     /// Returns the contents of this `MaybeUninit` as a mutable slice of potentially uninitialized
@@ -1106,17 +1116,57 @@ impl<T> MaybeUninit<T> {
     /// ```
     #[unstable(feature = "maybe_uninit_as_bytes", issue = "93092")]
     pub const fn as_bytes_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        let len = super::size_of_val(self);
         // SAFETY: MaybeUninit<u8> is always valid, even for padding bytes
-        unsafe {
-            slice::from_raw_parts_mut(
-                self.as_mut_ptr().cast::<MaybeUninit<u8>>(),
-                super::size_of::<T>(),
-            )
-        }
+        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr().cast::<MaybeUninit<u8>>(), len) }
+    }
+}
+
+impl<T> MaybeUninit<[T]> {
+    /// Transposes a `&MaybeUninit<[T]>` into a `&[MaybeUninit<T>]`.
+    #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
+    pub const fn transpose_ref(&self) -> &[MaybeUninit<T>] {
+        let this = self as *const Self as *const [MaybeUninit<T>];
+        // SAFETY: `MaybeUninit<[T]>` has the same layout as `[MaybeUninit<T>]`,
+        // and this pointer came from a shared reference.
+        unsafe { &*this }
+    }
+
+    /// Transposes a `&mut MaybeUninit<[T]>` into a `&mut [MaybeUninit<T>]`.
+    #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
+    pub const fn transpose_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        let this = self as *mut Self as *mut [MaybeUninit<T>];
+        // SAFETY: `MaybeUninit<[T]>` has the same layout as `[MaybeUninit<T>]`,
+        // and this pointer came from a mutable reference.
+        unsafe { &mut *this }
+    }
+
+    /// Returns the number of elements in the slice.
+    #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
+    pub const fn len(&self) -> usize {
+        self.as_ptr().len()
     }
 }
 
 impl<T> [MaybeUninit<T>] {
+    /// Transposes a `&[MaybeUninit<T>]` into a `&MaybeUninit<[T]>`.
+    #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
+    pub const fn transpose_ref(&self) -> &MaybeUninit<[T]> {
+        let this = self as *const Self as *const MaybeUninit<[T]>;
+        // SAFETY: `[MaybeUninit<T>]` has the same layout as `MaybeUninit<[T]>`,
+        // and this pointer came from a shared reference.
+        unsafe { &*this }
+    }
+
+    /// Transposes a `&mut [MaybeUninit<T>]` into a `&mut MaybeUninit<[T]>`.
+    #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
+    pub const fn transpose_mut(&mut self) -> &mut MaybeUninit<[T]> {
+        let this = self as *mut Self as *mut MaybeUninit<[T]>;
+        // SAFETY: `[MaybeUninit<T>]` has the same layout as `MaybeUninit<[T]>`,
+        // and this pointer came from a mutable reference.
+        unsafe { &mut *this }
+    }
+
     /// Copies the elements from `src` to `self`,
     /// returning a mutable reference to the now initialized contents of `self`.
     ///
@@ -1548,6 +1598,22 @@ impl<T, const N: usize> MaybeUninit<[T; N]> {
         // SAFETY: T and MaybeUninit<T> have the same layout
         unsafe { intrinsics::transmute_unchecked(self) }
     }
+
+    /// Transposes a `&MaybeUninit<[T; N]>` into a `&[MaybeUninit<T>; N]`.
+    #[unstable(feature = "maybe_uninit_uninit_array_transpose", issue = "96097")]
+    #[inline]
+    pub const fn transpose_ref(&self) -> &[MaybeUninit<T>; N] {
+        // SAFETY: T and MaybeUninit<T> have the same layout
+        unsafe { intrinsics::transmute_unchecked(self) }
+    }
+
+    /// Transposes a `&mut MaybeUninit<[T; N]>` into a `&mut [MaybeUninit<T>; N]`.
+    #[unstable(feature = "maybe_uninit_uninit_array_transpose", issue = "96097")]
+    #[inline]
+    pub const fn transpose_mut(&mut self) -> &mut [MaybeUninit<T>; N] {
+        // SAFETY: T and MaybeUninit<T> have the same layout
+        unsafe { intrinsics::transmute_unchecked(self) }
+    }
 }
 
 #[stable(feature = "more_conversion_trait_impls", since = "1.95.0")]
@@ -1615,6 +1681,22 @@ impl<T, const N: usize> [MaybeUninit<T>; N] {
     #[unstable(feature = "maybe_uninit_uninit_array_transpose", issue = "96097")]
     #[inline]
     pub const fn transpose(self) -> MaybeUninit<[T; N]> {
+        // SAFETY: T and MaybeUninit<T> have the same layout
+        unsafe { intrinsics::transmute_unchecked(self) }
+    }
+
+    /// Transposes a `&[MaybeUninit<T>; N]` into a `&MaybeUninit<[T; N]>` .
+    #[unstable(feature = "maybe_uninit_uninit_array_transpose", issue = "96097")]
+    #[inline]
+    pub const fn transpose_ref(&self) -> &MaybeUninit<[T; N]> {
+        // SAFETY: T and MaybeUninit<T> have the same layout
+        unsafe { intrinsics::transmute_unchecked(self) }
+    }
+
+    /// Transposes a `&mut [MaybeUninit<T>; N]` into a `&mut MaybeUninit<[T; N]>`.
+    #[unstable(feature = "maybe_uninit_uninit_array_transpose", issue = "96097")]
+    #[inline]
+    pub const fn transpose_mut(&mut self) -> &mut MaybeUninit<[T; N]> {
         // SAFETY: T and MaybeUninit<T> have the same layout
         unsafe { intrinsics::transmute_unchecked(self) }
     }

@@ -1,6 +1,7 @@
 use super::*;
 use crate::cmp::Ordering::{Equal, Greater, Less};
 use crate::intrinsics::const_eval_select;
+use crate::marker::MetaSized;
 use crate::mem::{self, SizedTypeProperties};
 use crate::slice::{self, SliceIndex};
 
@@ -321,7 +322,7 @@ impl<T: PointeeSized> *const T {
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_ref<'a>(self) -> Option<&'a MaybeUninit<T>>
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a reference.
@@ -1378,7 +1379,7 @@ impl<T: PointeeSized> *const T {
     }
 }
 
-impl<T> *const T {
+impl<T: MetaSized> *const T {
     /// Casts from a type to its maybe-uninitialized version.
     #[must_use]
     #[inline(always)]
@@ -1386,7 +1387,9 @@ impl<T> *const T {
     pub const fn cast_uninit(self) -> *const MaybeUninit<T> {
         self as _
     }
+}
 
+impl<T> *const T {
     /// Forms a raw slice from a pointer and a length.
     ///
     /// The `len` argument is the number of **elements**, not the number of bytes.
@@ -1424,7 +1427,7 @@ impl<T> *const T {
         slice_from_raw_parts(self, len)
     }
 }
-impl<T> *const MaybeUninit<T> {
+impl<T: MetaSized> *const MaybeUninit<T> {
     /// Casts from a maybe-uninitialized type to its initialized version.
     ///
     /// This is always safe, since UB can only occur if the pointer is read

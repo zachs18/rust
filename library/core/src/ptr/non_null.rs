@@ -1,10 +1,10 @@
 use crate::clone::TrivialClone;
 use crate::cmp::Ordering;
-use crate::marker::{Destruct, PointeeSized, Unsize};
+use crate::marker::{Destruct, MetaSized, PointeeSized, Unsize};
 use crate::mem::{MaybeUninit, SizedTypeProperties, transmute};
 use crate::num::NonZero;
 use crate::ops::{CoerceUnsized, DispatchFromDyn};
-use crate::ptr::Unique;
+use crate::ptr::{Thin, Unique};
 use crate::slice::{self, SliceIndex};
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{fmt, hash, intrinsics, mem, ptr};
@@ -88,7 +88,7 @@ impl<T: PointeeSized> !Send for NonNull<T> {}
 #[stable(feature = "nonnull", since = "1.25.0")]
 impl<T: PointeeSized> !Sync for NonNull<T> {}
 
-impl<T: Sized> NonNull<T> {
+impl<T: PointeeSized> NonNull<T> {
     /// Creates a pointer with the given address and no [provenance][crate::ptr#provenance].
     ///
     /// For more details, see the equivalent method on a raw pointer, [`ptr::without_provenance_mut`].
@@ -98,7 +98,10 @@ impl<T: Sized> NonNull<T> {
     #[rustc_const_stable(feature = "nonnull_provenance", since = "1.89.0")]
     #[must_use]
     #[inline]
-    pub const fn without_provenance(addr: NonZero<usize>) -> Self {
+    pub const fn without_provenance(addr: NonZero<usize>) -> Self
+    where
+        T: Thin,
+    {
         // SAFETY: we know `addr` is non-zero and all nonzero integers are valid raw pointers.
         unsafe { transmute(addr) }
     }
@@ -126,7 +129,10 @@ impl<T: Sized> NonNull<T> {
     #[rustc_const_stable(feature = "const_nonnull_dangling", since = "1.36.0")]
     #[must_use]
     #[inline]
-    pub const fn dangling() -> Self {
+    pub const fn dangling() -> Self
+    where
+        T: Sized,
+    {
         let align = crate::mem::Alignment::of::<T>();
         NonNull::without_provenance(align.as_nonzero_usize())
     }
@@ -140,7 +146,10 @@ impl<T: Sized> NonNull<T> {
     #[stable(feature = "nonnull_provenance", since = "1.89.0")]
     #[rustc_const_unstable(feature = "const_nonnull_with_exposed_provenance", issue = "154215")]
     #[inline]
-    pub const fn with_exposed_provenance(addr: NonZero<usize>) -> Self {
+    pub const fn with_exposed_provenance(addr: NonZero<usize>) -> Self
+    where
+        T: Sized,
+    {
         // SAFETY: we know `addr` is non-zero.
         unsafe {
             let ptr = crate::ptr::with_exposed_provenance_mut(addr.get());
@@ -165,10 +174,13 @@ impl<T: Sized> NonNull<T> {
     #[inline]
     #[must_use]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
-    pub const unsafe fn as_uninit_ref<'a>(self) -> &'a MaybeUninit<T> {
+    pub const unsafe fn as_uninit_ref<'a>(self) -> &'a MaybeUninit<T>
+    where
+        T: MetaSized,
+    {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a reference.
-        unsafe { &*self.cast().as_ptr() }
+        unsafe { self.cast_uninit().as_ref() }
     }
 
     /// Returns a unique references to the value. In contrast to [`as_mut`], this does not require
@@ -188,16 +200,22 @@ impl<T: Sized> NonNull<T> {
     #[inline]
     #[must_use]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
-    pub const unsafe fn as_uninit_mut<'a>(self) -> &'a mut MaybeUninit<T> {
+    pub const unsafe fn as_uninit_mut<'a>(self) -> &'a mut MaybeUninit<T>
+    where
+        T: MetaSized,
+    {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a reference.
-        unsafe { &mut *self.cast().as_ptr() }
+        unsafe { self.cast_uninit().as_mut() }
     }
 
     /// Casts from a pointer-to-`T` to a pointer-to-`[T; N]`.
     #[inline]
     #[unstable(feature = "ptr_cast_array", issue = "144514")]
-    pub const fn cast_array<const N: usize>(self) -> NonNull<[T; N]> {
+    pub const fn cast_array<const N: usize>(self) -> NonNull<[T; N]>
+    where
+        T: Sized,
+    {
         self.cast()
     }
 }
@@ -1368,15 +1386,18 @@ impl<T: PointeeSized> NonNull<T> {
     }
 }
 
-impl<T> NonNull<T> {
+impl<T: MetaSized> NonNull<T> {
     /// Casts from a type to its maybe-uninitialized version.
     #[must_use]
     #[inline(always)]
     #[unstable(feature = "cast_maybe_uninit", issue = "145036")]
     pub const fn cast_uninit(self) -> NonNull<MaybeUninit<T>> {
-        self.cast()
+        // SAFETY: self is not null
+        unsafe { NonNull::new_unchecked(self.as_ptr().cast_uninit()) }
     }
+}
 
+impl<T> NonNull<T> {
     /// Creates a non-null raw slice from a thin pointer and a length.
     ///
     /// The `len` argument is the number of **elements**, not the number of bytes.
@@ -1406,7 +1427,7 @@ impl<T> NonNull<T> {
         NonNull::slice_from_raw_parts(self, len)
     }
 }
-impl<T> NonNull<MaybeUninit<T>> {
+impl<T: MetaSized> NonNull<MaybeUninit<T>> {
     /// Casts from a maybe-uninitialized type to its initialized version.
     ///
     /// This is always safe, since UB can only occur if the pointer is read
@@ -1415,7 +1436,8 @@ impl<T> NonNull<MaybeUninit<T>> {
     #[inline(always)]
     #[unstable(feature = "cast_maybe_uninit", issue = "145036")]
     pub const fn cast_init(self) -> NonNull<T> {
-        self.cast()
+        // SAFETY: self is not null
+        unsafe { NonNull::new_unchecked(self.as_ptr().cast_init()) }
     }
 }
 

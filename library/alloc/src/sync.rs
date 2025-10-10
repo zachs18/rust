@@ -1421,7 +1421,7 @@ impl<T, A: Allocator> Arc<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
+impl<T: ?Sized, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
     /// Converts to `Arc<T>`.
     ///
     /// # Safety
@@ -1453,7 +1453,7 @@ impl<T, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
     #[inline]
     pub unsafe fn assume_init(self) -> Arc<T, A> {
         let (ptr, alloc) = Arc::into_inner_with_allocator(self);
-        unsafe { Arc::from_inner_in(ptr.cast(), alloc) }
+        unsafe { Arc::from_ptr_in(ptr.as_ptr() as *mut ArcInner<T>, alloc) }
     }
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 use crate::cmp::Ordering::{Equal, Greater, Less};
 use crate::intrinsics::const_eval_select;
-use crate::marker::{Destruct, PointeeSized};
+use crate::marker::{Destruct, MetaSized, PointeeSized};
 use crate::mem::{self, SizedTypeProperties};
 use crate::slice::{self, SliceIndex};
 
@@ -324,7 +324,7 @@ impl<T: PointeeSized> *mut T {
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_ref<'a>(self) -> Option<&'a MaybeUninit<T>>
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a reference.
@@ -644,7 +644,7 @@ impl<T: PointeeSized> *mut T {
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_mut<'a>(self) -> Option<&'a mut MaybeUninit<T>>
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must guarantee that `self` meets all the
         // requirements for a reference.
@@ -1644,7 +1644,7 @@ impl<T: PointeeSized> *mut T {
     }
 }
 
-impl<T> *mut T {
+impl<T: MetaSized> *mut T {
     /// Casts from a type to its maybe-uninitialized version.
     ///
     /// This is always safe, since UB can only occur if the pointer is read
@@ -1655,7 +1655,9 @@ impl<T> *mut T {
     pub const fn cast_uninit(self) -> *mut MaybeUninit<T> {
         self as _
     }
+}
 
+impl<T> *mut T {
     /// Forms a raw mutable slice from a pointer and a length.
     ///
     /// The `len` argument is the number of **elements**, not the number of bytes.
@@ -1701,7 +1703,7 @@ impl<T> *mut T {
         slice_from_raw_parts_mut(self, len)
     }
 }
-impl<T> *mut MaybeUninit<T> {
+impl<T: MetaSized> *mut MaybeUninit<T> {
     /// Casts from a maybe-uninitialized type to its initialized version.
     ///
     /// This is always safe, since UB can only occur if the pointer is read
