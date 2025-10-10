@@ -34,6 +34,8 @@ pub enum CastTy<'tcx> {
     FnPtr,
     /// Raw pointers.
     Ptr(ty::TypeAndMut<'tcx>),
+    /// Pointer metadata.
+    PtrMetadata(Ty<'tcx>),
 }
 
 /// Cast Kind. See [RFC 401](https://rust-lang.github.io/rfcs/0401-coercions.html)
@@ -41,6 +43,7 @@ pub enum CastTy<'tcx> {
 #[derive(Copy, Clone, Debug, TyEncodable, TyDecodable, HashStable)]
 pub enum CastKind {
     PtrPtrCast,
+    PtrMetadataPtrMetadataCast,
     PtrAddrCast,
     AddrPtrCast,
     NumericCast,
@@ -66,6 +69,7 @@ impl<'tcx> CastTy<'tcx> {
             ty::Float(_) => Some(CastTy::Float),
             ty::Adt(d, _) if d.is_enum() && d.is_payloadfree() => Some(CastTy::Int(IntTy::CEnum)),
             ty::RawPtr(ty, mutbl) => Some(CastTy::Ptr(ty::TypeAndMut { ty, mutbl })),
+            ty::PtrMetadata(ty) => Some(CastTy::PtrMetadata(ty)),
             ty::FnPtr(..) => Some(CastTy::FnPtr),
             _ => None,
         }
@@ -88,6 +92,9 @@ pub fn mir_cast_kind<'tcx>(from_ty: Ty<'tcx>, cast_ty: Ty<'tcx>) -> mir::CastKin
         (Some(CastTy::Int(_)), Some(CastTy::Float)) => mir::CastKind::IntToFloat,
         (Some(CastTy::Float), Some(CastTy::Float)) => mir::CastKind::FloatToFloat,
         (Some(CastTy::Ptr(_)), Some(CastTy::Ptr(_))) => mir::CastKind::PtrToPtr,
+        (Some(CastTy::PtrMetadata(_)), Some(CastTy::PtrMetadata(_))) => {
+            mir::CastKind::PtrMetadataToPtrMetadata
+        }
 
         (_, _) => {
             bug!("Attempting to cast non-castable types {:?} and {:?}", from_ty, cast_ty)
