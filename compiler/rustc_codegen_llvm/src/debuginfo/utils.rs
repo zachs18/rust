@@ -62,7 +62,7 @@ pub(crate) fn wide_pointer_kind<'ll, 'tcx>(
     cx: &CodegenCx<'ll, 'tcx>,
     pointee_ty: Ty<'tcx>,
 ) -> Option<WidePtrKind> {
-    let pointee_tail_ty = cx.tcx.struct_tail_for_codegen(pointee_ty, cx.typing_env());
+    let pointee_tail_ty = cx.tcx.struct_or_union_tail_for_codegen(pointee_ty, cx.typing_env());
     let layout = cx.layout_of(pointee_tail_ty);
     trace!(
         "wide_pointer_kind: {:?} has layout {:?} (is_unsized? {})",

@@ -367,7 +367,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
             ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {
                 let non_zero = !ty.is_raw_ptr();
 
-                let tail = tcx.struct_tail_raw(
+                let tail = tcx.struct_or_union_tail_raw(
                     pointee,
                     &ObligationCause::dummy(),
                     |ty| match tcx.try_normalize_erasing_regions(typing_env, ty) {
@@ -879,7 +879,8 @@ where
                             metadata
                         }
                     } else {
-                        match tcx.struct_tail_for_codegen(pointee, cx.typing_env()).kind() {
+                        match tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env()).kind()
+                        {
                             ty::Slice(_) | ty::Str => tcx.types.usize,
                             ty::Dynamic(data, _) => mk_dyn_vtable(data.principal()),
                             _ => bug!("TyAndLayout::field({:?}): not applicable", this),

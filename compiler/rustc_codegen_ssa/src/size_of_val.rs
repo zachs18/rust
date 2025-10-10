@@ -79,6 +79,27 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         sum
     };
 
+    // Invariant: all valid sizes (including intermediate sizes) are `<= isize::MAX`,
+    // and all valid alignments are powers of 2.
+    // Therefore, we can calculate such that the output is correct if the size and align
+    // given are valid, and if either input was invalid, `valid` would have already been set to false so
+    // the output doesn't matter.
+    let round_up_to_alignment = |bx: &mut Bx, valid: &mut Option<_>, size, alignment| {
+        // The bit-magic to round `size` up to a multiple of `alignment` is
+        //
+        //     `(size + (align-1)) & -align`
+        //
+        // This is valid even for extreme cases `size = isize::MAX as usize, align = isize::MAX as usize + 1`.
+        // We also need to check that the new size is still `<= isize::MAX`. This could happen if it was
+        // rounded up to `isize::MAX + 1`. However, this happens if and only if the sum was `> isize::MAX`,
+        // so we can just check the addition with our `add` closure that already does that check.
+        let one = bx.const_usize(1);
+        let addend = bx.sub(alignment, one);
+        let sum = add(bx, valid, size, addend);
+        let neg = bx.neg(alignment);
+        bx.and(sum, neg)
+    };
+
     match t.kind() {
         ty::Dynamic(..) => {
             // Load size/align from vtable.
@@ -223,6 +244,32 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             // # Then compute the dynamic size
 
+            // For unions, the size is the max size of the fields, rounded up to the alignment
+            if let ty::Adt(def, ..) = t.kind()
+                && def.is_union()
+            {
+                // For now, with only one unsized field, the max of the sizes of the sized fields
+                // is just the unsized layout's size.
+                let sized_size = bx.const_usize(layout.size.bytes());
+                let cmp = bx.icmp(IntPredicate::IntUGT, sized_size, unsized_size);
+                let full_size = bx.select(cmp, sized_size, unsized_size);
+
+                let full_size = round_up_to_alignment(bx, &mut valid, full_size, full_align);
+
+                match valid {
+                    Some(valid) => {
+                        return CalculationResult::Checked {
+                            valid,
+                            size: full_size,
+                            align: full_align,
+                        };
+                    }
+                    None => {
+                        return CalculationResult::Unchecked { size: full_size, align: full_align };
+                    }
+                }
+            }
+
             // The full formula for the size would be:
             // let unsized_offset_adjusted = unsized_offset_unadjusted.align_to(unsized_align);
             // let full_size = (unsized_offset_adjusted + unsized_size).align_to(full_align);
@@ -239,21 +286,7 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             let full_size = add(bx, &mut valid, unsized_offset_unadjusted, unsized_size);
 
-            // Issue #27023: must add any necessary padding to `size`
-            // (to make it a multiple of `align`) before returning it.
-            //
-            // Namely, the returned size should be, in C notation:
-            //
-            //   `size + ((size & (align-1)) ? align : 0)`
-            //
-            // emulated via the semi-standard fast bit trick:
-            //
-            //   `(size + (align-1)) & -align`
-            let one = bx.const_usize(1);
-            let addend = bx.sub(full_align, one);
-            let add = add(bx, &mut valid, full_size, addend);
-            let neg = bx.neg(full_align);
-            let full_size = bx.and(add, neg);
+            let full_size = round_up_to_alignment(bx, &mut valid, full_size, full_align);
 
             match valid {
                 Some(valid) => {

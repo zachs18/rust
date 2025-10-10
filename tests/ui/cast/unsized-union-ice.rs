@@ -9,6 +9,7 @@ union Union {
 
 fn cast(ptr: *const ()) -> *const Union {
     ptr as _
+    //~^ ERROR cannot cast thin pointer `*const ()` to wide pointer `*const Union`
 }
 
 fn main() {}

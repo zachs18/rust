@@ -1054,7 +1054,7 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                         | ty::Error(_) => false,
                     },
                     Some(LangItem::PointeeTrait) => {
-                        let tail = selcx.tcx().struct_tail_raw(
+                        let tail = selcx.tcx().struct_or_union_tail_raw(
                             self_ty,
                             &obligation.cause,
                             |ty| {
@@ -1094,10 +1094,10 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                             | ty::Never
                             // Extern types have unit metadata, according to RFC 2850
                             | ty::Foreign(_)
-                            // If returned by `struct_tail` this is a unit struct
-                            // without any fields, or not a struct, and therefore is Sized.
+                            // If returned by `struct_or_union_tail` this is a unit struct
+                            // without any fields, or an enum, and therefore is Sized.
                             | ty::Adt(..)
-                            // If returned by `struct_tail` this is the empty tuple.
+                            // If returned by `struct_or_union_tail` this is the empty tuple.
                             | ty::Tuple(..)
                             // Integers and floats are always Sized, and so have unit type metadata.
                             | ty::Infer(ty::InferTy::IntVar(_) | ty::InferTy::FloatVar(..))

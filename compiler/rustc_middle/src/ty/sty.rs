@@ -1724,7 +1724,7 @@ impl<'tcx> Ty<'tcx> {
         tcx: TyCtxt<'tcx>,
         normalize: impl FnMut(Ty<'tcx>) -> Ty<'tcx>,
     ) -> Result<Ty<'tcx>, Ty<'tcx>> {
-        let tail = tcx.struct_tail_raw(self, &ObligationCause::dummy(), normalize, || {});
+        let tail = tcx.struct_or_union_tail_raw(self, &ObligationCause::dummy(), normalize, || {});
         match tail.kind() {
             // Sized types
             ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
@@ -1746,10 +1746,10 @@ impl<'tcx> Ty<'tcx> {
             | ty::Error(_)
             // Extern types have metadata = ().
             | ty::Foreign(..)
-            // If returned by `struct_tail_raw` this is a unit struct
-            // without any fields, or not a struct, and therefore is Sized.
+            // If returned by `struct_or_union_tail_raw` this is a unit struct
+            // without any fields, or an enum, and therefore is Sized.
             | ty::Adt(..)
-            // If returned by `struct_tail_raw` this is the empty tuple,
+            // If returned by `struct_or_union_tail_raw` this is the empty tuple,
             // a.k.a. unit type, which is Sized
             | ty::Tuple(..) => Ok(tcx.types.unit),
 

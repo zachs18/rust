@@ -481,7 +481,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
     pub(crate) fn require_type_has_static_alignment(&self, ty: Ty<'tcx>, span: Span) {
         if !ty.references_error() {
-            let tail = self.tcx.struct_tail_raw(
+            let tail = self.tcx.struct_or_union_tail_raw(
                 ty,
                 &self.misc(span),
                 |ty| {

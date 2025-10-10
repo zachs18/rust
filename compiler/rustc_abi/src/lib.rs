@@ -1919,7 +1919,7 @@ impl BackendRepr {
             BackendRepr::SimdVector { element, count } => {
                 BackendRepr::SimdVector { element: element.to_union(), count }
             }
-            BackendRepr::Memory { .. } => BackendRepr::Memory { sized: true },
+            BackendRepr::Memory { sized } => BackendRepr::Memory { sized },
             BackendRepr::SimdScalableVector { element, count, number_of_vectors } => {
                 BackendRepr::SimdScalableVector {
                     element: element.to_union(),

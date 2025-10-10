@@ -22,7 +22,7 @@ where
     };
 
     let ty = place.ty(local_decls, tcx).ty;
-    let unsized_tail = || tcx.struct_tail_for_codegen(ty, typing_env);
+    let unsized_tail = || tcx.struct_or_union_tail_for_codegen(ty, typing_env);
     match tcx.layout_of(typing_env.as_query_input(ty)) {
         Ok(layout)
             if layout.align.abi <= pack

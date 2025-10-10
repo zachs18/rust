@@ -262,11 +262,22 @@ impl<'tcx> rustc_type_ir::inherent::AdtDef<TyCtxt<'tcx>> for AdtDef<'tcx> {
         self.is_struct()
     }
 
+    fn is_enum(self) -> bool {
+        self.is_enum()
+    }
+
+    fn is_union(self) -> bool {
+        self.is_union()
+    }
+
     fn is_packed(self) -> bool {
         self.repr().packed()
     }
 
-    fn struct_tail_ty(self, interner: TyCtxt<'tcx>) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
+    fn struct_or_union_tail_ty(
+        self,
+        interner: TyCtxt<'tcx>,
+    ) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
         Some(interner.type_of(self.non_enum_variant().tail_opt()?.did))
     }
 
@@ -748,6 +759,10 @@ impl<'tcx> AdtDef<'tcx> {
         tcx: TyCtxt<'tcx>,
         sizedness: ty::SizedTraitKind,
     ) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
-        if self.is_struct() { tcx.adt_sizedness_constraint((self.did(), sizedness)) } else { None }
+        if self.is_struct() || self.is_union() {
+            tcx.adt_sizedness_constraint((self.did(), sizedness))
+        } else {
+            None
+        }
     }
 }

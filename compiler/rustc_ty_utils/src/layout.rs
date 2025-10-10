@@ -419,31 +419,35 @@ fn layout_of_uncached<'tcx>(
 
             let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type() {
                 let pointee_metadata = Ty::new_projection(tcx, metadata_def_id, [pointee]);
-                let metadata_ty = match tcx
-                    .try_normalize_erasing_regions(cx.typing_env, pointee_metadata)
-                {
-                    Ok(metadata_ty) => metadata_ty,
-                    Err(mut err) => {
-                        // Usually `<Ty as Pointee>::Metadata` can't be normalized because
-                        // its struct tail cannot be normalized either, so try to get a
-                        // more descriptive layout error here, which will lead to less confusing
-                        // diagnostics.
-                        //
-                        // We use the raw struct tail function here to get the first tail
-                        // that is an alias, which is likely the cause of the normalization
-                        // error.
-                        match tcx.try_normalize_erasing_regions(
-                            cx.typing_env,
-                            tcx.struct_tail_raw(pointee, &ObligationCause::dummy(), |ty| ty, || {}),
-                        ) {
-                            Ok(_) => {}
-                            Err(better_err) => {
-                                err = better_err;
+                let metadata_ty =
+                    match tcx.try_normalize_erasing_regions(cx.typing_env, pointee_metadata) {
+                        Ok(metadata_ty) => metadata_ty,
+                        Err(mut err) => {
+                            // Usually `<Ty as Pointee>::Metadata` can't be normalized because
+                            // its struct tail cannot be normalized either, so try to get a
+                            // more descriptive layout error here, which will lead to less confusing
+                            // diagnostics.
+                            //
+                            // We use the raw struct tail function here to get the first tail
+                            // that is an alias, which is likely the cause of the normalization
+                            // error.
+                            match tcx.try_normalize_erasing_regions(
+                                cx.typing_env,
+                                tcx.struct_or_union_tail_raw(
+                                    pointee,
+                                    &ObligationCause::dummy(),
+                                    |ty| ty,
+                                    || {},
+                                ),
+                            ) {
+                                Ok(_) => {}
+                                Err(better_err) => {
+                                    err = better_err;
+                                }
                             }
+                            return Err(error(cx, LayoutError::NormalizationFailure(pointee, err)));
                         }
-                        return Err(error(cx, LayoutError::NormalizationFailure(pointee, err)));
-                    }
-                };
+                    };
 
                 let metadata_layout = cx.layout_of(metadata_ty)?;
                 // If the metadata is a 1-zst, then the pointer is thin.
@@ -457,7 +461,7 @@ fn layout_of_uncached<'tcx>(
 
                 metadata
             } else {
-                let unsized_part = tcx.struct_tail_for_codegen(pointee, cx.typing_env);
+                let unsized_part = tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env);
 
                 match unsized_part.kind() {
                     ty::Foreign(..) => {
@@ -676,7 +680,7 @@ fn layout_of_uncached<'tcx>(
                     .flatten()
             };
 
-            let maybe_unsized = def.is_struct()
+            let maybe_unsized = (def.is_struct() || def.is_union())
                 && def.non_enum_variant().tail_opt().is_some_and(|last_field| {
                     let typing_env = ty::TypingEnv::post_analysis(tcx, def.did());
                     !tcx.type_of(last_field.did).instantiate_identity().is_sized(tcx, typing_env)

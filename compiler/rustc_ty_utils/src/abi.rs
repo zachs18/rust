@@ -532,7 +532,7 @@ fn fn_abi_sanity_check<'tcx>(
                 // With metadata. Must be unsized and not on the stack.
                 assert!(arg.layout.is_unsized() && !on_stack);
                 // Also, must not be `extern` type.
-                let tail = tcx.struct_tail_for_codegen(arg.layout.ty, cx.typing_env);
+                let tail = tcx.struct_or_union_tail_for_codegen(arg.layout.ty, cx.typing_env);
                 if matches!(tail.kind(), ty::Foreign(..)) {
                     // These types do not have metadata, so having `meta_attrs` is bogus.
                     // Conceptually, unsized arguments must be copied around, which requires dynamically
