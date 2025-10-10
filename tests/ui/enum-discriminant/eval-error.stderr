@@ -1,11 +1,11 @@
 error: unions cannot have zero fields
-  --> $DIR/eval-error.rs:14:1
+  --> $DIR/eval-error.rs:16:1
    |
 LL | union Foo2 {}
    | ^^^^^^^^^^^^^
 
 error[E0517]: attribute should be applied to a struct or union
-  --> $DIR/eval-error.rs:24:12
+  --> $DIR/eval-error.rs:26:12
    |
 LL |   #[repr(u8, packed)]
    |              ^^^^^^
@@ -45,13 +45,37 @@ help: the `Box` type always has a statically known size and allocates its conten
 LL |     a: Box<str>,
    |        ++++   +
 
-error[E0080]: the type `Foo` has an unknown layout
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/eval-error.rs:9:16
+   |
+LL |         let _: Option<Foo> = None;
+   |                ^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `Foo`, the trait `Sized` is not implemented for `str`
+note: required because it appears within the type `Foo`
+  --> $DIR/eval-error.rs:1:7
+   |
+LL | union Foo {
+   |       ^^^
+note: required by an implicit `Sized` bound in `Option`
+  --> $SRC_DIR/core/src/option.rs:LL:COL
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
   --> $DIR/eval-error.rs:9:30
    |
 LL |         let _: Option<Foo> = None;
-   |                              ^^^^ evaluation of `Bar::Boo::{constant#0}` failed here
+   |                              ^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `Foo`, the trait `Sized` is not implemented for `str`
+note: required because it appears within the type `Foo`
+  --> $DIR/eval-error.rs:1:7
+   |
+LL | union Foo {
+   |       ^^^
+note: required by a bound in `None`
+  --> $SRC_DIR/core/src/option.rs:LL:COL
 
-error: aborting due to 5 previous errors
+error: aborting due to 6 previous errors
 
-Some errors have detailed explanations: E0080, E0277, E0517, E0740.
-For more information about an error, try `rustc --explain E0080`.
+Some errors have detailed explanations: E0277, E0517, E0740.
+For more information about an error, try `rustc --explain E0277`.

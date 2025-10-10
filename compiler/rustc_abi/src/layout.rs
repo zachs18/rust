@@ -420,9 +420,10 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let mut size = Size::ZERO;
         let only_variant_idx = VariantIdx::new(0);
         let only_variant = &variants[only_variant_idx];
+        let mut sized = true;
         for field in only_variant {
             if field.is_unsized() {
-                return Err(LayoutCalculatorError::UnexpectedUnsized(*field));
+                sized = false;
             }
 
             align = align.max(field.align.abi);
@@ -474,16 +475,18 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         // If all non-ZST fields have the same ABI, we may forward that ABI
         // for the union as a whole, unless otherwise inhibited.
         let backend_repr = match common_non_zst_repr_and_align {
-            Err(AbiMismatch) | Ok(None) => BackendRepr::Memory { sized: true },
+            Err(AbiMismatch) | Ok(None) => BackendRepr::Memory { sized },
             Ok(Some((repr, _))) => match repr {
                 // Mismatched alignment (e.g. union is #[repr(packed)]): disable opt
                 BackendRepr::Scalar(_) | BackendRepr::ScalarPair(_, _)
                     if repr.scalar_align(dl).unwrap() != align =>
                 {
+                    debug_assert!(sized, "unsized union had unexpected backend repr {repr:?}");
                     BackendRepr::Memory { sized: true }
                 }
                 // Vectors require at least element alignment, else disable the opt
                 BackendRepr::SimdVector { element, count: _ } if element.align(dl).abi > align => {
+                    debug_assert!(sized, "unsized union had unexpected backend repr {repr:?}");
                     BackendRepr::Memory { sized: true }
                 }
                 // the alignment tests passed and we can use this

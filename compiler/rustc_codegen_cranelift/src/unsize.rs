@@ -24,7 +24,7 @@ pub(crate) fn unsized_info<'tcx>(
     old_info: Option<Value>,
 ) -> Value {
     let (source, target) =
-        fx.tcx.struct_lockstep_tails_for_codegen(source, target, fx.typing_env());
+        fx.tcx.struct_or_union_lockstep_tails_for_codegen(source, target, fx.typing_env());
     match (&source.kind(), &target.kind()) {
         (&ty::Array(_, len), &ty::Slice(_)) => fx.bcx.ins().iconst(
             fx.pointer_type,

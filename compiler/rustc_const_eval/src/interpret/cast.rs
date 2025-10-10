@@ -371,8 +371,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         cast_ty: Ty<'tcx>,
     ) -> InterpResult<'tcx> {
         // A<Struct> -> A<Trait> conversion
-        let (src_pointee_ty, dest_pointee_ty) =
-            self.tcx.struct_lockstep_tails_for_codegen(source_ty, cast_ty, self.typing_env);
+        let (src_pointee_ty, dest_pointee_ty) = self
+            .tcx
+            .struct_or_union_lockstep_tails_for_codegen(source_ty, cast_ty, self.typing_env);
 
         match (src_pointee_ty.kind(), dest_pointee_ty.kind()) {
             (&ty::Array(_, length), &ty::Slice(_)) => {

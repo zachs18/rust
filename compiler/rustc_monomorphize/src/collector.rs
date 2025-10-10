@@ -1146,9 +1146,8 @@ fn find_tails_for_unsizing<'tcx>(
             &ty::Ref(_, source_pointee, _),
             &ty::Ref(_, target_pointee, _) | &ty::RawPtr(target_pointee, _),
         )
-        | (&ty::RawPtr(source_pointee, _), &ty::RawPtr(target_pointee, _)) => {
-            tcx.struct_lockstep_tails_for_codegen(source_pointee, target_pointee, typing_env)
-        }
+        | (&ty::RawPtr(source_pointee, _), &ty::RawPtr(target_pointee, _)) => tcx
+            .struct_or_union_lockstep_tails_for_codegen(source_pointee, target_pointee, typing_env),
 
         // `Box<T>` could go through the ADT code below, b/c it'll unpeel to `Unique<T>`,
         // and eventually bottom out in a raw ref, but we can micro-optimize it here.
@@ -1156,7 +1155,7 @@ fn find_tails_for_unsizing<'tcx>(
             if let Some(source_boxed) = source_ty.boxed_ty()
                 && let Some(target_boxed) = target_ty.boxed_ty() =>
         {
-            tcx.struct_lockstep_tails_for_codegen(source_boxed, target_boxed, typing_env)
+            tcx.struct_or_union_lockstep_tails_for_codegen(source_boxed, target_boxed, typing_env)
         }
 
         (&ty::Adt(source_adt_def, source_args), &ty::Adt(target_adt_def, target_args)) => {
