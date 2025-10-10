@@ -341,6 +341,7 @@ impl<'tcx> Stable<'tcx> for mir::CastKind {
             FloatToFloat => crate::mir::CastKind::FloatToFloat,
             IntToFloat => crate::mir::CastKind::IntToFloat,
             PtrToPtr => crate::mir::CastKind::PtrToPtr,
+            PtrMetadataToPtrMetadata => crate::mir::CastKind::PtrMetadataToPtrMetadata,
             FnPtrToPtr => crate::mir::CastKind::FnPtrToPtr,
             Transmute => crate::mir::CastKind::Transmute,
             Subtype => crate::mir::CastKind::Subtype,

@@ -1013,6 +1013,7 @@ pub enum CastKind {
     FloatToFloat,
     IntToFloat,
     PtrToPtr,
+    PtrMetadataToPtrMetadata,
     FnPtrToPtr,
     Transmute,
     Subtype,

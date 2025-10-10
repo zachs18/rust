@@ -1497,6 +1497,7 @@ pub enum CastKind {
     FloatToFloat,
     IntToFloat,
     PtrToPtr,
+    PtrMetadataToPtrMetadata,
     FnPtrToPtr,
     /// Reinterpret the bits of the input as a different type.
     ///

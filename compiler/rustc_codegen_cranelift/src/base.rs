@@ -726,6 +726,9 @@ fn codegen_stmt<'tcx>(fx: &mut FunctionCx<'_, '_, 'tcx>, cur_block: Block, stmt:
                         to_place_and_rval.1
                     );
                 }
+                Rvalue::Cast(CastKind::PtrMetadataToPtrMetadata, _, _) => unimplemented!(
+                    "FIXME(ptr_metadata_v2): implement ptr metadata casts in cranelift"
+                ),
                 Rvalue::Cast(
                     CastKind::IntToInt
                     | CastKind::FloatToFloat

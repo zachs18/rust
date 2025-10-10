@@ -1444,16 +1444,24 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                             }
                         }
                     }
-                    CastKind::PtrToPtr => {
+                    CastKind::PtrToPtr | CastKind::PtrMetadataToPtrMetadata => {
                         let ty_from = op.ty(self.body, tcx);
-                        let Some(CastTy::Ptr(src)) = CastTy::from_ty(ty_from) else {
-                            unreachable!();
-                        };
-                        let Some(CastTy::Ptr(dst)) = CastTy::from_ty(*ty) else {
-                            unreachable!();
-                        };
+                        let (src, dst) =
+                            match (*cast_kind, CastTy::from_ty(ty_from), CastTy::from_ty(*ty)) {
+                                (
+                                    CastKind::PtrToPtr,
+                                    Some(CastTy::Ptr(src)),
+                                    Some(CastTy::Ptr(dst)),
+                                ) => (src.ty, dst.ty),
+                                (
+                                    CastKind::PtrMetadataToPtrMetadata,
+                                    Some(CastTy::PtrMetadata(src)),
+                                    Some(CastTy::PtrMetadata(dst)),
+                                ) => (src, dst),
+                                vals => unreachable!("{vals:?}"),
+                            };
 
-                        if self.infcx.type_is_sized_modulo_regions(self.infcx.param_env, dst.ty) {
+                        if self.infcx.type_is_sized_modulo_regions(self.infcx.param_env, dst) {
                             // Wide to thin ptr cast. This may even occur in an env with
                             // impossible predicates, such as `where dyn Trait: Sized`.
                             // In this case, we don't want to fall into the case below,
@@ -1462,7 +1470,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                             let trait_ref = ty::TraitRef::new(
                                 tcx,
                                 tcx.require_lang_item(LangItem::Sized, self.last_span),
-                                [dst.ty],
+                                [dst],
                             );
                             self.prove_trait_ref(
                                 trait_ref,
@@ -1474,9 +1482,9 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                                 },
                             );
                         } else if let ty::Dynamic(src_tty, src_lt) =
-                            *self.struct_or_union_tail(src.ty, location).kind()
+                            *self.struct_or_union_tail(src, location).kind()
                             && let ty::Dynamic(dst_tty, dst_lt) =
-                                *self.struct_or_union_tail(dst.ty, location).kind()
+                                *self.struct_or_union_tail(dst, location).kind()
                         {
                             match (src_tty.principal(), dst_tty.principal()) {
                                 (Some(_), Some(_)) => {
