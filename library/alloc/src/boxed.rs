@@ -1169,7 +1169,7 @@ impl<T, A: Allocator> Box<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
+impl<T: ?Sized, A: Allocator> Box<mem::MaybeUninit<T>, A> {
     /// Converts to `Box<T, A>`.
     ///
     /// # Safety
@@ -1200,7 +1200,9 @@ impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
         // SAFETY: `Box<T>` and `Box<MaybeUninit<T>>` have the same layout.
         unsafe { core::intrinsics::transmute_unchecked(self) }
     }
+}
 
+impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
     /// Writes the value and converts to `Box<T, A>`.
     ///
     /// This method converts the box similarly to [`Box::assume_init`] but

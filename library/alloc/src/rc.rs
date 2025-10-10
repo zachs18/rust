@@ -1274,7 +1274,7 @@ impl<T, A: Allocator> Rc<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Rc<mem::MaybeUninit<T>, A> {
+impl<T: ?Sized, A: Allocator> Rc<mem::MaybeUninit<T>, A> {
     /// Converts to `Rc<T>`.
     ///
     /// # Safety
@@ -1305,7 +1305,7 @@ impl<T, A: Allocator> Rc<mem::MaybeUninit<T>, A> {
     #[inline]
     pub unsafe fn assume_init(self) -> Rc<T, A> {
         let (ptr, alloc) = Rc::into_inner_with_allocator(self);
-        unsafe { Rc::from_inner_in(ptr.cast(), alloc) }
+        unsafe { Rc::from_ptr_in(ptr.as_ptr() as *mut RcInner<T>, alloc) }
     }
 }
 
