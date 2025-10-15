@@ -346,6 +346,7 @@
 #![feature(hasher_prefixfree_extras)]
 #![feature(hashmap_internals)]
 #![feature(hint_must_use)]
+#![feature(in_place_init)]
 #![feature(int_from_ascii)]
 #![feature(ip)]
 #![feature(iter_advance_by)]
@@ -530,6 +531,8 @@ pub use core::i64;
 #[stable(feature = "i128", since = "1.26.0")]
 #[allow(deprecated, deprecated_in_future)]
 pub use core::i128;
+#[stable(feature = "rust1", since = "1.0.0")]
+pub use core::init;
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::intrinsics;
 #[stable(feature = "rust1", since = "1.0.0")]

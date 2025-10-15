@@ -190,6 +190,7 @@ use core::error::{self, Error};
 use core::fmt;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
+use core::init::{Init, PinInit};
 use core::marker::{Tuple, Unsize};
 #[cfg(not(no_global_oom_handling))]
 use core::mem::MaybeUninit;
@@ -201,7 +202,7 @@ use core::ops::{
 #[cfg(not(no_global_oom_handling))]
 use core::ops::{Residual, Try};
 use core::pin::{Pin, PinCoerceUnsized};
-use core::ptr::{self, NonNull, Unique};
+use core::ptr::{self, NonNull, Thin, Unique};
 use core::task::{Context, Poll};
 
 #[cfg(not(no_global_oom_handling))]
@@ -895,6 +896,35 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
     }
 }
 
+impl<T: ?Sized, A: Allocator> Box<T, A> {
+    /// Allocates and initializes a `Box<T, A>`
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn build_in(init: impl Init<T>, alloc: A) -> Box<T, A> {
+        let metadata = PinInit::metadata(&init);
+        let Some(layout) = Layout::for_meta(metadata) else {
+            handle_alloc_error(Layout::new::<()>())
+        };
+        let ptr = if layout.size() == 0 {
+            layout.dangling_ptr()
+        } else {
+            alloc.allocate(layout).unwrap_or_else(|_| handle_alloc_error(layout)).cast()
+        };
+        let ptr = NonNull::from_raw_parts(ptr, metadata);
+        unsafe {
+            let Ok(_) = PinInit::init(init, ptr.as_uninit_mut(), ());
+            Self::from_raw_in(ptr.as_ptr(), alloc)
+        }
+    }
+}
+
+impl<T: ?Sized> Box<T> {
+    /// Allocates and initializes a `Box<T>`
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn build(init: impl Init<T>) -> Box<T> {
+        Self::build_in(init, Global)
+    }
+}
+
 impl<T> Box<[T]> {
     /// Constructs a new boxed slice with uninitialized contents.
     ///
@@ -1235,6 +1265,20 @@ impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
             (*boxed).write(value);
             boxed.assume_init()
         }
+    }
+}
+
+impl<T: ?Sized + Thin, A: Allocator> Box<mem::MaybeUninit<T>, A> {
+    /// Initializes the value and converts to `Box<T, A>`.
+    ///
+    /// This method converts the box similarly to [`Box::assume_init`] but
+    /// initializes it with `init` before conversion thus guaranteeing safety.
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[inline]
+    pub fn initialize(mut boxed: Self, init: impl Init<T>) -> Box<T, A> {
+        (*boxed).initialize(init);
+        // SAFETY: we just initialized `*boxed`
+        unsafe { boxed.assume_init() }
     }
 }
 
