@@ -1,0 +1,137 @@
+//! In-place initialization.
+
+use core::alloc::{Allocator, Layout};
+pub use core::init::*;
+use core::mem::{self, MaybeUninit};
+use core::ptr::{self, Metadata};
+
+use crate::alloc::Global;
+use crate::boxed::Box;
+use crate::vec::Vec;
+
+/// Kinds of errors that can occur when creating a value on the heap.
+pub enum BuildErrorKind<T: ?Sized, E = !> {
+    /// The layout for a value with this pointer metadata cannot be computed.
+    /// Should never occur when `T: Sized`.
+    LayoutOverflow(Metadata<T>),
+    /// Allocation failed for this layout.
+    AllocError(Layout),
+    /// Initialization failed with this error.
+    InitError(E),
+}
+
+impl<T: ?Sized, E: core::fmt::Debug> core::fmt::Debug for BuildErrorKind<T, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::LayoutOverflow(arg0) => f.debug_tuple("LayoutOverflow").field(arg0).finish(),
+            Self::AllocError(arg0) => f.debug_tuple("AllocError").field(arg0).finish(),
+            Self::InitError(arg0) => f.debug_tuple("InitError").field(arg0).finish(),
+        }
+    }
+}
+
+#[cfg(not(any(no_global_oom_handling, no_rc)))]
+impl<T: ?Sized, E> BuildErrorKind<T, E> {
+    pub(crate) fn map_metadata<U: ?Sized>(
+        self,
+        f: impl FnOnce(Metadata<T>) -> Metadata<U>,
+    ) -> BuildErrorKind<U, E> {
+        match self {
+            BuildErrorKind::LayoutOverflow(metadata) => BuildErrorKind::LayoutOverflow(f(metadata)),
+            BuildErrorKind::AllocError(layout) => BuildErrorKind::AllocError(layout),
+            BuildErrorKind::InitError(err) => BuildErrorKind::InitError(err),
+        }
+    }
+
+    pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildErrorKind<T, E2> {
+        match self {
+            BuildErrorKind::LayoutOverflow(metadata) => BuildErrorKind::LayoutOverflow(metadata),
+            BuildErrorKind::AllocError(layout) => BuildErrorKind::AllocError(layout),
+            BuildErrorKind::InitError(err) => BuildErrorKind::InitError(f(err)),
+        }
+    }
+}
+
+/// The error type for fallibly creating values on the heap. See [`BuildErrorKind`]
+pub struct BuildError<T: ?Sized, E = !, A: Allocator = Global> {
+    /// The kind of error encountered when fallibly creating the value.
+    pub kind: BuildErrorKind<T, E>,
+    /// The allocator in which the value was to be created.
+    pub alloc: A,
+}
+
+impl<T: ?Sized, E: core::fmt::Debug, A: Allocator + core::fmt::Debug> core::fmt::Debug
+    for BuildError<T, E, A>
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BuildError").field("kind", &self.kind).field("alloc", &self.alloc).finish()
+    }
+}
+
+impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
+    /// If `self.kind` is [`AllocError(layout)`](BuildErrorKind::AllocError), calls
+    /// [`crate::alloc::handle_alloc_error`] with `layout`.
+    ///
+    /// If `self.kind` is [`LayoutOverflow`](BuildErrorKind::LayoutOverflow),
+    /// panics.
+    ///
+    /// If `self.kind` is [`InitError(err)`](BuildErrorKind::InitError), returns `(err, self.alloc)`.
+    pub fn handle_alloc_error(self) -> (E, A) {
+        match self.kind {
+            BuildErrorKind::LayoutOverflow(metadata) => {
+                panic!("layout for pointee with metadata {metadata:?} cannot be computed")
+            }
+            BuildErrorKind::AllocError(layout) => crate::alloc::handle_alloc_error(layout),
+            BuildErrorKind::InitError(err) => (err, self.alloc),
+        }
+    }
+
+    #[cfg(not(any(no_global_oom_handling, no_rc)))]
+    pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildError<T, E2, A> {
+        BuildError { kind: self.kind.map_err(f), alloc: self.alloc }
+    }
+}
+
+/// Initialize a place by moving an existing value from a `Box`
+unsafe impl<T: ?Sized, A: Allocator, Error> PinInit<T, Error> for Box<T, A> {
+    fn metadata(this: &Self) -> Metadata<T> {
+        ptr::metadata::<T>(&**this)
+    }
+
+    unsafe fn init(this: Self, dst: &mut core::mem::MaybeUninit<T>, _arg: ()) -> Result<(), Error> {
+        let size = mem::size_of_val::<T>(&*this);
+        let (ptr, alloc) = Box::into_raw_with_allocator(this);
+        // Don't drop `T`, but still deallocate the `Box` when we've moved from it
+        let this = unsafe { Box::from_raw_in(ptr as *mut MaybeUninit<T>, alloc) };
+        unsafe {
+            ptr::copy_nonoverlapping(
+                Box::as_ptr(&this).cast::<u8>(),
+                dst.as_mut_ptr().cast::<u8>(),
+                size,
+            );
+        }
+        Ok(())
+    }
+}
+unsafe impl<T: ?Sized, A: Allocator, Error> Init<T, Error> for Box<T, A> {}
+
+/// Initialize a slice by moving existing values from a `Vec`
+unsafe impl<T, A: Allocator, Error> PinInit<[T], Error> for Vec<T, A> {
+    fn metadata(this: &Self) -> Metadata<[T]> {
+        ptr::metadata::<[T]>(&**this)
+    }
+
+    unsafe fn init(
+        mut this: Self,
+        dst: &mut core::mem::MaybeUninit<[T]>,
+        _arg: (),
+    ) -> Result<(), Error> {
+        let len = this.len();
+        unsafe {
+            ptr::copy_nonoverlapping(this.as_ptr(), dst.as_mut_ptr().cast::<T>(), len);
+            this.set_len(0);
+        }
+        Ok(())
+    }
+}
+unsafe impl<T, A: Allocator, Error> Init<[T], Error> for Vec<T, A> {}

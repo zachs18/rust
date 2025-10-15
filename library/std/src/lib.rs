@@ -532,8 +532,6 @@ pub use core::i64;
 #[allow(deprecated, deprecated_in_future)]
 pub use core::i128;
 #[stable(feature = "rust1", since = "1.0.0")]
-pub use core::init;
-#[stable(feature = "rust1", since = "1.0.0")]
 pub use core::intrinsics;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[allow(deprecated, deprecated_in_future)]
@@ -585,6 +583,8 @@ pub use alloc_crate::boxed;
 pub use alloc_crate::fmt;
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use alloc_crate::format;
+#[stable(feature = "rust1", since = "1.0.0")]
+pub use alloc_crate::init;
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use alloc_crate::rc;
 #[stable(feature = "rust1", since = "1.0.0")]

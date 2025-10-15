@@ -231,6 +231,8 @@ pub mod collections;
 #[cfg(all(not(no_rc), not(no_sync), not(no_global_oom_handling)))]
 pub mod ffi;
 pub mod fmt;
+#[unstable(feature = "in_place_init", issue = "none")]
+pub mod init;
 pub mod intrinsics;
 #[cfg(not(no_rc))]
 pub mod rc;
