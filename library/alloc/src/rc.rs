@@ -4578,10 +4578,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
             .map_err(|err| err.map_err(|never| match never {}))?;
 
         if let Err(err) = unsafe { PinInit::init(init, &mut *this, (), pre_zeroed) } {
-            return Err(BuildError {
-                kind: BuildErrorKind::InitError(err),
-                alloc: UniqueRc::into_allocator(this),
-            });
+            return Err(BuildError::init_error(err, UniqueRc::into_allocator(this)));
         }
 
         Ok(unsafe { UniqueRc::assume_init(this) })

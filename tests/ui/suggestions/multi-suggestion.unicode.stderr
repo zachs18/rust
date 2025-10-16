@@ -122,7 +122,7 @@ LL +     let _ = Box::new_zeroed();
 LL -     let _ = Box {};
 LL +     let _ = Box::new_in(_, _);
    │
-   ╰ and 19 other candidates
+   ╰ and 20 other candidates
 help: consider using the `Default` trait
    ╭╴
 LL -     let _ = Box {};
