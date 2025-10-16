@@ -76,7 +76,8 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
     /// panics.
     ///
     /// If `self.kind` is [`InitError(err)`](BuildErrorKind::InitError), returns `(err, self.alloc)`.
-    pub fn handle_alloc_error(self) -> (E, A) {
+    #[cold]
+    pub fn handle_alloc_error_with_allocator(self) -> (E, A) {
         match self.kind {
             BuildErrorKind::LayoutOverflow(metadata) => {
                 panic!("layout for pointee with metadata {metadata:?} cannot be computed")
@@ -85,10 +86,42 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
             BuildErrorKind::InitError(err) => (err, self.alloc),
         }
     }
+    /// If `self.kind` is [`AllocError(layout)`](BuildErrorKind::AllocError), calls
+    /// [`crate::alloc::handle_alloc_error`] with `layout`.
+    ///
+    /// If `self.kind` is [`LayoutOverflow`](BuildErrorKind::LayoutOverflow),
+    /// panics.
+    ///
+    /// If `self.kind` is [`InitError(err)`](BuildErrorKind::InitError), returns `err`.
+    #[cold]
+    pub fn handle_alloc_error(self) -> E {
+        match self.kind {
+            BuildErrorKind::LayoutOverflow(metadata) => {
+                panic!("layout for pointee with metadata {metadata:?} cannot be computed")
+            }
+            BuildErrorKind::AllocError(layout) => crate::alloc::handle_alloc_error(layout),
+            BuildErrorKind::InitError(err) => err,
+        }
+    }
 
     #[cfg(not(any(no_global_oom_handling, no_rc)))]
     pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildError<T, E2, A> {
         BuildError { kind: self.kind.map_err(f), alloc: self.alloc }
+    }
+
+    #[inline]
+    pub(crate) fn layout_overflow(metadata: Metadata<T>, alloc: A) -> Self {
+        Self { kind: BuildErrorKind::LayoutOverflow(metadata), alloc }
+    }
+
+    #[inline]
+    pub(crate) fn alloc_error(layout: Layout, alloc: A) -> Self {
+        Self { kind: BuildErrorKind::AllocError(layout), alloc }
+    }
+
+    #[inline]
+    pub(crate) fn init_error(err: E, alloc: A) -> Self {
+        Self { kind: BuildErrorKind::InitError(err), alloc }
     }
 }
 
