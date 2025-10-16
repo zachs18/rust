@@ -1,3 +1,5 @@
+pub use as_bytes::AsBytes;
+pub use chain::Chain;
 pub use uninit::Uninit;
 pub use zeroed::Zeroed;
 
@@ -5,6 +7,8 @@ use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, Thin, build_metadata};
 
+mod as_bytes;
+mod chain;
 mod uninit;
 mod zeroed;
 
@@ -111,4 +115,18 @@ pub const unsafe fn uninit_with_metadata_unchecked<T: MetaSized>(
 ) -> Uninit<T> {
     // SAFETY: discharged to caller
     unsafe { Uninit::new_unchecked(metadata) }
+}
+
+// `Chain`
+
+/// Create an initializer that initializes a slice in two parts.
+pub const fn chain<I1, I2>(init1: I1, init2: I2) -> Chain<I1, I2> {
+    Chain::new(init1, init2)
+}
+
+// `AsBytes`
+
+/// Create an initializer that initializes a `[u8]` with a `str`.
+pub const fn as_bytes<I>(init: I) -> AsBytes<I> {
+    AsBytes::new(init)
 }
