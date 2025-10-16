@@ -1,10 +1,18 @@
 //! In-place initialization.
 
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{AsBytes, as_bytes};
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{Chain, chain};
+#[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{
-    Uninit, Zeroed, uninit, uninit_slice, uninit_slice_unchecked, uninit_unchecked,
-    uninit_with_metadata, uninit_with_metadata_unchecked, zeroed, zeroed_slice,
-    zeroed_slice_unchecked, zeroed_str, zeroed_unchecked, zeroed_with_metadata,
-    zeroed_with_metadata_unchecked,
+    Uninit, uninit, uninit_slice, uninit_slice_unchecked, uninit_unchecked, uninit_with_metadata,
+    uninit_with_metadata_unchecked,
+};
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{
+    Zeroed, zeroed, zeroed_slice, zeroed_slice_unchecked, zeroed_str, zeroed_unchecked,
+    zeroed_with_metadata, zeroed_with_metadata_unchecked,
 };
 
 use crate::clone::CloneToUninit;
