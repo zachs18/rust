@@ -43,7 +43,12 @@ unsafe impl<T: MetaSized, Error> PinInit<T, Error> for Uninit<T> {
         this.metadata
     }
 
-    unsafe fn init(_this: Self, _dst: &mut MaybeUninit<T>, _extra: ()) -> Result<(), Error> {
+    unsafe fn init(
+        _this: Self,
+        _dst: &mut MaybeUninit<T>,
+        _extra: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
         // `Self` can only be constructed if `T` with meta `this.meta`
         // is valid as all uninitialized bytes.
         Ok(())

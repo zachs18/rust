@@ -46,9 +46,30 @@ pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>: Sized {
     /// * If `T: Thin`, callers are not required to call this function.
     fn metadata(this: &Self) -> Metadata<T>;
 
+    /// Whether this initializer requests that the destination be pre-initialized with all zero bytes before calling [`PinInit::init`].
+    ///
+    /// Note that this function returning `true` does not mean that the caller is *required* to
+    /// pre-zero the destination before calling [`PinInit::init`], only that doing so could be beneficial.
+    ///
+    /// # Safety
+    ///
+    /// ## Callers
+    ///
+    /// This function has no preconditions.
+    ///
+    /// ## Implementors
+    ///
+    /// This function must not diverge.
+    #[inline]
+    fn should_zero(_this: &Self) -> bool {
+        false
+    }
+
     /// Initialize a `T` value into the provided destination.
     ///
     /// `extra` allows for callers to pass in extra data that may only be available after knowing the metadata, e.g. in `Rc::new_cyclic`.
+    ///
+    /// `pre_zeroed` allows for optimization in some cases where allocators can provide pre-zeroed memory.
     ///
     /// # Safety
     ///
@@ -62,13 +83,20 @@ pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>: Sized {
     /// If this function returns `Ok(())`, then `*dst` should be treated as a fully initialized `T`,
     /// and must be treated as pinned (unless `Self` additionally implements [`Init<T, Error, Arg>`]).
     ///
+    /// If `*dst` was pre-filled with zeroed bytes, `pre_zeroed` can be `true`, otherwise it must be `false`.
+    ///
     /// ## Implementors
     ///
     /// If this function returns `Ok(())`, then `*dst` must be a fully initialized `T`.
     ///
     /// If this function panics or returns `Err(_)`, then it should drop any partially-initialized parts of the destination.
     /// This is not a safety requirement, but failing to do so may cause resource leaks.
-    unsafe fn init(this: Self, dst: &mut MaybeUninit<T>, arg: Arg) -> Result<(), Error>;
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error>;
 }
 
 /// A trait for non-pinned in-place initializers.
@@ -89,7 +117,12 @@ unsafe impl<T, Error> PinInit<T, Error> for T {
         build_metadata!(..)
     }
 
-    unsafe fn init(this: Self, dst: &mut MaybeUninit<T>, _arg: ()) -> Result<(), Error> {
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        _arg: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
         dst.write(this);
         Ok(())
     }
@@ -102,7 +135,12 @@ unsafe impl<T, Error> PinInit<T, Error> for Result<T, Error> {
         build_metadata!(..)
     }
 
-    unsafe fn init(this: Self, dst: &mut MaybeUninit<T>, _arg: ()) -> Result<(), Error> {
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        _arg: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
         dst.write(this?);
         Ok(())
     }
@@ -115,7 +153,12 @@ unsafe impl<T, Error, const N: usize> PinInit<[T], Error> for [T; N] {
         build_metadata!(len: N, ..)
     }
 
-    unsafe fn init(this: Self, dst: &mut MaybeUninit<[T]>, _: ()) -> Result<(), Error> {
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<[T]>,
+        _: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
         debug_assert_eq!(dst.len(), N);
         dst.transpose_mut().as_mut_array().unwrap().transpose_mut().write(this);
         Ok(())
@@ -129,9 +172,14 @@ unsafe impl<T: Clone, Error, const N: usize> PinInit<[T], Error> for &[T; N] {
         build_metadata!(len: N, ..)
     }
 
-    unsafe fn init(this: Self, dst: &mut MaybeUninit<[T]>, _: ()) -> Result<(), Error> {
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<[T]>,
+        _: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
         // SAFETY: discharged to caller
-        unsafe { <&[T] as PinInit<[T], Error>>::init(this, dst, ()) }
+        unsafe { <&[T] as PinInit<[T], Error>>::init(this, dst, (), pre_zeroed) }
     }
 }
 unsafe impl<T: Clone, Error, const N: usize> Init<[T], Error> for &[T; N] {}
@@ -142,7 +190,12 @@ unsafe impl<T: MetaSized + CloneToUninit, Error> PinInit<T, Error> for &T {
         core::ptr::metadata::<T>(*this)
     }
 
-    unsafe fn init(this: Self, dst: &mut MaybeUninit<T>, _: ()) -> Result<(), Error> {
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        _: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
         // SAFETY: `dst` comes from a mutable reference, so it is valid for writes and well-aligned
         unsafe {
             T::clone_to_uninit(this, dst.as_mut_ptr().cast());

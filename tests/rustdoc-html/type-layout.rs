@@ -29,7 +29,7 @@ pub struct X(usize);
 
 //@ hasraw type_layout/struct.Y.html 'Size: '
 //@ hasraw - '1 byte'
-//@ !hasraw - ' bytes'
+//@ !hasraw - ' bytes</p>'
 pub struct Y(u8);
 
 //@ hasraw type_layout/struct.Z.html 'Size: '

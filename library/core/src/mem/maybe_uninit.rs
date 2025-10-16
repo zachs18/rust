@@ -1136,7 +1136,7 @@ impl<T: MetaSized> MaybeUninit<T> {
     {
         // SAFETY: `T: Thin`
         unsafe {
-            PinInit::init(init, self, ())?;
+            PinInit::init(init, self, (), false)?;
         }
         // SAFETY: `self` was just initialized
         Ok(unsafe { self.assume_init_mut() })

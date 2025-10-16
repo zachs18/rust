@@ -98,7 +98,12 @@ unsafe impl<T: ?Sized, A: Allocator, Error> PinInit<T, Error> for Box<T, A> {
         ptr::metadata::<T>(&**this)
     }
 
-    unsafe fn init(this: Self, dst: &mut core::mem::MaybeUninit<T>, _arg: ()) -> Result<(), Error> {
+    unsafe fn init(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        _arg: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
         let size = mem::size_of_val::<T>(&*this);
         let (ptr, alloc) = Box::into_raw_with_allocator(this);
         // Don't drop `T`, but still deallocate the `Box` when we've moved from it
@@ -123,8 +128,9 @@ unsafe impl<T, A: Allocator, Error> PinInit<[T], Error> for Vec<T, A> {
 
     unsafe fn init(
         mut this: Self,
-        dst: &mut core::mem::MaybeUninit<[T]>,
+        dst: &mut MaybeUninit<[T]>,
         _arg: (),
+        _pre_zeroed: bool,
     ) -> Result<(), Error> {
         let len = this.len();
         unsafe {

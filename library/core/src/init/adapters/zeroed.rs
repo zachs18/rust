@@ -43,8 +43,19 @@ unsafe impl<T: MetaSized, Error> PinInit<T, Error> for Zeroed<T> {
         this.metadata
     }
 
-    unsafe fn init(_this: Self, dst: &mut MaybeUninit<T>, _extra: ()) -> Result<(), Error> {
-        dst.as_bytes_mut().write_filled(0);
+    fn should_zero(_this: &Self) -> bool {
+        true
+    }
+
+    unsafe fn init(
+        _this: Self,
+        dst: &mut MaybeUninit<T>,
+        _extra: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        if !pre_zeroed {
+            dst.as_bytes_mut().write_filled(0);
+        }
         // `Self` can only be constructed if `T` with meta `this.metadata`
         // is valid as all bytes zero.
         Ok(())
