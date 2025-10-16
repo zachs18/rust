@@ -202,12 +202,13 @@ use core::ops::{
 #[cfg(not(no_global_oom_handling))]
 use core::ops::{Residual, Try};
 use core::pin::{Pin, PinCoerceUnsized};
-use core::ptr::{self, NonNull, Thin, Unique};
+use core::ptr::{self, Metadata, NonNull, Thin, Unique};
 use core::task::{Context, Poll};
 
 #[cfg(not(no_global_oom_handling))]
 use crate::alloc::handle_alloc_error;
 use crate::alloc::{AllocError, Allocator, Global, Layout};
+use crate::init::BuildError;
 use crate::raw_vec::RawVec;
 #[cfg(not(no_global_oom_handling))]
 use crate::str::from_boxed_utf8_unchecked;
@@ -900,23 +901,52 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     /// Allocates and initializes a `Box<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl Init<T>, alloc: A) -> Box<T, A> {
+        match Self::try_build_in(init, alloc) {
+            Ok(bx) => bx,
+            Err(err) => err.handle_alloc_error(),
+        }
+    }
+
+    /// Allocates and initializes a `Box<T, A>`
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn try_build_in<E>(
+        init: impl Init<T, E>,
+        alloc: A,
+    ) -> Result<Box<T, A>, BuildError<T, E, A>> {
         let metadata = PinInit::metadata(&init);
         let Some(layout) = Layout::for_meta(metadata) else {
-            handle_alloc_error(Layout::new::<()>())
+            return Err(BuildError::layout_overflow(metadata, alloc));
         };
         let pre_zeroed = PinInit::should_zero(&init);
         let ptr = if layout.size() == 0 {
             layout.dangling_ptr()
-        } else if pre_zeroed {
-            alloc.allocate_zeroed(layout).unwrap_or_else(|_| handle_alloc_error(layout)).cast()
         } else {
-            alloc.allocate(layout).unwrap_or_else(|_| handle_alloc_error(layout)).cast()
+            let res =
+                if pre_zeroed { alloc.allocate_zeroed(layout) } else { alloc.allocate(layout) };
+            match res {
+                Ok(ptr) => ptr.cast(),
+                Err(_) => return Err(BuildError::alloc_error(layout, alloc)),
+            }
         };
-        let ptr = NonNull::from_raw_parts(ptr, metadata);
+        let ptr = NonNull::from_raw_parts(ptr, metadata as Metadata<_>);
         unsafe {
-            let Ok(_) = PinInit::init(init, ptr.as_uninit_mut(), (), pre_zeroed);
-            Self::from_raw_in(ptr.as_ptr(), alloc)
+            let mut uninit = Box::<MaybeUninit<T>, A>::from_non_null_in(ptr, alloc);
+            if let Err(err) = PinInit::init(init, &mut *uninit, (), pre_zeroed) {
+                let alloc = Box::into_allocator(uninit);
+                return Err(BuildError::init_error(err, alloc));
+            }
+            Ok(uninit.assume_init())
         }
+    }
+
+    /// Consumes the `Box`, dropping the wrapped value, deallocating the allocation, and returning the allocator.
+    fn into_allocator(this: Self) -> A {
+        let (ptr, alloc) = Self::into_non_null_with_allocator(this);
+        unsafe {
+            let bx: Box<T, &A> = Box::from_non_null_in(ptr, &alloc);
+            drop(bx); // drops `T` and deallocates
+        }
+        alloc
     }
 }
 
@@ -925,6 +955,12 @@ impl<T: ?Sized> Box<T> {
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl Init<T>) -> Box<T> {
         Self::build_in(init, Global)
+    }
+
+    /// Allocates and initializes a `Box<T>`
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn try_build<E>(init: impl Init<T, E>) -> Result<Box<T>, BuildError<T, E>> {
+        Self::try_build_in(init, Global)
     }
 }
 
