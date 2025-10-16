@@ -377,6 +377,18 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     }
 
     #[inline]
+    fn from_boxed_inner(mut bx: Box<RcInner<T>, A>) -> Self {
+        // There is an implicit weak pointer owned by all the strong
+        // pointers, which ensures that the weak destructor never frees
+        // the allocation while the strong destructor is running, even
+        // if the weak pointer is stored inside the strong one.
+        bx.strong = Cell::new(1);
+        bx.weak = Cell::new(1);
+        let (ptr, alloc) = Box::into_unique(bx);
+        unsafe { Self::from_inner_in(ptr.into(), alloc) }
+    }
+
+    #[inline]
     unsafe fn from_inner_in(ptr: NonNull<RcInner<T>>, alloc: A) -> Self {
         Self { ptr, phantom: PhantomData, alloc }
     }
@@ -415,16 +427,11 @@ impl<T> Rc<T> {
     #[cfg(not(no_global_oom_handling))]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn new(value: T) -> Rc<T> {
-        // There is an implicit weak pointer owned by all the strong
-        // pointers, which ensures that the weak destructor never frees
-        // the allocation while the strong destructor is running, even
-        // if the weak pointer is stored inside the strong one.
-        unsafe {
-            Self::from_inner(
-                Box::leak(Box::new(RcInner { strong: Cell::new(1), weak: Cell::new(1), value }))
-                    .into(),
-            )
-        }
+        Self::from_boxed_inner(Box::new(RcInner {
+            strong: Cell::new(1),
+            weak: Cell::new(1),
+            value,
+        }))
     }
 
     /// Constructs a new `Rc<T>` while giving you a `Weak<T>` to the allocation,
@@ -4275,13 +4282,6 @@ impl<T: ?Sized> UniqueRc<T> {
     }
 }
 
-impl<T: ?Sized> UniqueRc<T> {
-    #[inline]
-    unsafe fn from_inner(ptr: NonNull<RcInner<T>>) -> Self {
-        unsafe { Self::from_inner_in(ptr, Global) }
-    }
-}
-
 impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     #[inline]
     fn into_inner_with_allocator(this: Self) -> (NonNull<RcInner<T>>, A) {
@@ -4546,11 +4546,12 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl Init<T>, alloc: A) -> UniqueRc<T, A> {
         let metadata = PinInit::metadata(&init);
+        let pre_zeroed = PinInit::should_zero(&init);
 
-        let mut this = Self::new_uninit_with_metadata_in(metadata, alloc);
+        let mut this = Self::new_uninit_with_metadata_in(metadata, alloc, pre_zeroed);
 
         unsafe {
-            let Ok(_) = PinInit::init(init, &mut *this, ());
+            let Ok(_) = PinInit::init(init, &mut *this, (), pre_zeroed);
         }
 
         unsafe { UniqueRc::assume_init(this) }
@@ -4571,11 +4572,12 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
         alloc: A,
     ) -> Result<UniqueRc<T, A>, BuildError<T, E, A>> {
         let metadata = PinInit::metadata(&init);
+        let pre_zeroed = PinInit::should_zero(&init);
 
-        let mut this = Self::try_new_uninit_with_metadata_in(metadata, alloc)
+        let mut this = Self::try_new_uninit_with_metadata_in(metadata, alloc, pre_zeroed)
             .map_err(|err| err.map_err(|never| match never {}))?;
 
-        if let Err(err) = unsafe { PinInit::init(init, &mut *this, ()) } {
+        if let Err(err) = unsafe { PinInit::init(init, &mut *this, (), pre_zeroed) } {
             return Err(BuildError {
                 kind: BuildErrorKind::InitError(err),
                 alloc: UniqueRc::into_allocator(this),
@@ -4586,28 +4588,42 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     }
 
     /// Allocates a `UniqueRc<MaybeUninit<T>, A>` for a particular pointer metadata.
+    ///
+    /// If `zeroed` is `true`, the `MaybeUninit<T>` will be zeroed.
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn new_uninit_with_metadata_in(
         value_metadata: Metadata<T>,
         alloc: A,
+        zeroed: bool,
     ) -> UniqueRc<MaybeUninit<T>, A> {
         let ptr = unsafe {
             UniqueRc::allocate_for_metadata(value_metadata as _, |rc_inner_layout| {
-                alloc.allocate(rc_inner_layout)
+                if zeroed {
+                    alloc.allocate_zeroed(rc_inner_layout)
+                } else {
+                    alloc.allocate(rc_inner_layout)
+                }
             })
         };
         UniqueRc { ptr, alloc, _marker: PhantomData, _marker2: PhantomData }
     }
 
     /// Allocates a `UniqueRc<MaybeUninit<T>, A>` for a particular pointer metadata.
+    ///
+    /// If `zeroed` is `true`, the `MaybeUninit<T>` will be zeroed.
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_new_uninit_with_metadata_in(
         value_metadata: Metadata<T>,
         alloc: A,
+        zeroed: bool,
     ) -> Result<UniqueRc<MaybeUninit<T>, A>, BuildError<T, !, A>> {
         match unsafe {
             UniqueRc::try_allocate_for_metadata(value_metadata as _, |rc_inner_layout| {
-                alloc.allocate(rc_inner_layout)
+                if zeroed {
+                    alloc.allocate_zeroed(rc_inner_layout)
+                } else {
+                    alloc.allocate(rc_inner_layout)
+                }
             })
         } {
             Ok(ptr) => Ok(UniqueRc { ptr, alloc, _marker: PhantomData, _marker2: PhantomData }),
@@ -4666,11 +4682,7 @@ impl<T> UniqueRc<T> {
     #[unstable(feature = "unique_rc_arc", issue = "112566")]
     #[must_use]
     pub fn new_uninit() -> UniqueRc<mem::MaybeUninit<T>> {
-        unsafe {
-            UniqueRc::from_inner(UniqueRc::allocate_for_metadata(Metadata::default(), |layout| {
-                Global.allocate(layout)
-            }))
-        }
+        UniqueRc::new_uninit_with_metadata_in(Metadata::default(), Global, false)
     }
 
     /// Constructs a new `UniqueRc` with uninitialized contents, with the memory
@@ -4696,11 +4708,7 @@ impl<T> UniqueRc<T> {
     #[unstable(feature = "unique_rc_arc", issue = "112566")]
     #[must_use]
     pub fn new_zeroed() -> UniqueRc<mem::MaybeUninit<T>> {
-        unsafe {
-            UniqueRc::from_inner(UniqueRc::allocate_for_metadata(Metadata::default(), |layout| {
-                Global.allocate_zeroed(layout)
-            }))
-        }
+        UniqueRc::new_uninit_with_metadata_in(Metadata::default(), Global, true)
     }
 
     #[cfg(not(no_global_oom_handling))]
@@ -5003,13 +5011,15 @@ impl<T: ?Sized, A: Allocator> UniqueRcUninit<T, A> {
     /// Allocates a RcInner with layout suitable to contain `for_value` or a clone of it.
     #[cfg(not(no_global_oom_handling))]
     fn new(for_value: &T, alloc: A) -> UniqueRcUninit<T, A> {
-        Self { inner: UniqueRc::new_uninit_with_metadata_in(ptr::metadata(for_value), alloc) }
+        Self {
+            inner: UniqueRc::new_uninit_with_metadata_in(ptr::metadata(for_value), alloc, false),
+        }
     }
 
     /// Allocates a RcInner with layout suitable to contain `for_value` or a clone of it,
     /// returning an error if allocation fails.
     fn try_new(for_value: &T, alloc: A) -> Result<UniqueRcUninit<T, A>, BuildError<T, !, A>> {
-        UniqueRc::try_new_uninit_with_metadata_in(ptr::metadata(for_value), alloc)
+        UniqueRc::try_new_uninit_with_metadata_in(ptr::metadata(for_value), alloc, false)
             .map(|inner| Self { inner })
     }
 

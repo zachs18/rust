@@ -904,14 +904,17 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         let Some(layout) = Layout::for_meta(metadata) else {
             handle_alloc_error(Layout::new::<()>())
         };
+        let pre_zeroed = PinInit::should_zero(&init);
         let ptr = if layout.size() == 0 {
             layout.dangling_ptr()
+        } else if pre_zeroed {
+            alloc.allocate_zeroed(layout).unwrap_or_else(|_| handle_alloc_error(layout)).cast()
         } else {
             alloc.allocate(layout).unwrap_or_else(|_| handle_alloc_error(layout)).cast()
         };
         let ptr = NonNull::from_raw_parts(ptr, metadata);
         unsafe {
-            let Ok(_) = PinInit::init(init, ptr.as_uninit_mut(), ());
+            let Ok(_) = PinInit::init(init, ptr.as_uninit_mut(), (), pre_zeroed);
             Self::from_raw_in(ptr.as_ptr(), alloc)
         }
     }
