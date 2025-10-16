@@ -4038,9 +4038,12 @@ impl<T, A: Allocator + Clone> From<Vec<T, A>> for Arc<[T], A> {
     #[inline]
     fn from(v: Vec<T, A>) -> Arc<[T], A> {
         unsafe {
+            let alloc = v.allocator();
+            let len = v.len();
+            let rc_ptr = Self::allocate_for_slice_in(len, alloc);
+
             let (vec_ptr, len, cap, alloc) = v.into_raw_parts_with_alloc();
 
-            let rc_ptr = Self::allocate_for_slice_in(len, &alloc);
             ptr::copy_nonoverlapping(vec_ptr, (&raw mut (*rc_ptr).data) as *mut T, len);
 
             // Create a `Vec<T, &A>` with length 0, to deallocate the buffer
