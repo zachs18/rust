@@ -226,10 +226,12 @@ pub fn three_way_compare_unsigned(a: u32, b: u32) {
 pub fn make_pointers(a: *const u8, b: *mut (), n: usize) {
     use std::intrinsics::aggregate_raw_ptr;
 
-    let _thin_const: *const i32 = aggregate_raw_ptr(a, ());
-    let _thin_mut: *mut u8 = aggregate_raw_ptr(b, ());
-    let _slice_const: *const [u16] = aggregate_raw_ptr(a, n);
-    let _slice_mut: *mut [u64] = aggregate_raw_ptr(b, n);
+    let _thin_const: *const i32 =
+        aggregate_raw_ptr(a, core::ptr::build_metadata!(ptr_metadata: ()));
+    let _thin_mut: *mut u8 = aggregate_raw_ptr(b, core::ptr::build_metadata!(ptr_metadata: ()));
+    let _slice_const: *const [u16] =
+        aggregate_raw_ptr(a, core::ptr::build_metadata!(ptr_metadata: n));
+    let _slice_mut: *mut [u64] = aggregate_raw_ptr(b, core::ptr::build_metadata!(ptr_metadata: n));
 }
 
 // EMIT_MIR lower_intrinsics.get_metadata.LowerIntrinsics.diff

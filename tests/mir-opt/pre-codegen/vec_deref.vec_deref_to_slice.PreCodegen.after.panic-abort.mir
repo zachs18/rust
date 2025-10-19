@@ -9,7 +9,8 @@ fn vec_deref_to_slice(_1: &Vec<u8>) -> &[u8] {
             debug self => _1;
             let mut _3: *const u8;
             let mut _4: usize;
-            let _5: *const [u8];
+            let mut _5: {ptr metadata for [u8]};
+            let _6: *const [u8];
             scope 3 (inlined Vec::<u8>::as_ptr) {
                 debug self => _1;
                 scope 4 (inlined alloc::raw_vec::RawVec::<u8>::ptr) {
@@ -34,19 +35,22 @@ fn vec_deref_to_slice(_1: &Vec<u8>) -> &[u8] {
     }
 
     bb0: {
-        StorageLive(_5);
+        StorageLive(_6);
         StorageLive(_3);
         StorageLive(_2);
         _2 = copy (((((*_1).0: alloc::raw_vec::RawVec<u8>).0: alloc::raw_vec::RawVecInner).0: std::ptr::Unique<u8>).0: std::ptr::NonNull<u8>);
         _3 = copy _2 as *const u8 (Transmute);
         StorageDead(_2);
+        StorageLive(_5);
         StorageLive(_4);
         _4 = copy ((*_1).1: usize);
-        _5 = *const [u8] from (copy _3, move _4);
+        _5 = builtin # ptr_metadata([u8]) from (move _4,);
         StorageDead(_4);
-        StorageDead(_3);
-        _0 = &(*_5);
+        _6 = *const [u8] from (copy _3, move _5);
         StorageDead(_5);
+        StorageDead(_3);
+        _0 = &(*_6);
+        StorageDead(_6);
         return;
     }
 }

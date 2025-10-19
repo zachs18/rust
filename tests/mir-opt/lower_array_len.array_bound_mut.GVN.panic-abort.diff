@@ -14,6 +14,7 @@
       let mut _9: bool;
       let _10: usize;
       let mut _11: bool;
+      let mut _12: {ptr metadata for [u8]};
   
       bb0: {
 -         StorageLive(_3);
@@ -26,7 +27,8 @@
           _7 = &(*_2);
           _6 = move _7 as &[u8] (PointerCoercion(Unsize, Implicit));
           StorageDead(_7);
--         _5 = PtrMetadata(move _6);
+          _12 = PtrMetadata(move _6);
+-         _5 = copy (_12.0: usize);
 +         _5 = const N;
           goto -> bb1;
       }

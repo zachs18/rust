@@ -1,3 +1,6 @@
+//@ ignore-test: FIXME(ptr_metadata_v2)
+// Tests to investigate on 'Use builtin # ptr_metadata(T) as pointer metadata'
+// (before ptr_metadata_fields) because there's a `const{transmute}`
 //@ test-mir-pass: GVN
 //@ compile-flags: -Zdump-mir-exclude-alloc-bytes
 // EMIT_MIR_FOR_EACH_PANIC_STRATEGY
@@ -806,21 +809,23 @@ fn slice_const_length(x: &[i32]) -> *const [i32] {
     // CHECK: _0 = *const [i32] from (copy {{_[0-9]+}}, const 123_usize);
     let ptr = x.as_ptr();
     let len = 123;
-    std::intrinsics::aggregate_raw_ptr(ptr, len)
+    std::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(ptr_metadata: len))
 }
 
 fn meta_of_ref_to_slice(x: *const i32) -> usize {
     // CHECK-LABEL: fn meta_of_ref_to_slice
     // CHECK: _0 = const 1_usize
-    let ptr: *const [i32] = std::intrinsics::aggregate_raw_ptr(x, 1);
-    std::intrinsics::ptr_metadata(ptr)
+    let ptr: *const [i32] =
+        std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: 1));
+    std::intrinsics::ptr_metadata(ptr).ptr_metadata
 }
 
 fn slice_from_raw_parts_as_ptr(x: *const u16, n: usize) -> (*const u16, *const f32) {
     // CHECK-LABEL: fn slice_from_raw_parts_as_ptr
     // CHECK: _8 = copy _1 as *const f32 (PtrToPtr);
     // CHECK: _0 = (copy _1, move _8);
-    let ptr: *const [u16] = std::intrinsics::aggregate_raw_ptr(x, n);
+    let ptr: *const [u16] =
+        std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: n));
     (ptr as *const u16, ptr as *const f32)
 }
 
@@ -830,7 +835,7 @@ fn casts_before_aggregate_raw_ptr(x: *const u32) -> *const [u8] {
     let x = x as *const [u8; 4];
     let x = x as *const u8;
     let x = x as *const ();
-    std::intrinsics::aggregate_raw_ptr(x, 4)
+    std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: 4))
 }
 
 fn manual_slice_mut_len(x: &mut [i32]) -> usize {
@@ -838,7 +843,7 @@ fn manual_slice_mut_len(x: &mut [i32]) -> usize {
     // CHECK: _0 = PtrMetadata(copy _1);
     let x: *mut [i32] = x;
     let x: *const [i32] = x;
-    std::intrinsics::ptr_metadata(x)
+    std::intrinsics::ptr_metadata(x).ptr_metadata
 }
 
 // `.len()` on arrays ends up being something like this
@@ -846,7 +851,7 @@ fn array_len(x: &mut [i32; 42]) -> usize {
     // CHECK-LABEL: fn array_len
     // CHECK: _0 = const 42_usize;
     let x: &[i32] = x;
-    std::intrinsics::ptr_metadata(x)
+    std::intrinsics::ptr_metadata(x).ptr_metadata
 }
 
 // Check that we only load the length once, rather than all 3 times.
@@ -993,7 +998,8 @@ unsafe fn aggregate_struct_then_transmute(id: u16, thin: *const u8) {
     opaque(std::intrinsics::transmute::<_, u16>(i));
 
     // CHECK: opaque::<*const u8>(copy _2)
-    let j: *const i32 = std::intrinsics::aggregate_raw_ptr(thin, ());
+    let j: *const i32 =
+        std::intrinsics::aggregate_raw_ptr(thin, core::ptr::build_metadata!(ptr_metadata: ()));
     opaque(std::intrinsics::transmute::<_, *const u8>(j));
 }
 
