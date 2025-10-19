@@ -4,7 +4,7 @@ fn slice_len(_1: &[T]) -> () {
     debug x => _1;
     let mut _0: ();
     let mut _2: usize;
-    let mut _3: usize;
+    let mut _3: {ptr metadata for [T]};
     let mut _4: usize;
     let mut _5: bool;
     let _10: ();
@@ -29,7 +29,7 @@ fn slice_len(_1: &[T]) -> () {
     bb0: {
         PlaceMention(_1);
         _3 = PtrMetadata(copy _1);
-        _2 = move _3;
+        _2 = move (_3.0: usize);
         _4 = const 3_usize;
         _5 = Ge(move _2, move _4);
         switchInt(move _5) -> [0: bb1, otherwise: bb2];
