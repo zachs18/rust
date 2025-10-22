@@ -4,12 +4,16 @@
 //@ compile-flags: -Z mir-enable-passes=+Inline
 
 // Regression for <https://github.com/rust-lang/rust/issues/127089>
+#![feature(rustc_attrs)]
 
 struct Foo<T>(std::marker::PhantomData<T>);
 
 impl<T> Foo<T> {
     const SENTINEL: *mut T = std::ptr::dangling_mut();
 
+    // Compiler seems to only sometimes be able to deduce that this does not unwind.
+    // in particular, `./x.py test --bless` says continue, but without `--bless` says unreachable
+    #[rustc_nounwind]
     fn cmp_ptr(a: *mut T) -> bool {
         std::ptr::eq(a, Self::SENTINEL)
     }

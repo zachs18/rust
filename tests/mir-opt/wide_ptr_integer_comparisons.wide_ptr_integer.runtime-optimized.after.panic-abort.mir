@@ -1,0 +1,223 @@
+// MIR for `wide_ptr_integer` after runtime-optimized
+
+fn wide_ptr_integer() -> () {
+    let mut _0: ();
+    let _1: ();
+    let _2: ();
+    let _3: ();
+    let _4: ();
+    let _5: ();
+    let _6: ();
+    scope 1 {
+        debug a => const Indirect { alloc_id: ALLOC0, offset: Size(0 bytes) }: *const [u8];
+        scope 2 {
+            debug b => const Indirect { alloc_id: ALLOC1, offset: Size(0 bytes) }: *const [u8];
+            scope 3 (inlined std::ptr::const_ptr::<impl PartialEq for *const [u8]>::eq) {
+                scope 4 {
+                    scope 5 {
+                        scope 12 (inlined std::ptr::metadata::<impl PartialEq for {ptr metadata for [u8]}>::eq) {
+                            scope 13 (inlined std::cmp::Ordering::is_eq) {
+                                scope 14 (inlined std::cmp::Ordering::as_raw) {
+                                }
+                            }
+                            scope 15 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
+                                scope 16 (inlined std::cmp::impls::<impl Ord for usize>::cmp) {
+                                }
+                            }
+                        }
+                    }
+                    scope 9 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                        scope 10 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                        }
+                        scope 11 (inlined std::ptr::metadata::<[u8]>) {
+                        }
+                    }
+                }
+                scope 6 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                    scope 7 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                    }
+                    scope 8 (inlined std::ptr::metadata::<[u8]>) {
+                    }
+                }
+            }
+            scope 17 (inlined <*const [u8] as PartialEq>::ne) {
+                scope 18 (inlined std::ptr::const_ptr::<impl PartialEq for *const [u8]>::eq) {
+                    scope 19 {
+                        scope 20 {
+                            scope 27 (inlined std::ptr::metadata::<impl PartialEq for {ptr metadata for [u8]}>::eq) {
+                                scope 28 (inlined std::cmp::Ordering::is_eq) {
+                                    scope 29 (inlined std::cmp::Ordering::as_raw) {
+                                    }
+                                }
+                                scope 30 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
+                                    scope 31 (inlined std::cmp::impls::<impl Ord for usize>::cmp) {
+                                    }
+                                }
+                            }
+                        }
+                        scope 24 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                            scope 25 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                            }
+                            scope 26 (inlined std::ptr::metadata::<[u8]>) {
+                            }
+                        }
+                    }
+                    scope 21 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                        scope 22 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                        }
+                        scope 23 (inlined std::ptr::metadata::<[u8]>) {
+                        }
+                    }
+                }
+            }
+            scope 32 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::lt) {
+                scope 33 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
+                    scope 34 {
+                        scope 35 {
+                            scope 44 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
+                                scope 45 (inlined std::cmp::impls::<impl Ord for usize>::cmp) {
+                                }
+                            }
+                        }
+                        scope 39 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                            scope 40 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                            }
+                            scope 41 (inlined std::ptr::metadata::<[u8]>) {
+                            }
+                        }
+                    }
+                    scope 36 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                        scope 37 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                        }
+                        scope 38 (inlined std::ptr::metadata::<[u8]>) {
+                        }
+                    }
+                }
+                scope 42 (inlined std::cmp::Ordering::is_lt) {
+                    scope 43 (inlined std::cmp::Ordering::as_raw) {
+                    }
+                }
+            }
+            scope 46 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::le) {
+                scope 47 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
+                    scope 48 {
+                        scope 49 {
+                            scope 58 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
+                                scope 59 (inlined std::cmp::impls::<impl Ord for usize>::cmp) {
+                                }
+                            }
+                        }
+                        scope 53 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                            scope 54 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                            }
+                            scope 55 (inlined std::ptr::metadata::<[u8]>) {
+                            }
+                        }
+                    }
+                    scope 50 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                        scope 51 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                        }
+                        scope 52 (inlined std::ptr::metadata::<[u8]>) {
+                        }
+                    }
+                }
+                scope 56 (inlined std::cmp::Ordering::is_le) {
+                    scope 57 (inlined std::cmp::Ordering::as_raw) {
+                    }
+                }
+            }
+            scope 60 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::gt) {
+                scope 61 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
+                    scope 62 {
+                        scope 63 {
+                            scope 72 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
+                                scope 73 (inlined std::cmp::impls::<impl Ord for usize>::cmp) {
+                                }
+                            }
+                        }
+                        scope 67 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                            scope 68 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                            }
+                            scope 69 (inlined std::ptr::metadata::<[u8]>) {
+                            }
+                        }
+                    }
+                    scope 64 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                        scope 65 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                        }
+                        scope 66 (inlined std::ptr::metadata::<[u8]>) {
+                        }
+                    }
+                }
+                scope 70 (inlined std::cmp::Ordering::is_gt) {
+                    scope 71 (inlined std::cmp::Ordering::as_raw) {
+                    }
+                }
+            }
+            scope 74 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::ge) {
+                scope 75 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
+                    scope 76 {
+                        scope 77 {
+                            scope 86 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
+                                scope 87 (inlined std::cmp::impls::<impl Ord for usize>::cmp) {
+                                }
+                            }
+                        }
+                        scope 81 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                            scope 82 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                            }
+                            scope 83 (inlined std::ptr::metadata::<[u8]>) {
+                            }
+                        }
+                    }
+                    scope 78 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                        scope 79 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                        }
+                        scope 80 (inlined std::ptr::metadata::<[u8]>) {
+                        }
+                    }
+                }
+                scope 84 (inlined std::cmp::Ordering::is_ge) {
+                    scope 85 (inlined std::cmp::Ordering::as_raw) {
+                    }
+                }
+            }
+        }
+    }
+
+    bb0: {
+        _1 = opaque::<bool>(const false) -> [return: bb1, unwind unreachable];
+    }
+
+    bb1: {
+        _2 = opaque::<bool>(const true) -> [return: bb2, unwind unreachable];
+    }
+
+    bb2: {
+        _3 = opaque::<bool>(const true) -> [return: bb3, unwind unreachable];
+    }
+
+    bb3: {
+        _4 = opaque::<bool>(const true) -> [return: bb4, unwind unreachable];
+    }
+
+    bb4: {
+        _5 = opaque::<bool>(const false) -> [return: bb5, unwind unreachable];
+    }
+
+    bb5: {
+        _6 = opaque::<bool>(const false) -> [return: bb6, unwind unreachable];
+    }
+
+    bb6: {
+        return;
+    }
+}
+
+ALLOC1 (size: 16, align: 8) {
+    01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 │ ................
+}
+
+ALLOC0 (size: 16, align: 8) {
+    01 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 │ ................
+}
