@@ -27,6 +27,7 @@ mod adapters;
 /// # Safety
 ///
 /// See the documentation for [`metadata`][PinInit::metadata] and [`init`][PinInit::init].
+#[lang = "pin_init"]
 pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>: Sized {
     /// The pointer metadata for the value that this initializer will create.
     ///
@@ -114,6 +115,7 @@ pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>: Sized {
 /// See [`PinInit`].
 ///
 /// [`PinInit::init`]'s caller requirements are relaxed to not necessarily treat `*dst` as pinned.
+#[lang = "init"]
 pub unsafe trait Init<T: MetaSized, Error = !, Extra = ()>:
     PinInit<T, Error, Extra>
 {
