@@ -1064,6 +1064,20 @@ impl Rewrite for ast::Ty {
                 result.push_str(&rewrite);
                 Ok(result)
             }
+            ast::TyKind::UntypedPtr { is_nonnull: true } => {
+                Ok("builtin # untyped_ptr(nonnull)".to_owned())
+            }
+            ast::TyKind::UntypedPtr { is_nonnull: false } => {
+                Ok("builtin # untyped_ptr(nullable)".to_owned())
+            }
+            ast::TyKind::PtrMetadata(ref pointee) => {
+                let budget = shape
+                    .width
+                    .checked_sub(4)
+                    .max_width_error(shape.width, self.span())?;
+                pointee.rewrite_result(context, Shape::legacy(budget, shape.indent + 1))
+                    .map(|pointee_str| format!("builtin # ptr_metadata({})", pointee_str))
+            }
         }
     }
 }
