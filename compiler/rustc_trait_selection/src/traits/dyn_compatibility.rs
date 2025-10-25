@@ -91,14 +91,23 @@ fn dyn_compatibility_violations_for_trait(
         .collect();
 
     // Check the trait itself.
-    if trait_has_sized_self(tcx, trait_def_id) {
-        // We don't want to include the requirement from `Sized` itself to be `Sized` in the list.
-        let spans = get_sized_bounds(tcx, trait_def_id);
-        violations.push(DynCompatibilityViolation::SizedSelf(spans));
+    let has_sized_self = trait_has_sized_self(tcx, trait_def_id);
+    let has_thin_self = has_sized_self || trait_has_thin_self(tcx, trait_def_id);
+    if has_sized_self || has_thin_self {
+        // We don't want to include the requirement from `Sized` and `Thin`
+        // themselves to be `Sized` or `Thin` in the list.
+        let mut spans = get_sized_bounds(tcx, trait_def_id);
+        if !has_sized_self {
+            spans.extend(get_thin_bounds(tcx, trait_def_id));
+        }
+        violations.push(DynCompatibilityViolation::SizednessSelf {
+            spans,
+            sized: has_sized_self,
+            thin: has_thin_self,
+        });
     } else if let Some(span) = tcx.trait_def(trait_def_id).force_dyn_incompatible {
         violations.push(DynCompatibilityViolation::ExplicitlyDynIncompatible([span].into()));
     }
-
     let spans = predicates_reference_self(tcx, trait_def_id, false);
     if !spans.is_empty() {
         violations.push(DynCompatibilityViolation::SupertraitSelf(spans));
@@ -137,7 +146,41 @@ fn sized_trait_bound_spans<'tcx>(
     })
 }
 
+fn thin_trait_bound_spans<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    bounds: hir::GenericBounds<'tcx>,
+) -> impl 'tcx + Iterator<Item = Span> {
+    bounds.iter().filter_map(move |b| match b {
+        hir::GenericBound::Trait(trait_ref)
+            if trait_has_thin_self(
+                tcx,
+                trait_ref.trait_ref.trait_def_id().unwrap_or_else(|| FatalError.raise()),
+            ) =>
+        {
+            // Fetch spans for supertraits that are `Thin`: `trait T: Super`
+            Some(trait_ref.span)
+        }
+        _ => None,
+    })
+}
+
 fn get_sized_bounds(tcx: TyCtxt<'_>, trait_def_id: DefId) -> SmallVec<[Span; 1]> {
+    get_bounds(tcx, trait_def_id, sized_trait_bound_spans)
+}
+
+fn get_thin_bounds(tcx: TyCtxt<'_>, trait_def_id: DefId) -> SmallVec<[Span; 1]> {
+    get_bounds(tcx, trait_def_id, thin_trait_bound_spans)
+}
+
+fn get_bounds<'tcx, F, I>(
+    tcx: TyCtxt<'tcx>,
+    trait_def_id: DefId,
+    trait_bound_spans: F,
+) -> SmallVec<[Span; 1]>
+where
+    F: Copy + Fn(TyCtxt<'tcx>, hir::GenericBounds<'tcx>) -> I,
+    I: Iterator<Item = Span>,
+{
     tcx.hir_get_if_local(trait_def_id)
         .and_then(|node| match node {
             hir::Node::Item(hir::Item {
@@ -152,16 +195,16 @@ fn get_sized_bounds(tcx: TyCtxt<'_>, trait_def_id: DefId) -> SmallVec<[Span; 1]>
                             hir::WherePredicateKind::BoundPredicate(pred)
                                 if pred.bounded_ty.hir_id.owner.to_def_id() == trait_def_id =>
                             {
-                                // Fetch spans for trait bounds that are Sized:
+                                // Fetch spans for trait bounds that are Sized/Thin:
                                 // `trait T where Self: Pred`
-                                Some(sized_trait_bound_spans(tcx, pred.bounds))
+                                Some(trait_bound_spans(tcx, pred.bounds))
                             }
                             _ => None,
                         }
                     })
                     .flatten()
-                    // Fetch spans for supertraits that are `Sized`: `trait T: Super`.
-                    .chain(sized_trait_bound_spans(tcx, bounds))
+                    // Fetch spans for supertraits that are `Sized/Thin`: `trait T: Super`.
+                    .chain(trait_bound_spans(tcx, bounds))
                     .collect::<SmallVec<[Span; 1]>>(),
             ),
             _ => None,
@@ -285,17 +328,33 @@ fn trait_has_sized_self(tcx: TyCtxt<'_>, trait_def_id: DefId) -> bool {
     tcx.generics_require_sized_self(trait_def_id)
 }
 
+fn trait_has_thin_self(tcx: TyCtxt<'_>, trait_def_id: DefId) -> bool {
+    tcx.generics_require_thin_self(trait_def_id)
+}
+
 fn generics_require_sized_self(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     let Some(sized_def_id) = tcx.lang_items().sized_trait() else {
         return false; /* No Sized trait, can't require it! */
     };
 
-    // Search for a predicate like `Self: Sized` amongst the trait bounds.
+    generics_require(tcx, def_id, sized_def_id)
+}
+
+fn generics_require_thin_self(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    let Some(thin_def_id) = tcx.lang_items().thin_pointee_trait() else {
+        return false; /* No Thin trait, can't require it! */
+    };
+
+    generics_require(tcx, def_id, thin_def_id)
+}
+
+fn generics_require(tcx: TyCtxt<'_>, def_id: DefId, require_def_id: DefId) -> bool {
+    // Search for a predicate like `Self: Trait` amongst the trait bounds.
     let predicates = tcx.predicates_of(def_id);
     let predicates = predicates.instantiate_identity(tcx).predicates;
     elaborate(tcx, predicates).any(|pred| match pred.kind().skip_binder() {
         ty::ClauseKind::Trait(ref trait_pred) => {
-            trait_pred.def_id() == sized_def_id && trait_pred.self_ty().is_param(0)
+            trait_pred.def_id() == require_def_id && trait_pred.self_ty().is_param(0)
         }
         ty::ClauseKind::RegionOutlives(_)
         | ty::ClauseKind::TypeOutlives(_)
@@ -941,6 +1000,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         dyn_compatibility_violations,
         is_dyn_compatible,
         generics_require_sized_self,
+        generics_require_thin_self,
         ..*providers
     };
 }

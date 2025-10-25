@@ -4,11 +4,9 @@ error[E0038]: the trait `Thin` is not dyn compatible
 LL | fn raw_pointer_in(x: &dyn Thin) {
    |                       ^^^^^^^^ `Thin` is not dyn compatible
    |
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error[E0277]: the trait bound `dyn Thin: Thin` is not satisfied
   --> $DIR/ice-with-dyn-pointee-errors.rs:11:33
@@ -36,11 +34,9 @@ error[E0038]: the trait `Thin` is not dyn compatible
 LL |     unknown_sized_object_ptr_in(x)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Thin` is not dyn compatible
    |
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error[E0038]: the trait `Thin` is not dyn compatible
   --> $DIR/ice-with-dyn-pointee-errors.rs:17:20
@@ -48,11 +44,9 @@ error[E0038]: the trait `Thin` is not dyn compatible
 LL |     raw_pointer_in(&42)
    |                    ^^^ `Thin` is not dyn compatible
    |
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error: aborting due to 4 previous errors
 

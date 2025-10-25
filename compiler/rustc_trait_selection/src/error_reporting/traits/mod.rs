@@ -599,13 +599,18 @@ pub fn report_dyn_incompatibility<'tcx>(
     let mut reported_violations = FxIndexSet::default();
     let mut multi_span = vec![];
     let mut messages = vec![];
+
     for violation in violations {
-        if let DynCompatibilityViolation::SizedSelf(sp) = &violation
-            && !sp.is_empty()
+        if let DynCompatibilityViolation::SizednessSelf { ref spans, sized, thin } = *violation
+            && !spans.is_empty()
         {
-            // Do not report `SizedSelf` without spans pointing at `SizedSelf` obligations
+            // Do not report `SizednessSelf` without spans pointing at `SizednessSelf` obligations
             // with a `Span`.
-            reported_violations.insert(DynCompatibilityViolation::SizedSelf(vec![].into()));
+            reported_violations.insert(DynCompatibilityViolation::SizednessSelf {
+                spans: vec![].into(),
+                sized,
+                thin,
+            });
         }
         if reported_violations.insert(violation.clone()) {
             let spans = violation.spans();
