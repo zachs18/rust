@@ -324,13 +324,10 @@ pub(crate) fn first_method_vtable_slot<'tcx>(tcx: TyCtxt<'tcx>, key: ty::TraitRe
         source.principal().unwrap().with_self_ty(tcx, key.self_ty()),
     );
 
-    // We're monomorphizing a call to a dyn trait object that can never be constructed.
-    if tcx.instantiate_and_check_impossible_predicates((
-        source_principal.def_id,
-        source_principal.args,
-    )) {
-        return 0;
-    }
+    // Note: even if `dyn Subtrait` does not impleemnt `Subtrait`, it might still be constructible
+    // due to `#[rustc_do_not_implement_via_object]`, and it might implement `Supertrait`,
+    // so we can't use `instantiate_and_check_impossible_predicates` to shortcut here.
+    // See issue #148089 for more info.
 
     let target_principal = ty::ExistentialTraitRef::erase_self_ty(tcx, key);
 
@@ -397,13 +394,10 @@ pub(crate) fn supertrait_vtable_slot<'tcx>(
         source_data.principal().unwrap().with_self_ty(tcx, source),
     );
 
-    // We're monomorphizing a dyn trait object upcast that can never be constructed.
-    if tcx.instantiate_and_check_impossible_predicates((
-        source_principal.def_id,
-        source_principal.args,
-    )) {
-        return None;
-    }
+    // Note: even if `dyn Subtrait` does not impleemnt `Subtrait`, it might still be constructible
+    // due to `#[rustc_do_not_implement_via_object]`, and it might implement `Supertrait`,
+    // so we can't use `instantiate_and_check_impossible_predicates` to shortcut here.
+    // See issue #148089 for more info.
 
     let vtable_segment_callback = {
         let mut vptr_offset = 0;
