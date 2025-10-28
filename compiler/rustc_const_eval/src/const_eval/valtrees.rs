@@ -312,8 +312,14 @@ pub fn valtree_to_const_value<'tcx>(
         ty::Ref(_, inner_ty, _) => {
             let mut ecx =
                 mk_eval_cx_to_read_const_val(tcx, DUMMY_SP, typing_env, CanAccessMutGlobal::No);
-            let ref_op = valtree_to_ref(&mut ecx, cv.valtree, inner_ty);
-            op_to_const(&ecx, &ref_op, /* for diagnostics */ false)
+
+            // Need to create a place for this valtree.
+            let layout = tcx.layout_of(typing_env.as_query_input(cv.ty)).unwrap();
+            let place = create_valtree_place(&mut ecx, layout, cv.valtree);
+            valtree_to_ref(&mut ecx, cv.valtree, inner_ty, &PlaceTy::from(place.clone()));
+            dump_place(&ecx, &place);
+            intern_const_alloc_recursive(&mut ecx, InternKind::Constant, &place).unwrap();
+            op_to_const(&ecx, &place.into(), /* for diagnostics */ false)
         }
         ty::Tuple(_) | ty::Array(_, _) | ty::Adt(..) => {
             let layout = tcx.layout_of(typing_env.as_query_input(cv.ty)).unwrap();
@@ -377,11 +383,13 @@ pub fn valtree_to_const_value<'tcx>(
 }
 
 /// Put a valtree into memory and return a reference to that.
+/// `dest` must be of type `&T` where `T = pointee_ty`.
 fn valtree_to_ref<'tcx>(
     ecx: &mut CompileTimeInterpCx<'tcx>,
     valtree: ty::ValTree<'tcx>,
     pointee_ty: Ty<'tcx>,
-) -> OpTy<'tcx> {
+    dest: &PlaceTy<'tcx>,
+) {
     let pointee_place = create_valtree_place(ecx, ecx.layout_of(pointee_ty).unwrap(), valtree);
     debug!(?pointee_place);
 
@@ -389,9 +397,7 @@ fn valtree_to_ref<'tcx>(
     dump_place(ecx, &pointee_place);
     intern_const_alloc_recursive(ecx, InternKind::Constant, &pointee_place).unwrap();
 
-    // we want `&T`, not `*mut T`
-    let immref_ty = Ty::new_imm_ref(*ecx.tcx, ecx.tcx.lifetimes.re_erased, pointee_ty);
-    ecx.mplace_to_ref(&pointee_place, Some(immref_ty)).unwrap()
+    ecx.mplace_to_ref(&pointee_place, dest).unwrap()
 }
 
 #[instrument(skip(ecx), level = "debug")]
@@ -415,9 +421,7 @@ fn valtree_into_mplace<'tcx>(
             ecx.write_immediate(Immediate::Scalar(scalar_int.into()), place).unwrap();
         }
         ty::Ref(_, inner_ty, _) => {
-            let ref_op = valtree_to_ref(ecx, valtree, *inner_ty);
-            debug!(?ref_op);
-            ecx.copy_op(&ref_op, place).unwrap();
+            valtree_to_ref(ecx, valtree, *inner_ty, &place.clone().into());
         }
         ty::Adt(_, _) | ty::Tuple(_) | ty::Array(_, _) | ty::Str | ty::Slice(_) => {
             let branches = valtree.to_branch();

@@ -480,17 +480,6 @@ pub trait Machine<'tcx>: Sized {
         interp_ok(())
     }
 
-    /// Executes a retagging operation for a single pointer.
-    /// Returns the possibly adjusted pointer.
-    #[inline]
-    fn retag_ptr_value(
-        _ecx: &mut InterpCx<'tcx, Self>,
-        _kind: mir::RetagKind,
-        val: &OpTy<'tcx, Self::Provenance>,
-    ) -> InterpResult<'tcx, OpTy<'tcx, Self::Provenance>> {
-        interp_ok(val.clone())
-    }
-
     /// Executes a retagging operation on a compound value.
     /// Replaces all pointers stored in the given place.
     #[inline]

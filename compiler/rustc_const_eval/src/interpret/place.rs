@@ -638,42 +638,34 @@ where
     }
 
     /// Turn a mplace into a (thin or wide) pointer, pointing to the same space.
-    ///
+    /// The pointer is written into `dest`, which must be of type `*mut T`, `*const T`, `&mut T`, or `&T`.
     /// `align` information is lost!
     /// This is the inverse of `typed_ptr_to_mplace`.
-    ///
-    /// If `ptr_ty` is provided, the resulting pointer will be of that type. Otherwise, it defaults to `*mut _`.
-    /// `ptr_ty` must be a type with builtin deref which derefs to the type of `mplace` (`mplace.layout.ty`).
     pub fn mplace_to_ref(
         &mut self,
         mplace: &MPlaceTy<'tcx, M::Provenance>,
-        ptr_ty: Option<Ty<'tcx>>,
-    ) -> InterpResult<'tcx, OpTy<'tcx, M::Provenance>> {
-        let data_ptr = Scalar::from_maybe_pointer(mplace.mplace.ptr, self);
+        dest: &impl Writeable<'tcx, M::Provenance>,
+    ) -> InterpResult<'tcx> {
+        let data_ptr_dest = self.project_field(dest, FieldIdx::ZERO)?;
+        let meta_dest = self.project_field(dest, FieldIdx::ONE)?;
 
-        let ptr_ty = ptr_ty
-            .inspect(|t| assert_eq!(t.builtin_deref(true), Some(mplace.layout.ty)))
-            .unwrap_or_else(|| Ty::new_mut_ptr(self.tcx.tcx, mplace.layout.ty));
+        let data_ptr = mplace.mplace.ptr;
+        self.write_pointer(data_ptr, &data_ptr_dest)?;
 
-        let layout = self.layout_of(ptr_ty)?;
-        let op = match mplace.mplace.meta.0 {
-            None => ImmTy::from_scalar(data_ptr, layout).into(),
-            Some(meta) => match meta.layout.backend_repr {
-                BackendRepr::Scalar(..) => {
-                    let meta = self.read_scalar(&meta.change_sizedness())?;
-                    ImmTy::from_scalar_pair(data_ptr, meta, layout).into()
-                }
-                _ => {
-                    let ref_place = self.allocate(layout, MemoryKind::Stack)?;
-                    let ref_data_ptr_place = self.project_field(&ref_place, FieldIdx::ZERO)?;
-                    let ref_meta_place = self.project_field(&ref_place, FieldIdx::ONE)?;
-                    self.write_scalar(data_ptr, &ref_data_ptr_place)?;
-                    self.copy_op(&meta.change_sizedness(), &ref_meta_place)?;
-                    ref_place.into()
-                }
-            },
-        };
-        interp_ok(op)
+        if let Some(meta) = mplace.mplace.meta.0 {
+            self.copy_op(&meta.change_sizedness(), &meta_dest)?;
+        }
+
+        // Enforce validity of the pointer/reference.
+        if M::enforce_validity(self, dest.layout()) {
+            let dest = dest.to_place();
+            self.validate_operand(
+                &dest,
+                M::enforce_validity_recursively(self, dest.layout()),
+                /*reset_provenance_and_padding*/ true,
+            )?;
+        }
+        interp_ok(())
     }
 
     /// Take an operand, representing a pointer, and dereference it to a place.

@@ -214,18 +214,17 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             Ref(_, borrow_kind, place) => {
                 let src = self.eval_place(place)?;
                 let place = self.force_allocation(&src)?;
-                let val = self.mplace_to_ref(&place, Some(dest.layout.ty))?;
+                self.mplace_to_ref(&place, &dest)?;
                 // A fresh reference was created, make sure it gets retagged.
-                let val = M::retag_ptr_value(
+                M::retag_place_contents(
                     self,
                     if borrow_kind.is_two_phase_borrow() {
                         mir::RetagKind::TwoPhase
                     } else {
                         mir::RetagKind::Default
                     },
-                    &val,
+                    &dest,
                 )?;
-                self.copy_op(&val, &dest)?;
             }
 
             RawPtr(kind, place) => {
@@ -240,13 +239,12 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 let src = self.eval_place(place)?;
                 let place = self.force_allocation(&src)?;
-                let mut val = self.mplace_to_ref(&place, Some(dest.layout.ty))?;
+                self.mplace_to_ref(&place, &dest)?;
                 if !place_base_raw && !kind.is_fake() {
                     // If this was not already raw, it needs retagging -- except for "fake"
                     // raw borrows whose defining property is that they do not get retagged.
-                    val = M::retag_ptr_value(self, mir::RetagKind::Raw, &val)?;
+                    M::retag_place_contents(self, mir::RetagKind::Raw, &dest)?;
                 }
-                self.copy_op(&val, &dest)?;
             }
 
             Cast(cast_kind, ref operand, cast_ty) => {
