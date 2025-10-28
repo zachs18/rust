@@ -9,7 +9,7 @@ use std::fmt::Write;
 use std::sync::atomic::AtomicBool;
 use std::{cmp, mem};
 
-use rustc_abi::Size;
+use rustc_abi::{FieldIdx, Size};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::{Mutability, RetagKind};
 use rustc_middle::ty::layout::HasTypingEnv;
@@ -852,37 +852,40 @@ trait EvalContextPrivExt<'tcx, 'ecx>: crate::MiriInterpCxExt<'tcx> {
         interp_ok(place.clone().map_provenance(|_| new_prov.unwrap()))
     }
 
-    /// Retags an individual pointer, returning the retagged version.
+    /// Retags an individual pointer in-place.
     /// `kind` indicates what kind of reference is being created.
-    fn sb_retag_reference(
+    fn sb_retag_reference_inplace(
         &mut self,
-        val: &OpTy<'tcx>,
+        ptr_place: &PlaceTy<'tcx>,
         new_perm: NewPermission,
         info: RetagInfo, // diagnostics info about this retag
-    ) -> InterpResult<'tcx, OpTy<'tcx>> {
+    ) -> InterpResult<'tcx> {
         let this = self.eval_context_mut();
-        let place = this.typed_ptr_to_mplace(val)?;
-        let new_place = this.sb_retag_place(&place, new_perm, info)?;
-        let new_ref = this.mplace_to_ref(&new_place, Some(val.layout.ty))?;
-        interp_ok(new_ref)
+        let pointee_place = this.typed_ptr_to_mplace(ptr_place)?;
+        let retagged_pointee_place = this.sb_retag_place(&pointee_place, new_perm, info)?;
+        let retagged_data_ptr = retagged_pointee_place.ptr();
+        let data_ptr_place = this.project_field(ptr_place, FieldIdx::ZERO)?;
+        this.write_pointer(retagged_data_ptr, &data_ptr_place)?;
+
+        interp_ok(())
     }
 }
 
 impl<'tcx> EvalContextExt<'tcx> for crate::MiriInterpCx<'tcx> {}
 pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
-    fn sb_retag_ptr_value(
+    fn sb_retag_ptr_place(
         &mut self,
         kind: RetagKind,
-        val: &OpTy<'tcx>,
-    ) -> InterpResult<'tcx, OpTy<'tcx>> {
+        ptr_place: &PlaceTy<'tcx>,
+    ) -> InterpResult<'tcx> {
         let this = self.eval_context_mut();
-        let new_perm = NewPermission::from_ref_ty(val.layout.ty, kind, this);
+        let new_perm = NewPermission::from_ref_ty(ptr_place.layout.ty, kind, this);
         let cause = match kind {
             RetagKind::TwoPhase => RetagCause::TwoPhase,
             RetagKind::FnEntry => unreachable!(),
             RetagKind::Raw | RetagKind::Default => RetagCause::Normal,
         };
-        this.sb_retag_reference(val, new_perm, RetagInfo { cause, in_field: false })
+        this.sb_retag_reference_inplace(ptr_place, new_perm, RetagInfo { cause, in_field: false })
     }
 
     fn sb_retag_place_contents(
@@ -892,7 +895,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
     ) -> InterpResult<'tcx> {
         let this = self.eval_context_mut();
         let retag_cause = match kind {
-            RetagKind::TwoPhase => unreachable!(), // can only happen in `retag_ptr_value`
+            RetagKind::TwoPhase => RetagCause::TwoPhase,
             RetagKind::FnEntry => RetagCause::FnEntry,
             RetagKind::Default | RetagKind::Raw => RetagCause::Normal,
         };
@@ -910,16 +913,14 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             #[inline(always)] // yes this helps in our benchmarks
             fn retag_ptr_inplace(
                 &mut self,
-                place: &PlaceTy<'tcx>,
+                ptr_place: &PlaceTy<'tcx>,
                 new_perm: NewPermission,
             ) -> InterpResult<'tcx> {
-                let val = self.ecx.place_to_op(place)?;
-                let val = self.ecx.sb_retag_reference(
-                    &val,
+                self.ecx.sb_retag_reference_inplace(
+                    &ptr_place,
                     new_perm,
                     RetagInfo { cause: self.retag_cause, in_field: self.in_field },
                 )?;
-                self.ecx.copy_op(&val, place)?;
 
                 interp_ok(())
             }

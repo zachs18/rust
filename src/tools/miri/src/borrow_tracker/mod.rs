@@ -263,19 +263,7 @@ impl GlobalStateInner {
 
 impl<'tcx> EvalContextExt<'tcx> for crate::MiriInterpCx<'tcx> {}
 pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
-    fn retag_ptr_value(
-        &mut self,
-        kind: RetagKind,
-        val: &OpTy<'tcx>,
-    ) -> InterpResult<'tcx, OpTy<'tcx>> {
-        let _trace = enter_trace_span!(borrow_tracker::retag_ptr_value, ?kind, ?val.layout);
-        let this = self.eval_context_mut();
-        let method = this.machine.borrow_tracker.as_ref().unwrap().borrow().borrow_tracker_method;
-        match method {
-            BorrowTrackerMethod::StackedBorrows => this.sb_retag_ptr_value(kind, val),
-            BorrowTrackerMethod::TreeBorrows { .. } => this.tb_retag_ptr_value(kind, val),
-        }
-    }
+  
 
     fn retag_place_contents(
         &mut self,

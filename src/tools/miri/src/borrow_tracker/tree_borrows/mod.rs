@@ -1,4 +1,4 @@
-use rustc_abi::Size;
+use rustc_abi::{FieldIdx, Size};
 use rustc_middle::mir::{Mutability, RetagKind};
 use rustc_middle::ty::layout::HasTypingEnv;
 use rustc_middle::ty::{self, Ty};
@@ -410,17 +410,20 @@ trait EvalContextPrivExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         interp_ok(place.clone().map_provenance(|_| new_prov.unwrap()))
     }
 
-    /// Retags an individual pointer, returning the retagged version.
-    fn tb_retag_reference(
+    /// Retags an individual pointer in-place
+    fn tb_retag_reference_inplace(
         &mut self,
-        val: &OpTy<'tcx>,
+        ptr_place: &PlaceTy<'tcx>,
         new_perm: NewPermission,
-    ) -> InterpResult<'tcx, OpTy<'tcx>> {
+    ) -> InterpResult<'tcx> {
         let this = self.eval_context_mut();
-        let place = this.typed_ptr_to_mplace(val)?;
-        let new_place = this.tb_retag_place(&place, new_perm)?;
-        let new_ref = this.mplace_to_ref(&new_place, Some(val.layout.ty))?;
-        interp_ok(new_ref)
+        let pointee_place = this.typed_ptr_to_mplace(ptr_place)?;
+        let retagged_pointee_place = this.tb_retag_place(&pointee_place, new_perm)?;
+        let retagged_data_ptr = retagged_pointee_place.ptr();
+        let data_ptr_place = this.project_field(ptr_place, FieldIdx::ZERO)?;
+        this.write_pointer(retagged_data_ptr, &data_ptr_place)?;
+
+        interp_ok(())
     }
 }
 
@@ -428,21 +431,21 @@ impl<'tcx> EvalContextExt<'tcx> for crate::MiriInterpCx<'tcx> {}
 pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
     /// Retag a pointer. References are passed to `from_ref_ty` and
     /// raw pointers are never reborrowed.
-    fn tb_retag_ptr_value(
+    fn tb_retag_ptr_place(
         &mut self,
         kind: RetagKind,
-        val: &OpTy<'tcx>,
-    ) -> InterpResult<'tcx, OpTy<'tcx>> {
+        ptr_place: &PlaceTy<'tcx>,
+    ) -> InterpResult<'tcx> {
         let this = self.eval_context_mut();
-        let new_perm = match val.layout.ty.kind() {
+        let new_perm = match ptr_place.layout.ty.kind() {
             &ty::Ref(_, pointee, mutability) =>
                 NewPermission::new(pointee, Some(mutability), kind, this),
             _ => None,
         };
         if let Some(new_perm) = new_perm {
-            this.tb_retag_reference(val, new_perm)
+            this.tb_retag_reference_inplace(ptr_place, new_perm)
         } else {
-            interp_ok(val.clone())
+            interp_ok(())
         }
     }
 
@@ -465,13 +468,11 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             #[inline(always)] // yes this helps in our benchmarks
             fn retag_ptr_inplace(
                 &mut self,
-                place: &PlaceTy<'tcx>,
+                ptr_place: &PlaceTy<'tcx>,
                 new_perm: Option<NewPermission>,
             ) -> InterpResult<'tcx> {
                 if let Some(new_perm) = new_perm {
-                    let val = self.ecx.place_to_op(place)?;
-                    let val = self.ecx.tb_retag_reference(&val, new_perm)?;
-                    self.ecx.copy_op(&val, place)?;
+                    self.ecx.tb_retag_reference_inplace(&ptr_place, new_perm)?;
                 }
                 interp_ok(())
             }

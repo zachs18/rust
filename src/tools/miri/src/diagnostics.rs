@@ -796,6 +796,9 @@ impl<'tcx> MiriMachine<'tcx> {
             Some(self.threads.active_thread()),
             self,
         );
+        if std::env::var_os("RUSTC_DEBUG").is_some() {        
+            panic!();
+        }
     }
 }
 

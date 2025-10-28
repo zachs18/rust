@@ -1,6 +1,6 @@
 use std::assert_matches;
 
-use rustc_abi::{FIRST_VARIANT, FieldIdx, Integer};
+use rustc_abi::{FIRST_VARIANT, FieldIdx, Integer, Size};
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
 use rustc_apfloat::{Float, FloatConvert};
 use rustc_middle::mir::CastKind;
@@ -61,10 +61,21 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 self.write_immediate(*res, dest)?;
             }
 
-            CastKind::FnPtrToPtr | CastKind::PtrToPtr | CastKind::PtrMetadataToPtrMetadata => {
-                // FIXME(ptr_metadata_v2): make this work for multiple-wide pointers and metadata
+            CastKind::FnPtrToPtr | CastKind::PtrToPtr => {
+                // FIXME(ptr_metadata_v2): make this work for multiple-wide pointees
                 let src = self.read_immediate(src)?;
                 let res = self.ptr_to_ptr(&src, cast_layout)?;
+                self.write_immediate(*res, dest)?;
+            }
+
+            CastKind::PtrMetadataToPtrMetadata => {
+                // FIXME(ptr_metadata_v2): make this work for multiple-wide pointees
+                let src = if src.layout.is_zst() {
+                    ImmTy::uninit(src.layout)
+                } else {
+                    self.read_immediate(src)?
+                };
+                let res = self.ptr_metadata_to_ptr_metadata(&src, cast_layout)?;
                 self.write_immediate(*res, dest)?;
             }
 
@@ -213,6 +224,30 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     src.layout.ty,
                     cast_to.ty
                 ),
+                Immediate::Uninit => throw_ub!(InvalidUninitBytes(None)),
+            };
+        }
+    }
+
+    /// Handles 'PtrMetadataToPtrMetadata' casts.
+    /// FIXME(ptr_metadata_v2): take dest instead of returning ImmTy
+    pub fn ptr_metadata_to_ptr_metadata(
+        &self,
+        src: &ImmTy<'tcx, M::Provenance>,
+        cast_to: TyAndLayout<'tcx>,
+    ) -> InterpResult<'tcx, ImmTy<'tcx, M::Provenance>> {
+        assert!(src.layout.ty.is_ptr_metadata());
+        assert!(cast_to.ty.is_ptr_metadata());
+        // Handle casting metadata (might be wide).
+        if cast_to.size == src.layout.size {
+            return interp_ok(ImmTy::from_immediate(**src, cast_to));
+        } else {
+            // Casting the metadata away from a wide pointee.
+            assert_eq!(cast_to.size, Size::ZERO);
+            return match **src {
+                Immediate::Scalar(..) | Immediate::ScalarPair(..) => {
+                    interp_ok(ImmTy::uninit(cast_to))
+                }
                 Immediate::Uninit => throw_ub!(InvalidUninitBytes(None)),
             };
         }
