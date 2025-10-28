@@ -147,8 +147,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             "___errno" => {
                 let [] = this.check_shim_sig_lenient(abi, CanonAbi::C, link_name, args)?;
                 let errno_place = this.last_error_place()?;
-                let errno_ref_op = this.mplace_to_ref(&errno_place, None)?;
-                let errno_ref_imm = this.read_immediate(&errno_ref_op)?;
+                let errno_ref_imm = this.mplace_to_imm_ptr(&errno_place, None)?;
                 this.write_scalar(errno_ref_imm.to_scalar(), dest)?;
             }
 

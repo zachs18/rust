@@ -906,13 +906,26 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         };
         let fn_abi = self.fn_abi_of_instance_no_deduced_attrs(instance, ty::List::empty())?;
 
-        let arg = self.mplace_to_ref(&place, None)?;
+        let arg_ty = Ty::new_mut_ptr(*self.tcx, place.layout.ty);
+        let arg_layout = self.layout_of(arg_ty)?;
+        let arg = if matches!(
+            arg_layout.backend_repr,
+            abi::BackendRepr::Scalar(..) | abi::BackendRepr::ScalarPair(..),
+        ) {
+            OpTy::from(self.mplace_to_imm_ptr(&place, Some(arg_layout.ty))?)
+        } else {
+            // FIXME(ptr_metadata_v2): figure out how to deallocate this memory after drop_in_place returns,
+            // otherwise Miri reports a memory leak
+            let arg = self.allocate(arg_layout, crate::interpret::MemoryKind::Stack)?;
+            self.mplace_to_ref(&place, &arg)?;
+            OpTy::from(arg)
+        };
         let ret = MPlaceTy::fake_alloc_zst(self.layout_of(self.tcx.types.unit)?);
 
         self.init_fn_call(
             FnVal::Instance(instance),
             (ExternAbi::Rust, fn_abi),
-            &[FnArg::Copy(arg.into())],
+            &[FnArg::Copy(arg)],
             false,
             &ret.into(),
             Some(target),

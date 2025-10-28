@@ -822,18 +822,19 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
         }
     }
 
-    fn retag_ptr_value(
+    fn retag_place_contents(
         ecx: &mut InterpCx<'tcx, Self>,
         _kind: mir::RetagKind,
-        val: &OpTy<'tcx, CtfeProvenance>,
-    ) -> InterpResult<'tcx, OpTy<'tcx, CtfeProvenance>> {
-        // This does not retag any ptrs in the metadata of a wide pointer.
+        ptr_place: &PlaceTy<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx> {
+        // This only retags references.
+        // This does not retag any ptrs in the metadata of a wide reference.
 
         // If it's a frozen shared reference that's not already immutable, potentially make it immutable.
         // (Do nothing on `None` provenance, that cannot store immutability anyway.)
-        if let ty::Ref(_, ty, mutbl) = val.layout.ty.kind()
+        if let ty::Ref(_, ty, mutbl) = ptr_place.layout.ty.kind()
             && *mutbl == Mutability::Not
-            && let ptr_field = ecx.project_field(val, FieldIdx::ZERO)?
+            && let ptr_field = ecx.project_field(ptr_place, FieldIdx::ZERO)?
             && ecx
                 .read_immediate(&ptr_field)?
                 .to_scalar()
@@ -843,19 +844,19 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
         {
             // That next check is expensive, that's why we have all the guards above.
             let is_immutable = ty.is_freeze(*ecx.tcx, ecx.typing_env());
-            let place = ecx.typed_ptr_to_mplace(val)?;
-            let new_place = if is_immutable {
-                place.map_provenance(CtfeProvenance::as_immutable)
+            let pointee_place = ecx.typed_ptr_to_mplace(ptr_place)?;
+            let new_pointee_place = if is_immutable {
+                pointee_place.map_provenance(CtfeProvenance::as_immutable)
             } else {
                 // Even if it is not immutable, remember that it is a shared reference.
                 // This allows it to become part of the final value of the constant.
                 // (See <https://github.com/rust-lang/rust/pull/128543> for why we allow this
                 // even when there is interior mutability.)
-                place.map_provenance(CtfeProvenance::as_shared_ref)
+                pointee_place.map_provenance(CtfeProvenance::as_shared_ref)
             };
-            ecx.mplace_to_ref(&new_place, Some(val.layout.ty))
+            ecx.write_pointer(new_pointee_place.ptr(), &ptr_field)
         } else {
-            interp_ok(val.clone())
+            interp_ok(())
         }
     }
 

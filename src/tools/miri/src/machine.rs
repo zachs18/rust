@@ -1653,18 +1653,6 @@ impl<'tcx> Machine<'tcx> for MiriMachine<'tcx> {
         interp_ok(())
     }
 
-    #[inline(always)]
-    fn retag_ptr_value(
-        ecx: &mut InterpCx<'tcx, Self>,
-        kind: mir::RetagKind,
-        val: &OpTy<'tcx>,
-    ) -> InterpResult<'tcx, OpTy<'tcx>> {
-        if ecx.machine.borrow_tracker.is_some() {
-            ecx.retag_ptr_value(kind, val)
-        } else {
-            interp_ok(val.clone())
-        }
-    }
 
     #[inline(always)]
     fn retag_place_contents(

@@ -313,8 +313,7 @@ pub fn create_ecx<'tcx>(
                 ecx.allocate(ecx.layout_of(arg_type)?, MiriMemoryKind::Machine.into())?;
             ecx.write_os_str_to_c_str(OsStr::new(arg), arg_place.ptr(), size)?;
             ecx.mark_immutable(&arg_place);
-            let arg_op = ecx.mplace_to_ref(&arg_place, None)?;
-            let arg_imm = ecx.read_immediate(&arg_op)?;
+            let arg_imm = ecx.mplace_to_imm_ptr(&arg_place, None)?;
             argvs.push(*arg_imm);
         }
         // Make an array with all these pointers, in the Miri memory.
@@ -359,8 +358,7 @@ pub fn create_ecx<'tcx>(
             }
             ecx.mark_immutable(&cmd_place);
         }
-        let argvs_op = ecx.mplace_to_ref(&argvs_place, None)?;
-        let argvs_imm = ecx.read_immediate(&argvs_op)?;
+        let argvs_imm = ecx.mplace_to_imm_ptr(&argvs_place, None)?;
         let layout = ecx.layout_of(u8_ptr_ptr_type)?;
         ImmTy::from_immediate(*argvs_imm, layout)
     };

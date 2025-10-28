@@ -627,19 +627,20 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 }
             }
             RawPtr { pointer, metadata } => {
+                // this is a thin typed pointer
                 let pointer = self.eval_to_const(pointer)?;
+                // this is an untyped pointer
+                let pointer = self.ecx.project_field(pointer, FieldIdx::ZERO).discard_err()?;
                 let metadata = self.eval_to_const(metadata)?;
 
-                // FIXME(ptr_metadata_v2): use project_field here.
-                // Pointers don't have fields, so don't `project_field` them.
-                let data = self.ecx.read_pointer(pointer).discard_err()?;
-                let meta = if metadata.layout.is_zst() {
-                    None
-                } else {
-                    Some(self.ecx.read_scalar(metadata).discard_err()?)
-                };
-                let ptr_imm = Immediate::new_pointer_with_meta(data, meta, &self.ecx);
-                ImmTy::from_immediate(ptr_imm, ty).into()
+                let dest = self.ecx.allocate(ty, MemoryKind::Stack).discard_err()?;
+                let pointer_dest = self.ecx.project_field(&dest, FieldIdx::ZERO).discard_err()?;
+                let metadata_dest = self.ecx.project_field(&dest, FieldIdx::ONE).discard_err()?;
+
+                self.ecx.copy_op(&pointer, &pointer_dest).discard_err()?;
+                self.ecx.copy_op(metadata, &metadata_dest).discard_err()?;
+
+                OpTy::from(dest)
             }
 
             Projection(base, elem) => {
@@ -663,7 +664,9 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                     let elem = elem.try_map(|_| None, |ty| ty)?;
                     mplace = self.ecx.project(&mplace, elem).discard_err()?;
                 }
-                self.ecx.mplace_to_ref(&mplace, Some(ty.ty)).discard_err()?
+                let ref_place = self.ecx.allocate(ty, MemoryKind::Stack).discard_err()?;
+                self.ecx.mplace_to_ref(&mplace, &ref_place).discard_err()?;
+                ref_place.into()
             }
 
             Discriminant(base) => {
