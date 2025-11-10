@@ -775,7 +775,6 @@ trait EvalContextPrivExt<'tcx, 'ecx>: crate::MiriInterpCxExt<'tcx> {
                 // We have to use shared references to alloc/memory_extra here since
                 // `visit_freeze_sensitive` needs to access the global state.
                 let alloc_extra = this.get_alloc_extra(alloc_id)?;
-                let mut stacked_borrows = alloc_extra.borrow_tracker_sb().borrow_mut();
                 this.visit_freeze_sensitive(place, size, |mut range, frozen| {
                     // Adjust range.
                     range.start += base_offset;
@@ -794,6 +793,10 @@ trait EvalContextPrivExt<'tcx, 'ecx>: crate::MiriInterpCxExt<'tcx> {
                         orig_tag,
                         alloc_range(base_offset, size),
                     );
+                    // We don't `.borrow_mut()` outside the closure, since
+                    // that could conflict with reads due to the size_and_align_of_val
+                    // call in visit_freeze_sensitive, if the ptr metadata is in memory.
+                    let mut stacked_borrows = alloc_extra.borrow_tracker_sb().borrow_mut();
                     stacked_borrows.for_each(range, dcx, |stack, dcx, exposed_tags| {
                         stack.grant(orig_tag, item, access, &global, dcx, exposed_tags)
                     })?;
