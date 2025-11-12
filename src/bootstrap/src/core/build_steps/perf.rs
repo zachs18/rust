@@ -166,7 +166,9 @@ Consider setting `rust.debuginfo-level = 1` in `bootstrap.toml`."#);
     rustc.push("rustc");
     rustc.set_extension(EXE_EXTENSION);
 
-    let rustc_perf_dir = builder.build.tempdir().join("rustc-perf");
+    // FIXME(ptr_metadata_v2): do this so the database ends up at `<repo-root>/rustc-perf/results/results.db`
+    // so it doesn't get removed by `./x.py clean`
+    let rustc_perf_dir = builder.src.join("rustc-perf");
     let results_dir = rustc_perf_dir.join("results");
     builder.create_dir(&results_dir);
 
