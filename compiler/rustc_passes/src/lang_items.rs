@@ -284,6 +284,7 @@ impl<'ast, 'tcx> visit::Visitor<'ast> for LanguageItemCollector<'ast, 'tcx> {
             ast::ItemKind::Enum(..) => Target::Enum,
             ast::ItemKind::Struct(..) => Target::Struct,
             ast::ItemKind::Union(..) => Target::Union,
+            ast::ItemKind::UnsizedType(..) => Target::UnsizedType,
             ast::ItemKind::Trait(_) => Target::Trait,
             ast::ItemKind::TraitAlias(..) => Target::TraitAlias,
             ast::ItemKind::Impl(imp_) => Target::Impl { of_trait: imp_.of_trait.is_some() },

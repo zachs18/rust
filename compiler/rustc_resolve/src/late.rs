@@ -2812,6 +2812,8 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 );
             }
 
+            ItemKind::UnsizedType(..) => todo!(),
+
             ItemKind::Fn(box Fn { generics, define_opaque, .. }) => {
                 self.with_generic_param_rib(
                     &generics.params,
@@ -5547,6 +5549,7 @@ impl<'ast> Visitor<'ast> for ItemInfoCollector<'_, '_, '_> {
             | ItemKind::Enum(_, generics, _)
             | ItemKind::Struct(_, generics, _)
             | ItemKind::Union(_, generics, _)
+            | ItemKind::UnsizedType(_, generics, _)
             | ItemKind::Impl(Impl { generics, .. })
             | ItemKind::Trait(box Trait { generics, .. })
             | ItemKind::TraitAlias(box TraitAlias { generics, .. }) => {

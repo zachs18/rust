@@ -316,6 +316,10 @@ impl<'a> State<'a> {
                 let (cb, ib) = self.head(visibility_qualified(&item.vis, "union"));
                 self.print_struct(struct_def, generics, *ident, item.span, true, cb, ib);
             }
+            ast::ItemKind::UnsizedType(ident, generics, struct_def) => {
+                let (cb, ib) = self.head(visibility_qualified(&item.vis, "unsized type"));
+                self.print_struct(struct_def, generics, *ident, item.span, true, cb, ib);
+            }
             ast::ItemKind::Impl(ast::Impl { generics, of_trait, self_ty, items, constness }) => {
                 let (cb, ib) = self.head("");
                 self.print_visibility(&item.vis);

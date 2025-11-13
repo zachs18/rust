@@ -170,6 +170,10 @@ pub(super) fn type_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::EarlyBinder<'_
                 let args = ty::GenericArgs::identity_for_item(tcx, def_id);
                 Ty::new_adt(tcx, def, args)
             }
+            ItemKind::UnsizedType(..) => span_bug!(
+                item.span,
+                "FIXME(ptr_metadata_v2): decide if `unsized type`s are ADTs or not"
+            ),
             ItemKind::GlobalAsm { .. } => tcx.typeck(def_id).node_type(hir_id),
             ItemKind::Trait(..)
             | ItemKind::TraitAlias(..)

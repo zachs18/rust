@@ -642,6 +642,13 @@ impl<'tcx> Ty<'tcx> {
         if cfg!(debug_assertions) {
             match tcx.def_kind(def.did()) {
                 DefKind::Struct | DefKind::Union | DefKind::Enum => {}
+                DefKind::UnsizedType =>
+                // This line is intentionally ill-formatted so I don't forget to address this
+                {
+                    bug!(
+                        "FIXME(ptr_metadata_v2): decide if `unsized type` are ADTs or their own thing."
+                    )
+                }
                 DefKind::Mod
                 | DefKind::Variant
                 | DefKind::Trait

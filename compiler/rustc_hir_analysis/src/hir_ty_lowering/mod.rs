@@ -2835,6 +2835,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 | DefKind::TraitAlias
                 | DefKind::AssocTy
                 | DefKind::Union
+                | DefKind::UnsizedType
                 | DefKind::Trait
                 | DefKind::ForeignTy
                 | DefKind::TyParam

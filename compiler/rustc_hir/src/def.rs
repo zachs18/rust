@@ -104,6 +104,7 @@ pub enum DefKind {
     Struct,
     Union,
     Enum,
+    UnsizedType,
     /// Refers to the variant itself, [`DefKind::Ctor`] refers to its constructor if it exists.
     Variant,
     Trait,
@@ -223,6 +224,7 @@ impl DefKind {
             DefKind::TraitAlias => "trait alias",
             DefKind::AssocTy => "associated type",
             DefKind::Union => "union",
+            DefKind::UnsizedType => "unsized type",
             DefKind::Trait => "trait",
             DefKind::ForeignTy => "foreign type",
             DefKind::AssocFn => "associated function",
@@ -256,6 +258,7 @@ impl DefKind {
             | DefKind::AssocConst { .. }
             | DefKind::AssocFn
             | DefKind::Enum
+            | DefKind::UnsizedType
             | DefKind::OpaqueTy
             | DefKind::Impl { .. }
             | DefKind::Use
@@ -271,6 +274,7 @@ impl DefKind {
             DefKind::Mod
             | DefKind::Struct
             | DefKind::Union
+            | DefKind::UnsizedType
             | DefKind::Enum
             | DefKind::Variant
             | DefKind::Trait
@@ -313,6 +317,7 @@ impl DefKind {
             DefKind::Mod
             | DefKind::Struct
             | DefKind::Union
+            | DefKind::UnsizedType
             | DefKind::Enum
             | DefKind::Variant
             | DefKind::Trait
@@ -395,6 +400,7 @@ impl DefKind {
             | DefKind::TraitAlias
             | DefKind::TyAlias
             | DefKind::Union
+            | DefKind::UnsizedType
             | DefKind::Variant => true,
             DefKind::ConstParam
             | DefKind::ExternCrate
@@ -420,6 +426,7 @@ impl DefKind {
             DefKind::Mod
             | DefKind::Struct
             | DefKind::Union
+            | DefKind::UnsizedType
             | DefKind::Enum
             | DefKind::Variant
             | DefKind::Trait
@@ -454,6 +461,7 @@ impl DefKind {
             DefKind::Mod
             | DefKind::Struct
             | DefKind::Union
+            | DefKind::UnsizedType
             | DefKind::Enum
             | DefKind::Variant
             | DefKind::Trait

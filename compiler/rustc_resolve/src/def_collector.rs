@@ -124,6 +124,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             ItemKind::Enum(..) => DefKind::Enum,
             ItemKind::Struct(..) => DefKind::Struct,
             ItemKind::Union(..) => DefKind::Union,
+            ItemKind::UnsizedType(..) => DefKind::UnsizedType,
             ItemKind::ExternCrate(..) => DefKind::ExternCrate,
             ItemKind::TyAlias(..) => DefKind::TyAlias,
             ItemKind::Static(s) => DefKind::Static {

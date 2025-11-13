@@ -2159,6 +2159,7 @@ impl<'tcx> TyCtxt<'tcx> {
             | DefKind::Mod
             | DefKind::Struct
             | DefKind::Union
+            | DefKind::UnsizedType
             | DefKind::Enum
             | DefKind::Variant
             | DefKind::TyAlias

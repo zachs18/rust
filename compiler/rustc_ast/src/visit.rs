@@ -848,7 +848,8 @@ macro_rules! common_visitor_and_walkers {
                     ItemKind::Enum(ident, generics, enum_definition) =>
                         visit_visitable!($($mut)? vis, ident, generics, enum_definition),
                     ItemKind::Struct(ident, generics, variant_data)
-                    | ItemKind::Union(ident, generics, variant_data) =>
+                    | ItemKind::Union(ident, generics, variant_data)
+                    | ItemKind::UnsizedType(ident, generics, variant_data) =>
                         visit_visitable!($($mut)? vis, ident, generics, variant_data),
                     ItemKind::Impl(impl_) =>
                         visit_visitable!($($mut)? vis, impl_),

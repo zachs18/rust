@@ -616,7 +616,8 @@ pub fn walk_item<'v, V: Visitor<'v>>(visitor: &mut V, item: &'v Item<'v>) -> V::
             walk_list!(visitor, visit_impl_item_ref, items);
         }
         ItemKind::Struct(ident, ref generics, ref struct_definition)
-        | ItemKind::Union(ident, ref generics, ref struct_definition) => {
+        | ItemKind::Union(ident, ref generics, ref struct_definition)
+        | ItemKind::UnsizedType(ident, ref generics, ref struct_definition) => {
             try_visit!(visitor.visit_ident(ident));
             try_visit!(visitor.visit_generics(generics));
             try_visit!(visitor.visit_variant_data(struct_definition));

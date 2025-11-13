@@ -1011,6 +1011,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             | Target::Enum
             | Target::Variant
             | Target::Struct
+            | Target::UnsizedType
             | Target::Field
             | Target::Union
             | Target::Trait
