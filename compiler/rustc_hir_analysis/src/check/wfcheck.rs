@@ -2512,6 +2512,7 @@ fn lint_redundant_lifetimes<'tcx>(
     match def_kind {
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Trait
         | DefKind::TraitAlias

@@ -644,6 +644,8 @@ impl<'tcx> EmbargoVisitor<'tcx> {
                 }
             }
 
+            DefKind::UnsizedType => todo!(),
+
             // These have type privacy, so are not reachable unless they're
             // public, or are not namespaced at all.
             DefKind::AssocConst { .. }
@@ -799,6 +801,7 @@ impl<'tcx> EmbargoVisitor<'tcx> {
                     }
                 }
             }
+            DefKind::UnsizedType => todo!(),
             DefKind::Struct | DefKind::Union => {
                 let def = self.tcx.adt_def(owner_id).non_enum_variant();
                 if let Some(item_ev) = item_ev {

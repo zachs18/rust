@@ -4733,6 +4733,8 @@ pub enum ItemKind<'hir> {
     Struct(Ident, &'hir Generics<'hir>, VariantData<'hir>),
     /// A union definition, e.g., `union Foo<A, B> {x: A, y: B}`.
     Union(Ident, &'hir Generics<'hir>, VariantData<'hir>),
+    /// An unsized type definition, e.g., `unsized type Foo<A: ?Sized> { x: usize, y: Metadata<A> }`.
+    UnsizedType(Ident, &'hir Generics<'hir>, VariantData<'hir>),
     /// A trait definition.
     Trait {
         impl_restriction: &'hir ImplRestriction<'hir>,
@@ -4789,6 +4791,7 @@ impl ItemKind<'_> {
             | ItemKind::Enum(ident, ..)
             | ItemKind::Struct(ident, ..)
             | ItemKind::Union(ident, ..)
+            | ItemKind::UnsizedType(ident, ..)
             | ItemKind::Trait { ident, .. }
             | ItemKind::TraitAlias(_, ident, ..) => Some(ident),
 

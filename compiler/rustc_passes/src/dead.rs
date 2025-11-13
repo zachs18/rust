@@ -36,6 +36,7 @@ fn should_explore(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
         | DefKind::Struct
         | DefKind::Union
         | DefKind::Enum
+        | DefKind::UnsizedType
         | DefKind::Variant
         | DefKind::Trait
         | DefKind::TyAlias

@@ -410,6 +410,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
                 | DefKind::Enum
                 | DefKind::Trait
                 | DefKind::Struct
+                | DefKind::UnsizedType
                 | DefKind::Union
                 | DefKind::Variant
                 | DefKind::TyAlias
@@ -889,6 +890,8 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
                 );
                 self.parent_scope.module = module.to_module();
             }
+
+            ItemKind::UnsizedType(..) => todo!(),
 
             // These items live in both the type and value namespaces.
             ItemKind::Struct(ident, ref generics, ref vdata) => {

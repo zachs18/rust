@@ -647,6 +647,7 @@ impl<'a, 'tcx> Visitor<'tcx> for BoundVarContext<'a, 'tcx> {
             | hir::ItemKind::Enum(_, generics, _)
             | hir::ItemKind::Struct(_, generics, _)
             | hir::ItemKind::Union(_, generics, _)
+            | hir::ItemKind::UnsizedType(_, generics, _)
             | hir::ItemKind::Trait { generics, .. }
             | hir::ItemKind::TraitAlias(_, _, generics, ..)
             | hir::ItemKind::Impl(hir::Impl { generics, .. }) => {
