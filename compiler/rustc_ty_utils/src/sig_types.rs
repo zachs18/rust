@@ -65,7 +65,7 @@ pub fn walk_types<'tcx, V: SpannedTypeVisitor<'tcx>>(
             }
         }
         // Look at field types
-        DefKind::Struct | DefKind::Union | DefKind::Enum => {
+        DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType => {
             let span = tcx.def_ident_span(item).unwrap();
             let ty = tcx.type_of(item).instantiate_identity();
             try_visit!(visitor.visit(span, ty));

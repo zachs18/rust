@@ -259,6 +259,7 @@ impl<'tcx> ReachableContext<'tcx> {
                     | hir::ItemKind::Trait(..)
                     | hir::ItemKind::TraitAlias(..)
                     | hir::ItemKind::Struct(..)
+                    | hir::ItemKind::UnsizedType(..)
                     | hir::ItemKind::Enum(..)
                     | hir::ItemKind::Union(..)
                     | hir::ItemKind::GlobalAsm { .. } => {}

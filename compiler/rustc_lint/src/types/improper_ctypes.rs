@@ -1055,6 +1055,12 @@ impl<'tcx> LateLintPass<'tcx> for ImproperCTypesLint {
                 }
             }
 
+            hir::ItemKind::UnsizedType(..) => {
+                tracing::warn!(
+                    "FIXME(ptr_metadata_v2): `unsized type` improper_ctypes interaction"
+                );
+            }
+
             // Doesn't define something that can contain a external type to be checked.
             hir::ItemKind::Impl(..)
             | hir::ItemKind::TraitAlias(..)

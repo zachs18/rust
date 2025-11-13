@@ -235,6 +235,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             | ItemKind::TyAlias(..)
             | ItemKind::Enum(..)
             | ItemKind::Struct(..)
+            | ItemKind::UnsizedType(..)
             | ItemKind::Union(..)
             | ItemKind::Trait(..)
             | ItemKind::TraitAlias(..)
@@ -486,6 +487,16 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                     |this| this.lower_variant_data(hir_id, i, vdata),
                 );
                 hir::ItemKind::Union(ident, generics, vdata)
+            }
+            ItemKind::UnsizedType(ident, generics, vdata) => {
+                let ident = self.lower_ident(*ident);
+                let (generics, vdata) = self.lower_generics(
+                    generics,
+                    id,
+                    ImplTraitContext::Disallowed(ImplTraitPosition::Generic),
+                    |this| this.lower_variant_data(hir_id, i, vdata),
+                );
+                hir::ItemKind::UnsizedType(ident, generics, vdata)
             }
             ItemKind::Impl(Impl {
                 generics: ast_generics,

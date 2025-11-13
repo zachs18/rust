@@ -156,6 +156,7 @@ fixed_size_enum! {
         ( Mod                                      )
         ( Struct                                   )
         ( Union                                    )
+        ( UnsizedType                              )
         ( Enum                                     )
         ( Variant                                  )
         ( Trait                                    )

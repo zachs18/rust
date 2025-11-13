@@ -893,6 +893,7 @@ fn should_encode_span(def_kind: DefKind) -> bool {
         DefKind::Mod
         | DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Trait
@@ -928,6 +929,7 @@ fn should_encode_attrs(def_kind: DefKind) -> bool {
         DefKind::Mod
         | DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Trait
@@ -972,6 +974,7 @@ fn should_encode_expn_that_defined(def_kind: DefKind) -> bool {
         DefKind::Mod
         | DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Trait
@@ -1008,6 +1011,7 @@ fn should_encode_visibility(def_kind: DefKind) -> bool {
         DefKind::Mod
         | DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Trait
@@ -1060,6 +1064,7 @@ fn should_encode_stability(def_kind: DefKind) -> bool {
         | DefKind::OpaqueTy
         | DefKind::Enum
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Impl { .. }
         | DefKind::Trait
         | DefKind::TraitAlias
@@ -1132,6 +1137,7 @@ fn should_encode_variances<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, def_kind: Def
     match def_kind {
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::OpaqueTy
         | DefKind::Fn
@@ -1171,6 +1177,7 @@ fn should_encode_generics(def_kind: DefKind) -> bool {
     match def_kind {
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Trait
@@ -1207,6 +1214,7 @@ fn should_encode_type(tcx: TyCtxt<'_>, def_id: LocalDefId, def_kind: DefKind) ->
     match def_kind {
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Ctor(..)
@@ -1270,6 +1278,7 @@ fn should_encode_fn_sig(def_kind: DefKind) -> bool {
 
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Field
@@ -1310,6 +1319,7 @@ fn should_encode_constness(def_kind: DefKind) -> bool {
 
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Field
         | DefKind::Const { .. }
@@ -1349,6 +1359,7 @@ fn should_encode_const(def_kind: DefKind) -> bool {
 
         DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Ctor(..)

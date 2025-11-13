@@ -240,7 +240,9 @@ impl<'a, 'ra, 'tcx> Visitor<'a> for EffectiveVisibilitiesVisitor<'a, 'ra, 'tcx> 
                 }
             }
 
-            ast::ItemKind::Struct(_, _, ref def) | ast::ItemKind::Union(_, _, ref def) => {
+            ast::ItemKind::Struct(_, _, ref def)
+            | ast::ItemKind::Union(_, _, ref def)
+            | ast::ItemKind::UnsizedType(_, _, ref def) => {
                 for field in def.fields() {
                     self.update_field(self.r.local_def_id(field.id), def_id);
                 }

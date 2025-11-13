@@ -695,6 +695,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     ItemKind::Enum(..) => "enum",
                     ItemKind::Struct(..) => "struct",
                     ItemKind::Union(..) => "union",
+                    ItemKind::UnsizedType(..) => "unsized type",
                     ItemKind::Trait(..) => "trait",
                     ItemKind::TraitAlias(..) => "trait alias",
                     ItemKind::Impl { .. } => "impl",

@@ -110,6 +110,7 @@ pub(crate) fn new_item_kind(kind: DefKind) -> ItemKind {
         DefKind::Mod
         | DefKind::Struct
         | DefKind::Union
+        | DefKind::UnsizedType
         | DefKind::Enum
         | DefKind::Variant
         | DefKind::Trait

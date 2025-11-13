@@ -316,6 +316,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
                 | DefKind::Enum
                 | DefKind::Trait
                 | DefKind::Struct
+                | DefKind::UnsizedType
                 | DefKind::Union
                 | DefKind::Variant
                 | DefKind::TyAlias
@@ -904,6 +905,8 @@ impl<'a, 'ra, 'tcx> BuildReducedGraphVisitor<'a, 'ra, 'tcx> {
                     parent.no_implicit_prelude,
                 );
             }
+
+            ItemKind::UnsizedType(..) => todo!(),
 
             // These items live in both the type and value namespaces.
             ItemKind::Struct(ident, ref generics, ref vdata) => {

@@ -3766,7 +3766,8 @@ impl Item {
 
             ItemKind::Enum(_, generics, _)
             | ItemKind::Struct(_, generics, _)
-            | ItemKind::Union(_, generics, _) => Some(&generics),
+            | ItemKind::Union(_, generics, _)
+            | ItemKind::UnsizedType(_, generics, _) => Some(&generics),
             ItemKind::Trait(i) => Some(&i.generics),
             ItemKind::Impl(i) => Some(&i.generics),
         }
@@ -4116,6 +4117,12 @@ pub enum ItemKind {
     ///
     /// E.g., `union Foo<A, B> { x: A, y: B }`.
     Union(Ident, Generics, VariantData),
+    /// An unsized type definition (`unsized type`).
+    ///
+    /// E.g., `unsized type Foo<A: ?Sized> { x: usize, y: Metadata<A> }`.
+    ///
+    /// The variant information is the metadata.
+    UnsizedType(Ident, Generics, VariantData),
     /// A trait declaration (`trait`).
     ///
     /// E.g., `trait Foo { .. }`, `trait Foo<T> { .. }` or `auto trait Foo {}`.
@@ -4155,6 +4162,7 @@ impl ItemKind {
             | ItemKind::Enum(ident, ..)
             | ItemKind::Struct(ident, ..)
             | ItemKind::Union(ident, ..)
+            | ItemKind::UnsizedType(ident, ..)
             | ItemKind::Trait(box Trait { ident, .. })
             | ItemKind::TraitAlias(box TraitAlias { ident, .. })
             | ItemKind::MacroDef(ident, _)
@@ -4178,7 +4186,12 @@ impl ItemKind {
             Use(..) | Static(..) | Const(..) | ConstBlock(..) | Fn(..) | Mod(..)
             | GlobalAsm(..) | TyAlias(..) | Struct(..) | Union(..) | Trait(..) | TraitAlias(..)
             | MacroDef(..) | Delegation(..) | DelegationMac(..) => "a",
-            ExternCrate(..) | ForeignMod(..) | MacCall(..) | Enum(..) | Impl { .. } => "an",
+            ExternCrate(..)
+            | ForeignMod(..)
+            | MacCall(..)
+            | Enum(..)
+            | UnsizedType(..)
+            | Impl { .. } => "an",
         }
     }
 
@@ -4197,6 +4210,7 @@ impl ItemKind {
             ItemKind::Enum(..) => "enum",
             ItemKind::Struct(..) => "struct",
             ItemKind::Union(..) => "union",
+            ItemKind::UnsizedType(..) => "unsized type definition",
             ItemKind::Trait(..) => "trait",
             ItemKind::TraitAlias(..) => "trait alias",
             ItemKind::MacCall(..) => "item macro invocation",
@@ -4215,6 +4229,7 @@ impl ItemKind {
             | Self::Enum(_, generics, _)
             | Self::Struct(_, generics, _)
             | Self::Union(_, generics, _)
+            | Self::UnsizedType(_, generics, _)
             | Self::Trait(box Trait { generics, .. })
             | Self::TraitAlias(box TraitAlias { generics, .. })
             | Self::Impl(Impl { generics, .. }) => Some(generics),

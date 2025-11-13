@@ -46,6 +46,7 @@ pub enum Target {
     Struct,
     Field,
     Union,
+    UnsizedType,
     Trait,
     TraitAlias,
     Impl { of_trait: bool },
@@ -96,6 +97,7 @@ impl Target {
             | Target::Struct
             | Target::Field
             | Target::Union
+            | Target::UnsizedType
             | Target::Trait
             | Target::TraitAlias
             | Target::Impl { .. }
@@ -132,6 +134,7 @@ impl Target {
             ItemKind::Enum(..) => Target::Enum,
             ItemKind::Struct(..) => Target::Struct,
             ItemKind::Union(..) => Target::Union,
+            ItemKind::UnsizedType(..) => Target::UnsizedType,
             ItemKind::Trait(..) => Target::Trait,
             ItemKind::TraitAlias(..) => Target::TraitAlias,
             ItemKind::Impl(imp_) => Target::Impl { of_trait: imp_.of_trait.is_some() },
@@ -176,6 +179,7 @@ impl Target {
             ast::ItemKind::Enum(..) => Target::Enum,
             ast::ItemKind::Struct(..) => Target::Struct,
             ast::ItemKind::Union(..) => Target::Union,
+            ast::ItemKind::UnsizedType(..) => Target::UnsizedType,
             ast::ItemKind::Trait(..) => Target::Trait,
             ast::ItemKind::TraitAlias(..) => Target::TraitAlias,
             ast::ItemKind::Impl(ref i) => Target::Impl { of_trait: i.of_trait.is_some() },
@@ -277,6 +281,7 @@ impl Target {
             Target::Struct => "struct",
             Target::Field => "struct field",
             Target::Union => "union",
+            Target::UnsizedType => "unsized type",
             Target::Trait => "trait",
             Target::TraitAlias => "trait alias",
             Target::Impl { .. } => "implementation block",
@@ -327,6 +332,7 @@ impl Target {
             Target::Struct => "structs",
             Target::Field => "struct fields",
             Target::Union => "unions",
+            Target::UnsizedType => "unsized types",
             Target::Trait => "traits",
             Target::TraitAlias => "trait aliases",
             Target::Impl { of_trait: false } => "inherent impl blocks",
