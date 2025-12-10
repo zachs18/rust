@@ -1,0 +1,39 @@
+error[E0277]: the trait bound `U: WithAssoc` is not satisfied in `Wrapper<T>`
+  --> $DIR/projection-bound-unsatisfied-item-bounds-mit-opt-ice.rs:13:26
+   |
+LL |     std::mem::align_of::<Wrapper<T>>()
+   |                          ^^^^^^^^^^ within `Wrapper<T>`, the trait `WithAssoc` is not implemented for `U`
+   |
+note: required because it appears within the type `Wrapper<T>`
+  --> $DIR/projection-bound-unsatisfied-item-bounds-mit-opt-ice.rs:22:12
+   |
+LL | pub struct Wrapper<T: WithAssoc> {
+   |            ^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::align_of`
+  --> $SRC_DIR/core/src/mem/mod.rs:LL:COL
+help: consider restricting type parameter `U` with trait `WithAssoc`
+   |
+LL | pub fn align<T: WithAssoc<Assoc = U>, U: WithAssoc>() -> usize {
+   |                                        +++++++++++
+
+error[E0277]: the trait bound `U: WithAssoc` is not satisfied in `Wrapper<T>`
+  --> $DIR/projection-bound-unsatisfied-item-bounds-mit-opt-ice.rs:18:25
+   |
+LL |     std::mem::size_of::<Wrapper<T>>()
+   |                         ^^^^^^^^^^ within `Wrapper<T>`, the trait `WithAssoc` is not implemented for `U`
+   |
+note: required because it appears within the type `Wrapper<T>`
+  --> $DIR/projection-bound-unsatisfied-item-bounds-mit-opt-ice.rs:22:12
+   |
+LL | pub struct Wrapper<T: WithAssoc> {
+   |            ^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::size_of`
+  --> $SRC_DIR/core/src/mem/mod.rs:LL:COL
+help: consider restricting type parameter `U` with trait `WithAssoc`
+   |
+LL | pub fn size<T: WithAssoc<Assoc = U>, U: WithAssoc>() -> usize {
+   |                                       +++++++++++
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0277`.
