@@ -4,7 +4,7 @@ use crate::clone::TrivialClone;
 use crate::fmt;
 use crate::hash::{Hash, Hasher};
 use crate::intrinsics::{aggregate_raw_ptr, ptr_metadata};
-use crate::marker::{Freeze, PointeeSized};
+use crate::marker::{Freeze, MetaSized, PointeeSized};
 use crate::ptr::NonNull;
 
 /// Provides the pointer metadata type of any pointed-to type.
@@ -306,5 +306,25 @@ impl<T: PointeeSized> PartialOrd for Metadata<T> {
 impl<T: PointeeSized + Thin> Default for builtin!(ptr_metadata(T)) {
     fn default() -> Self {
         builtin!(ptr_metadata(..))
+    }
+}
+
+// Convenience impls to avoid needing to constantly use `build_metadata!`
+/// Create a `Metadata<[T]>` with a given length.
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+#[rustc_const_unstable(feature = "ptr_metadata_v2", issue = "none")]
+impl<T: MetaSized + Thin> const From<usize> for Metadata<[T]> {
+    fn from(len: usize) -> Self {
+        build_metadata!(for [T]; len, ..)
+    }
+}
+
+// Convenience impls to avoid needing to constantly use `build_metadata!`
+/// Create a `Metadata<str>` with a given length.
+#[unstable(feature = "ptr_metadata_v2", issue = "none")]
+#[rustc_const_unstable(feature = "ptr_metadata_v2", issue = "none")]
+impl const From<usize> for Metadata<str> {
+    fn from(len: usize) -> Self {
+        build_metadata!(for str; len, ..)
     }
 }
