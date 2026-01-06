@@ -266,6 +266,14 @@ pub enum ObligationCauseCode<'tcx> {
         last: bool,
     },
 
+    /// Under `feature(more_unsized)]`, types of fields may be unsized, except for:
+    /// * `enum`s
+    /// * packed `struct`s/`union`s if the type has drop glue.
+    FieldSizedV2 {
+        adt_kind: AdtKind,
+        span: Span,
+    },
+
     /// Constant expressions must be sized.
     SizedConstOrStatic,
 

@@ -1078,57 +1078,104 @@ fn check_type_defn<'tcx>(
                 }
             }
 
-            // For DST, or when drop needs to copy things around, all
-            // intermediate types must be sized.
-            let needs_drop_copy = || {
-                packed && {
-                    let ty = tcx.type_of(variant.tail().did).instantiate_identity();
-                    let ty = tcx.erase_and_anonymize_regions(ty);
-                    assert!(!ty.has_infer());
-                    ty.needs_drop(tcx, wfcx.infcx.typing_env(wfcx.param_env))
-                }
-            };
-            // All fields (except for possibly the last) of structs and unions should be sized.
-            // The last field of unions can only be unsized under `feature(unsized_unions)`.
-            let all_sized = all_sized
-                || variant.fields.is_empty()
-                || needs_drop_copy()
-                || (matches!(item.kind, ItemKind::Union(..)) && !tcx.features().unsized_unions());
-            let unsized_len = if all_sized { 0 } else { 1 };
-            for (idx, field) in
-                variant.fields.raw[..variant.fields.len() - unsized_len].iter().enumerate()
-            {
-                let last = idx == variant.fields.len() - 1;
-                let field_id = field.did.expect_local();
-                let hir::FieldDef { ty: hir_ty, .. } =
-                    tcx.hir_node_by_def_id(field_id).expect_field();
-                let ty = wfcx.normalize(
-                    hir_ty.span,
-                    None,
-                    tcx.type_of(field.did).instantiate_identity(),
-                );
-                wfcx.register_bound(
-                    traits::ObligationCause::new(
+            // Under `feature(more_unsized)`, any field of a struct or union may be unsized
+            // (`enum` fields must stil all be sized for now).
+            if !all_sized && tcx.features().more_unsized() {
+                for field in &variant.fields {
+                    let field_id = field.did.expect_local();
+                    let hir::FieldDef { ty: hir_ty, .. } =
+                        tcx.hir_node_by_def_id(field_id).expect_field();
+                    let ty = wfcx.normalize(
                         hir_ty.span,
-                        wfcx.body_def_id,
-                        ObligationCauseCode::FieldSized {
-                            adt_kind: match &item.kind {
-                                ItemKind::Struct(..) => AdtKind::Struct,
-                                ItemKind::Union(..) => AdtKind::Union,
-                                ItemKind::Enum(..) => AdtKind::Enum,
-                                kind => span_bug!(
-                                    item.span,
-                                    "should be wfchecking an ADT, got {kind:?}"
-                                ),
+                        None,
+                        tcx.type_of(field.did).instantiate_identity(),
+                    );
+                    // If the container is repr(packed) and this field type needs drop,
+                    // then it must be sized, since it must be copied to be dropped.
+                    let needs_drop_copy = packed && {
+                        let ty = tcx.erase_and_anonymize_regions(ty);
+                        assert!(!ty.has_infer());
+                        ty.needs_drop(tcx, wfcx.infcx.typing_env(wfcx.param_env))
+                    };
+                    if needs_drop_copy {
+                        wfcx.register_bound(
+                            traits::ObligationCause::new(
+                                hir_ty.span,
+                                wfcx.body_def_id,
+                                ObligationCauseCode::FieldSizedV2 {
+                                    adt_kind: match &item.kind {
+                                        ItemKind::Struct(..) => AdtKind::Struct,
+                                        ItemKind::Union(..) => AdtKind::Union,
+                                        ItemKind::Enum(..) => AdtKind::Enum,
+                                        kind => span_bug!(
+                                            item.span,
+                                            "should be wfchecking an ADT, got {kind:?}"
+                                        ),
+                                    },
+                                    span: hir_ty.span,
+                                },
+                            ),
+                            wfcx.param_env,
+                            ty,
+                            tcx.require_lang_item(LangItem::Sized, hir_ty.span),
+                        );
+                    }
+                }
+            } else {
+                // For DST, or when drop needs to copy things around, all
+                // intermediate types must be sized.
+                let needs_drop_copy = || {
+                    packed && {
+                        let ty = tcx.type_of(variant.tail().did).instantiate_identity();
+                        let ty = tcx.erase_and_anonymize_regions(ty);
+                        assert!(!ty.has_infer());
+                        ty.needs_drop(tcx, wfcx.infcx.typing_env(wfcx.param_env))
+                    }
+                };
+                // When not under `feature(more_unsized)`, all fields (except for possibly the last) of
+                // structs and unions should be sized.
+                // The last field of unions can only be unsized under `feature(unsized_unions)`.
+                let all_sized = all_sized
+                    || variant.fields.is_empty()
+                    || needs_drop_copy()
+                    || (matches!(item.kind, ItemKind::Union(..))
+                        && !tcx.features().unsized_unions());
+                let unsized_len = if all_sized { 0 } else { 1 };
+                for (idx, field) in
+                    variant.fields.raw[..variant.fields.len() - unsized_len].iter().enumerate()
+                {
+                    let last = idx == variant.fields.len() - 1;
+                    let field_id = field.did.expect_local();
+                    let hir::FieldDef { ty: hir_ty, .. } =
+                        tcx.hir_node_by_def_id(field_id).expect_field();
+                    let ty = wfcx.normalize(
+                        hir_ty.span,
+                        None,
+                        tcx.type_of(field.did).instantiate_identity(),
+                    );
+                    wfcx.register_bound(
+                        traits::ObligationCause::new(
+                            hir_ty.span,
+                            wfcx.body_def_id,
+                            ObligationCauseCode::FieldSized {
+                                adt_kind: match &item.kind {
+                                    ItemKind::Struct(..) => AdtKind::Struct,
+                                    ItemKind::Union(..) => AdtKind::Union,
+                                    ItemKind::Enum(..) => AdtKind::Enum,
+                                    kind => span_bug!(
+                                        item.span,
+                                        "should be wfchecking an ADT, got {kind:?}"
+                                    ),
+                                },
+                                span: hir_ty.span,
+                                last,
                             },
-                            span: hir_ty.span,
-                            last,
-                        },
-                    ),
-                    wfcx.param_env,
-                    ty,
-                    tcx.require_lang_item(LangItem::Sized, hir_ty.span),
-                );
+                        ),
+                        wfcx.param_env,
+                        ty,
+                        tcx.require_lang_item(LangItem::Sized, hir_ty.span),
+                    );
+                }
             }
 
             // Explicit `enum` discriminant values must const-evaluate successfully.
