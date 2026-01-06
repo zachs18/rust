@@ -1,0 +1,52 @@
+(thinking out loud, no warranty on the cluefulness of anything commemorated here)
+
+Hmm, so I think in this paradigm there are basically two(/four) kinds of fields:
+1. Non-unsize-coercible fields
+2. Unsize-coercible fields
+Whether a field is type-1 or type-2 is not dependant on any instantiation (i.e. in a generic struct, a field will always be the same type regardless of the generics substituted in).
+Either kind can be sized or unsized for a particular concrete instantiation (two * two = four).
+
+FIeld shuffling must only depend on type-1 fields, to not break unsizing.
+For practical purposes we should leave the unsized-type-1 field at the end if there is one.
+
+IIUC in the current implementation, for layout purposes the maybe-unsized tail of a struct/tuple is treated as type-2, even if it cannot be coerced (type-1), but if we want the semantics "tuples can have unsized final field but cannot coerce, and non-unsized tuples can still be fully layout shuffled since they can't coerce", then that would change
+
+```rs
+struct Foo<T: ?Sized> {
+  x: u32, // always type-1, always sized
+  y: T, // always type-2 (can be unsize-coerced)
+}
+struct Bar<T: ?Sized> {
+  x: *mut T, // always type-1, always sized
+  y: T, // always type-1, can be sized or unsized (cannot be unsize-coerced, since `next` also mentions generic `T`)
+}
+struct Qux {
+  x: u32, // always type-1, always sized
+  y: str, // always type-1, never sized
+}
+type Fizz = (u8, bool); // both fields are always type-1 (assuming we don't add tuple coercion back in)
+type Buzz = (u8, str); // both fields are always type-1 (assuming we don't add tuple coercion back in)
+```
+
+So in the hypothetical future, `Bar<NonZeroUsize>` could be reordered as `[NonZeroUsize, *mut]`, and `Fizz` can be reordered to `[bool, u8]`, even though `Foo<NonZeroUsize>`, `Bar<dyn Trait>`, and `Buzz` will still be in-order
+
+
+----
+2026:
+
+So, I think there needs to be a way to know if a field is unsize-coercible or not.
+This is tricky, because it can't just be "is the type mentioned elsewhere", since 
+
+struct Pair<T: ?Sized> {
+    a: T,
+    b: T,
+}
+
+should be unsizable, but
+
+struct Node<T: ?Sized> {
+    next: *mut T,
+    val: T,
+}
+
+should not be
