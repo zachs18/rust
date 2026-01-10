@@ -1,3 +1,5 @@
+use std::assert_matches;
+
 use itertools::Itertools as _;
 use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx, Size};
 use rustc_middle::ty::adjustment::PointerCoercion;
@@ -11,9 +13,9 @@ use super::FunctionCx;
 use super::operand::{OperandRef, OperandRefBuilder, OperandValue};
 use super::place::{PlaceRef, PlaceValue, codegen_tag_value};
 use crate::common::TypeKind;
-use crate::mir::PlaceMetadata;
+use crate::mir::{AnyPlaceMeta, PlaceMetadata};
 use crate::traits::*;
-use crate::{MemFlags, base};
+use crate::{MemFlags, base, size_of_val};
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
     #[instrument(level = "trace", skip(self, bx))]
@@ -188,6 +190,70 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     }
                 }
                 dest.codegen_set_discr(bx, variant_index);
+            }
+
+            mir::Rvalue::BinaryOp(mir::BinOp::Offset, box (ref lhs, ref rhs)) => {
+                // If this is a thin or single-wide pointer, then codegen_rvalue_operand can handle it.
+                if !bx.cx().is_backend_ref(dest.layout) {
+                    // Offset of a thin or single-wide pointer small enough for an operand -- just
+                    // use the operand path.
+                    let temp = self.codegen_rvalue_operand(bx, rvalue);
+                    temp.store_with_annotation(bx, dest);
+                    return;
+                }
+                // If the destination is *not* a thin pointer, then this must be an offset
+                // of an unsized type
+
+                let lhs = self.codegen_operand(bx, lhs);
+                let rhs = self.codegen_operand(bx, rhs);
+                let lhs_ty = lhs.layout.ty;
+                let rhs_ty = rhs.layout.ty;
+
+                let base_data_ptr = lhs.extract_or_load_field(bx, 0);
+                let OperandValue::Immediate(base_data_ptr_val) = base_data_ptr.val else {
+                    unreachable!("untyped pointer must be OperandValue::Immediate")
+                };
+                let meta = lhs.extract_or_load_field(bx, 1);
+
+                let OperandValue::Immediate(rhs) = rhs.val else {
+                    unreachable!("Offset second argument must be usize or isize")
+                };
+
+                let pointee_ty = lhs_ty
+                    .builtin_deref(true)
+                    .unwrap_or_else(|| bug!("deref of non-pointer {:?}", lhs_ty));
+                let pointee_layout = bx.cx().layout_of(pointee_ty);
+                assert!(
+                    !pointee_layout.is_sized(),
+                    "type with metadata had sized layout? ty = {pointee_ty:?}, layout = {pointee_layout:?}"
+                );
+                let (pointee_size, _pointee_align) = size_of_val::size_and_align_of_dst(
+                    bx,
+                    pointee_ty,
+                    AnyPlaceMeta(Some(meta.expect_sized("pointer metadata must be sized"))),
+                );
+
+                // FIXME(more_unsized): make this the right kind of unchecked mul
+                let offset = bx.mul(pointee_size, rhs);
+
+                let llty = bx.cx().type_i8();
+                let result_data_ptr_val = if !rhs_ty.is_signed() {
+                    bx.inbounds_nuw_gep(llty, base_data_ptr_val, &[offset])
+                } else {
+                    bx.inbounds_gep(llty, base_data_ptr_val, &[offset])
+                };
+
+                let result_data_ptr = OperandRef::from_immediate_or_packed_pair(
+                    bx,
+                    result_data_ptr_val,
+                    base_data_ptr.layout,
+                );
+
+                let dest_data_ptr = dest.project_field(bx, 0);
+                let dest_meta = dest.project_field(bx, 1);
+
+                result_data_ptr.store_with_annotation(bx, dest_data_ptr);
+                meta.store_with_annotation(bx, dest_meta);
             }
 
             _ => {
@@ -569,7 +635,34 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             rhs.layout.ty,
                         ),
 
-                    _ => unreachable!("wide pointer comparisons should be lowered to method calls"),
+                    (OperandValue::Pair(lhs_ptr, meta), OperandValue::Immediate(rhs_val)) => {
+                        assert_matches!(
+                            op,
+                            mir::BinOp::Offset,
+                            "only binop that should have ScalarPair is Offset with a wide pointer"
+                        );
+                        let result_ptr = self.codegen_immediate_offset(
+                            bx,
+                            lhs_ptr,
+                            Some(meta),
+                            rhs_val,
+                            lhs.layout.ty,
+                            rhs.layout.ty,
+                        );
+                        return OperandRef {
+                            val: OperandValue::Pair(result_ptr, meta),
+                            layout: bx.cx().layout_of(op.ty(
+                                bx.tcx(),
+                                lhs.layout.ty,
+                                rhs.layout.ty,
+                            )),
+                            move_annotation: None,
+                        };
+                    }
+
+                    _ => unreachable!(
+                        "wide pointer comparisons should be lowered to method calls: {op:?} {lhs:?} {rhs:?}"
+                    ),
                 };
                 OperandRef {
                     val: OperandValue::Immediate(llresult),
@@ -969,27 +1062,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             mir::BinOp::BitOr => bx.or(lhs, rhs),
             mir::BinOp::BitAnd => bx.and(lhs, rhs),
             mir::BinOp::BitXor => bx.xor(lhs, rhs),
-            mir::BinOp::Offset => {
-                let pointee_type = lhs_ty
-                    .builtin_deref(true)
-                    .unwrap_or_else(|| bug!("deref of non-pointer {:?}", lhs_ty));
-                let pointee_layout = bx.cx().layout_of(pointee_type);
-                if !pointee_layout.is_sized() {
-                    bug!("got here")
-                }
-                if pointee_layout.is_zst() {
-                    // `Offset` works in terms of the size of pointee,
-                    // so offsetting a pointer to ZST is a noop.
-                    lhs
-                } else {
-                    let llty = bx.cx().backend_type(pointee_layout);
-                    if !rhs_ty.is_signed() {
-                        bx.inbounds_nuw_gep(llty, lhs, &[rhs])
-                    } else {
-                        bx.inbounds_gep(llty, lhs, &[rhs])
-                    }
-                }
-            }
+            mir::BinOp::Offset => self.codegen_immediate_offset(bx, lhs, None, rhs, lhs_ty, rhs_ty),
             mir::BinOp::Shl | mir::BinOp::ShlUnchecked => {
                 let rhs = base::build_shift_expr_rhs(bx, lhs, rhs, op == mir::BinOp::ShlUnchecked);
                 bx.shl(lhs, rhs)
@@ -1018,6 +1091,54 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             | mir::BinOp::SubWithOverflow
             | mir::BinOp::MulWithOverflow => {
                 bug!("{op:?} needs to return a pair, so call codegen_scalar_checked_binop instead")
+            }
+        }
+    }
+
+    /// A `BinOp::Offset` with a `Scalar` or `ScalarPair` pointer operand.
+    /// The return value is the ptr value of the offsetted pointer.
+    /// The metadata should be `lhs_extra` re-used.
+    fn codegen_immediate_offset(
+        &mut self,
+        bx: &mut Bx,
+        lhs_ptr: Bx::Value,
+        lhs_extra: Option<Bx::Value>,
+        rhs: Bx::Value,
+        lhs_ty: Ty<'tcx>,
+        rhs_ty: Ty<'tcx>,
+    ) -> Bx::Value {
+        let pointee_type =
+            lhs_ty.builtin_deref(true).unwrap_or_else(|| bug!("deref of non-pointer {:?}", lhs_ty));
+        let pointee_layout = bx.cx().layout_of(pointee_type);
+        if pointee_layout.is_zst() {
+            // `Offset` works in terms of the size of pointee,
+            // so offsetting a pointer to ZST is a noop.
+            lhs_ptr
+        } else if pointee_layout.is_sized() {
+            let llty = bx.cx().backend_type(pointee_layout);
+            if !rhs_ty.is_signed() {
+                bx.inbounds_nuw_gep(llty, lhs_ptr, &[rhs])
+            } else {
+                bx.inbounds_gep(llty, lhs_ptr, &[rhs])
+            }
+        } else {
+            let meta_ty = Ty::new_ptr_metadata(bx.tcx(), pointee_type);
+            let meta_layout = bx.cx().layout_of(meta_ty);
+            let meta = AnyPlaceMeta(lhs_extra.map(|meta| {
+                OperandRef::from_immediate_or_packed_pair(bx, meta, meta_layout)
+                    .expect_sized("pointer metadata must be sized")
+            }));
+            let (pointee_size, _pointee_align) =
+                size_of_val::size_and_align_of_dst(bx, pointee_type, meta);
+
+            // FIXME(more_unsized): make this the right kind of unchecked mul
+            let offset = bx.mul(pointee_size, rhs);
+
+            let llty = bx.cx().type_i8();
+            if !rhs_ty.is_signed() {
+                bx.inbounds_nuw_gep(llty, lhs_ptr, &[offset])
+            } else {
+                bx.inbounds_gep(llty, lhs_ptr, &[offset])
             }
         }
     }

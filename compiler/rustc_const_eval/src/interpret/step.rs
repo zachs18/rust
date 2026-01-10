@@ -16,8 +16,8 @@ use tracing::field::Empty;
 use tracing::{info, instrument, trace};
 
 use super::{
-    FnArg, FnVal, ImmTy, Immediate, InterpCx, InterpResult, Machine, PlaceTy, Projectable,
-    interp_ok, throw_ub, throw_unsup_format,
+    FnArg, FnVal, ImmTy, InterpCx, InterpResult, Machine, PlaceTy, Projectable, interp_ok,
+    throw_ub, throw_unsup_format,
 };
 use crate::interpret::EnteredTraceSpan;
 use crate::{enter_trace_span, util};
@@ -186,13 +186,28 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             CopyForDeref(_) => bug!("`CopyForDeref` in runtime MIR"),
 
             BinaryOp(bin_op, box (ref left, ref right)) => {
-                let layout = util::binop_left_homogeneous(bin_op).then_some(dest.layout);
-                let left = self.read_immediate(&self.eval_operand(left, layout)?)?;
-                let layout = util::binop_right_homogeneous(bin_op).then_some(left.layout);
-                let right = self.read_immediate(&self.eval_operand(right, layout)?)?;
-                let result = self.binary_op(bin_op, &left, &right)?;
-                assert_eq!(result.layout, dest.layout, "layout mismatch for result of {bin_op:?}");
-                self.write_immediate(*result, &dest)?;
+                if matches!(bin_op, mir::BinOp::Offset) {
+                    // Handle offsets of multi-wide pointers which don't fit in an immediate.
+                    // We could send immediate pointers through the `binary_op` codepath,
+                    // but there should be no semantic difference.
+
+                    // `Offset` result is same type as lhs
+                    let ptr = self.eval_operand(left, Some(dest.layout))?;
+                    // `Offset` rhs is `isize` or `usize`
+                    let delta = self.read_immediate(&self.eval_operand(right, None)?)?;
+                    self.maybe_wide_ptr_offset(&ptr, &delta, &dest)?;
+                } else {
+                    let layout = util::binop_left_homogeneous(bin_op).then_some(dest.layout);
+                    let left = self.read_immediate(&self.eval_operand(left, layout)?)?;
+                    let layout = util::binop_right_homogeneous(bin_op).then_some(left.layout);
+                    let right = self.read_immediate(&self.eval_operand(right, layout)?)?;
+                    let result = self.binary_op(bin_op, &left, &right)?;
+                    assert_eq!(
+                        result.layout, dest.layout,
+                        "layout mismatch for result of {bin_op:?}"
+                    );
+                    self.write_immediate(*result, &dest)?;
+                }
             }
 
             UnaryOp(un_op, ref operand) => {
@@ -282,29 +297,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         operands: &IndexSlice<FieldIdx, mir::Operand<'tcx>>,
         dest: &PlaceTy<'tcx, M::Provenance>,
     ) -> InterpResult<'tcx> {
-        let (variant_index, variant_dest, active_field_index) = match *kind {
+        let (variant_index, variant_dest, active_field_index, is_raw_ptr) = match *kind {
             mir::AggregateKind::Adt(_, variant_index, _, _, active_field_index) => {
                 let variant_dest = self.project_downcast(dest, variant_index)?;
-                (variant_index, variant_dest, active_field_index)
+                (variant_index, variant_dest, active_field_index, false)
             }
-            mir::AggregateKind::RawPtr(..) => {
-                // Pointers don't have "fields" in the normal sense, so the
-                // projection-based code below would either fail in projection
-                // or in type mismatches. Instead, build an `Immediate` from
-                // the parts and write that to the destination.
-                let [data, meta] = &operands.raw else {
-                    bug!("{kind:?} should have 2 operands, had {operands:?}");
-                };
-                let data = self.eval_operand(data, None)?;
-                let data = self.read_pointer(&data)?;
-                let meta = self.eval_operand(meta, None)?;
-                let meta = if meta.layout.is_zst() { None } else { Some(self.read_scalar(&meta)?) };
-                let ptr_imm = Immediate::new_pointer_with_meta(data, meta, self);
-                let ptr = ImmTy::from_immediate(ptr_imm, dest.layout);
-                self.copy_op(&ptr, dest)?;
-                return interp_ok(());
-            }
-            _ => (FIRST_VARIANT, dest.clone(), None),
+            mir::AggregateKind::RawPtr(..) => (FIRST_VARIANT, dest.clone(), None, true),
+            _ => (FIRST_VARIANT, dest.clone(), None, false),
         };
         if active_field_index.is_some() {
             assert_eq!(operands.len(), 1);
@@ -313,8 +312,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             let field_index = active_field_index.unwrap_or(field_index);
             let field_dest = self.project_field(&variant_dest, field_index)?;
             let op = self.eval_operand(operand, Some(field_dest.layout))?;
+            // For `AggregateKind::RawPtr`, the first field could be any
+            // typed or untyped thin raw ptr, so we allow transmuting.
+            let allow_transmute = is_raw_ptr && field_index == FieldIdx::ZERO;
             // We validate manually below so we don't have to do it here.
-            self.copy_op_no_validate(&op, &field_dest, /*allow_transmute*/ false)?;
+            self.copy_op_no_validate(&op, &field_dest, allow_transmute)?;
         }
         self.write_discriminant(variant_index, dest)?;
         // Validate that the entire thing is valid, and reset padding that might be in between the

@@ -24,13 +24,23 @@
                   scope 4 {
                       debug _x => _8;
                   }
-                  scope 7 (inlined foo) {
-                      let mut _14: *const [()];
+                  scope 11 (inlined foo) {
+                      let mut _16: *const [()];
                   }
               }
               scope 5 (inlined slice_from_raw_parts::<()>) {
                   let mut _13: {ptr metadata for [()]};
-                  scope 6 (inlined std::ptr::from_raw_parts::<[()], ()>) {
+                  scope 6 {
+                      scope 10 (inlined std::ptr::from_raw_parts::<[()], ()>) {
+                      }
+                  }
+                  scope 7 (inlined std::ptr::const_ptr::<impl *const ()>::to_raw_parts) {
+                      let mut _14: *const ();
+                      let mut _15: {ptr metadata for ()};
+                      scope 8 (inlined std::ptr::const_ptr::<impl *const ()>::cast::<()>) {
+                      }
+                      scope 9 (inlined std::ptr::metadata::<()>) {
+                      }
                   }
               }
           }
@@ -63,23 +73,31 @@
           _7 = copy _5;
           StorageLive(_12);
           _12 = const 1_usize;
+          StorageLive(_14);
+          StorageLive(_15);
+-         _14 = copy _7 as *const () (PtrToPtr);
+-         _15 = copy (_7.1: {ptr metadata for ()});
++         _14 = copy _5;
++         _15 = const ZeroSized: {ptr metadata for ()};
           StorageLive(_13);
--         _13 = builtin # ptr_metadata([()]) from (copy _12, const ZeroSized: {ptr metadata for ()});
--         _6 = *const [()] from (copy _7, copy _13);
+-         _13 = builtin # ptr_metadata([()]) from (copy _12, copy _15);
+-         _6 = *const [()] from (copy _14, copy _13);
 +         _13 = const {transmute(0x0000000000000001): {ptr metadata for [()]}};
 +         _6 = *const [()] from (copy _5, const {transmute(0x0000000000000001): {ptr metadata for [()]}});
           StorageDead(_13);
+          StorageDead(_15);
+          StorageDead(_14);
           StorageDead(_12);
           StorageDead(_7);
           StorageLive(_8);
           StorageLive(_9);
           _9 = copy _6;
-          StorageLive(_14);
--         _14 = copy _9;
+          StorageLive(_16);
+-         _16 = copy _9;
 -         _8 = copy _9 as *mut () (PtrToPtr);
-+         _14 = copy _6;
++         _16 = copy _6;
 +         _8 = copy _5 as *mut () (PtrToPtr);
-          StorageDead(_14);
+          StorageDead(_16);
           StorageDead(_9);
           _0 = const ();
           StorageDead(_8);

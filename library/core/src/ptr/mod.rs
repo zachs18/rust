@@ -407,7 +407,7 @@
 
 use crate::cmp::Ordering;
 use crate::intrinsics::const_eval_select;
-use crate::marker::{Destruct, FnPtr, PointeeSized};
+use crate::marker::{Destruct, FnPtr, MetaSized, PointeeSized};
 use crate::mem::{self, MaybeUninit, SizedTypeProperties};
 use crate::num::NonZero;
 use crate::{fmt, hash, intrinsics, ub_checks};
@@ -1178,8 +1178,9 @@ pub const fn from_mut<T: PointeeSized>(r: &mut T) -> *mut T {
 #[stable(feature = "slice_from_raw_parts", since = "1.42.0")]
 #[rustc_const_stable(feature = "const_slice_from_raw_parts", since = "1.64.0")]
 #[rustc_diagnostic_item = "ptr_slice_from_raw_parts"]
-pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
-    from_raw_parts(data, build_metadata!(len, ..))
+pub const fn slice_from_raw_parts<T: MetaSized>(data: *const T, len: usize) -> *const [T] {
+    let (data, elem) = data.to_raw_parts();
+    from_raw_parts(data, build_metadata!(len, elem, ..))
 }
 
 /// Forms a raw mutable slice from a pointer and a length.
@@ -1224,8 +1225,9 @@ pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
 #[stable(feature = "slice_from_raw_parts", since = "1.42.0")]
 #[rustc_const_stable(feature = "const_slice_from_raw_parts_mut", since = "1.83.0")]
 #[rustc_diagnostic_item = "ptr_slice_from_raw_parts_mut"]
-pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
-    from_raw_parts_mut(data, build_metadata!(len, ..))
+pub const fn slice_from_raw_parts_mut<T: MetaSized>(data: *mut T, len: usize) -> *mut [T] {
+    let (data, elem) = data.to_raw_parts();
+    from_raw_parts_mut(data, build_metadata!(len, elem, ..))
 }
 
 /// Swaps the values at two mutable locations of the same type, without

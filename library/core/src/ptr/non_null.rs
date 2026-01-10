@@ -1396,9 +1396,7 @@ impl<T: MetaSized> NonNull<T> {
         // SAFETY: self is not null
         unsafe { NonNull::new_unchecked(self.as_ptr().cast_uninit()) }
     }
-}
 
-impl<T> NonNull<T> {
     /// Creates a non-null raw slice from a thin pointer and a length.
     ///
     /// The `len` argument is the number of **elements**, not the number of bytes.
@@ -1442,7 +1440,7 @@ impl<T: MetaSized> NonNull<MaybeUninit<T>> {
     }
 }
 
-impl<T> NonNull<[T]> {
+impl<T: MetaSized> NonNull<[T]> {
     /// Creates a non-null raw slice from a thin pointer and a length.
     ///
     /// The `len` argument is the number of **elements**, not the number of bytes.
@@ -1529,7 +1527,8 @@ impl<T> NonNull<[T]> {
     #[must_use]
     #[unstable(feature = "slice_ptr_get", issue = "74265")]
     pub const fn as_non_null_ptr(self) -> NonNull<T> {
-        self.cast()
+        let (ptr, meta) = self.to_raw_parts();
+        NonNull::from_raw_parts(ptr, meta.elem)
     }
 
     /// Returns a raw pointer to the slice's buffer.
@@ -1593,7 +1592,7 @@ impl<T> NonNull<[T]> {
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_slice<'a>(self) -> &'a [MaybeUninit<T>] {
         // SAFETY: the caller must uphold the safety contract for `as_uninit_slice`.
-        unsafe { slice::from_raw_parts(self.cast().as_ptr(), self.len()) }
+        unsafe { slice::from_raw_parts(self.as_ptr().as_mut_ptr().cast_uninit(), self.len()) }
     }
 
     /// Returns a unique reference to a slice of possibly uninitialized values. In contrast to
@@ -1657,7 +1656,7 @@ impl<T> NonNull<[T]> {
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_slice_mut<'a>(self) -> &'a mut [MaybeUninit<T>] {
         // SAFETY: the caller must uphold the safety contract for `as_uninit_slice_mut`.
-        unsafe { slice::from_raw_parts_mut(self.cast().as_ptr(), self.len()) }
+        unsafe { slice::from_raw_parts_mut(self.as_ptr().as_mut_ptr().cast_uninit(), self.len()) }
     }
 
     /// Returns a raw pointer to an element or subslice, without doing bounds

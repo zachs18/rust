@@ -1,5 +1,5 @@
 use either::Either;
-use rustc_abi::Size;
+use rustc_abi::{FieldIdx, Size};
 use rustc_apfloat::{Float, FloatConvert};
 use rustc_middle::mir::interpret::{InterpResult, PointerArithmetic, Scalar};
 use rustc_middle::ty::layout::TyAndLayout;
@@ -8,7 +8,10 @@ use rustc_middle::{bug, mir, span_bug};
 use rustc_span::sym;
 use tracing::trace;
 
-use super::{ImmTy, InterpCx, Machine, interp_ok, throw_ub};
+use super::{
+    AnyMemPlaceMeta, ImmTy, Immediate, InterpCx, Machine, OpTy, PlaceTy, SizeAndAlignSemantics,
+    interp_ok, throw_ub,
+};
 
 impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     fn three_way_compare<T: Ord>(&self, lhs: T, rhs: T) -> ImmTy<'tcx, M::Provenance> {
@@ -300,6 +303,62 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             .filter(|&total| total <= self.max_size_of_val())
     }
 
+    pub fn maybe_wide_ptr_offset(
+        &mut self,
+        ptr: &OpTy<'tcx, M::Provenance>,
+        delta: &ImmTy<'tcx, M::Provenance>,
+        dest: &PlaceTy<'tcx, M::Provenance>,
+    ) -> InterpResult<'tcx> {
+        let pointee_ty = ptr.layout.ty.builtin_deref(true).unwrap();
+        let pointee_layout = self.layout_of(pointee_ty)?;
+
+        let base_data_ptr = self.project_field(ptr, FieldIdx::ZERO)?;
+        let meta = self.project_field(ptr, FieldIdx::ONE)?;
+
+        let base_data_ptr = self.read_immediate(&base_data_ptr)?.to_scalar().to_pointer(self)?;
+
+        let metadata =
+            AnyMemPlaceMeta(Some(meta.clone().expect_sized("pointer metadata must be sized")));
+        let (pointee_size, _pointee_align) = self
+            .size_and_align_from_meta(
+                &metadata,
+                &pointee_layout,
+                SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+            )?
+            .expect(
+                "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None",
+            );
+
+        // The size always fits in `i64` as it can be at most `isize::MAX`.
+        let pointee_size = i64::try_from(pointee_size.bytes()).unwrap();
+        // This uses the same type as `delta`, which can be `isize` or `usize`.
+        // `pointee_size` is guaranteed to fit into both types.
+        let pointee_size = ImmTy::from_int(pointee_size, delta.layout);
+        // Multiply element size and element count.
+        let (val, overflowed) =
+            self.binary_op(mir::BinOp::MulWithOverflow, delta, &pointee_size)?.to_scalar_pair();
+        // This must not overflow.
+        if overflowed.to_bool()? {
+            throw_ub!(PointerArithOverflow)
+        }
+
+        let offset_bytes = val.to_target_isize(self)?;
+        if !delta.layout.backend_repr.is_signed() && offset_bytes < 0 {
+            // We were supposed to do an unsigned offset but the result is negative -- this
+            // can only mean that the cast wrapped around.
+            throw_ub!(PointerArithOverflow)
+        }
+        let offset_ptr = self.ptr_offset_inbounds(base_data_ptr, offset_bytes)?;
+
+        let dest_data_ptr = self.project_field(dest, FieldIdx::ZERO)?;
+        let dest_meta = self.project_field(dest, FieldIdx::ONE)?;
+
+        self.write_pointer(offset_ptr, &dest_data_ptr)?;
+        self.copy_op(&meta, &dest_meta)?;
+
+        interp_ok(())
+    }
+
     fn binary_ptr_op(
         &self,
         bin_op: mir::BinOp,
@@ -310,20 +369,42 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         match bin_op {
             // Pointer ops that are always supported.
+            // Note that this code path is only reachable if `lhs` is an immediate/pair.
+            // `BinOp::Offset`s of multi-wide pointers use `maybe_wide_ptr_offset`.
             Offset => {
-                let ptr = left.to_scalar().to_pointer(self)?;
-                let pointee_ty = left.layout.ty.builtin_deref(true).unwrap();
+                let ptr = left;
+                let delta = right;
+
+                let pointee_ty = ptr.layout.ty.builtin_deref(true).unwrap();
                 let pointee_layout = self.layout_of(pointee_ty)?;
-                assert!(pointee_layout.is_sized());
+
+                let base_data_ptr = self.project_field(ptr, FieldIdx::ZERO)?;
+                let meta = self.project_field(ptr, FieldIdx::ONE)?;
+
+                let base_data_ptr =
+                    self.read_immediate(&base_data_ptr)?.to_scalar().to_pointer(self)?;
+
+                let metadata = AnyMemPlaceMeta(Some(
+                    OpTy::from(meta.clone()).expect_sized("pointer metadata must be sized"),
+                ));
+                let (pointee_size, _pointee_align) = self
+                    .size_and_align_from_meta(
+                        &metadata,
+                        &pointee_layout,
+                        SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                    )?
+                    .expect(
+                        "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None",
+                    );
 
                 // The size always fits in `i64` as it can be at most `isize::MAX`.
-                let pointee_size = i64::try_from(pointee_layout.size.bytes()).unwrap();
-                // This uses the same type as `right`, which can be `isize` or `usize`.
+                let pointee_size = i64::try_from(pointee_size.bytes()).unwrap();
+                // This uses the same type as `delta`, which can be `isize` or `usize`.
                 // `pointee_size` is guaranteed to fit into both types.
-                let pointee_size = ImmTy::from_int(pointee_size, right.layout);
+                let pointee_size = ImmTy::from_int(pointee_size, delta.layout);
                 // Multiply element size and element count.
                 let (val, overflowed) = self
-                    .binary_op(mir::BinOp::MulWithOverflow, right, &pointee_size)?
+                    .binary_op(mir::BinOp::MulWithOverflow, delta, &pointee_size)?
                     .to_scalar_pair();
                 // This must not overflow.
                 if overflowed.to_bool()? {
@@ -331,16 +412,25 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 }
 
                 let offset_bytes = val.to_target_isize(self)?;
-                if !right.layout.backend_repr.is_signed() && offset_bytes < 0 {
+                if !delta.layout.backend_repr.is_signed() && offset_bytes < 0 {
                     // We were supposed to do an unsigned offset but the result is negative -- this
                     // can only mean that the cast wrapped around.
                     throw_ub!(PointerArithOverflow)
                 }
-                let offset_ptr = self.ptr_offset_inbounds(ptr, offset_bytes)?;
-                interp_ok(ImmTy::from_scalar(
-                    Scalar::from_maybe_pointer(offset_ptr, self),
-                    left.layout,
-                ))
+                let offset_ptr = self.ptr_offset_inbounds(base_data_ptr, offset_bytes)?;
+                let offset_ptr = Scalar::from_maybe_pointer(offset_ptr, self);
+
+                let result = match *meta {
+                    Immediate::Scalar(meta) => {
+                        ImmTy::from_scalar_pair(offset_ptr, meta, left.layout)
+                    }
+                    Immediate::Uninit => ImmTy::from_scalar(offset_ptr, left.layout),
+                    Immediate::ScalarPair(..) => unreachable!(
+                        "BinOp::Offset of non-Immediate pointers should use `maybe_wide_ptr_offset`"
+                    ),
+                };
+
+                interp_ok(result)
             }
 
             // Fall back to machine hook so Miri can support more pointer ops.

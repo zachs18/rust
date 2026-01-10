@@ -13,11 +13,31 @@ fn slice_ptr_get_unchecked_range(_1: *const [u32], _2: std::ops::Range<usize>) -
             let _8: usize;
             scope 3 {
                 scope 6 (inlined core::slice::index::get_offset_len_noubcheck::<u32>) {
-                    let mut _9: *const u32;
+                    let _9: *const u32;
                     let mut _11: {ptr metadata for [u32]};
                     scope 7 {
                         let _10: *const u32;
                         scope 8 {
+                            scope 9 {
+                            }
+                            scope 16 (inlined std::ptr::const_ptr::<impl *const u32>::to_raw_parts) {
+                                scope 17 (inlined std::ptr::const_ptr::<impl *const u32>::cast::<()>) {
+                                }
+                                scope 18 (inlined std::ptr::metadata::<u32>) {
+                                }
+                            }
+                        }
+                    }
+                    scope 10 (inlined std::ptr::const_ptr::<impl *const [u32]>::as_ptr) {
+                        scope 11 {
+                            scope 15 (inlined std::ptr::from_raw_parts::<u32, ()>) {
+                            }
+                        }
+                        scope 12 (inlined std::ptr::const_ptr::<impl *const [u32]>::to_raw_parts) {
+                            scope 13 (inlined std::ptr::const_ptr::<impl *const [u32]>::cast::<()>) {
+                            }
+                            scope 14 (inlined std::ptr::metadata::<[u32]>) {
+                            }
                         }
                     }
                 }
@@ -46,14 +66,12 @@ fn slice_ptr_get_unchecked_range(_1: *const [u32], _2: std::ops::Range<usize>) -
         StorageDead(_6);
         _8 = SubUnchecked(copy _4, copy _3);
         StorageLive(_9);
-        StorageLive(_10);
         _9 = copy _1 as *const u32 (PtrToPtr);
         _10 = Offset(copy _9, copy _3);
         StorageLive(_11);
         _11 = builtin # ptr_metadata([u32]) from (copy _8, const ZeroSized: {ptr metadata for u32});
         _0 = *const [u32] from (copy _10, move _11);
         StorageDead(_11);
-        StorageDead(_10);
         StorageDead(_9);
         StorageDead(_8);
         return;
