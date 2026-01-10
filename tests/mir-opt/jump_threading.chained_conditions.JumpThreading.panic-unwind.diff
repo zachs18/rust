@@ -104,27 +104,39 @@
                                   let mut _45: *const [u8];
                                   scope 29 {
                                       scope 30 {
-                                          scope 32 (inlined std::ptr::from_raw_parts::<u8, u8>) {
+                                          scope 35 (inlined std::ptr::from_raw_parts::<u8, ()>) {
                                           }
                                       }
                                   }
-                                  scope 31 (inlined std::ptr::metadata::<[u8]>) {
+                                  scope 31 (inlined std::ptr::from_ref::<[u8]>) {
+                                  }
+                                  scope 32 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                                      scope 33 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                                      }
+                                      scope 34 (inlined std::ptr::metadata::<[u8]>) {
+                                      }
                                   }
                               }
-                              scope 33 (inlined core::slice::<impl [u8]>::as_ptr) {
+                              scope 36 (inlined core::slice::<impl [u8]>::as_ptr) {
                                   let mut _46: *const [u8];
-                                  scope 34 {
-                                      scope 35 {
-                                          scope 37 (inlined std::ptr::from_raw_parts::<u8, u8>) {
+                                  scope 37 {
+                                      scope 38 {
+                                          scope 43 (inlined std::ptr::from_raw_parts::<u8, ()>) {
                                           }
                                       }
                                   }
-                                  scope 36 (inlined std::ptr::metadata::<[u8]>) {
+                                  scope 39 (inlined std::ptr::from_ref::<[u8]>) {
+                                  }
+                                  scope 40 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                                      scope 41 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                                      }
+                                      scope 42 (inlined std::ptr::metadata::<[u8]>) {
+                                      }
                                   }
                               }
-                              scope 38 (inlined <u8 as core::slice::cmp::SlicePartialEq<u8>>::equal_same_length) {
+                              scope 44 (inlined <u8 as core::slice::cmp::SlicePartialEq<u8>>::equal_same_length) {
                                   let mut _47: i32;
-                                  scope 39 {
+                                  scope 45 {
                                   }
                               }
                           }
@@ -133,91 +145,103 @@
               }
           }
       }
-      scope 40 (inlined std::cmp::impls::<impl PartialEq<&str> for &String>::eq) {
+      scope 46 (inlined std::cmp::impls::<impl PartialEq<&str> for &String>::eq) {
           let mut _48: &std::string::String;
           let mut _49: &str;
-          scope 41 (inlined <String as PartialEq<str>>::eq) {
-              scope 42 (inlined #[track_caller] <String as Index<RangeFull>>::index) {
+          scope 47 (inlined <String as PartialEq<str>>::eq) {
+              scope 48 (inlined #[track_caller] <String as Index<RangeFull>>::index) {
                   let _50: &str;
-                  scope 43 (inlined String::as_str) {
+                  scope 49 (inlined String::as_str) {
                       let _51: &[u8];
-                      scope 44 (inlined Vec::<u8>::as_slice) {
+                      scope 50 (inlined Vec::<u8>::as_slice) {
                           let _52: *const [u8];
                           let mut _53: *const u8;
                           let mut _54: {ptr metadata for [u8]};
                           let mut _55: usize;
-                          scope 45 (inlined Vec::<u8>::as_ptr) {
-                              scope 46 (inlined alloc::raw_vec::RawVec::<u8>::ptr) {
-                                  scope 47 (inlined alloc::raw_vec::RawVecInner::ptr::<u8>) {
-                                      scope 48 (inlined alloc::raw_vec::RawVecInner::non_null::<u8>) {
+                          scope 51 (inlined Vec::<u8>::as_ptr) {
+                              scope 52 (inlined alloc::raw_vec::RawVec::<u8>::ptr) {
+                                  scope 53 (inlined alloc::raw_vec::RawVecInner::ptr::<u8>) {
+                                      scope 54 (inlined alloc::raw_vec::RawVecInner::non_null::<u8>) {
                                           let mut _56: std::ptr::NonNull<u8>;
-                                          scope 49 (inlined std::ptr::Unique::<u8>::cast::<u8>) {
-                                              scope 50 (inlined NonNull::<u8>::cast::<u8>) {
-                                                  scope 51 (inlined NonNull::<u8>::as_ptr) {
+                                          scope 55 (inlined std::ptr::Unique::<u8>::cast::<u8>) {
+                                              scope 56 (inlined NonNull::<u8>::cast::<u8>) {
+                                                  scope 57 (inlined NonNull::<u8>::as_ptr) {
                                                   }
                                               }
                                           }
-                                          scope 52 (inlined std::ptr::Unique::<u8>::as_non_null_ptr) {
+                                          scope 58 (inlined std::ptr::Unique::<u8>::as_non_null_ptr) {
                                           }
                                       }
-                                      scope 53 (inlined NonNull::<u8>::as_ptr) {
+                                      scope 59 (inlined NonNull::<u8>::as_ptr) {
                                       }
                                   }
                               }
                           }
                       }
-                      scope 54 (inlined from_utf8_unchecked) {
+                      scope 60 (inlined from_utf8_unchecked) {
                       }
                   }
-                  scope 55 (inlined #[track_caller] core::str::traits::<impl SliceIndex<str> for RangeFull>::index) {
+                  scope 61 (inlined #[track_caller] core::str::traits::<impl SliceIndex<str> for RangeFull>::index) {
                   }
               }
-              scope 56 (inlined #[track_caller] core::str::traits::<impl Index<RangeFull> for str>::index) {
-                  scope 57 (inlined #[track_caller] core::str::traits::<impl SliceIndex<str> for RangeFull>::index) {
+              scope 62 (inlined #[track_caller] core::str::traits::<impl Index<RangeFull> for str>::index) {
+                  scope 63 (inlined #[track_caller] core::str::traits::<impl SliceIndex<str> for RangeFull>::index) {
                   }
               }
-              scope 58 (inlined core::str::traits::<impl PartialEq for str>::eq) {
+              scope 64 (inlined core::str::traits::<impl PartialEq for str>::eq) {
                   let mut _57: &&[u8];
                   let _58: &[u8];
                   let mut _59: &&[u8];
                   let _60: &[u8];
-                  scope 59 (inlined core::str::<impl str>::as_bytes) {
+                  scope 65 (inlined core::str::<impl str>::as_bytes) {
                   }
-                  scope 60 (inlined core::str::<impl str>::as_bytes) {
+                  scope 66 (inlined core::str::<impl str>::as_bytes) {
                   }
-                  scope 61 (inlined std::cmp::impls::<impl PartialEq for &[u8]>::eq) {
-                      scope 62 (inlined core::slice::cmp::<impl PartialEq for [u8]>::eq) {
+                  scope 67 (inlined std::cmp::impls::<impl PartialEq for &[u8]>::eq) {
+                      scope 68 (inlined core::slice::cmp::<impl PartialEq for [u8]>::eq) {
                           let _61: usize;
                           let mut _62: bool;
                           let mut _63: usize;
                           let mut _64: *const u8;
                           let mut _65: *const u8;
-                          scope 63 {
-                              scope 64 (inlined core::slice::<impl [u8]>::as_ptr) {
+                          scope 69 {
+                              scope 70 (inlined core::slice::<impl [u8]>::as_ptr) {
                                   let mut _66: *const [u8];
-                                  scope 65 {
-                                      scope 66 {
-                                          scope 68 (inlined std::ptr::from_raw_parts::<u8, u8>) {
+                                  scope 71 {
+                                      scope 72 {
+                                          scope 77 (inlined std::ptr::from_raw_parts::<u8, ()>) {
                                           }
                                       }
                                   }
-                                  scope 67 (inlined std::ptr::metadata::<[u8]>) {
+                                  scope 73 (inlined std::ptr::from_ref::<[u8]>) {
+                                  }
+                                  scope 74 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                                      scope 75 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                                      }
+                                      scope 76 (inlined std::ptr::metadata::<[u8]>) {
+                                      }
                                   }
                               }
-                              scope 69 (inlined core::slice::<impl [u8]>::as_ptr) {
+                              scope 78 (inlined core::slice::<impl [u8]>::as_ptr) {
                                   let mut _67: *const [u8];
-                                  scope 70 {
-                                      scope 71 {
-                                          scope 73 (inlined std::ptr::from_raw_parts::<u8, u8>) {
+                                  scope 79 {
+                                      scope 80 {
+                                          scope 85 (inlined std::ptr::from_raw_parts::<u8, ()>) {
                                           }
                                       }
                                   }
-                                  scope 72 (inlined std::ptr::metadata::<[u8]>) {
+                                  scope 81 (inlined std::ptr::from_ref::<[u8]>) {
+                                  }
+                                  scope 82 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
+                                      scope 83 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
+                                      }
+                                      scope 84 (inlined std::ptr::metadata::<[u8]>) {
+                                      }
                                   }
                               }
-                              scope 74 (inlined <u8 as core::slice::cmp::SlicePartialEq<u8>>::equal_same_length) {
+                              scope 86 (inlined <u8 as core::slice::cmp::SlicePartialEq<u8>>::equal_same_length) {
                                   let mut _68: i32;
-                                  scope 75 {
+                                  scope 87 {
                                   }
                               }
                           }

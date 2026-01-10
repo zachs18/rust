@@ -2,7 +2,7 @@ use super::*;
 use crate::cmp::Ordering::{Greater, Less};
 use crate::intrinsics::const_eval_select;
 use crate::marker::MetaSized;
-use crate::mem::{self, SizedTypeProperties};
+use crate::mem::{self, size_of_val_raw};
 use crate::slice::{self, SliceIndex};
 
 impl<T: PointeeSized> *const T {
@@ -349,7 +349,7 @@ impl<T: PointeeSized> *const T {
     #[track_caller]
     pub const unsafe fn offset(self, count: isize) -> *const T
     where
-        T: Sized,
+        T: MetaSized,
     {
         #[inline]
         #[rustc_allow_const_fn_unstable(const_eval_select)]
@@ -371,13 +371,16 @@ impl<T: PointeeSized> *const T {
             )
         }
 
+        // SAFETY: delegated to caller
+        let size = unsafe { size_of_val_raw::<T>(self) };
+
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::offset requires the address calculation to not overflow",
             (
                 this: *const () = self as *const (),
                 count: isize = count,
-                size: usize = size_of::<T>(),
+                size: usize = size,
             ) => runtime_offset_nowrap(this, count, size)
         );
 
@@ -401,8 +404,10 @@ impl<T: PointeeSized> *const T {
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[track_caller]
     pub const unsafe fn byte_offset(self, count: isize) -> Self {
+        let base = self.cast::<u8>();
         // SAFETY: the caller must uphold the safety contract for `offset`.
-        unsafe { self.cast::<u8>().offset(count).with_metadata_of(self) }
+        let new = unsafe { intrinsics::offset(base, count) };
+        new.with_metadata_of(self)
     }
 
     /// Adds a signed offset to a pointer using wrapping arithmetic.
@@ -829,7 +834,7 @@ impl<T: PointeeSized> *const T {
     #[track_caller]
     pub const unsafe fn add(self, count: usize) -> Self
     where
-        T: Sized,
+        T: MetaSized,
     {
         #[cfg(debug_assertions)]
         #[inline]
@@ -849,6 +854,9 @@ impl<T: PointeeSized> *const T {
             )
         }
 
+        // SAFETY: delegated to caller
+        let size = unsafe { size_of_val_raw::<T>(self) };
+
         #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -856,7 +864,7 @@ impl<T: PointeeSized> *const T {
             (
                 this: *const () = self as *const (),
                 count: usize = count,
-                size: usize = size_of::<T>(),
+                size: usize = size,
             ) => runtime_add_nowrap(this, count, size)
         );
 
@@ -880,8 +888,10 @@ impl<T: PointeeSized> *const T {
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[track_caller]
     pub const unsafe fn byte_add(self, count: usize) -> Self {
+        let base = self.cast::<u8>();
         // SAFETY: the caller must uphold the safety contract for `add`.
-        unsafe { self.cast::<u8>().add(count).with_metadata_of(self) }
+        let new = unsafe { intrinsics::offset(base, count) };
+        new.with_metadata_of(self)
     }
 
     /// Subtracts an unsigned offset from a pointer.
@@ -897,7 +907,10 @@ impl<T: PointeeSized> *const T {
     ///
     /// If any of the following conditions are violated, the result is Undefined Behavior:
     ///
-    /// * The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without
+    /// * The size of the pointed-to value, `elem_size = size_of_val_raw(self)` must be computable,
+    ///   using the rules of [`size_of_val_raw`].
+    ///
+    /// * The offset in bytes, `count * elem_size`, computed on mathematical integers (without
     ///   "wrapping around"), must fit in an `isize`.
     ///
     /// * If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some
@@ -954,6 +967,9 @@ impl<T: PointeeSized> *const T {
             )
         }
 
+        // SAFETY: delegated to caller
+        let size = unsafe { size_of_val_raw::<T>(self) };
+
         #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -961,16 +977,16 @@ impl<T: PointeeSized> *const T {
             (
                 this: *const () = self as *const (),
                 count: usize = count,
-                size: usize = size_of::<T>(),
+                size: usize = size,
             ) => runtime_sub_nowrap(this, count, size)
         );
 
-        if T::IS_ZST {
-            // Pointer arithmetic does nothing when the pointee is a ZST.
+        if size == 0 {
+            // Pointer arithmetic does nothing when the pointee is zero-sized.
             self
         } else {
             // SAFETY: the caller must uphold the safety contract for `offset`.
-            // Because the pointee is *not* a ZST, that means that `count` is
+            // Because the pointee is *not* zero-sized, that means that `count` is
             // at most `isize::MAX`, and thus the negation cannot overflow.
             unsafe { intrinsics::offset(self, intrinsics::unchecked_sub(0, count as isize)) }
         }
@@ -992,8 +1008,11 @@ impl<T: PointeeSized> *const T {
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[track_caller]
     pub const unsafe fn byte_sub(self, count: usize) -> Self {
+        let base = self.cast::<u8>();
         // SAFETY: the caller must uphold the safety contract for `sub`.
-        unsafe { self.cast::<u8>().sub(count).with_metadata_of(self) }
+        // That means that `count` is at most `isize::MAX`and thus the negation cannot overflow.
+        let new = unsafe { intrinsics::offset(base, intrinsics::unchecked_sub(0, count as isize)) };
+        new.with_metadata_of(self)
     }
 
     /// Adds an unsigned offset to a pointer using wrapping arithmetic.
@@ -1387,9 +1406,7 @@ impl<T: MetaSized> *const T {
     pub const fn cast_uninit(self) -> *const MaybeUninit<T> {
         self as _
     }
-}
 
-impl<T> *const T {
     /// Forms a raw slice from a pointer and a length.
     ///
     /// The `len` argument is the number of **elements**, not the number of bytes.
@@ -1440,7 +1457,7 @@ impl<T: MetaSized> *const MaybeUninit<T> {
     }
 }
 
-impl<T> *const [T] {
+impl<T: MetaSized> *const [T] {
     /// Returns the length of a raw slice.
     ///
     /// The returned value is the number of **elements**, not the number of bytes.
@@ -1496,7 +1513,8 @@ impl<T> *const [T] {
     #[inline]
     #[unstable(feature = "slice_ptr_get", issue = "74265")]
     pub const fn as_ptr(self) -> *const T {
-        self as *const T
+        let (ptr, meta) = self.to_raw_parts();
+        crate::ptr::from_raw_parts(ptr, meta.elem)
     }
 
     /// Gets a raw pointer to the underlying array.
@@ -1508,7 +1526,7 @@ impl<T> *const [T] {
     #[must_use]
     pub const fn as_array<const N: usize>(self) -> Option<*const [T; N]> {
         if self.len() == N {
-            let me = self.as_ptr() as *const [T; N];
+            let me = self.as_ptr().cast_array();
             Some(me)
         } else {
             None
@@ -1553,21 +1571,22 @@ impl<T> *const [T] {
             None
         } else {
             // SAFETY: the caller must uphold the safety contract for `as_uninit_slice`.
-            Some(unsafe { slice::from_raw_parts(self as *const MaybeUninit<T>, self.len()) })
+            Some(unsafe { slice::from_raw_parts(self.as_ptr().cast_uninit(), self.len()) })
         }
     }
 }
 
-impl<T> *const T {
+impl<T: MetaSized> *const T {
     /// Casts from a pointer-to-`T` to a pointer-to-`[T; N]`.
     #[inline]
     #[unstable(feature = "ptr_cast_array", issue = "144514")]
     pub const fn cast_array<const N: usize>(self) -> *const [T; N] {
-        self.cast()
+        let (ptr, elem) = self.to_raw_parts();
+        crate::ptr::from_raw_parts(ptr, build_metadata!(elem, ..))
     }
 }
 
-impl<T, const N: usize> *const [T; N] {
+impl<T: MetaSized, const N: usize> *const [T; N] {
     /// Returns a raw pointer to the array's buffer.
     ///
     /// This is equivalent to casting `self` to `*const T`, but more type-safe.
@@ -1584,7 +1603,8 @@ impl<T, const N: usize> *const [T; N] {
     #[inline]
     #[unstable(feature = "array_ptr_get", issue = "119834")]
     pub const fn as_ptr(self) -> *const T {
-        self as *const T
+        let (ptr, meta) = self.to_raw_parts();
+        crate::ptr::from_raw_parts(ptr, meta.elem)
     }
 
     /// Returns a raw pointer to a slice containing the entire array.

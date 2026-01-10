@@ -11,7 +11,10 @@ offset of `3 * size_of::<T>()` bytes.
 
 If any of the following conditions are violated, the result is Undefined Behavior:
 
-* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without
+* The size of the pointed-to value, `elem_size = size_of_val_raw(self)` must be computable,
+using the rules of [`size_of_val_raw`].
+
+* The offset in bytes, `count * elem_size`, computed on mathematical integers (without
 "wrapping around"), must fit in an `isize`.
 
 * If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some

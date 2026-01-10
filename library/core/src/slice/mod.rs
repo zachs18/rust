@@ -728,8 +728,8 @@ impl<T: ?Sized> [T] {
     #[inline(always)]
     #[must_use]
     pub const fn as_ptr(&self) -> *const T {
-        let elem_meta = ptr::metadata(self).elem;
-        let data_ptr = self as *const [T] as *const u8;
+        let (data_ptr, meta) = ptr::from_ref(self).to_raw_parts();
+        let elem_meta = meta.elem;
         ptr::from_raw_parts(data_ptr, elem_meta)
     }
 

@@ -1,5 +1,7 @@
 //! Free functions to create `&[T]` and `&mut [T]`.
 
+use crate::marker::MetaSized;
+use crate::mem::{align_of_val_raw, size_of_val_raw};
 use crate::ops::Range;
 use crate::{array, ptr, ub_checks};
 
@@ -121,7 +123,7 @@ use crate::{array, ptr, ub_checks};
 #[must_use]
 #[rustc_diagnostic_item = "slice_from_raw_parts"]
 #[track_caller]
-pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T] {
+pub const unsafe fn from_raw_parts<'a, T: MetaSized>(data: *const T, len: usize) -> &'a [T] {
     // SAFETY: the caller must uphold the safety contract for `from_raw_parts`.
     unsafe {
         ub_checks::assert_unsafe_precondition!(
@@ -129,8 +131,8 @@ pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]
             "slice::from_raw_parts requires the pointer to be aligned and non-null, and the total size of the slice not to exceed `isize::MAX`",
             (
                 data: *mut () = data as *mut (),
-                size: usize = size_of::<T>(),
-                align: usize = align_of::<T>(),
+                size: usize = size_of_val_raw::<T>(data),
+                align: usize = align_of_val_raw::<T>(data),
                 len: usize = len,
             ) =>
             ub_checks::maybe_is_aligned_and_not_null(data, align, false)
@@ -176,7 +178,7 @@ pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]
 #[must_use]
 #[rustc_diagnostic_item = "slice_from_raw_parts_mut"]
 #[track_caller]
-pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T] {
+pub const unsafe fn from_raw_parts_mut<'a, T: MetaSized>(data: *mut T, len: usize) -> &'a mut [T] {
     // SAFETY: the caller must uphold the safety contract for `from_raw_parts_mut`.
     unsafe {
         ub_checks::assert_unsafe_precondition!(
@@ -184,8 +186,8 @@ pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a m
             "slice::from_raw_parts_mut requires the pointer to be aligned and non-null, and the total size of the slice not to exceed `isize::MAX`",
             (
                 data: *mut () = data as *mut (),
-                size: usize = size_of::<T>(),
-                align: usize = align_of::<T>(),
+                size: usize = size_of_val_raw::<T>(data),
+                align: usize = align_of_val_raw::<T>(data),
                 len: usize = len,
             ) =>
             ub_checks::maybe_is_aligned_and_not_null(data, align, false)
