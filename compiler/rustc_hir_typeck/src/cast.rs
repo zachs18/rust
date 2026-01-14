@@ -28,12 +28,14 @@
 //! expression, `e as U2` is not necessarily so (in fact it will only be valid if
 //! `U1` coerces to `U2`).
 
+use rustc_abi::FieldIdx;
 use rustc_ast::util::parser::ExprPrecedence;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_errors::codes::*;
 use rustc_errors::{Applicability, Diag, ErrorGuaranteed};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::{self as hir, ExprKind};
+use rustc_index::IndexVec;
 use rustc_infer::infer::DefineOpaqueTypes;
 use rustc_macros::{TypeFoldable, TypeVisitable};
 use rustc_middle::mir::Mutability;
@@ -69,18 +71,22 @@ pub(crate) struct CastCheck<'tcx> {
 /// The kind of pointer and associated metadata (thin, length or vtable) - we
 /// only allow casts between wide pointers if their metadata have the same
 /// kind.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TypeVisitable, TypeFoldable)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeVisitable, TypeFoldable)]
 enum PointerKind<'tcx> {
     /// No metadata attached, ie pointer to sized type or foreign type
     Thin,
     /// A trait object
     VTable(&'tcx ty::List<ty::Binder<'tcx, ty::ExistentialPredicate<'tcx>>>),
-    /// Slice
-    Length,
+    /// Slice (field is element pointer kind) (FIXME: use Arc or something to intern Thin element)
+    Length(Box<PointerKind<'tcx>>),
     /// The unsize info of this projection or opaque type
     OfAlias(ty::AliasTy<'tcx>),
     /// The unsize info of this parameter
     OfParam(ty::ParamTy),
+    /// Possibly multi-wide-pointee ADT.
+    Adt(DefId, IndexVec<FieldIdx, PointerKind<'tcx>>),
+    /// Possible multi-wide-pointee tuple.
+    Tuple(Vec<PointerKind<'tcx>>),
 }
 
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
@@ -96,28 +102,78 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let t = self.resolve_vars_if_possible(t);
         t.error_reported()?;
 
-        if self.type_is_sized_modulo_regions(self.param_env, t) {
+        if self.type_is_thin_modulo_regions(self.param_env, t) {
             return Ok(Some(PointerKind::Thin));
         }
 
         let t = self.try_structurally_resolve_type(span, t);
 
+        macro_rules! pk {
+            ($field_ty:expr) => {
+                match self.pointer_kind($field_ty, span)? {
+                    None => return Ok(None),
+                    Some(e) => e,
+                }
+            };
+        }
+
         Ok(match *t.kind() {
-            ty::Slice(_) | ty::Str => Some(PointerKind::Length),
+            ty::Str => Some(PointerKind::Length(Box::new(PointerKind::Thin))),
+            ty::Slice(elem) => Some(PointerKind::Length(Box::new(pk!(elem)))),
             ty::Dynamic(tty, _) => Some(PointerKind::VTable(tty)),
             ty::Adt(def, args) if def.is_struct() || def.is_union() => {
-                match def.non_enum_variant().tail_opt() {
-                    None => Some(PointerKind::Thin),
-                    Some(f) => {
-                        let field_ty = self.field_ty(span, f, args);
-                        self.pointer_kind(field_ty, span)?
+                let did = def.did();
+                let variant = def.non_enum_variant();
+                let mut non_thin_fields: usize = 0;
+                let mut fields = IndexVec::with_capacity(variant.fields.len());
+                for f in &variant.fields {
+                    let field_ty = self.field_ty(span, f, args);
+                    let field_pk = pk!(field_ty);
+                    if !matches!(field_pk, PointerKind::Thin) {
+                        non_thin_fields += 1;
                     }
+                    fields.push(field_pk);
+                }
+                if non_thin_fields == 0 {
+                    Some(PointerKind::Thin)
+                } else if non_thin_fields == 1 {
+                    Some(
+                        fields
+                            .into_iter()
+                            .filter(|pk| !matches!(pk, PointerKind::Thin))
+                            .next()
+                            .unwrap(),
+                    )
+                } else {
+                    Some(PointerKind::Adt(did, fields))
                 }
             }
-            ty::Tuple(fields) => match fields.last() {
-                None => Some(PointerKind::Thin),
-                Some(&f) => self.pointer_kind(f, span)?,
-            },
+            ty::Tuple(field_tys) => {
+                let mut non_thin_fields: usize = 0;
+                let mut fields = Vec::with_capacity(field_tys.len());
+                for field_ty in field_tys {
+                    let field_pk = pk!(field_ty);
+                    if !matches!(field_pk, PointerKind::Thin) {
+                        non_thin_fields += 1;
+                    }
+                    fields.push(field_pk);
+                }
+                if non_thin_fields == 0 {
+                    Some(PointerKind::Thin)
+                } else if non_thin_fields == 1 {
+                    Some(
+                        fields
+                            .into_iter()
+                            .filter(|pk| !matches!(pk, PointerKind::Thin))
+                            .next()
+                            .unwrap(),
+                    )
+                } else {
+                    Some(PointerKind::Tuple(fields))
+                }
+            }
+
+            ty::Array(elem, _len) => self.pointer_kind(elem, span)?,
 
             ty::UnsafeBinder(_) => todo!("FIXME(unsafe_binder)"),
 
@@ -134,7 +190,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             | ty::Int(..)
             | ty::Uint(..)
             | ty::Float(_)
-            | ty::Array(..)
             | ty::CoroutineWitness(..)
             | ty::RawPtr(_, _)
             | ty::Ref(..)
@@ -313,49 +368,83 @@ impl<'a, 'tcx> CastCheck<'tcx> {
             CastError::IllegalCast => {
                 make_invalid_casting_error(self.span, self.expr_ty, self.cast_ty, fcx).emit();
             }
-            CastError::DifferingKinds { src_kind, dst_kind } => {
+            CastError::DifferingKinds { ref src_kind, ref dst_kind } => {
+                let mut src_kind = src_kind;
+                let mut dst_kind = dst_kind;
                 let mut err =
                     make_invalid_casting_error(self.span, self.expr_ty, self.cast_ty, fcx);
 
-                match (src_kind, dst_kind) {
-                    (PointerKind::VTable(_), PointerKind::VTable(_)) => {
-                        err.note("the trait objects may have different vtables");
+                err.note("the pointers may have different metadata");
+                loop {
+                    // FIXME(more_unsized, ptr_metadata_v2): fix this
+                    if true {
+                        break;
                     }
-                    (
-                        PointerKind::OfParam(_) | PointerKind::OfAlias(_),
-                        PointerKind::OfParam(_)
-                        | PointerKind::OfAlias(_)
-                        | PointerKind::VTable(_)
-                        | PointerKind::Length,
-                    )
-                    | (
-                        PointerKind::VTable(_) | PointerKind::Length,
-                        PointerKind::OfParam(_) | PointerKind::OfAlias(_),
-                    ) => {
-                        err.note("the pointers may have different metadata");
+                    match (src_kind, dst_kind) {
+                        (PointerKind::VTable(_), PointerKind::VTable(_)) => {
+                            err.note("the trait objects may have different vtables");
+                        }
+                        (
+                            PointerKind::OfParam(_) | PointerKind::OfAlias(_),
+                            PointerKind::OfParam(_)
+                            | PointerKind::OfAlias(_)
+                            | PointerKind::VTable(_)
+                            | PointerKind::Length(_)
+                            | PointerKind::Adt(..)
+                            | PointerKind::Tuple(_),
+                        )
+                        | (
+                            PointerKind::VTable(_)
+                            | PointerKind::Length(_)
+                            | PointerKind::Adt(..)
+                            | PointerKind::Tuple(_),
+                            PointerKind::OfParam(_) | PointerKind::OfAlias(_),
+                        )
+                        | (
+                            PointerKind::Adt(..) | PointerKind::Tuple(_),
+                            PointerKind::Adt(..)
+                            | PointerKind::Tuple(_)
+                            | PointerKind::VTable(_)
+                            | PointerKind::Length(_),
+                        )
+                        | (
+                            PointerKind::VTable(_) | PointerKind::Length(_),
+                            PointerKind::Adt(..) | PointerKind::Tuple(_),
+                        ) => {
+                            err.note("the pointers may have different metadata");
+                        }
+                        (PointerKind::VTable(_), PointerKind::Length(_))
+                        | (PointerKind::Length(_), PointerKind::VTable(_)) => {
+                            err.note("the pointers have different metadata");
+                        }
+                        (PointerKind::Length(src_elem), PointerKind::Length(dst_elem)) => {
+                            src_kind = &*src_elem;
+                            dst_kind = &*dst_elem;
+                            continue;
+                        }
+                        (
+                            PointerKind::Thin,
+                            PointerKind::Thin
+                            | PointerKind::VTable(_)
+                            | PointerKind::Length(_)
+                            | PointerKind::Adt(..)
+                            | PointerKind::Tuple(_)
+                            | PointerKind::OfParam(_)
+                            | PointerKind::OfAlias(_),
+                        )
+                        | (
+                            PointerKind::VTable(_)
+                            | PointerKind::Length(_)
+                            | PointerKind::Adt(..)
+                            | PointerKind::Tuple(_)
+                            | PointerKind::OfParam(_)
+                            | PointerKind::OfAlias(_),
+                            PointerKind::Thin,
+                        ) => {
+                            span_bug!(self.span, "unexpected cast error: {e:?}")
+                        }
                     }
-                    (PointerKind::VTable(_), PointerKind::Length)
-                    | (PointerKind::Length, PointerKind::VTable(_)) => {
-                        err.note("the pointers have different metadata");
-                    }
-                    (
-                        PointerKind::Thin,
-                        PointerKind::Thin
-                        | PointerKind::VTable(_)
-                        | PointerKind::Length
-                        | PointerKind::OfParam(_)
-                        | PointerKind::OfAlias(_),
-                    )
-                    | (
-                        PointerKind::VTable(_)
-                        | PointerKind::Length
-                        | PointerKind::OfParam(_)
-                        | PointerKind::OfAlias(_),
-                        PointerKind::Thin,
-                    )
-                    | (PointerKind::Length, PointerKind::Length) => {
-                        span_bug!(self.span, "unexpected cast error: {e:?}")
-                    }
+                    break;
                 }
 
                 err.emit();
@@ -894,7 +983,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
             return Err(CastError::UnknownCastPtrKind);
         };
 
-        match (src_kind, dst_kind) {
+        match (&src_kind, &dst_kind) {
             // thin -> fat? report invalid cast (don't complain about vtable kinds)
             (PointerKind::Thin, _) => Err(CastError::SizedUnsizedCast),
 
@@ -1088,10 +1177,16 @@ impl<'a, 'tcx> CastCheck<'tcx> {
             None => Err(CastError::UnknownCastPtrKind),
             Some(PointerKind::Thin) => Ok(CastKind::AddrPtrCast),
             Some(PointerKind::VTable(_)) => Err(CastError::IntToWideCast(Some("a vtable"))),
-            Some(PointerKind::Length) => Err(CastError::IntToWideCast(Some("a length"))),
-            Some(PointerKind::OfAlias(_) | PointerKind::OfParam(_)) => {
-                Err(CastError::IntToWideCast(None))
+            Some(PointerKind::Length(box PointerKind::Thin)) => {
+                Err(CastError::IntToWideCast(Some("a length")))
             }
+            Some(
+                PointerKind::Length(_)
+                | PointerKind::Adt(..)
+                | PointerKind::Tuple(_)
+                | PointerKind::OfAlias(_)
+                | PointerKind::OfParam(_),
+            ) => Err(CastError::IntToWideCast(None)),
         }
     }
 
