@@ -48,6 +48,42 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 cg_operand.store_with_annotation(bx, dest);
             }
 
+            mir::Rvalue::Cast(mir::CastKind::PtrToPtr, ref source, _) => {
+                // The destination could be a thin or single-wide pointer,
+                // for which codegen_rvalue_operand can handle it.
+                if !bx.cx().is_backend_ref(dest.layout) {
+                    // Into-coerce of something small enough for an operand -- just
+                    // use the operand path.
+                    let temp = self.codegen_rvalue_operand(bx, rvalue);
+                    temp.store_with_annotation(bx, dest);
+                    return;
+                }
+                // If the destination is *not* a thin pointer, then this must be a cast between
+                // compatible metadata, which is just a transmute.
+
+                let operand = self.codegen_operand(bx, source);
+                assert_eq!(dest.layout.size, operand.layout.size);
+                self.codegen_transmute(bx, operand, dest);
+            }
+
+            mir::Rvalue::Cast(mir::CastKind::PtrMetadataToPtrMetadata, ref source, _) => {
+                // The destination could be a thin, single-, or double-wide wide metadata,
+                // for which codegen_rvalue_operand can handle it.
+                if !bx.cx().is_backend_ref(dest.layout) {
+                    // Into-coerce of something small enough for an operand -- just
+                    // use the operand path.
+                    let temp = self.codegen_rvalue_operand(bx, rvalue);
+                    temp.store_with_annotation(bx, dest);
+                    return;
+                }
+                // If the destination is *not* a thin metadata, then this must be a cast between
+                // compatible metadata, which is just a transmute.
+
+                let operand = self.codegen_operand(bx, source);
+                assert_eq!(dest.layout.size, operand.layout.size);
+                self.codegen_transmute(bx, operand, dest);
+            }
+
             mir::Rvalue::Cast(
                 mir::CastKind::PointerCoercion(PointerCoercion::Unsize, _),
                 ref source,
