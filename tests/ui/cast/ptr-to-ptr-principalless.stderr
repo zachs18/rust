@@ -4,7 +4,7 @@ error[E0606]: casting `*mut (dyn Trait + Send + 'a)` as `*mut Wrapper<(dyn Send 
 LL |     x as _
    |     ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error[E0606]: casting `*mut (dyn Trait + Send + 'a)` as `*mut Wrapper<(dyn Send + 'static)>` is invalid
   --> $DIR/ptr-to-ptr-principalless.rs:70:5
@@ -12,7 +12,7 @@ error[E0606]: casting `*mut (dyn Trait + Send + 'a)` as `*mut Wrapper<(dyn Send 
 LL |     x as _
    |     ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error: lifetime may not live long enough
   --> $DIR/ptr-to-ptr-principalless.rs:8:5

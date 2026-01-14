@@ -218,7 +218,7 @@ error[E0606]: casting `*const dyn Foo` as `*const [u16]` is invalid
 LL |     let _ = cf as *const [u16];
    |             ^^^^^^^^^^^^^^^^^^
    |
-   = note: the pointers have different metadata
+   = note: the pointers may have different metadata
 
 error[E0606]: casting `*const dyn Foo` as `*const dyn Bar` is invalid
   --> $DIR/cast-rfc0401-fail.rs:74:13
@@ -226,7 +226,7 @@ error[E0606]: casting `*const dyn Foo` as `*const dyn Bar` is invalid
 LL |     let _ = cf as *const dyn Bar;
    |             ^^^^^^^^^^^^^^^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
   --> $DIR/cast-rfc0401-fail.rs:58:13

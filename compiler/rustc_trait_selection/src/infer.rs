@@ -56,6 +56,11 @@ impl<'tcx> InferCtxt<'tcx> {
         traits::type_known_to_meet_bound_modulo_regions(self, param_env, ty, lang_item)
     }
 
+    fn type_is_thin_modulo_regions(&self, param_env: ty::ParamEnv<'tcx>, ty: Ty<'tcx>) -> bool {
+        let lang_item = self.tcx.require_lang_item(LangItem::ThinPointeeTrait, DUMMY_SP);
+        traits::type_known_to_meet_bound_modulo_regions(self, param_env, ty, lang_item)
+    }
+
     /// Check whether a `ty` implements given trait(trait_def_id) without side-effects.
     ///
     /// The inputs are:

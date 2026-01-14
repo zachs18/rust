@@ -4,7 +4,7 @@ error[E0606]: casting `*const dyn A` as `*const dyn B` is invalid
 LL |     let b: *const dyn B = a as _;
    |                           ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error[E0606]: casting `*const dyn Trait<X>` as `*const dyn Trait<Y>` is invalid
   --> $DIR/ptr-to-trait-obj-different-args.rs:21:34
@@ -12,7 +12,7 @@ error[E0606]: casting `*const dyn Trait<X>` as `*const dyn Trait<Y>` is invalid
 LL |     let y: *const dyn Trait<Y> = x as _;
    |                                  ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error[E0606]: casting `*const (dyn Trait<X> + 'static)` as `*const dyn Trait<T>` is invalid
   --> $DIR/ptr-to-trait-obj-different-args.rs:27:34
@@ -20,7 +20,7 @@ error[E0606]: casting `*const (dyn Trait<X> + 'static)` as `*const dyn Trait<T>`
 LL |     let _: *const dyn Trait<T> = x as _;
    |                                  ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error[E0606]: casting `*const (dyn Trait<T> + 'static)` as `*const dyn Trait<X>` is invalid
   --> $DIR/ptr-to-trait-obj-different-args.rs:28:34
@@ -28,7 +28,7 @@ error[E0606]: casting `*const (dyn Trait<T> + 'static)` as `*const dyn Trait<X>`
 LL |     let _: *const dyn Trait<X> = t as _;
    |                                  ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error[E0606]: casting `*mut (dyn Assocked<Assoc = u8> + 'static)` as `*mut (dyn Assocked<Assoc = u32> + 'static)` is invalid
   --> $DIR/ptr-to-trait-obj-different-args.rs:36:5
@@ -36,7 +36,7 @@ error[E0606]: casting `*mut (dyn Assocked<Assoc = u8> + 'static)` as `*mut (dyn 
 LL |     x as _
    |     ^^^^^^
    |
-   = note: the trait objects may have different vtables
+   = note: the pointers may have different metadata
 
 error: aborting due to 5 previous errors
 
