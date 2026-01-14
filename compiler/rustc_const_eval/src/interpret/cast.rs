@@ -13,7 +13,7 @@ use tracing::trace;
 
 use super::util::ensure_monomorphic_enough;
 use super::{
-    FnVal, ImmTy, Immediate, InterpCx, Machine, OpTy, PlaceTy, err_inval, interp_ok, throw_ub,
+    FnVal, ImmTy, Immediate, InterpCx, Machine, OpTy, PlaceTy, err_inval, interp_ok,
     throw_ub_format,
 };
 use crate::enter_trace_span;
@@ -61,22 +61,30 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 self.write_immediate(*res, dest)?;
             }
 
-            CastKind::FnPtrToPtr | CastKind::PtrToPtr => {
-                // FIXME(ptr_metadata_v2): make this work for multiple-wide pointees
+            CastKind::FnPtrToPtr => {
                 let src = self.read_immediate(src)?;
-                let res = self.ptr_to_ptr(&src, cast_layout)?;
+                let res = self.thin_ptr_to_ptr(&src, cast_layout)?;
                 self.write_immediate(*res, dest)?;
             }
 
+            CastKind::PtrToPtr => {
+                let data_ptr_layout = cast_layout.field(self, 0);
+
+                let src_data_ptr_op = self.project_field(src, FieldIdx::ZERO)?;
+                let src_data_ptr_imm = self.read_immediate(&src_data_ptr_op)?;
+                let dest_data_ptr_place = self.project_field(dest, FieldIdx::ZERO)?;
+                let res_data_ptr = self.thin_ptr_to_ptr(&src_data_ptr_imm, data_ptr_layout)?;
+                self.write_immediate(*res_data_ptr, &dest_data_ptr_place)?;
+
+                let meta_layout = cast_layout.field(self, 1);
+
+                let src_meta_op = self.project_field(src, FieldIdx::ONE)?;
+                let dest_meta_place = self.project_field(dest, FieldIdx::ONE)?;
+                self.ptr_metadata_cast(&src_meta_op, meta_layout, &dest_meta_place)?;
+            }
+
             CastKind::PtrMetadataToPtrMetadata => {
-                // FIXME(ptr_metadata_v2): make this work for multiple-wide pointees
-                let src = if src.layout.is_zst() {
-                    ImmTy::uninit(src.layout)
-                } else {
-                    self.read_immediate(src)?
-                };
-                let res = self.ptr_metadata_to_ptr_metadata(&src, cast_layout)?;
-                self.write_immediate(*res, dest)?;
+                self.ptr_metadata_cast(&src, cast_layout, dest)?;
             }
 
             CastKind::PointerCoercion(
@@ -198,58 +206,37 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         interp_ok(ImmTy::from_scalar(val, cast_to))
     }
 
-    /// Handles 'FnPtrToPtr' and 'PtrToPtr' casts.
-    pub fn ptr_to_ptr(
+    /// Handles 'FnPtrToPtr' and `PtrToPtr` casts where the source and destination types
+    /// are thin pointers (or `fn` pointers).
+    pub fn thin_ptr_to_ptr(
         &self,
         src: &ImmTy<'tcx, M::Provenance>,
         cast_to: TyAndLayout<'tcx>,
     ) -> InterpResult<'tcx, ImmTy<'tcx, M::Provenance>> {
         assert!(src.layout.ty.is_any_ptr());
-        assert!(cast_to.ty.is_raw_ptr());
-        // Handle casting any ptr to raw ptr (might be a wide ptr).
-        if cast_to.size == src.layout.size {
-            // Thin or wide pointer that just has the ptr kind of target type changed.
-            return interp_ok(ImmTy::from_immediate(**src, cast_to));
-        } else {
-            // Casting the metadata away from a wide ptr.
-            assert_eq!(src.layout.size, 2 * self.pointer_size());
-            assert_eq!(cast_to.size, self.pointer_size());
-            assert!(src.layout.ty.is_raw_ptr());
-            return match **src {
-                Immediate::ScalarPair(data, _) => interp_ok(ImmTy::from_scalar(data, cast_to)),
-                Immediate::Scalar(..) => span_bug!(
-                    self.cur_span(),
-                    "{:?} input to a fat-to-thin cast ({} -> {})",
-                    *src,
-                    src.layout.ty,
-                    cast_to.ty
-                ),
-                Immediate::Uninit => throw_ub!(InvalidUninitBytes(None)),
-            };
-        }
+        assert!(cast_to.ty.is_raw_ptr() || cast_to.ty.is_untyped_ptr());
+        assert_eq!(src.layout.size, self.pointer_size());
+        assert_eq!(cast_to.size, self.pointer_size());
+        // Handle casting fn ptr to raw ptr.
+        interp_ok(ImmTy::from_immediate(**src, cast_to))
     }
 
-    /// Handles 'PtrMetadataToPtrMetadata' casts.
-    /// FIXME(ptr_metadata_v2): take dest instead of returning ImmTy
-    pub fn ptr_metadata_to_ptr_metadata(
-        &self,
-        src: &ImmTy<'tcx, M::Provenance>,
+    /// Handles 'PtrMetadataToPtrMetadata' casts, and the metadata part of (non-thin) `PtrToPtr`
+    /// casts.
+    pub fn ptr_metadata_cast(
+        &mut self,
+        src: &OpTy<'tcx, M::Provenance>,
         cast_to: TyAndLayout<'tcx>,
-    ) -> InterpResult<'tcx, ImmTy<'tcx, M::Provenance>> {
+        dest: &PlaceTy<'tcx, M::Provenance>,
+    ) -> InterpResult<'tcx> {
         assert!(src.layout.ty.is_ptr_metadata());
         assert!(cast_to.ty.is_ptr_metadata());
-        // Handle casting metadata (might be wide).
         if cast_to.size == src.layout.size {
-            return interp_ok(ImmTy::from_immediate(**src, cast_to));
+            self.copy_op_allow_transmute(src, dest)
         } else {
             // Casting the metadata away from a wide pointee.
             assert_eq!(cast_to.size, Size::ZERO);
-            return match **src {
-                Immediate::Scalar(..) | Immediate::ScalarPair(..) => {
-                    interp_ok(ImmTy::uninit(cast_to))
-                }
-                Immediate::Uninit => throw_ub!(InvalidUninitBytes(None)),
-            };
+            interp_ok(())
         }
     }
 
