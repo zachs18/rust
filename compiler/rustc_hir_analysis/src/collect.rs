@@ -810,6 +810,7 @@ fn lower_variant<'tcx>(
             vis: tcx.visibility(f.def_id),
             safety: f.safety,
             value: f.default.map(|v| v.def_id.to_def_id()),
+            unsizability: f.unsizability,
         })
         .collect();
     let recovered = match def {

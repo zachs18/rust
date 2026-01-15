@@ -1440,7 +1440,17 @@ pub fn walk_struct_def<'v, V: Visitor<'v>>(
 
 pub fn walk_field_def<'v, V: Visitor<'v>>(
     visitor: &mut V,
-    FieldDef { hir_id, ident, ty, default, span: _, vis_span: _, def_id: _, safety: _ }: &'v FieldDef<'v>,
+    FieldDef {
+        hir_id,
+        ident,
+        ty,
+        default,
+        span: _,
+        vis_span: _,
+        def_id: _,
+        safety: _,
+        unsizability: _,
+    }: &'v FieldDef<'v>,
 ) -> V::Result {
     try_visit!(visitor.visit_id(*hir_id));
     try_visit!(visitor.visit_ident(*ident));

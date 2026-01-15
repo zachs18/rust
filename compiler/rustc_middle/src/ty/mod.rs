@@ -1326,6 +1326,7 @@ pub struct FieldDef {
     pub vis: Visibility<DefId>,
     pub safety: hir::Safety,
     pub value: Option<DefId>,
+    pub unsizability: hir::FieldUnsizability,
 }
 
 impl PartialEq for FieldDef {
@@ -1338,16 +1339,18 @@ impl PartialEq for FieldDef {
         // of `FieldDef` changes, a compile-error will be produced, reminding
         // us to revisit this assumption.
 
-        let Self { did: lhs_did, name: _, vis: _, safety: _, value: _ } = &self;
+        let Self { did: lhs_did, name: _, vis: _, safety: _, value: _, unsizability: _ } = &self;
 
-        let Self { did: rhs_did, name: _, vis: _, safety: _, value: _ } = other;
+        let Self { did: rhs_did, name: _, vis: _, safety: _, value: _, unsizability: _ } = other;
 
         let res = lhs_did == rhs_did;
 
         // Double check that implicit assumption detailed above.
         if cfg!(debug_assertions) && res {
-            let deep =
-                self.name == other.name && self.vis == other.vis && self.safety == other.safety;
+            let deep = self.name == other.name
+                && self.vis == other.vis
+                && self.safety == other.safety
+                && self.unsizability == other.unsizability;
             assert!(deep, "FieldDef for the same def-id has differing data");
         }
 
@@ -1367,7 +1370,7 @@ impl Hash for FieldDef {
         // of `FieldDef` changes, a compile-error will be produced, reminding
         // us to revisit this assumption.
 
-        let Self { did, name: _, vis: _, safety: _, value: _ } = &self;
+        let Self { did, name: _, vis: _, safety: _, value: _, unsizability: _ } = &self;
 
         did.hash(s)
     }
