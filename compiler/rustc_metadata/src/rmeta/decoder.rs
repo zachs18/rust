@@ -15,11 +15,11 @@ use rustc_data_structures::sync::Lock;
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_expand::base::{SyntaxExtension, SyntaxExtensionKind};
 use rustc_expand::proc_macro::{AttrProcMacro, BangProcMacro, DeriveProcMacro};
-use rustc_hir::Safety;
 use rustc_hir::def::Res;
 use rustc_hir::def_id::{CRATE_DEF_INDEX, LOCAL_CRATE};
 use rustc_hir::definitions::{DefPath, DefPathData};
 use rustc_hir::diagnostic_items::DiagnosticItems;
+use rustc_hir::{FieldUnsizability, Safety};
 use rustc_index::Idx;
 use rustc_middle::middle::lib_features::LibFeatures;
 use rustc_middle::mir::interpret::{AllocDecodingSession, AllocDecodingState};
@@ -1112,6 +1112,7 @@ impl CrateMetadata {
                         vis: self.get_visibility(tcx, did.index),
                         safety: self.get_safety(did.index),
                         value: self.get_default_field(tcx, did.index),
+                        unsizability: self.get_field_unsizability(did.index),
                     })
                     .collect(),
                 parent_did,
@@ -1178,6 +1179,14 @@ impl CrateMetadata {
 
     fn get_default_field(&self, tcx: TyCtxt<'_>, id: DefIndex) -> Option<DefId> {
         self.root.tables.default_fields.get(self, id).map(|d| d.decode((self, tcx)))
+    }
+
+    fn get_field_unsizability(&self, id: DefIndex) -> FieldUnsizability {
+        self.root
+            .tables
+            .field_unsizability
+            .get(self, id)
+            .unwrap_or_else(|| self.missing("field_unsizability", id))
     }
 
     fn get_expn_that_defined(&self, tcx: TyCtxt<'_>, id: DefIndex) -> ExpnId {

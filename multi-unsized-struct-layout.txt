@@ -49,4 +49,35 @@ struct Node<T: ?Sized> {
     val: T,
 }
 
-should not be
+should not be.
+
+2026-01-15:
+
+Maybe we should make unsize-coercible fields be explicitly marked in $NEXT_EDITION,
+and keep the current logic for editions <= 2024 (perhaps with an opt-in attribute).
+Actually, maybe just do the current logic for unattributed structs, though then there's no way to opt *out*.
+
+This doesn't fully make it so we don't need to solve stuff here, since ideally we'd emit an error message
+if an `#[rustc_unsize_field]`-marked field is *not* actually ever unsizeble.
+
+Examples:
+
+struct Foo<T: MetaSized, U: MetaSized> {
+    a: T,
+    b: bool,
+    #[rustc_unsize_field]
+    c: U,
+}
+
+We can unsize `Foo<[u8; 3], [u16; 3]>` to `Foo<[u8; 3], [u16]>`, but *not* to `Foo<[u8], [u16]>` or `Foo<[u8], [u16; 3]>`.
+In exchange, the layout algorithm can make the offset of `b` depend on niches in `T`.
+
+
+So, overall, when computing layout of struct:
+1. Layout reorginzation/randomization must only depend on non-unsize-coercible fields
+2. Layout should be:
+    1. Sized non-unsize-coercible fields
+    2. non-Sized non-unsize-coercible fields
+    3. Unsize-coercible fields in a consistent order
+    This will give the most reasonable semantics for `offset_of!`:
+        If there is only one unsized field in the struct, all Sized fields can be offset_of'd

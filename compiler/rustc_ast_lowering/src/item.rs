@@ -966,6 +966,10 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 .map(|v| self.lower_anon_const_to_anon_const(v, v.value.span)),
             ty,
             safety: self.lower_safety(f.safety, hir::Safety::Safe),
+            unsizability: {
+                // FIXME(more_unsized): check `#[rustc_unsizable_field]` and `#[rustc_non_unsizable_field]` attributes
+                hir::FieldUnsizability::Default
+            },
         }
     }
 

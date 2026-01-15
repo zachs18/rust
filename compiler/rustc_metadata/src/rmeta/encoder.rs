@@ -1703,6 +1703,7 @@ impl<'a, 'tcx> EncodeContext<'a, 'tcx> {
 
             for field in &variant.fields {
                 self.tables.safety.set(field.did.index, field.safety);
+                self.tables.field_unsizability.set(field.did.index, Some(field.unsizability));
             }
 
             if let Some((CtorKind::Fn, ctor_def_id)) = variant.ctor {

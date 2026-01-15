@@ -4313,6 +4313,7 @@ pub struct FieldDef<'hir> {
     pub ty: &'hir Ty<'hir>,
     pub safety: Safety,
     pub default: Option<&'hir AnonConst>,
+    pub unsizability: FieldUnsizability,
 }
 
 impl FieldDef<'_> {
@@ -4548,6 +4549,18 @@ impl fmt::Display for Constness {
             Self::NotConst => "non-const",
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Encodable, Decodable, StableHash)]
+pub enum FieldUnsizability {
+    /// The field was not explicitly marked `#[rustc_unsizable_field]`
+    /// or `#[rustc_non_unsizable_field]`.
+    Default,
+    /// The field was explicitly marked `#[rustc_unsizable_field]`.
+    Yes,
+    /// The field was explicitly marked `#[rustc_non_unsizable_field]`.
+    No,
 }
 
 #[derive(Debug, Clone, Copy, StableHash)]
