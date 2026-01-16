@@ -27,7 +27,7 @@ use tracing::{debug, trace};
 
 use crate::{
     BackendRepr, FieldsShape, HasDataLayout, Integer, LayoutData, Primitive, ReprOptions, Scalar,
-    StructKind, TagEncoding, Variants, WrappingRange,
+    StructPrefix, TagEncoding, Variants, WrappingRange,
 };
 
 /// Overlap eligibility and variant assignment for each CoroutineSavedLocal.
@@ -140,7 +140,7 @@ pub(super) fn layout<
     'a,
     F: core::ops::Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + core::fmt::Debug + Copy,
     VariantIdx: Idx,
-    FieldIdx: Idx,
+    FieldIdx: Idx + Ord,
     LocalIdx: Idx,
 >(
     calc: &super::LayoutCalculator<impl HasDataLayout>,
@@ -171,8 +171,12 @@ pub(super) fn layout<
     let promoted_layouts = ineligible_locals.iter().map(|local| local_layouts[local]);
     prefix_layouts.push(tag_to_layout(tag));
     prefix_layouts.extend(promoted_layouts);
-    let prefix =
-        calc.univariant(&prefix_layouts, &ReprOptions::default(), StructKind::AlwaysSized)?;
+    let prefix = calc.univariant(
+        &prefix_layouts,
+        &std::iter::repeat_n(false, prefix_layouts.len()).collect::<IndexVec<_, _>>(),
+        &ReprOptions::default(),
+        None::<StructPrefix>,
+    )?;
 
     let (prefix_size, prefix_align) = (prefix.size, prefix.align);
 
@@ -223,12 +227,14 @@ pub(super) fn layout<
                     Assigned(_) => unreachable!("assignment does not match variant"),
                     Ineligible(_) => false,
                 })
-                .map(|local| local_layouts[*local]);
+                .map(|local| local_layouts[*local])
+                .collect::<IndexVec<_, _>>();
 
             let mut variant = calc.univariant(
-                &variant_only_tys.collect::<IndexVec<_, _>>(),
+                &variant_only_tys,
+                &std::iter::repeat(false).take(variant_only_tys.len()).collect::<IndexVec<_, _>>(),
                 &ReprOptions::default(),
-                StructKind::Prefixed(prefix_size, prefix_align.abi),
+                Some(StructPrefix(prefix_size, prefix_align.abi)),
             )?;
             variant.variants = Variants::Single { index };
 

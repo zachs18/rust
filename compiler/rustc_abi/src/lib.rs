@@ -2310,14 +2310,20 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
     }
 }
 
+/// A univariant, but with a prefix of an arbitrary size & alignment (e.g., enum tag).
 #[derive(Copy, Clone, Debug)]
-pub enum StructKind {
-    /// A tuple, closure, or univariant which cannot be coerced to unsized.
-    AlwaysSized,
-    /// A univariant, the last field of which may be coerced to unsized.
-    MaybeUnsized,
-    /// A univariant, but with a prefix of an arbitrary size & alignment (e.g., enum tag).
-    Prefixed(Size, Align),
+pub struct StructPrefix(Size, Align);
+
+#[derive(Clone, Debug)]
+pub struct FieldOffset<FieldIdx> {
+    base: Size,
+    then_after: Vec<FieldIdx>,
+}
+
+impl<FieldIdx> FieldOffset<FieldIdx> {
+    pub fn static_offset(&self) -> Option<Size> {
+        self.then_after.is_empty().then_some(self.base)
+    }
 }
 
 #[derive(Clone, Debug)]

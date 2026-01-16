@@ -4,7 +4,7 @@ use rustc_abi::Integer::{I8, I32};
 use rustc_abi::Primitive::{self, Float, Int, Pointer};
 use rustc_abi::{
     AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldsShape, HasDataLayout, Layout,
-    LayoutCalculatorError, LayoutData, Niche, ReprFlags, ReprOptions, Scalar, Size, StructKind,
+    LayoutCalculatorError, LayoutData, Niche, ReprFlags, ReprOptions, Scalar, Size, StructPrefix,
     TagEncoding, VariantIdx, Variants, WrappingRange,
 };
 use rustc_hashes::Hash64;
@@ -202,10 +202,12 @@ fn layout_of_uncached<'tcx>(
     };
     let scalar = |value: Primitive| tcx.mk_layout(LayoutData::scalar(cx, scalar_unit(value)));
 
-    let univariant = |tys: &[Ty<'tcx>], kind| {
+    let univariant_no_unsize = |tys: &[Ty<'tcx>], prefix| {
         let fields = tys.iter().map(|ty| cx.layout_of(*ty)).try_collect::<IndexVec<_, _>>()?;
+        let field_unsizabilities =
+            std::iter::repeat_n(false, fields.len()).collect::<IndexVec<_, _>>();
         let repr = ReprOptions::default();
-        map_layout(cx.calc.univariant(&fields, &repr, kind))
+        map_layout(cx.calc.univariant(&fields, &field_unsizabilities, &repr, prefix))
     };
     debug_assert!(!ty.has_non_region_infer());
 
@@ -427,13 +429,16 @@ fn layout_of_uncached<'tcx>(
                 };
 
             let metadata_field_tys = metadata_fields.iter().map(|(_name, _span, _vis, ty)| ty);
+            let field_unsizabilities =
+                std::iter::repeat_n(false, metadata_field_tys.len()).collect::<IndexVec<_, _>>();
             let metadata_field_ty_layouts =
                 metadata_field_tys.map(|ty| cx.layout_of(ty)).collect::<Result<Vec<_>, _>>()?;
             let repr = ReprOptions { flags: ReprFlags::IS_LINEAR, ..ReprOptions::default() };
             let layout = map_layout(cx.calc.univariant(
                 IndexSlice::from_raw(&metadata_field_ty_layouts),
+                &field_unsizabilities,
                 &repr,
-                StructKind::AlwaysSized,
+                None::<StructPrefix>,
             ))?;
             if pointee.is_thin(tcx, cx.typing_env) && !layout.is_1zst() {
                 // If we are in an impossible predicate situation where e.g. str: Thin,
@@ -461,7 +466,12 @@ fn layout_of_uncached<'tcx>(
                 .try_collect::<IndexVec<_, _>>()?;
             let mut repr = ReprOptions::default();
             repr.flags |= ReprFlags::IS_LINEAR;
-            map_layout(cx.calc.univariant(&fields, &repr, StructKind::AlwaysSized))?
+            map_layout(cx.calc.univariant(
+                &fields,
+                IndexSlice::from_raw(&[false; 2]),
+                &repr,
+                None::<StructPrefix>,
+            ))?
         }
 
         // Arrays and slices.
@@ -539,17 +549,33 @@ fn layout_of_uncached<'tcx>(
             map_layout(layout)?
         }
 
-        ty::Closure(_, args) => univariant(args.as_closure().upvar_tys(), StructKind::AlwaysSized)?,
+        ty::Closure(_, args) => {
+            univariant_no_unsize(args.as_closure().upvar_tys(), None::<StructPrefix>)?
+        }
 
         ty::CoroutineClosure(_, args) => {
-            univariant(args.as_coroutine_closure().upvar_tys(), StructKind::AlwaysSized)?
+            univariant_no_unsize(args.as_coroutine_closure().upvar_tys(), None::<StructPrefix>)?
         }
 
         ty::Tuple(tys) => {
-            let kind =
-                if tys.len() == 0 { StructKind::AlwaysSized } else { StructKind::MaybeUnsized };
-
-            univariant(tys, kind)?
+            let fields = tys.iter().map(|ty| cx.layout_of(ty)).try_collect::<IndexVec<_, _>>()?;
+            let mut field_unsizabilities =
+                std::iter::repeat_n(false, fields.len()).collect::<IndexVec<_, _>>();
+            if let Some(last_field_unsizability) = field_unsizabilities.raw.last_mut() {
+                // FIXME(more_unsized): elsewhere in the compiler (consteval and codegen) assumes the layout of
+                // `(u8, bool)` puts the `bool` second, but if we used the normal univariant logic,
+                // it would detect the niche in `bool` and move it ahead, so lie and say that the second field
+                // is unsizable to make it not do that.
+                *last_field_unsizability = true;
+            }
+            let repr = ReprOptions::default();
+            map_layout(cx.calc.univariant(
+                &fields,
+                &field_unsizabilities,
+                &repr,
+                None::<StructPrefix>,
+            ))?
+            // univariant_no_unsize(tys, None::<StructPrefix>)?
         }
 
         // Scalable vector types
@@ -625,13 +651,30 @@ fn layout_of_uncached<'tcx>(
         // ADTs.
         ty::Adt(def, args) => {
             // Cache the field layouts.
+            // If we encounter a field that is unsized when it should not be,
+            // return an error
             let variants = def
                 .variants()
                 .iter()
                 .map(|v| {
                     v.fields
                         .iter()
-                        .map(|field| cx.layout_of(field.ty(tcx, args)))
+                        .map(|field| {
+                            let layout = cx.layout_of(field.ty(tcx, args))?;
+                            let typing_env = ty::TypingEnv::post_analysis(tcx, def.did());
+                            let field_is_always_sized = tcx
+                                .type_of(field.did)
+                                .instantiate_identity()
+                                .is_sized(tcx, typing_env);
+                            if field_is_always_sized && layout.is_unsized() {
+                                return Err(map_error(
+                                    cx,
+                                    ty,
+                                    LayoutCalculatorError::UnexpectedUnsized(layout),
+                                ));
+                            }
+                            Ok(layout)
+                        })
                         .try_collect::<IndexVec<_, _>>()
                 })
                 .try_collect::<IndexVec<VariantIdx, _>>()?;
@@ -661,48 +704,98 @@ fn layout_of_uncached<'tcx>(
                     .flatten()
             };
 
-            let maybe_unsized = (def.is_struct() || def.is_union())
-                && def.non_enum_variant().tail_opt().is_some_and(|last_field| {
+            let maybe_unsized = def.variants().iter().any(|v| {
+                v.fields.iter().any(|f| {
                     let typing_env = ty::TypingEnv::post_analysis(tcx, def.did());
-                    !tcx.type_of(last_field.did).instantiate_identity().is_sized(tcx, typing_env)
-                });
+                    !tcx.type_of(f.did).instantiate_identity().is_sized(tcx, typing_env)
+                })
+            });
+
+            let variant_unsizabilities: IndexVec<VariantIdx, IndexVec<FieldIdx, bool>> = def
+                .variants()
+                .iter()
+                .map(|v| {
+                    v.fields
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, field)| {
+                            let typing_env = ty::TypingEnv::post_analysis(tcx, def.did());
+                            let field_may_be_unsized = !tcx
+                                .type_of(field.did)
+                                .instantiate_identity()
+                                .is_sized(tcx, typing_env);
+                            Ok(match field.unsizability {
+                                hir::FieldUnsizability::Yes => {
+                                    if !field_may_be_unsized {
+                                        let guar = tcx.dcx().span_delayed_bug(
+                                            tcx.def_span(def.did()),
+                                            "#[rustc_unsizable_field] must be unsizable FIXME(more_unsized): emit a diagnostic instead of a delayed bug",
+                                        );
+                                        return Err(error(cx, LayoutError::ReferencesError(guar)));
+                                    }
+                                    true
+                                }
+                                hir::FieldUnsizability::No => false,
+                                hir::FieldUnsizability::Default => {
+                                    (def.is_struct() || def.is_union())
+                                        && idx + 1 == v.fields.len()
+                                        && field_may_be_unsized
+                                }
+                            })
+                        })
+                        .try_collect()
+                })
+                .try_collect()?;
 
             let layout = cx
                 .calc
                 .layout_of_struct_or_enum(
                     &def.repr(),
                     &variants,
+                    &variant_unsizabilities,
                     def.is_enum(),
                     is_special_no_niche,
                     tcx.layout_scalar_valid_range(def.did()),
                     discr_range_of_repr,
                     discriminants_iter(),
-                    !maybe_unsized,
                 )
                 .map_err(|err| map_error(cx, ty, err))?;
 
             if !maybe_unsized && layout.is_unsized() {
-                bug!("got unsized layout for type that cannot be unsized {ty:?}: {layout:#?}");
+                let guar = tcx.dcx().span_delayed_bug(
+                    tcx.def_span(def.did()),
+                    format!(
+                        "got unsized layout for type that cannot be unsized {ty:?}: {layout:#?}"
+                    ),
+                );
+                return Err(error(cx, LayoutError::ReferencesError(guar)));
             }
 
-            // If the struct tail is sized and can be unsized, check that unsizing doesn't move the fields around.
+            // If the struct is sized and can be unsized, check that unsizing doesn't move the fields around.
             if cfg!(debug_assertions)
                 && maybe_unsized
-                && def.non_enum_variant().tail().ty(tcx, args).is_sized(tcx, cx.typing_env)
+                && def.is_struct() // FIXME(more_unsized): implement this check for unions and enums
+                && layout.is_sized()
             {
                 let mut variants = variants;
-                let tail_replacement = cx.layout_of(Ty::new_slice(tcx, tcx.types.u8)).unwrap();
-                *variants[FIRST_VARIANT].raw.last_mut().unwrap() = tail_replacement;
+                let unsized_replacement = cx.layout_of(Ty::new_slice(tcx, tcx.types.u8)).unwrap();
+                for (vidx, variant) in variants.iter_enumerated_mut() {
+                    for (fidx, field) in variant.iter_enumerated_mut() {
+                        if variant_unsizabilities[vidx][fidx] {
+                            *field = unsized_replacement;
+                        }
+                    }
+                }
 
                 let Ok(unsized_layout) = cx.calc.layout_of_struct_or_enum(
                     &def.repr(),
                     &variants,
+                    &variant_unsizabilities,
                     def.is_enum(),
                     is_special_no_niche,
                     tcx.layout_scalar_valid_range(def.did()),
                     discr_range_of_repr,
                     discriminants_iter(),
-                    !maybe_unsized,
                 ) else {
                     bug!("failed to compute unsized layout of {ty:?}");
                 };
@@ -719,15 +812,18 @@ fn layout_of_uncached<'tcx>(
                     );
                 };
 
-                let (sized_tail, sized_fields) = sized_offsets.raw.split_last().unwrap();
-                let (unsized_tail, unsized_fields) = unsized_offsets.raw.split_last().unwrap();
-
-                if sized_fields != unsized_fields {
-                    bug!("unsizing {ty:?} changed field order!\n{layout:?}\n{unsized_layout:?}");
-                }
-
-                if sized_tail < unsized_tail {
-                    bug!("unsizing {ty:?} moved tail backwards!\n{layout:?}\n{unsized_layout:?}");
+                for ((fidx, sized_f), unsized_f) in
+                    sized_offsets.iter_enumerated().zip(unsized_offsets)
+                {
+                    if !variant_unsizabilities[FIRST_VARIANT][fidx] && sized_f != unsized_f {
+                        bug!(
+                            "unsizing {ty:?} changed field order!\n{layout:?}\n{unsized_layout:?}"
+                        );
+                    } else if variant_unsizabilities[FIRST_VARIANT][fidx] && sized_f < unsized_f {
+                        bug!(
+                            "unsizing {ty:?} moved tail backwards!\n{layout:?}\n{unsized_layout:?}"
+                        );
+                    }
                 }
             }
 
