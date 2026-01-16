@@ -741,14 +741,31 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                         .discard_err()?;
                     dest.into()
                 }
-                CastKind::FnPtrToPtr | CastKind::PtrToPtr => {
+                CastKind::FnPtrToPtr => {
                     let src = self.eval_to_const(value)?;
                     let src = self.ecx.read_immediate(src).discard_err()?;
-                    if !matches!(*src, Immediate::Scalar(_)) {
-                        return None;
-                    }
                     let ret = self.ecx.thin_ptr_to_ptr(&src, ty).discard_err()?;
                     ret.into()
+                }
+                CastKind::PtrToPtr => {
+                    let src = self.eval_to_const(value)?;
+                    match (src.layout.backend_repr, ty.layout.backend_repr) {
+                        (BackendRepr::Scalar(_), BackendRepr::Scalar(_))
+                        | (BackendRepr::ScalarPair(..), BackendRepr::ScalarPair(..)) => {
+                            // thin -> thin, or single-wide -> single-wide, transmuting metadata
+                            let src = self.ecx.read_immediate(src).discard_err()?;
+                            ImmTy::from_immediate(*src, ty).into()
+                        }
+                        (_, BackendRepr::Scalar(_)) => {
+                            // wide -> thin, discard metadata
+                            let src_data_ptr_op =
+                                self.ecx.project_field(src, FieldIdx::ZERO).discard_err()?;
+                            let src_data_ptr_imm =
+                                self.ecx.read_immediate(&src_data_ptr_op).discard_err()?;
+                            ImmTy::from_immediate(*src_data_ptr_imm, ty).into()
+                        }
+                        _ => return None,
+                    }
                 }
                 CastKind::PointerCoercion(ty::adjustment::PointerCoercion::UnsafeFnPointer, _) => {
                     let src = self.eval_to_const(value)?;
