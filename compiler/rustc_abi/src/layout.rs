@@ -11,7 +11,7 @@ use tracing::{debug, trace};
 use crate::{
     AbiAlign, Align, BackendRepr, FieldsShape, HasDataLayout, IndexSlice, IndexVec, Integer,
     LayoutData, Niche, NonZeroUsize, NumScalableVectors, Primitive, ReprOptions, Scalar, Size,
-    StructKind, TagEncoding, TargetDataLayout, Variants, WrappingRange,
+    StructPrefix, TagEncoding, TargetDataLayout, Variants, WrappingRange,
 };
 
 mod coroutine;
@@ -244,7 +244,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         'a,
         F: Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + fmt::Debug + Copy,
         VariantIdx: Idx,
-        FieldIdx: Idx,
+        FieldIdx: Idx + Ord,
         LocalIdx: Idx,
     >(
         &self,
@@ -266,17 +266,19 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
 
     pub fn univariant<
         'a,
-        FieldIdx: Idx,
+        FieldIdx: Idx + Ord,
         VariantIdx: Idx,
         F: Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + fmt::Debug + Copy,
     >(
         &self,
         fields: &IndexSlice<FieldIdx, F>,
+        field_unsizabilities: &IndexSlice<FieldIdx, bool>,
         repr: &ReprOptions,
-        kind: StructKind,
+        prefix: Option<StructPrefix>,
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
         let dl = self.cx.data_layout();
-        let layout = self.univariant_biased(fields, repr, kind, NicheBias::Start);
+        let layout =
+            self.univariant_biased(fields, field_unsizabilities, repr, prefix, NicheBias::Start);
         // Enums prefer niches close to the beginning or the end of the variants so that other
         // (smaller) data-carrying variants can be packed into the space after/before the niche.
         // If the default field ordering does not give us a niche at the front then we do a second
@@ -285,8 +287,10 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         if let Ok(layout) = &layout {
             // Don't try to calculate an end-biased layout for unsizable structs,
             // otherwise we could end up with different layouts for
-            // Foo<Type> and Foo<dyn Trait> which would break unsizing.
-            if !matches!(kind, StructKind::MaybeUnsized) {
+            // Foo<Type> and Foo<dyn Trait> which would break unsizing,
+            // even if we only considered niches in non-unsizable fields,
+            // since the `tail_space` would be different between different instantiations.
+            if !field_unsizabilities.iter().any(|u| *u) {
                 if let Some(niche) = layout.largest_niche {
                     let head_space = niche.offset.bytes();
                     let niche_len = niche.value.size(dl).bytes();
@@ -297,7 +301,13 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     // to get the unpadded size so we try anyway.
                     if fields.len() > 1 && head_space != 0 && tail_space > 0 {
                         let alt_layout = self
-                            .univariant_biased(fields, repr, kind, NicheBias::End)
+                            .univariant_biased(
+                                fields,
+                                field_unsizabilities,
+                                repr,
+                                prefix,
+                                NicheBias::End,
+                            )
                             .expect("alt layout should always work");
                         let alt_niche = alt_layout
                             .largest_niche
@@ -328,7 +338,6 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                             self.format_field_niches(layout, fields),
                             self.format_field_niches(&alt_layout, fields),
                         );
-
                         if prefer_alt_layout {
                             return Ok(alt_layout);
                         }
@@ -341,19 +350,19 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
 
     pub fn layout_of_struct_or_enum<
         'a,
-        FieldIdx: Idx,
+        FieldIdx: Idx + Ord,
         VariantIdx: Idx,
         F: Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + fmt::Debug + Copy,
     >(
         &self,
         repr: &ReprOptions,
         variants: &IndexSlice<VariantIdx, IndexVec<FieldIdx, F>>,
+        variant_unsizabilities: &IndexSlice<VariantIdx, IndexVec<FieldIdx, bool>>,
         is_enum: bool,
         is_special_no_niche: bool,
         scalar_valid_range: (Bound<u128>, Bound<u128>),
         discr_range_of_repr: impl Fn(i128, i128) -> (Integer, bool),
         discriminants: impl Iterator<Item = (VariantIdx, i128)>,
-        always_sized: bool,
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
         let (present_first, present_second) = {
             let mut present_variants = variants.iter_enumerated().filter_map(|(i, v)| {
@@ -380,10 +389,9 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             self.layout_of_struct(
                 repr,
                 variants,
-                is_enum,
+                variant_unsizabilities,
                 is_special_no_niche,
                 scalar_valid_range,
-                always_sized,
                 present_first,
             )
         } else {
@@ -391,7 +399,13 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             // structs. (We have also handled univariant enums
             // that allow representation optimization.)
             assert!(is_enum);
-            self.layout_of_enum(repr, variants, discr_range_of_repr, discriminants)
+            self.layout_of_enum(
+                repr,
+                variants,
+                variant_unsizabilities,
+                discr_range_of_repr,
+                discriminants,
+            )
         }
     }
 
@@ -526,17 +540,16 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
     /// single-variant enums are just structs, if you think about it
     fn layout_of_struct<
         'a,
-        FieldIdx: Idx,
+        FieldIdx: Idx + Ord,
         VariantIdx: Idx,
         F: Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + fmt::Debug + Copy,
     >(
         &self,
         repr: &ReprOptions,
         variants: &IndexSlice<VariantIdx, IndexVec<FieldIdx, F>>,
-        is_enum: bool,
+        variant_unsizabilities: &IndexSlice<VariantIdx, IndexVec<FieldIdx, bool>>,
         is_special_no_niche: bool,
         scalar_valid_range: (Bound<u128>, Bound<u128>),
-        always_sized: bool,
         present_first: VariantIdx,
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
         // Struct, or univariant enum equivalent to a struct.
@@ -544,13 +557,9 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
 
         let dl = self.cx.data_layout();
         let v = present_first;
-        let kind = if is_enum || variants[v].is_empty() || always_sized {
-            StructKind::AlwaysSized
-        } else {
-            StructKind::MaybeUnsized
-        };
 
-        let mut st = self.univariant(&variants[v], repr, kind)?;
+        let mut st =
+            self.univariant(&variants[v], &variant_unsizabilities[v], repr, None::<StructPrefix>)?;
         st.variants = Variants::Single { index: v };
 
         if is_special_no_niche {
@@ -617,7 +626,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             }
             _ => assert!(
                 start == Bound::Unbounded && end == Bound::Unbounded,
-                "nonscalar layout for layout_scalar_valid_range type: {st:#?}",
+                "nonscalar layout for layout_scalar_valid_range type: {st:#?} {variants:#?}",
             ),
         }
 
@@ -626,13 +635,14 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
 
     fn layout_of_enum<
         'a,
-        FieldIdx: Idx,
+        FieldIdx: Idx + Ord,
         VariantIdx: Idx,
         F: Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + fmt::Debug + Copy,
     >(
         &self,
         repr: &ReprOptions,
         variants: &IndexSlice<VariantIdx, IndexVec<FieldIdx, F>>,
+        variant_unsizabilities: &IndexSlice<VariantIdx, IndexVec<FieldIdx, bool>>,
         discr_range_of_repr: impl Fn(i128, i128) -> (Integer, bool),
         discriminants: impl Iterator<Item = (VariantIdx, i128)>,
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
@@ -658,7 +668,9 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             let mut variant_layouts = variants
                 .iter_enumerated()
                 .map(|(j, v)| {
-                    let mut st = self.univariant(v, repr, StructKind::AlwaysSized).ok()?;
+                    let mut st = self
+                        .univariant(v, &variant_unsizabilities[j], repr, None::<StructPrefix>)
+                        .ok()?;
                     st.variants = Variants::Single { index: j };
 
                     align = align.max(st.align.abi);
@@ -886,10 +898,12 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let mut layout_variants = variants
             .iter_enumerated()
             .map(|(i, field_layouts)| {
+                let field_unsizabilities = &variant_unsizabilities[i];
                 let mut st = self.univariant(
                     field_layouts,
+                    field_unsizabilities,
                     repr,
-                    StructKind::Prefixed(min_ity.size(), prefix_align),
+                    Some(StructPrefix(min_ity.size(), prefix_align)),
                 )?;
                 st.variants = Variants::Single { index: i };
                 // Find the first field we can't move later
@@ -1164,14 +1178,15 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
 
     fn univariant_biased<
         'a,
-        FieldIdx: Idx,
+        FieldIdx: Idx + Ord,
         VariantIdx: Idx,
         F: Deref<Target = &'a LayoutData<FieldIdx, VariantIdx>> + fmt::Debug + Copy,
     >(
         &self,
         fields: &IndexSlice<FieldIdx, F>,
+        field_unsizabilities: &IndexSlice<FieldIdx, bool>,
         repr: &ReprOptions,
-        kind: StructKind,
+        prefix: Option<StructPrefix>,
         niche_bias: NicheBias,
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
         let dl = self.cx.data_layout();
@@ -1180,15 +1195,42 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let mut max_repr_align = repr.align;
         let mut in_memory_order: IndexVec<u32, FieldIdx> = fields.indices().collect();
         let optimize_field_order = !repr.inhibit_struct_field_reordering();
-        let end = if let StructKind::MaybeUnsized = kind { fields.len() - 1 } else { fields.len() };
-        let optimizing = &mut in_memory_order.raw[..end];
-        let fields_excluding_tail = &fields.raw[..end];
-        // unsizable tail fields are excluded so that we use the same seed for the sized and unsized layouts.
-        let field_seed = fields_excluding_tail
-            .iter()
-            .fold(Hash64::ZERO, |acc, f| acc.wrapping_add(f.randomization_seed));
+
+        // unsizable fields are excluded so that we use the same seed for the sized and unsized layouts.
+        let field_seed = fields
+            .iter_enumerated()
+            .filter(|&(idx, _)| !field_unsizabilities[idx])
+            .fold(Hash64::ZERO, |acc, (_, f)| acc.wrapping_add(f.randomization_seed));
 
         if optimize_field_order && fields.len() > 1 {
+            let end = if optimize_field_order {
+                let mut low = 0;
+                let mut high = in_memory_order.len();
+                let predicate = |f| field_unsizabilities[f];
+                while low < high {
+                    while low < high && !predicate(in_memory_order.raw[low]) {
+                        low += 1;
+                    }
+                    while low < high && predicate(in_memory_order.raw[high - 1]) {
+                        high -= 1;
+                    }
+                    if low < high {
+                        in_memory_order.raw.swap(low, high);
+                        low += 1;
+                        high -= 1;
+                    }
+                }
+                debug_assert_eq!(low, high);
+                low
+            } else {
+                // If we aren't optimizing field order, then
+                0
+            };
+            let (rearrangeable, non_rearrangeable) = in_memory_order.raw.split_at_mut(end);
+
+            rearrangeable.sort_unstable();
+            non_rearrangeable.sort_unstable();
+
             // If `-Z randomize-layout` was enabled for the type definition we can shuffle
             // the field ordering to try and catch some code making assumptions about layouts
             // we don't guarantee.
@@ -1203,18 +1245,31 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                         field_seed.wrapping_add(repr.field_shuffle_seed).as_u64(),
                     );
 
-                    // Shuffle the ordering of the fields.
-                    optimizing.shuffle(&mut rng);
+                    // Shuffle the ordering of the non-unsizable fields.
+                    rearrangeable.shuffle(&mut rng);
+
+                    // `ReprOptions.field_shuffle_seed` is a deterministic seed we can use to randomize field
+                    // ordering.
+                    let mut rng = rand_xoshiro::Xoshiro128StarStar::seed_from_u64(
+                        repr.field_shuffle_seed.as_u64(),
+                    );
+
+                    // Shuffle the ordering of the unsizable fields, using *only* `ReprOptions.field_shuffle_seed`
+                    // so it is the order same for `Foo<T>` and `Foo<dyn Trait>`
+                    non_rearrangeable.shuffle(&mut rng);
                 }
                 // Otherwise we just leave things alone and actually optimize the type's fields
             } else {
-                // To allow unsizing `&Foo<Type>` -> `&Foo<dyn Trait>`, the layout of the struct must
-                // not depend on the layout of the tail.
+                // To allow unsizing `&Foo<Type>` -> `&Foo<dyn Trait>`, the layout of the struct
+                // (i.e. the field order) must not depend on the unsizable fields
                 let max_field_align =
-                    fields_excluding_tail.iter().map(|f| f.align.bytes()).max().unwrap_or(1);
-                let largest_niche_size = fields_excluding_tail
+                    rearrangeable.iter().map(|&fidx| fields[fidx].align.bytes()).max().unwrap_or(1);
+
+                // We cannot consider niches in unsizable fields for this purpose, because
+                // we cannot let those niches affect this type's field ordering.
+                let largest_niche_size = rearrangeable
                     .iter()
-                    .filter_map(|f| f.largest_niche)
+                    .filter_map(|&fidx| fields[fidx].largest_niche)
                     .map(|n| n.available(dl))
                     .max()
                     .unwrap_or(0);
@@ -1259,8 +1314,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     }
                 };
 
-                match kind {
-                    StructKind::AlwaysSized | StructKind::MaybeUnsized => {
+                match prefix {
+                    None => {
                         // Currently `LayoutData` only exposes a single niche so sorting is usually
                         // sufficient to get one niche into the preferred position. If it ever
                         // supported multiple niches then a more advanced pick-and-pack approach could
@@ -1269,7 +1324,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                         // bool to the front but it would require packing the tuple together with the
                         // u16 to build a 4-byte group so that the u32 can be placed after it without
                         // padding. This kind of packing can't be achieved by sorting.
-                        optimizing.sort_by_key(|&x| {
+                        rearrangeable.sort_by_key(|&x| {
                             let f = &fields[x];
                             let field_size = f.size.bytes();
                             let niche_size = f.largest_niche.map_or(0, |n| n.available(dl));
@@ -1286,7 +1341,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                                 }),
                             };
 
-                            (
+                            let ret = (
                                 // Then place largest alignments first.
                                 cmp::Reverse(alignment_group_key(f)),
                                 // Then prioritize niche placement within alignment group according to
@@ -1295,16 +1350,17 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                                 // Then among fields with equally-sized niches prefer the ones
                                 // closer to the start/end of the field.
                                 inner_niche_offset_key,
-                            )
+                            );
+                            ret
                         });
                     }
 
-                    StructKind::Prefixed(..) => {
+                    Some(StructPrefix(..)) => {
                         // Sort in ascending alignment so that the layout stays optimal
                         // regardless of the prefix.
                         // And put the largest niche in an alignment group at the end
                         // so it can be used as discriminant in jagged enums
-                        optimizing.sort_by_key(|&x| {
+                        rearrangeable.sort_by_key(|&x| {
                             let f = &fields[x];
                             let niche_size = f.largest_niche.map_or(0, |n| n.available(dl));
                             (alignment_group_key(f), niche_size)
@@ -1316,6 +1372,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 //                 regardless of the status of `-Z randomize-layout`
             }
         }
+
         // in_memory_order holds field indices by increasing memory offset.
         // That is, if field 5 has offset 0, the first element of in_memory_order is 5.
         // We now write field offsets to the corresponding offset slot;
@@ -1325,7 +1382,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let mut offset = Size::ZERO;
         let mut largest_niche = None;
         let mut largest_niche_available = 0;
-        if let StructKind::Prefixed(prefix_size, prefix_align) = kind {
+        if let Some(StructPrefix(prefix_size, prefix_align)) = prefix {
             let prefix_align =
                 if let Some(pack) = pack { prefix_align.min(pack) } else { prefix_align };
             align = align.max(prefix_align);
@@ -1338,11 +1395,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             }
 
             if field.is_unsized() {
-                if let StructKind::MaybeUnsized = kind {
-                    unsized_field = Some(field);
-                } else {
-                    return Err(LayoutCalculatorError::UnexpectedUnsized(*field));
-                }
+                unsized_field = Some(field);
             }
 
             // Invariant: offset < dl.obj_size_bound() <= 1<<61
