@@ -2,16 +2,12 @@
 
 fn wide_ptr_integer() -> () {
     let mut _0: ();
+    let _1: ();
+    let _2: ();
     let _3: ();
     let _4: ();
-    let mut _9: bool;
-    let _10: ();
-    let mut _14: bool;
-    let _15: ();
-    let mut _19: bool;
-    let _20: ();
-    let mut _24: bool;
-    let _25: ();
+    let _5: ();
+    let _6: ();
     scope 1 {
         debug a => const Indirect { alloc_id: ALLOC0, offset: Size(0 bytes) }: *const [u8];
         scope 2 {
@@ -31,7 +27,6 @@ fn wide_ptr_integer() -> () {
                         }
                     }
                     scope 9 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
-                        let mut _2: *const ();
                         scope 10 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
                         }
                         scope 11 (inlined std::ptr::metadata::<[u8]>) {
@@ -39,7 +34,6 @@ fn wide_ptr_integer() -> () {
                     }
                 }
                 scope 6 (inlined std::ptr::const_ptr::<impl *const [u8]>::to_raw_parts) {
-                    let mut _1: *const ();
                     scope 7 (inlined std::ptr::const_ptr::<impl *const [u8]>::cast::<()>) {
                     }
                     scope 8 (inlined std::ptr::metadata::<[u8]>) {
@@ -77,10 +71,7 @@ fn wide_ptr_integer() -> () {
                 }
             }
             scope 32 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::lt) {
-                let mut _7: std::cmp::Ordering;
                 scope 33 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
-                    let mut _5: bool;
-                    let mut _6: bool;
                     scope 34 {
                         scope 35 {
                             scope 44 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
@@ -103,15 +94,12 @@ fn wide_ptr_integer() -> () {
                     }
                 }
                 scope 42 (inlined std::cmp::Ordering::is_lt) {
-                    let mut _8: i8;
                     scope 43 (inlined std::cmp::Ordering::as_raw) {
                     }
                 }
             }
             scope 46 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::le) {
-                let mut _12: std::cmp::Ordering;
                 scope 47 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
-                    let mut _11: bool;
                     scope 48 {
                         scope 49 {
                             scope 58 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
@@ -134,15 +122,12 @@ fn wide_ptr_integer() -> () {
                     }
                 }
                 scope 56 (inlined std::cmp::Ordering::is_le) {
-                    let mut _13: i8;
                     scope 57 (inlined std::cmp::Ordering::as_raw) {
                     }
                 }
             }
             scope 60 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::gt) {
-                let mut _17: std::cmp::Ordering;
                 scope 61 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
-                    let mut _16: bool;
                     scope 62 {
                         scope 63 {
                             scope 72 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
@@ -165,15 +150,12 @@ fn wide_ptr_integer() -> () {
                     }
                 }
                 scope 70 (inlined std::cmp::Ordering::is_gt) {
-                    let mut _18: i8;
                     scope 71 (inlined std::cmp::Ordering::as_raw) {
                     }
                 }
             }
             scope 74 (inlined std::ptr::const_ptr::<impl PartialOrd for *const [u8]>::ge) {
-                let mut _22: std::cmp::Ordering;
                 scope 75 (inlined std::ptr::const_ptr::<impl Ord for *const [u8]>::cmp) {
-                    let mut _21: bool;
                     scope 76 {
                         scope 77 {
                             scope 86 (inlined <{ptr metadata for [u8]} as Ord>::cmp - ptr_metadata_cmp_shim([u8])) {
@@ -196,7 +178,6 @@ fn wide_ptr_integer() -> () {
                     }
                 }
                 scope 84 (inlined std::cmp::Ordering::is_ge) {
-                    let mut _23: i8;
                     scope 85 (inlined std::cmp::Ordering::as_raw) {
                     }
                 }
@@ -205,193 +186,30 @@ fn wide_ptr_integer() -> () {
     }
 
     bb0: {
-        _1 = const Indirect { alloc_id: ALLOC0, offset: Size(0 bytes) }: *const [u8] as *const () (PtrToPtr);
-        _2 = const Indirect { alloc_id: ALLOC1, offset: Size(0 bytes) }: *const [u8] as *const () (PtrToPtr);
-        _3 = opaque::<bool>(const false) -> [return: bb1, unwind continue];
+        _1 = opaque::<bool>(const false) -> [return: bb1, unwind continue];
     }
 
     bb1: {
-        _4 = opaque::<bool>(const true) -> [return: bb2, unwind continue];
+        _2 = opaque::<bool>(const true) -> [return: bb2, unwind continue];
     }
 
     bb2: {
-        StorageLive(_9);
-        StorageLive(_7);
-        _5 = Lt(copy _1, copy _2);
-        switchInt(copy _5) -> [0: bb3, otherwise: bb7];
+        _3 = opaque::<bool>(const true) -> [return: bb3, unwind continue];
     }
 
     bb3: {
-        StorageLive(_6);
-        _6 = Gt(copy _1, copy _2);
-        switchInt(move _6) -> [0: bb4, otherwise: bb5];
+        _4 = opaque::<bool>(const true) -> [return: bb4, unwind continue];
     }
 
     bb4: {
-        _7 = const Less;
-        goto -> bb6;
+        _5 = opaque::<bool>(const false) -> [return: bb5, unwind continue];
     }
 
     bb5: {
-        _7 = const Greater;
-        goto -> bb6;
+        _6 = opaque::<bool>(const false) -> [return: bb6, unwind continue];
     }
 
     bb6: {
-        StorageDead(_6);
-        goto -> bb8;
-    }
-
-    bb7: {
-        _7 = const Less;
-        goto -> bb8;
-    }
-
-    bb8: {
-        StorageLive(_8);
-        _8 = discriminant(_7);
-        _9 = Lt(move _8, const 0_i8);
-        StorageDead(_8);
-        StorageDead(_7);
-        _10 = opaque::<bool>(move _9) -> [return: bb9, unwind continue];
-    }
-
-    bb9: {
-        StorageDead(_9);
-        StorageLive(_14);
-        StorageLive(_12);
-        switchInt(copy _5) -> [0: bb10, otherwise: bb15];
-    }
-
-    bb10: {
-        StorageLive(_11);
-        _11 = Gt(copy _1, copy _2);
-        switchInt(move _11) -> [0: bb11, otherwise: bb12];
-    }
-
-    bb11: {
-        _12 = const Less;
-        goto -> bb13;
-    }
-
-    bb12: {
-        _12 = const Greater;
-        goto -> bb13;
-    }
-
-    bb13: {
-        StorageDead(_11);
-        StorageLive(_13);
-        _13 = discriminant(_12);
-        _14 = Le(move _13, const 0_i8);
-        StorageDead(_13);
-        StorageDead(_12);
-        _15 = opaque::<bool>(move _14) -> [return: bb14, unwind continue];
-    }
-
-    bb14: {
-        StorageDead(_14);
-        StorageLive(_19);
-        StorageLive(_17);
-        goto -> bb17;
-    }
-
-    bb15: {
-        _12 = const Less;
-        StorageLive(_13);
-        _13 = discriminant(_12);
-        _14 = Le(move _13, const 0_i8);
-        StorageDead(_13);
-        StorageDead(_12);
-        _15 = opaque::<bool>(move _14) -> [return: bb16, unwind continue];
-    }
-
-    bb16: {
-        StorageDead(_14);
-        StorageLive(_19);
-        StorageLive(_17);
-        switchInt(copy _5) -> [0: bb17, otherwise: bb25];
-    }
-
-    bb17: {
-        StorageLive(_16);
-        _16 = Gt(copy _1, copy _2);
-        switchInt(move _16) -> [0: bb18, otherwise: bb19];
-    }
-
-    bb18: {
-        _17 = const Less;
-        goto -> bb20;
-    }
-
-    bb19: {
-        _17 = const Greater;
-        goto -> bb20;
-    }
-
-    bb20: {
-        StorageDead(_16);
-        StorageLive(_18);
-        _18 = discriminant(_17);
-        _19 = Gt(move _18, const 0_i8);
-        StorageDead(_18);
-        StorageDead(_17);
-        _20 = opaque::<bool>(move _19) -> [return: bb21, unwind continue];
-    }
-
-    bb21: {
-        StorageDead(_19);
-        StorageLive(_24);
-        StorageLive(_22);
-        StorageLive(_21);
-        _21 = Gt(copy _1, copy _2);
-        switchInt(move _21) -> [0: bb22, otherwise: bb23];
-    }
-
-    bb22: {
-        _22 = const Less;
-        goto -> bb24;
-    }
-
-    bb23: {
-        _22 = const Greater;
-        goto -> bb24;
-    }
-
-    bb24: {
-        StorageDead(_21);
-        goto -> bb27;
-    }
-
-    bb25: {
-        _17 = const Less;
-        StorageLive(_18);
-        _18 = discriminant(_17);
-        _19 = Gt(move _18, const 0_i8);
-        StorageDead(_18);
-        StorageDead(_17);
-        _20 = opaque::<bool>(move _19) -> [return: bb26, unwind continue];
-    }
-
-    bb26: {
-        StorageDead(_19);
-        StorageLive(_24);
-        StorageLive(_22);
-        _22 = const Less;
-        goto -> bb27;
-    }
-
-    bb27: {
-        StorageLive(_23);
-        _23 = discriminant(_22);
-        _24 = Ge(move _23, const 0_i8);
-        StorageDead(_23);
-        StorageDead(_22);
-        _25 = opaque::<bool>(move _24) -> [return: bb28, unwind continue];
-    }
-
-    bb28: {
-        StorageDead(_24);
         return;
     }
 }
