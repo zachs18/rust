@@ -587,6 +587,20 @@ impl HirEqInterExpr<'_, '_, '_> {
                     }
                     && over(lf, rf, |l, r| self.eq_expr_field(l, r))
             },
+            (ExprKind::PtrMetadata(l_opt_pointee, lf, lo), ExprKind::PtrMetadata(r_opt_pointee, rf, ro)) => {
+                (match (l_opt_pointee, r_opt_pointee) {
+                    (None, None) => true,
+                    (Some(l_pointee), Some(r_pointee)) => self.eq_ty(l_pointee, r_pointee),
+                    _ => false,
+                })
+                    && match (lo, ro) {
+                        (StructTailExpr::Base(l),StructTailExpr::Base(r)) => self.eq_expr(l, r),
+                        (StructTailExpr::None, StructTailExpr::None) |
+                        (StructTailExpr::DefaultFields(_), StructTailExpr::DefaultFields(_)) => true,
+                        _ => false,
+                    }
+                    && over(lf, rf, |l, r| self.eq_expr_field(l, r))
+            },
             (ExprKind::Tup(l_tup), ExprKind::Tup(r_tup)) => self.eq_exprs(l_tup, r_tup),
             (ExprKind::Use(l_expr, _), ExprKind::Use(r_expr, _)) => self.eq_expr(l_expr, r_expr),
             (ExprKind::Type(le, lt), ExprKind::Type(re, rt)) => self.eq_expr(le, re) && self.eq_ty(lt, rt),
@@ -620,6 +634,7 @@ impl HirEqInterExpr<'_, '_, '_> {
                 | ExprKind::Repeat(..)
                 | ExprKind::Ret(..)
                 | ExprKind::Struct(..)
+                | ExprKind::PtrMetadata(..)
                 | ExprKind::Tup(..)
                 | ExprKind::Use(..)
                 | ExprKind::Type(..)
@@ -1309,6 +1324,20 @@ impl<'a, 'tcx> SpanlessHash<'a, 'tcx> {
             },
             ExprKind::Struct(path, fields, expr) => {
                 self.hash_qpath(path);
+
+                for f in *fields {
+                    self.hash_name(f.ident.name);
+                    self.hash_expr(f.expr);
+                }
+
+                if let StructTailExpr::Base(e) = expr {
+                    self.hash_expr(e);
+                }
+            },
+            ExprKind::PtrMetadata(opt_pointee, fields, expr) => {
+                if let Some(pointee) = opt_pointee {
+                    self.hash_ty(pointee);
+                }
 
                 for f in *fields {
                     self.hash_name(f.ident.name);

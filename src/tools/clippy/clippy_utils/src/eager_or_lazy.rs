@@ -303,6 +303,7 @@ fn expr_eagerness<'tcx>(cx: &LateContext<'tcx>, e: &'tcx Expr<'_>) -> EagernessS
                 | ExprKind::AddrOf(..)
                 | ExprKind::Repeat(..)
                 | ExprKind::Block(Block { stmts: [], .. }, _)
+                | ExprKind::PtrMetadata(..)
                 | ExprKind::OffsetOf(..)
                 | ExprKind::UnsafeBinderCast(..) => (),
 
