@@ -297,7 +297,7 @@ fn never_loop_expr<'tcx>(
         ExprKind::MethodCall(_, receiver, es, _) => {
             never_loop_expr_all(cx, once(receiver).chain(es.iter()), local_labels, main_loop_id)
         },
-        ExprKind::Struct(_, fields, base) => {
+        ExprKind::Struct(_, fields, base) | ExprKind::PtrMetadata(_, fields, base) => {
             let fields = never_loop_expr_all(cx, fields.iter().map(|f| f.expr), local_labels, main_loop_id);
             if let StructTailExpr::Base(base) = base {
                 combine_seq(fields, || never_loop_expr(cx, base, local_labels, main_loop_id))

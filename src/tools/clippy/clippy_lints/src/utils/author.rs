@@ -683,6 +683,19 @@ impl<'a, 'tcx> PrintVisitor<'a, 'tcx> {
                 });
                 base.if_some(|e| self.expr(e));
             },
+            ExprKind::PtrMetadata(_opt_pointee, fields, base) => {
+                bind!(self, fields);
+                let base = OptionPat::new(match base {
+                    StructTailExpr::Base(base) => Some(self.bind("base", base)),
+                    StructTailExpr::None | StructTailExpr::DefaultFields(_) => None,
+                });
+                kind!("PtrMetadata(_ty, {fields}, {base})");
+                self.slice(fields, |field| {
+                    self.ident(field!(field.ident));
+                    self.expr(field!(field.expr));
+                });
+                base.if_some(|e| self.expr(e));
+            },
             ExprKind::ConstBlock(_) => kind!("ConstBlock(_)"),
             ExprKind::Repeat(value, length) => {
                 bind!(self, value, length);

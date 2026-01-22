@@ -666,7 +666,7 @@ pub fn for_each_unconsumed_temporary<'tcx, B>(
                 helper(typeck, true, lhs, f)?;
                 helper(typeck, true, rhs, f)?;
             },
-            ExprKind::Struct(_, fields, default) => {
+            ExprKind::Struct(_, fields, default) | ExprKind::PtrMetadata(_, fields, default) => {
                 for field in fields {
                     helper(typeck, true, field.expr, f)?;
                 }
