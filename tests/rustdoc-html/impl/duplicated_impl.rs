@@ -3,11 +3,11 @@
 
 #![crate_name = "foo"]
 
-// We check that there is only one "impl<T> Something<Whatever> for T" listed in the
-// blanket implementations.
+// We check that there are only two "impl<T> Something<Whatever> for T" listed in the
+// blanket implementations (this and `core::init::PinInit<T> for T`).
 
 //@ has 'foo/struct.Whatever.html'
-//@ count - '//*[@id="blanket-implementations-list"]/section[@class="impl"]' 1
+//@ count - '//*[@id="blanket-implementations-list"]/section[@class="impl"]' 2
 
 pub trait Something<T> { }
 pub struct Whatever;
