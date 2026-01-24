@@ -8,17 +8,16 @@ use crate::hint::assert_unchecked;
 use crate::iter::{
     FusedIterator, TrustedLen, TrustedRandomAccess, TrustedRandomAccessNoCoerce, UncheckedIterator,
 };
-use crate::marker::PhantomData;
-use crate::mem::{self, SizedTypeProperties};
+use crate::marker::{MetaSized, PhantomData};
 use crate::num::NonZero;
-use crate::ptr::{NonNull, without_provenance, without_provenance_mut};
-use crate::{cmp, fmt};
+use crate::ptr::{NonNull, build_metadata, without_provenance, without_provenance_mut};
+use crate::{cmp, fmt, mem};
 
 #[stable(feature = "boxed_slice_into_iter", since = "1.80.0")]
-impl<T> !Iterator for [T] {}
+impl<T: MetaSized> !Iterator for [T] {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> IntoIterator for &'a [T] {
+impl<'a, T: MetaSized> IntoIterator for &'a [T] {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
 
@@ -28,13 +27,29 @@ impl<'a, T> IntoIterator for &'a [T] {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> IntoIterator for &'a mut [T] {
+impl<'a, T: MetaSized> IntoIterator for &'a mut [T] {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
 
     fn into_iter(self) -> IterMut<'a, T> {
         self.iter_mut()
     }
+}
+
+const fn take_mut<'a, T: MetaSized>(slice: &mut &'a mut [T]) -> &'a mut [T] {
+    let meta: core::ptr::Metadata<[T]> = core::ptr::metadata(&**slice);
+    let addr = core::mem::align_of_val::<[T]>(&**slice);
+    // SAFETY: a `[T]` with length 0 can have any element metadata that wouldn't
+    // overflow layout calculation. Any metadata from a reference by definition
+    // refers to a non-overflowed layout, so reusing the original slice's metadata
+    // is valid here.
+    let empty_slice: &'a mut [T] = unsafe {
+        &mut *core::ptr::from_raw_parts_mut(
+            without_provenance_mut::<()>(addr),
+            build_metadata!(for [T]; len: 0, elem: meta.elem, ..),
+        )
+    };
+    core::mem::replace(slice, empty_slice)
 }
 
 /// Immutable slice iterator
@@ -66,40 +81,43 @@ impl<'a, T> IntoIterator for &'a mut [T] {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[rustc_diagnostic_item = "SliceIter"]
-pub struct Iter<'a, T: 'a> {
+pub struct Iter<'a, T: MetaSized + 'a> {
     /// The pointer to the next element to return, or the past-the-end location
     /// if the iterator is empty.
     ///
     /// This address will be used for all ZST elements, never changed.
     ptr: NonNull<T>,
-    /// For non-ZSTs, the non-null pointer to the past-the-end element.
+    /// For non-zero-sized elements, the non-null pointer to the past-the-end element.
     ///
-    /// For ZSTs, this is `ptr::without_provenance_mut(len)`.
-    end_or_len: *const T,
+    /// For zero-sized elements, this is `ptr::without_provenance_mut(len)`.
+    end_or_len: *const (),
     _marker: PhantomData<&'a T>,
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug> fmt::Debug for Iter<'_, T> {
+impl<T: MetaSized + fmt::Debug> fmt::Debug for Iter<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Iter").field(&self.as_slice()).finish()
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: Sync> Sync for Iter<'_, T> {}
+unsafe impl<T: MetaSized + Sync> Sync for Iter<'_, T> {}
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: Sync> Send for Iter<'_, T> {}
+unsafe impl<T: MetaSized + Sync> Send for Iter<'_, T> {}
 
-impl<'a, T> Iter<'a, T> {
+impl<'a, T: MetaSized> Iter<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T]) -> Self {
         let len = slice.len();
-        let ptr: NonNull<T> = NonNull::from_ref(slice).cast();
+        let ptr: NonNull<T> = NonNull::from_ref(slice).as_non_null_ptr();
         // SAFETY: Similar to `IterMut::new`.
         unsafe {
-            let end_or_len =
-                if T::IS_ZST { without_provenance(len) } else { ptr.as_ptr().add(len) };
+            let end_or_len = if crate::mem::size_of_val_raw(ptr.as_ptr()) == 0 {
+                without_provenance(len)
+            } else {
+                ptr.as_ptr().add(len).cast::<()>()
+            };
 
             Self { ptr, end_or_len, _marker: PhantomData }
         }
@@ -139,7 +157,7 @@ impl<'a, T> Iter<'a, T> {
     }
 }
 
-iterator! {struct Iter -> *const T, &'a T, const, {/* no mut */}, as_ref, each_ref, {
+iterator! {struct Iter -> *const T [*const ()], &'a T, const, {/* no mut */}, as_ref, each_ref, {
     fn is_sorted_by<F>(self, mut compare: F) -> bool
     where
         Self: Sized,
@@ -150,7 +168,7 @@ iterator! {struct Iter -> *const T, &'a T, const, {/* no mut */}, as_ref, each_r
 }}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T> Clone for Iter<'_, T> {
+impl<T: MetaSized> Clone for Iter<'_, T> {
     #[inline]
     fn clone(&self) -> Self {
         Iter { ptr: self.ptr, end_or_len: self.end_or_len, _marker: self._marker }
@@ -158,7 +176,7 @@ impl<T> Clone for Iter<'_, T> {
 }
 
 #[stable(feature = "slice_iter_as_ref", since = "1.13.0")]
-impl<T> AsRef<[T]> for Iter<'_, T> {
+impl<T: MetaSized> AsRef<[T]> for Iter<'_, T> {
     #[inline]
     fn as_ref(&self) -> &[T] {
         self.as_slice()
@@ -191,36 +209,36 @@ impl<T> AsRef<[T]> for Iter<'_, T> {
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct IterMut<'a, T: 'a> {
+pub struct IterMut<'a, T: MetaSized + 'a> {
     /// The pointer to the next element to return, or the past-the-end location
     /// if the iterator is empty.
     ///
     /// This address will be used for all ZST elements, never changed.
     ptr: NonNull<T>,
-    /// For non-ZSTs, the non-null pointer to the past-the-end element.
+    /// For non-zero-sized elements, the non-null pointer to the past-the-end element.
     ///
-    /// For ZSTs, this is `ptr::without_provenance_mut(len)`.
-    end_or_len: *mut T,
+    /// For zero-sized elements, this is `ptr::without_provenance_mut(len)`.
+    end_or_len: *mut (),
     _marker: PhantomData<&'a mut T>,
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
+impl<T: MetaSized + fmt::Debug> fmt::Debug for IterMut<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("IterMut").field(&self.make_slice()).finish()
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: Sync> Sync for IterMut<'_, T> {}
+unsafe impl<T: MetaSized + Sync> Sync for IterMut<'_, T> {}
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: Send> Send for IterMut<'_, T> {}
+unsafe impl<T: MetaSized + Send> Send for IterMut<'_, T> {}
 
-impl<'a, T> IterMut<'a, T> {
+impl<'a, T: MetaSized> IterMut<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a mut [T]) -> Self {
         let len = slice.len();
-        let ptr: NonNull<T> = NonNull::from_mut(slice).cast();
+        let ptr: NonNull<T> = NonNull::from_mut(slice).as_non_null_ptr();
         // SAFETY: There are several things here:
         //
         // `ptr` has been obtained by `slice.as_ptr()` where `slice` is a valid
@@ -232,14 +250,17 @@ impl<'a, T> IterMut<'a, T> {
         // for direct pointer equality with `ptr` to check if the iterator is
         // done.
         //
-        // In the case of a ZST, the end pointer is just the length.  It's never
-        // used as a pointer at all, and thus it's fine to have no provenance.
+        // In the case of a zero-sized element, the end pointer is just the length.
+        // It's never used as a pointer at all, and thus it's fine to have no provenance.
         //
         // See the `next_unchecked!` and `is_empty!` macros as well as the
         // `post_inc_start` method for more information.
         unsafe {
-            let end_or_len =
-                if T::IS_ZST { without_provenance_mut(len) } else { ptr.as_ptr().add(len) };
+            let end_or_len = if crate::mem::size_of_val_raw(ptr.as_ptr()) == 0 {
+                without_provenance_mut(len)
+            } else {
+                ptr.as_ptr().add(len).cast::<()>()
+            };
 
             Self { ptr, end_or_len, _marker: PhantomData }
         }
@@ -354,7 +375,7 @@ impl<'a, T> IterMut<'a, T> {
 }
 
 #[stable(feature = "slice_iter_mut_as_slice", since = "1.53.0")]
-impl<T> AsRef<[T]> for IterMut<'_, T> {
+impl<T: MetaSized> AsRef<[T]> for IterMut<'_, T> {
     #[inline]
     fn as_ref(&self) -> &[T] {
         self.as_slice()
@@ -368,7 +389,7 @@ impl<T> AsRef<[T]> for IterMut<'_, T> {
 //     }
 // }
 
-iterator! {struct IterMut -> *mut T, &'a mut T, mut, {mut}, as_mut, each_mut, {}}
+iterator! {struct IterMut -> *mut T [*mut ()], &'a mut T, mut, {mut}, as_mut, each_mut, {}}
 
 /// An internal abstraction over the splitting iterators, so that
 /// splitn, splitn_mut etc can be implemented once.
@@ -398,7 +419,7 @@ pub(super) trait SplitIter: DoubleEndedIterator {
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct Split<'a, T: 'a, P>
+pub struct Split<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -409,7 +430,7 @@ where
     pub(crate) finished: bool,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> Split<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> Split<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
         Self { v: slice, pred, finished: false }
@@ -431,7 +452,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> Split<'a, T, P> {
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug, P> fmt::Debug for Split<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for Split<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -442,7 +463,7 @@ where
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T, P> Clone for Split<'_, T, P>
+impl<T: MetaSized, P> Clone for Split<'_, T, P>
 where
     P: Clone + FnMut(&T) -> bool,
 {
@@ -452,7 +473,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T, P> Iterator for Split<'a, T, P>
+impl<'a, T: MetaSized, P> Iterator for Split<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -491,7 +512,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T, P> DoubleEndedIterator for Split<'a, T, P>
+impl<'a, T: MetaSized, P> DoubleEndedIterator for Split<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -516,7 +537,7 @@ where
     }
 }
 
-impl<'a, T, P> SplitIter for Split<'a, T, P>
+impl<'a, T: MetaSized, P> SplitIter for Split<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -532,7 +553,7 @@ where
 }
 
 #[stable(feature = "fused", since = "1.26.0")]
-impl<T, P> FusedIterator for Split<'_, T, P> where P: FnMut(&T) -> bool {}
+impl<T: MetaSized, P> FusedIterator for Split<'_, T, P> where P: FnMut(&T) -> bool {}
 
 /// An iterator over subslices separated by elements that match a predicate
 /// function. Unlike `Split`, it contains the matched part as a terminator
@@ -554,7 +575,7 @@ impl<T, P> FusedIterator for Split<'_, T, P> where P: FnMut(&T) -> bool {}
 /// [slices]: slice
 #[stable(feature = "split_inclusive", since = "1.51.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct SplitInclusive<'a, T: 'a, P>
+pub struct SplitInclusive<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -563,7 +584,7 @@ where
     finished: bool,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitInclusive<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> SplitInclusive<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
         let finished = slice.is_empty();
@@ -572,7 +593,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitInclusive<'a, T, P> {
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<T: fmt::Debug, P> fmt::Debug for SplitInclusive<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for SplitInclusive<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -586,7 +607,7 @@ where
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<T, P> Clone for SplitInclusive<'_, T, P>
+impl<T: MetaSized, P> Clone for SplitInclusive<'_, T, P>
 where
     P: Clone + FnMut(&T) -> bool,
 {
@@ -596,7 +617,7 @@ where
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<'a, T, P> Iterator for SplitInclusive<'a, T, P>
+impl<'a, T: MetaSized, P> Iterator for SplitInclusive<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -632,7 +653,7 @@ where
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<'a, T, P> DoubleEndedIterator for SplitInclusive<'a, T, P>
+impl<'a, T: MetaSized, P> DoubleEndedIterator for SplitInclusive<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -657,7 +678,7 @@ where
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<T, P> FusedIterator for SplitInclusive<'_, T, P> where P: FnMut(&T) -> bool {}
+impl<T: MetaSized, P> FusedIterator for SplitInclusive<'_, T, P> where P: FnMut(&T) -> bool {}
 
 /// An iterator over the mutable subslices of the vector which are separated
 /// by elements that match `pred`.
@@ -675,7 +696,7 @@ impl<T, P> FusedIterator for SplitInclusive<'_, T, P> where P: FnMut(&T) -> bool
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct SplitMut<'a, T: 'a, P>
+pub struct SplitMut<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -684,7 +705,7 @@ where
     finished: bool,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitMut<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> SplitMut<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], pred: P) -> Self {
         Self { v: slice, pred, finished: false }
@@ -692,7 +713,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitMut<'a, T, P> {
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug, P> fmt::Debug for SplitMut<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for SplitMut<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -701,7 +722,7 @@ where
     }
 }
 
-impl<'a, T, P> SplitIter for SplitMut<'a, T, P>
+impl<'a, T: MetaSized, P> SplitIter for SplitMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -711,13 +732,13 @@ where
             None
         } else {
             self.finished = true;
-            Some(mem::take(&mut self.v))
+            Some(take_mut(&mut self.v))
         }
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T, P> Iterator for SplitMut<'a, T, P>
+impl<'a, T: MetaSized, P> Iterator for SplitMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -732,7 +753,7 @@ where
         match self.v.iter().position(|x| (self.pred)(x)) {
             None => self.finish(),
             Some(idx) => {
-                let tmp = mem::take(&mut self.v);
+                let tmp = take_mut(&mut self.v);
                 // idx is the index of the element we are splitting on. We want to set self to the
                 // region after idx, and return the subslice before and not including idx.
                 // So first we split after idx
@@ -757,7 +778,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T, P> DoubleEndedIterator for SplitMut<'a, T, P>
+impl<'a, T: MetaSized, P> DoubleEndedIterator for SplitMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -775,7 +796,7 @@ where
         match idx_opt {
             None => self.finish(),
             Some(idx) => {
-                let tmp = mem::take(&mut self.v);
+                let tmp = take_mut(&mut self.v);
                 let (head, tail) = tmp.split_at_mut(idx);
                 self.v = head;
                 Some(&mut tail[1..])
@@ -785,7 +806,7 @@ where
 }
 
 #[stable(feature = "fused", since = "1.26.0")]
-impl<T, P> FusedIterator for SplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
+impl<T: MetaSized, P> FusedIterator for SplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
 
 /// An iterator over the mutable subslices of the vector which are separated
 /// by elements that match `pred`. Unlike `SplitMut`, it contains the matched
@@ -804,7 +825,7 @@ impl<T, P> FusedIterator for SplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
 /// [slices]: slice
 #[stable(feature = "split_inclusive", since = "1.51.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct SplitInclusiveMut<'a, T: 'a, P>
+pub struct SplitInclusiveMut<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -813,7 +834,7 @@ where
     finished: bool,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitInclusiveMut<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> SplitInclusiveMut<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], pred: P) -> Self {
         let finished = slice.is_empty();
@@ -822,7 +843,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitInclusiveMut<'a, T, P> {
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<T: fmt::Debug, P> fmt::Debug for SplitInclusiveMut<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for SplitInclusiveMut<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -835,7 +856,7 @@ where
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<'a, T, P> Iterator for SplitInclusiveMut<'a, T, P>
+impl<'a, T: MetaSized, P> Iterator for SplitInclusiveMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -856,7 +877,7 @@ where
         if idx == self.v.len() {
             self.finished = true;
         }
-        let tmp = mem::take(&mut self.v);
+        let tmp = take_mut(&mut self.v);
         let (head, tail) = tmp.split_at_mut(idx);
         self.v = tail;
         Some(head)
@@ -876,7 +897,7 @@ where
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<'a, T, P> DoubleEndedIterator for SplitInclusiveMut<'a, T, P>
+impl<'a, T: MetaSized, P> DoubleEndedIterator for SplitInclusiveMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -902,7 +923,7 @@ where
         if idx == 0 {
             self.finished = true;
         }
-        let tmp = mem::take(&mut self.v);
+        let tmp = take_mut(&mut self.v);
         let (head, tail) = tmp.split_at_mut(idx);
         self.v = head;
         Some(tail)
@@ -910,7 +931,7 @@ where
 }
 
 #[stable(feature = "split_inclusive", since = "1.51.0")]
-impl<T, P> FusedIterator for SplitInclusiveMut<'_, T, P> where P: FnMut(&T) -> bool {}
+impl<T: MetaSized, P> FusedIterator for SplitInclusiveMut<'_, T, P> where P: FnMut(&T) -> bool {}
 
 /// An iterator over subslices separated by elements that match a predicate
 /// function, starting from the end of the slice.
@@ -931,14 +952,14 @@ impl<T, P> FusedIterator for SplitInclusiveMut<'_, T, P> where P: FnMut(&T) -> b
 /// [slices]: slice
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RSplit<'a, T: 'a, P>
+pub struct RSplit<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
     inner: Split<'a, T, P>,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplit<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> RSplit<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
         Self { inner: Split::new(slice, pred) }
@@ -946,7 +967,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplit<'a, T, P> {
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<T: fmt::Debug, P> fmt::Debug for RSplit<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for RSplit<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -960,7 +981,7 @@ where
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<T, P> Clone for RSplit<'_, T, P>
+impl<T: MetaSized, P> Clone for RSplit<'_, T, P>
 where
     P: Clone + FnMut(&T) -> bool,
 {
@@ -970,7 +991,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<'a, T, P> Iterator for RSplit<'a, T, P>
+impl<'a, T: MetaSized, P> Iterator for RSplit<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -988,7 +1009,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<'a, T, P> DoubleEndedIterator for RSplit<'a, T, P>
+impl<'a, T: MetaSized, P> DoubleEndedIterator for RSplit<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -999,7 +1020,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<'a, T, P> SplitIter for RSplit<'a, T, P>
+impl<'a, T: MetaSized, P> SplitIter for RSplit<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1010,7 +1031,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<T, P> FusedIterator for RSplit<'_, T, P> where P: FnMut(&T) -> bool {}
+impl<T: MetaSized, P> FusedIterator for RSplit<'_, T, P> where P: FnMut(&T) -> bool {}
 
 /// An iterator over the subslices of the vector which are separated
 /// by elements that match `pred`, starting from the end of the slice.
@@ -1028,14 +1049,14 @@ impl<T, P> FusedIterator for RSplit<'_, T, P> where P: FnMut(&T) -> bool {}
 /// [slices]: slice
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RSplitMut<'a, T: 'a, P>
+pub struct RSplitMut<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
     inner: SplitMut<'a, T, P>,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitMut<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> RSplitMut<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], pred: P) -> Self {
         Self { inner: SplitMut::new(slice, pred) }
@@ -1043,7 +1064,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitMut<'a, T, P> {
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<T: fmt::Debug, P> fmt::Debug for RSplitMut<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for RSplitMut<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1056,7 +1077,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<'a, T, P> SplitIter for RSplitMut<'a, T, P>
+impl<'a, T: MetaSized, P> SplitIter for RSplitMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1067,7 +1088,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<'a, T, P> Iterator for RSplitMut<'a, T, P>
+impl<'a, T: MetaSized, P> Iterator for RSplitMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1085,7 +1106,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<'a, T, P> DoubleEndedIterator for RSplitMut<'a, T, P>
+impl<'a, T: MetaSized, P> DoubleEndedIterator for RSplitMut<'a, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1096,7 +1117,7 @@ where
 }
 
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
-impl<T, P> FusedIterator for RSplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
+impl<T: MetaSized, P> FusedIterator for RSplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
 
 /// An private iterator over subslices separated by elements that
 /// match a predicate function, splitting at most a fixed number of
@@ -1154,14 +1175,14 @@ impl<T, I: SplitIter<Item = T>> Iterator for GenericSplitN<I> {
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct SplitN<'a, T: 'a, P>
+pub struct SplitN<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
     inner: GenericSplitN<Split<'a, T, P>>,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitN<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> SplitN<'a, T, P> {
     #[inline]
     pub(super) fn new(s: Split<'a, T, P>, n: usize) -> Self {
         Self { inner: GenericSplitN { iter: s, count: n } }
@@ -1169,7 +1190,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitN<'a, T, P> {
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug, P> fmt::Debug for SplitN<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for SplitN<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1198,14 +1219,14 @@ where
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RSplitN<'a, T: 'a, P>
+pub struct RSplitN<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
     inner: GenericSplitN<RSplit<'a, T, P>>,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitN<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> RSplitN<'a, T, P> {
     #[inline]
     pub(super) fn new(s: RSplit<'a, T, P>, n: usize) -> Self {
         Self { inner: GenericSplitN { iter: s, count: n } }
@@ -1213,7 +1234,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitN<'a, T, P> {
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug, P> fmt::Debug for RSplitN<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for RSplitN<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1238,14 +1259,14 @@ where
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct SplitNMut<'a, T: 'a, P>
+pub struct SplitNMut<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
     inner: GenericSplitN<SplitMut<'a, T, P>>,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitNMut<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> SplitNMut<'a, T, P> {
     #[inline]
     pub(super) fn new(s: SplitMut<'a, T, P>, n: usize) -> Self {
         Self { inner: GenericSplitN { iter: s, count: n } }
@@ -1253,7 +1274,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitNMut<'a, T, P> {
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug, P> fmt::Debug for SplitNMut<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for SplitNMut<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1279,14 +1300,14 @@ where
 /// [slices]: slice
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RSplitNMut<'a, T: 'a, P>
+pub struct RSplitNMut<'a, T: MetaSized + 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
     inner: GenericSplitN<RSplitMut<'a, T, P>>,
 }
 
-impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitNMut<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: FnMut(&T) -> bool> RSplitNMut<'a, T, P> {
     #[inline]
     pub(super) fn new(s: RSplitMut<'a, T, P>, n: usize) -> Self {
         Self { inner: GenericSplitN { iter: s, count: n } }
@@ -1294,7 +1315,7 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitNMut<'a, T, P> {
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: fmt::Debug, P> fmt::Debug for RSplitNMut<'_, T, P>
+impl<T: MetaSized + fmt::Debug, P> fmt::Debug for RSplitNMut<'_, T, P>
 where
     P: FnMut(&T) -> bool,
 {
@@ -1328,12 +1349,12 @@ forward_iterator! { RSplitNMut: T, &'a mut [T] }
 #[derive(Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct Windows<'a, T: 'a> {
+pub struct Windows<'a, T: MetaSized + 'a> {
     v: &'a [T],
     size: NonZero<usize>,
 }
 
-impl<'a, T: 'a> Windows<'a, T> {
+impl<'a, T: MetaSized + 'a> Windows<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T], size: NonZero<usize>) -> Self {
         Self { v: slice, size }
@@ -1342,14 +1363,14 @@ impl<'a, T: 'a> Windows<'a, T> {
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T> Clone for Windows<'_, T> {
+impl<T: MetaSized> Clone for Windows<'_, T> {
     fn clone(&self) -> Self {
         Windows { v: self.v, size: self.size }
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> Iterator for Windows<'a, T> {
+impl<'a, T: MetaSized> Iterator for Windows<'a, T> {
     type Item = &'a [T];
 
     #[inline]
@@ -1413,7 +1434,7 @@ impl<'a, T> Iterator for Windows<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> DoubleEndedIterator for Windows<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for Windows<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.nth_back(0)
@@ -1435,21 +1456,21 @@ impl<'a, T> DoubleEndedIterator for Windows<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T> ExactSizeIterator for Windows<'_, T> {}
+impl<T: MetaSized> ExactSizeIterator for Windows<'_, T> {}
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for Windows<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for Windows<'_, T> {}
 
 #[stable(feature = "fused", since = "1.26.0")]
-impl<T> FusedIterator for Windows<'_, T> {}
+impl<T: MetaSized> FusedIterator for Windows<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for Windows<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for Windows<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Windows<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for Windows<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
@@ -1477,12 +1498,12 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Windows<'a, T> {
 #[derive(Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct Chunks<'a, T: 'a> {
+pub struct Chunks<'a, T: MetaSized + 'a> {
     v: &'a [T],
     chunk_size: usize,
 }
 
-impl<'a, T: 'a> Chunks<'a, T> {
+impl<'a, T: MetaSized + 'a> Chunks<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T], size: usize) -> Self {
         Self { v: slice, chunk_size: size }
@@ -1491,14 +1512,14 @@ impl<'a, T: 'a> Chunks<'a, T> {
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T> Clone for Chunks<'_, T> {
+impl<T: MetaSized> Clone for Chunks<'_, T> {
     fn clone(&self) -> Self {
         Chunks { v: self.v, chunk_size: self.chunk_size }
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> Iterator for Chunks<'a, T> {
+impl<'a, T: MetaSized> Iterator for Chunks<'a, T> {
     type Item = &'a [T];
 
     #[inline]
@@ -1570,7 +1591,7 @@ impl<'a, T> Iterator for Chunks<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> DoubleEndedIterator for Chunks<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for Chunks<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a [T]> {
         if self.v.is_empty() {
@@ -1615,21 +1636,21 @@ impl<'a, T> DoubleEndedIterator for Chunks<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T> ExactSizeIterator for Chunks<'_, T> {}
+impl<T: MetaSized> ExactSizeIterator for Chunks<'_, T> {}
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for Chunks<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for Chunks<'_, T> {}
 
 #[stable(feature = "fused", since = "1.26.0")]
-impl<T> FusedIterator for Chunks<'_, T> {}
+impl<T: MetaSized> FusedIterator for Chunks<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for Chunks<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for Chunks<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Chunks<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for Chunks<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
@@ -1653,7 +1674,7 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Chunks<'a, T> {
 #[derive(Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ChunksMut<'a, T: 'a> {
+pub struct ChunksMut<'a, T: MetaSized + 'a> {
     /// # Safety
     /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
     /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
@@ -1665,7 +1686,7 @@ pub struct ChunksMut<'a, T: 'a> {
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T: 'a> ChunksMut<'a, T> {
+impl<'a, T: MetaSized + 'a> ChunksMut<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a mut [T], size: usize) -> Self {
         Self { v: slice, chunk_size: size, _marker: PhantomData }
@@ -1673,7 +1694,7 @@ impl<'a, T: 'a> ChunksMut<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> Iterator for ChunksMut<'a, T> {
+impl<'a, T: MetaSized> Iterator for ChunksMut<'a, T> {
     type Item = &'a mut [T];
 
     #[inline]
@@ -1750,7 +1771,7 @@ impl<'a, T> Iterator for ChunksMut<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, T> DoubleEndedIterator for ChunksMut<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for ChunksMut<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a mut [T]> {
         if self.v.is_empty() {
@@ -1791,29 +1812,29 @@ impl<'a, T> DoubleEndedIterator for ChunksMut<'a, T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T> ExactSizeIterator for ChunksMut<'_, T> {}
+impl<T: MetaSized> ExactSizeIterator for ChunksMut<'_, T> {}
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for ChunksMut<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for ChunksMut<'_, T> {}
 
 #[stable(feature = "fused", since = "1.26.0")]
-impl<T> FusedIterator for ChunksMut<'_, T> {}
+impl<T: MetaSized> FusedIterator for ChunksMut<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for ChunksMut<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for ChunksMut<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for ChunksMut<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for ChunksMut<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T> Send for ChunksMut<'_, T> where T: Send {}
+unsafe impl<T: MetaSized> Send for ChunksMut<'_, T> where T: Send {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T> Sync for ChunksMut<'_, T> where T: Sync {}
+unsafe impl<T: MetaSized> Sync for ChunksMut<'_, T> where T: Sync {}
 
 /// An iterator over a slice in (non-overlapping) chunks (`chunk_size` elements at a
 /// time), starting at the beginning of the slice.
@@ -1840,13 +1861,13 @@ unsafe impl<T> Sync for ChunksMut<'_, T> where T: Sync {}
 #[derive(Debug)]
 #[stable(feature = "chunks_exact", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ChunksExact<'a, T: 'a> {
+pub struct ChunksExact<'a, T: MetaSized + 'a> {
     v: &'a [T],
     rem: &'a [T],
     chunk_size: usize,
 }
 
-impl<'a, T> ChunksExact<'a, T> {
+impl<'a, T: MetaSized> ChunksExact<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
@@ -1882,14 +1903,14 @@ impl<'a, T> ChunksExact<'a, T> {
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<T> Clone for ChunksExact<'_, T> {
+impl<T: MetaSized> Clone for ChunksExact<'_, T> {
     fn clone(&self) -> Self {
         ChunksExact { v: self.v, rem: self.rem, chunk_size: self.chunk_size }
     }
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<'a, T> Iterator for ChunksExact<'a, T> {
+impl<'a, T: MetaSized> Iterator for ChunksExact<'a, T> {
     type Item = &'a [T];
 
     #[inline]
@@ -1937,7 +1958,7 @@ impl<'a, T> Iterator for ChunksExact<'a, T> {
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<'a, T> DoubleEndedIterator for ChunksExact<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for ChunksExact<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a [T]> {
         if self.v.len() < self.chunk_size {
@@ -1966,25 +1987,25 @@ impl<'a, T> DoubleEndedIterator for ChunksExact<'a, T> {
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<T> ExactSizeIterator for ChunksExact<'_, T> {
+impl<T: MetaSized> ExactSizeIterator for ChunksExact<'_, T> {
     fn is_empty(&self) -> bool {
         self.v.is_empty()
     }
 }
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for ChunksExact<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for ChunksExact<'_, T> {}
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<T> FusedIterator for ChunksExact<'_, T> {}
+impl<T: MetaSized> FusedIterator for ChunksExact<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for ChunksExact<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for ChunksExact<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for ChunksExact<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for ChunksExact<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
@@ -2010,7 +2031,7 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for ChunksExact<'a, T> {
 #[derive(Debug)]
 #[stable(feature = "chunks_exact", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ChunksExactMut<'a, T: 'a> {
+pub struct ChunksExactMut<'a, T: MetaSized + 'a> {
     /// # Safety
     /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
     /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
@@ -2023,7 +2044,7 @@ pub struct ChunksExactMut<'a, T: 'a> {
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T> ChunksExactMut<'a, T> {
+impl<'a, T: MetaSized> ChunksExactMut<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a mut [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
@@ -2044,7 +2065,7 @@ impl<'a, T> ChunksExactMut<'a, T> {
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<'a, T> Iterator for ChunksExactMut<'a, T> {
+impl<'a, T: MetaSized> Iterator for ChunksExactMut<'a, T> {
     type Item = &'a mut [T];
 
     #[inline]
@@ -2094,7 +2115,7 @@ impl<'a, T> Iterator for ChunksExactMut<'a, T> {
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<'a, T> DoubleEndedIterator for ChunksExactMut<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for ChunksExactMut<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a mut [T]> {
         if self.v.len() < self.chunk_size {
@@ -2129,33 +2150,33 @@ impl<'a, T> DoubleEndedIterator for ChunksExactMut<'a, T> {
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<T> ExactSizeIterator for ChunksExactMut<'_, T> {
+impl<T: MetaSized> ExactSizeIterator for ChunksExactMut<'_, T> {
     fn is_empty(&self) -> bool {
         self.v.is_empty()
     }
 }
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for ChunksExactMut<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for ChunksExactMut<'_, T> {}
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-impl<T> FusedIterator for ChunksExactMut<'_, T> {}
+impl<T: MetaSized> FusedIterator for ChunksExactMut<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for ChunksExactMut<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for ChunksExactMut<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for ChunksExactMut<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for ChunksExactMut<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-unsafe impl<T> Send for ChunksExactMut<'_, T> where T: Send {}
+unsafe impl<T: MetaSized> Send for ChunksExactMut<'_, T> where T: Send {}
 
 #[stable(feature = "chunks_exact", since = "1.31.0")]
-unsafe impl<T> Sync for ChunksExactMut<'_, T> where T: Sync {}
+unsafe impl<T: MetaSized> Sync for ChunksExactMut<'_, T> where T: Sync {}
 
 /// A windowed iterator over a slice in overlapping chunks (`N` elements at a
 /// time), starting at the beginning of the slice
@@ -2178,11 +2199,11 @@ unsafe impl<T> Sync for ChunksExactMut<'_, T> where T: Sync {}
 #[derive(Debug)]
 #[stable(feature = "array_windows", since = "1.94.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ArrayWindows<'a, T: 'a, const N: usize> {
+pub struct ArrayWindows<'a, T: MetaSized + 'a, const N: usize> {
     v: &'a [T],
 }
 
-impl<'a, T: 'a, const N: usize> ArrayWindows<'a, T, N> {
+impl<'a, T: MetaSized + 'a, const N: usize> ArrayWindows<'a, T, N> {
     #[inline]
     pub(super) const fn new(slice: &'a [T]) -> Self {
         Self { v: slice }
@@ -2198,7 +2219,7 @@ impl<T, const N: usize> Clone for ArrayWindows<'_, T, N> {
 }
 
 #[stable(feature = "array_windows", since = "1.94.0")]
-impl<'a, T, const N: usize> Iterator for ArrayWindows<'a, T, N> {
+impl<'a, T: MetaSized, const N: usize> Iterator for ArrayWindows<'a, T, N> {
     type Item = &'a [T; N];
 
     #[inline]
@@ -2243,7 +2264,7 @@ impl<'a, T, const N: usize> Iterator for ArrayWindows<'a, T, N> {
 }
 
 #[stable(feature = "array_windows", since = "1.94.0")]
-impl<'a, T, const N: usize> DoubleEndedIterator for ArrayWindows<'a, T, N> {
+impl<'a, T: MetaSized, const N: usize> DoubleEndedIterator for ArrayWindows<'a, T, N> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a [T; N]> {
         let ret = self.v.last_chunk();
@@ -2262,7 +2283,7 @@ impl<'a, T, const N: usize> DoubleEndedIterator for ArrayWindows<'a, T, N> {
 }
 
 #[stable(feature = "array_windows", since = "1.94.0")]
-impl<T, const N: usize> ExactSizeIterator for ArrayWindows<'_, T, N> {
+impl<T: MetaSized, const N: usize> ExactSizeIterator for ArrayWindows<'_, T, N> {
     fn is_empty(&self) -> bool {
         self.v.len() < N
     }
@@ -2308,12 +2329,12 @@ unsafe impl<T, const N: usize> TrustedRandomAccessNoCoerce for ArrayWindows<'_, 
 #[derive(Debug)]
 #[stable(feature = "rchunks", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RChunks<'a, T: 'a> {
+pub struct RChunks<'a, T: MetaSized + 'a> {
     v: &'a [T],
     chunk_size: usize,
 }
 
-impl<'a, T: 'a> RChunks<'a, T> {
+impl<'a, T: MetaSized + 'a> RChunks<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T], size: usize) -> Self {
         Self { v: slice, chunk_size: size }
@@ -2322,14 +2343,14 @@ impl<'a, T: 'a> RChunks<'a, T> {
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> Clone for RChunks<'_, T> {
+impl<T: MetaSized> Clone for RChunks<'_, T> {
     fn clone(&self) -> Self {
         RChunks { v: self.v, chunk_size: self.chunk_size }
     }
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> Iterator for RChunks<'a, T> {
+impl<'a, T: MetaSized> Iterator for RChunks<'a, T> {
     type Item = &'a [T];
 
     #[inline]
@@ -2397,7 +2418,7 @@ impl<'a, T> Iterator for RChunks<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> DoubleEndedIterator for RChunks<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for RChunks<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a [T]> {
         if self.v.is_empty() {
@@ -2430,21 +2451,21 @@ impl<'a, T> DoubleEndedIterator for RChunks<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> ExactSizeIterator for RChunks<'_, T> {}
+impl<T: MetaSized> ExactSizeIterator for RChunks<'_, T> {}
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for RChunks<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for RChunks<'_, T> {}
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> FusedIterator for RChunks<'_, T> {}
+impl<T: MetaSized> FusedIterator for RChunks<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for RChunks<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for RChunks<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunks<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for RChunks<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
@@ -2468,7 +2489,7 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunks<'a, T> {
 #[derive(Debug)]
 #[stable(feature = "rchunks", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RChunksMut<'a, T: 'a> {
+pub struct RChunksMut<'a, T: MetaSized + 'a> {
     /// # Safety
     /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
     /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
@@ -2480,7 +2501,7 @@ pub struct RChunksMut<'a, T: 'a> {
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T: 'a> RChunksMut<'a, T> {
+impl<'a, T: MetaSized + 'a> RChunksMut<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a mut [T], size: usize) -> Self {
         Self { v: slice, chunk_size: size, _marker: PhantomData }
@@ -2488,7 +2509,7 @@ impl<'a, T: 'a> RChunksMut<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> Iterator for RChunksMut<'a, T> {
+impl<'a, T: MetaSized> Iterator for RChunksMut<'a, T> {
     type Item = &'a mut [T];
 
     #[inline]
@@ -2562,7 +2583,7 @@ impl<'a, T> Iterator for RChunksMut<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> DoubleEndedIterator for RChunksMut<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for RChunksMut<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a mut [T]> {
         if self.v.is_empty() {
@@ -2601,29 +2622,29 @@ impl<'a, T> DoubleEndedIterator for RChunksMut<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> ExactSizeIterator for RChunksMut<'_, T> {}
+impl<T: MetaSized> ExactSizeIterator for RChunksMut<'_, T> {}
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for RChunksMut<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for RChunksMut<'_, T> {}
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> FusedIterator for RChunksMut<'_, T> {}
+impl<T: MetaSized> FusedIterator for RChunksMut<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for RChunksMut<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for RChunksMut<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunksMut<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for RChunksMut<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-unsafe impl<T> Send for RChunksMut<'_, T> where T: Send {}
+unsafe impl<T: MetaSized> Send for RChunksMut<'_, T> where T: Send {}
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-unsafe impl<T> Sync for RChunksMut<'_, T> where T: Sync {}
+unsafe impl<T: MetaSized> Sync for RChunksMut<'_, T> where T: Sync {}
 
 /// An iterator over a slice in (non-overlapping) chunks (`chunk_size` elements at a
 /// time), starting at the end of the slice.
@@ -2650,13 +2671,13 @@ unsafe impl<T> Sync for RChunksMut<'_, T> where T: Sync {}
 #[derive(Debug)]
 #[stable(feature = "rchunks", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RChunksExact<'a, T: 'a> {
+pub struct RChunksExact<'a, T: MetaSized + 'a> {
     v: &'a [T],
     rem: &'a [T],
     chunk_size: usize,
 }
 
-impl<'a, T> RChunksExact<'a, T> {
+impl<'a, T: MetaSized> RChunksExact<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
@@ -2692,14 +2713,14 @@ impl<'a, T> RChunksExact<'a, T> {
 
 // FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> Clone for RChunksExact<'a, T> {
+impl<'a, T: MetaSized> Clone for RChunksExact<'a, T> {
     fn clone(&self) -> RChunksExact<'a, T> {
         RChunksExact { v: self.v, rem: self.rem, chunk_size: self.chunk_size }
     }
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> Iterator for RChunksExact<'a, T> {
+impl<'a, T: MetaSized> Iterator for RChunksExact<'a, T> {
     type Item = &'a [T];
 
     #[inline]
@@ -2751,7 +2772,7 @@ impl<'a, T> Iterator for RChunksExact<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> DoubleEndedIterator for RChunksExact<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for RChunksExact<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a [T]> {
         if self.v.len() < self.chunk_size {
@@ -2783,25 +2804,25 @@ impl<'a, T> DoubleEndedIterator for RChunksExact<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> ExactSizeIterator for RChunksExact<'a, T> {
+impl<'a, T: MetaSized> ExactSizeIterator for RChunksExact<'a, T> {
     fn is_empty(&self) -> bool {
         self.v.is_empty()
     }
 }
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for RChunksExact<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for RChunksExact<'_, T> {}
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> FusedIterator for RChunksExact<'_, T> {}
+impl<T: MetaSized> FusedIterator for RChunksExact<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for RChunksExact<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for RChunksExact<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunksExact<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for RChunksExact<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
@@ -2827,7 +2848,7 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunksExact<'a, T> {
 #[derive(Debug)]
 #[stable(feature = "rchunks", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct RChunksExactMut<'a, T: 'a> {
+pub struct RChunksExactMut<'a, T: MetaSized + 'a> {
     /// # Safety
     /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
     /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
@@ -2839,7 +2860,7 @@ pub struct RChunksExactMut<'a, T: 'a> {
     chunk_size: usize,
 }
 
-impl<'a, T> RChunksExactMut<'a, T> {
+impl<'a, T: MetaSized> RChunksExactMut<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a mut [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
@@ -2860,7 +2881,7 @@ impl<'a, T> RChunksExactMut<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> Iterator for RChunksExactMut<'a, T> {
+impl<'a, T: MetaSized> Iterator for RChunksExactMut<'a, T> {
     type Item = &'a mut [T];
 
     #[inline]
@@ -2918,7 +2939,7 @@ impl<'a, T> Iterator for RChunksExactMut<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<'a, T> DoubleEndedIterator for RChunksExactMut<'a, T> {
+impl<'a, T: MetaSized> DoubleEndedIterator for RChunksExactMut<'a, T> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a mut [T]> {
         if self.v.len() < self.chunk_size {
@@ -2956,51 +2977,51 @@ impl<'a, T> DoubleEndedIterator for RChunksExactMut<'a, T> {
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> ExactSizeIterator for RChunksExactMut<'_, T> {
+impl<T: MetaSized> ExactSizeIterator for RChunksExactMut<'_, T> {
     fn is_empty(&self) -> bool {
         self.v.is_empty()
     }
 }
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-unsafe impl<T> TrustedLen for RChunksExactMut<'_, T> {}
+unsafe impl<T: MetaSized> TrustedLen for RChunksExactMut<'_, T> {}
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-impl<T> FusedIterator for RChunksExactMut<'_, T> {}
+impl<T: MetaSized> FusedIterator for RChunksExactMut<'_, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for RChunksExactMut<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for RChunksExactMut<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunksExactMut<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for RChunksExactMut<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-unsafe impl<T> Send for RChunksExactMut<'_, T> where T: Send {}
+unsafe impl<T: MetaSized> Send for RChunksExactMut<'_, T> where T: Send {}
 
 #[stable(feature = "rchunks", since = "1.31.0")]
-unsafe impl<T> Sync for RChunksExactMut<'_, T> where T: Sync {}
+unsafe impl<T: MetaSized> Sync for RChunksExactMut<'_, T> where T: Sync {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for Iter<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for Iter<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Iter<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for Iter<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccess for IterMut<'a, T> {}
+unsafe impl<'a, T: MetaSized> TrustedRandomAccess for IterMut<'a, T> {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-unsafe impl<'a, T> TrustedRandomAccessNoCoerce for IterMut<'a, T> {
+unsafe impl<'a, T: MetaSized> TrustedRandomAccessNoCoerce for IterMut<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
@@ -3012,20 +3033,20 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for IterMut<'a, T> {
 /// [slices]: slice
 #[stable(feature = "slice_group_by", since = "1.77.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ChunkBy<'a, T: 'a, P> {
+pub struct ChunkBy<'a, T: MetaSized + 'a, P> {
     slice: &'a [T],
     predicate: P,
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> ChunkBy<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P> ChunkBy<'a, T, P> {
     pub(super) const fn new(slice: &'a [T], predicate: P) -> Self {
         ChunkBy { slice, predicate }
     }
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> Iterator for ChunkBy<'a, T, P>
+impl<'a, T: MetaSized + 'a, P> Iterator for ChunkBy<'a, T, P>
 where
     P: FnMut(&T, &T) -> bool,
 {
@@ -3059,7 +3080,7 @@ where
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> DoubleEndedIterator for ChunkBy<'a, T, P>
+impl<'a, T: MetaSized + 'a, P> DoubleEndedIterator for ChunkBy<'a, T, P>
 where
     P: FnMut(&T, &T) -> bool,
 {
@@ -3081,17 +3102,17 @@ where
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> FusedIterator for ChunkBy<'a, T, P> where P: FnMut(&T, &T) -> bool {}
+impl<'a, T: MetaSized + 'a, P> FusedIterator for ChunkBy<'a, T, P> where P: FnMut(&T, &T) -> bool {}
 
 #[stable(feature = "slice_group_by_clone", since = "1.89.0")]
-impl<'a, T: 'a, P: Clone> Clone for ChunkBy<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P: Clone> Clone for ChunkBy<'a, T, P> {
     fn clone(&self) -> Self {
         Self { slice: self.slice, predicate: self.predicate.clone() }
     }
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a + fmt::Debug, P> fmt::Debug for ChunkBy<'a, T, P> {
+impl<'a, T: 'a + MetaSized + fmt::Debug, P> fmt::Debug for ChunkBy<'a, T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ChunkBy").field("slice", &self.slice).finish()
     }
@@ -3106,20 +3127,20 @@ impl<'a, T: 'a + fmt::Debug, P> fmt::Debug for ChunkBy<'a, T, P> {
 /// [slices]: slice
 #[stable(feature = "slice_group_by", since = "1.77.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ChunkByMut<'a, T: 'a, P> {
+pub struct ChunkByMut<'a, T: MetaSized + 'a, P> {
     slice: &'a mut [T],
     predicate: P,
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> ChunkByMut<'a, T, P> {
+impl<'a, T: MetaSized + 'a, P> ChunkByMut<'a, T, P> {
     pub(super) const fn new(slice: &'a mut [T], predicate: P) -> Self {
         ChunkByMut { slice, predicate }
     }
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> Iterator for ChunkByMut<'a, T, P>
+impl<'a, T: MetaSized + 'a, P> Iterator for ChunkByMut<'a, T, P>
 where
     P: FnMut(&T, &T) -> bool,
 {
@@ -3135,7 +3156,7 @@ where
             while let Some([l, r]) = iter.next() {
                 if (self.predicate)(l, r) { len += 1 } else { break }
             }
-            let slice = mem::take(&mut self.slice);
+            let slice = take_mut(&mut self.slice);
             let (head, tail) = slice.split_at_mut(len);
             self.slice = tail;
             Some(head)
@@ -3154,7 +3175,7 @@ where
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> DoubleEndedIterator for ChunkByMut<'a, T, P>
+impl<'a, T: MetaSized + 'a, P> DoubleEndedIterator for ChunkByMut<'a, T, P>
 where
     P: FnMut(&T, &T) -> bool,
 {
@@ -3168,7 +3189,7 @@ where
             while let Some([l, r]) = iter.next_back() {
                 if (self.predicate)(l, r) { len += 1 } else { break }
             }
-            let slice = mem::take(&mut self.slice);
+            let slice = take_mut(&mut self.slice);
             let (head, tail) = slice.split_at_mut(slice.len() - len);
             self.slice = head;
             Some(tail)
@@ -3177,10 +3198,10 @@ where
 }
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a, P> FusedIterator for ChunkByMut<'a, T, P> where P: FnMut(&T, &T) -> bool {}
+impl<'a, T: MetaSized + 'a, P> FusedIterator for ChunkByMut<'a, T, P> where P: FnMut(&T, &T) -> bool {}
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
-impl<'a, T: 'a + fmt::Debug, P> fmt::Debug for ChunkByMut<'a, T, P> {
+impl<'a, T: 'a + MetaSized + fmt::Debug, P> fmt::Debug for ChunkByMut<'a, T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ChunkByMut").field("slice", &self.slice).finish()
     }

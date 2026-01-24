@@ -1,10 +1,10 @@
 use crate::clone::TrivialClone;
 use crate::cmp::Ordering;
 use crate::marker::{Destruct, MetaSized, PointeeSized, Unsize};
-use crate::mem::{MaybeUninit, SizedTypeProperties, transmute};
+use crate::mem::{MaybeUninit, transmute};
 use crate::num::NonZero;
 use crate::ops::{CoerceUnsized, DispatchFromDyn};
-use crate::ptr::{Metadata, Thin, Unique};
+use crate::ptr::{Metadata, Thin, Unique, build_metadata};
 use crate::slice::{self, SliceIndex};
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{fmt, hash, intrinsics, mem, ptr};
@@ -215,9 +215,10 @@ impl<T: PointeeSized> NonNull<T> {
     #[unstable(feature = "ptr_cast_array", issue = "144514")]
     pub const fn cast_array<const N: usize>(self) -> NonNull<[T; N]>
     where
-        T: Sized,
+        T: MetaSized,
     {
-        self.cast()
+        let (base, meta) = self.to_raw_parts();
+        NonNull::from_raw_parts(base, build_metadata!(elem: meta, ..))
     }
 }
 
@@ -728,13 +729,13 @@ impl<T: PointeeSized> NonNull<T> {
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn add(self, count: usize) -> Self
     where
-        T: Sized,
+        T: MetaSized,
     {
-        // SAFETY: the caller must uphold the safety contract for `offset`.
-        // Additionally safety contract of `offset` guarantees that the resulting pointer is
+        // SAFETY: the caller must uphold the safety contract for `add`.
+        // Additionally safety contract of `add` guarantees that the resulting pointer is
         // pointing to an allocation, there can't be an allocation at null, thus it's safe to
         // construct `NonNull`.
-        unsafe { transmute(intrinsics::offset(self.as_ptr(), count)) }
+        unsafe { transmute(self.as_ptr().add(count)) }
     }
 
     /// Calculates the offset from a pointer in bytes (convenience for `.byte_offset(count as isize)`).
@@ -805,17 +806,14 @@ impl<T: PointeeSized> NonNull<T> {
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn sub(self, count: usize) -> Self
     where
-        T: Sized,
+        T: MetaSized,
     {
-        if T::IS_ZST {
-            // Pointer arithmetic does nothing when the pointee is a ZST.
-            self
-        } else {
-            // SAFETY: the caller must uphold the safety contract for `offset`.
-            // Because the pointee is *not* a ZST, that means that `count` is
-            // at most `isize::MAX`, and thus the negation cannot overflow.
-            unsafe { self.offset((count as isize).unchecked_neg()) }
-        }
+        // SAFETY: the caller must uphold the safety contract for `sub`, and `pointer::sub` has
+        // the same safety contract.
+        // Additionally safety contract of `sub` guarantees that the resulting pointer is
+        // pointing to an allocation, there can't be an allocation at null, thus it's safe to
+        // construct `NonNull`.
+        unsafe { transmute(self.as_ptr().sub(count)) }
     }
 
     /// Calculates the offset from a pointer in bytes (convenience for
@@ -934,7 +932,7 @@ impl<T: PointeeSized> NonNull<T> {
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn offset_from(self, origin: NonNull<T>) -> isize
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must uphold the safety contract for `offset_from`.
         unsafe { self.as_ptr().offset_from(origin.as_ptr()) }
@@ -1025,7 +1023,7 @@ impl<T: PointeeSized> NonNull<T> {
     #[rustc_const_stable(feature = "const_ptr_sub_ptr", since = "1.87.0")]
     pub const unsafe fn offset_from_unsigned(self, subtracted: NonNull<T>) -> usize
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must uphold the safety contract for `offset_from_unsigned`.
         unsafe { self.as_ptr().offset_from_unsigned(subtracted.as_ptr()) }

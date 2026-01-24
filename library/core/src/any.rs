@@ -87,6 +87,7 @@
 #![stable(feature = "rust1", since = "1.0.0")]
 
 use crate::intrinsics::{self, type_id_vtable};
+use crate::marker::PointeeSized;
 use crate::mem::transmute;
 use crate::mem::type_info::{TraitImpl, TypeKind};
 use crate::{fmt, hash, ptr};
@@ -113,7 +114,7 @@ use crate::{fmt, hash, ptr};
 // but we would likely want to indicate as such in documentation).
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Any"]
-pub trait Any: 'static {
+pub trait Any: PointeeSized + 'static {
     /// Gets the `TypeId` of `self`.
     ///
     /// If called on a `dyn Any` trait object
@@ -138,7 +139,7 @@ pub trait Any: 'static {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: 'static + ?Sized> Any for T {
+impl<T: 'static + PointeeSized> Any for T {
     fn type_id(&self) -> TypeId {
         TypeId::of::<T>()
     }
@@ -787,7 +788,7 @@ impl TypeId {
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_stable(feature = "const_type_id", since = "1.91.0")]
-    pub const fn of<T: ?Sized + 'static>() -> TypeId {
+    pub const fn of<T: PointeeSized + 'static>() -> TypeId {
         const { intrinsics::type_id::<T>() }
     }
 
@@ -923,7 +924,7 @@ impl fmt::Debug for TypeId {
 #[must_use]
 #[stable(feature = "type_name", since = "1.38.0")]
 #[rustc_const_unstable(feature = "const_type_name", issue = "63084")]
-pub const fn type_name<T: ?Sized>() -> &'static str {
+pub const fn type_name<T: PointeeSized>() -> &'static str {
     const { intrinsics::type_name::<T>() }
 }
 
@@ -963,7 +964,7 @@ pub const fn type_name<T: ?Sized>() -> &'static str {
 #[must_use]
 #[stable(feature = "type_name_of_val", since = "1.76.0")]
 #[rustc_const_unstable(feature = "const_type_name", issue = "63084")]
-pub const fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
+pub const fn type_name_of_val<T: PointeeSized>(_val: &T) -> &'static str {
     type_name::<T>()
 }
 

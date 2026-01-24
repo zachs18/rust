@@ -8,7 +8,7 @@ type Demo = [u8; 3];
 #[no_mangle]
 pub fn slice_iter_len_eq_zero(y: std::slice::Iter<'_, Demo>) -> bool {
     // CHECK-NOT: sub
-    // CHECK: %[[RET:.+]] = icmp eq ptr {{%y.0, %y.1|%y.1, %y.0}}
+    // CHECK: %[[RET:.+]] = icmp eq ptr %[[A:.+]], %[[B:.+]]
     // CHECK: ret i1 %[[RET]]
     y.len() == 0
 }
@@ -21,7 +21,7 @@ pub fn slice_iter_len_eq_zero_ref(y: &mut std::slice::Iter<'_, Demo>) -> bool {
     // CHECK-SAME: !nonnull
     // CHECK: %[[B:.+]] = load ptr
     // CHECK-SAME: !nonnull
-    // CHECK: %[[RET:.+]] = icmp eq ptr %[[A]], %[[B]]
+    // CHECK: %[[RET:.+]] = icmp eq ptr %[[B]], %[[A]]
     // CHECK: ret i1 %[[RET]]
     y.len() == 0
 }

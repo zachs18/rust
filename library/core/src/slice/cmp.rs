@@ -5,14 +5,14 @@ use crate::ascii;
 use crate::cmp::{self, BytewiseEq, Ordering};
 use crate::convert::Infallible;
 use crate::intrinsics::compare_bytes;
-use crate::marker::Destruct;
+use crate::marker::{Destruct, MetaSized, PointeeSized};
 use crate::mem::SizedTypeProperties;
 use crate::num::NonZero;
 use crate::ops::ControlFlow;
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<T, U> const PartialEq<[U]> for [T]
+impl<T: MetaSized, U: MetaSized> const PartialEq<[U]> for [T]
 where
     T: [const] PartialEq<U>,
 {
@@ -31,12 +31,12 @@ where
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<T: [const] Eq> const Eq for [T] {}
+impl<T: MetaSized + [const] Eq> const Eq for [T] {}
 
 /// Implements comparison of slices [lexicographically](Ord#lexicographical-comparison).
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<T: [const] Ord> const Ord for [T] {
+impl<T: MetaSized + [const] Ord> const Ord for [T] {
     fn cmp(&self, other: &[T]) -> Ordering {
         SliceOrd::compare(self, other)
     }
@@ -56,7 +56,7 @@ const fn as_underlying(x: ControlFlow<bool>) -> u8 {
 /// Implements comparison of slices [lexicographically](Ord#lexicographical-comparison).
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<T: [const] PartialOrd> const PartialOrd for [T] {
+impl<T: MetaSized + [const] PartialOrd> const PartialOrd for [T] {
     #[inline]
     fn partial_cmp(&self, other: &[T]) -> Option<Ordering> {
         SlicePartialOrd::partial_compare(self, other)
@@ -106,7 +106,7 @@ impl<T: [const] PartialOrd> const PartialOrd for [T] {
 #[doc(hidden)]
 // intermediate trait for specialization of slice's PartialEq
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-const trait SlicePartialEq<B> {
+const trait SlicePartialEq<B: MetaSized> {
     /// # Safety
     /// `lhs` and `rhs` are both readable for `len` elements
     unsafe fn equal_same_length(lhs: *const Self, rhs: *const B, len: usize) -> bool;
@@ -114,7 +114,7 @@ const trait SlicePartialEq<B> {
 
 // Generic slice equality
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A, B> const SlicePartialEq<B> for A
+impl<A: MetaSized, B: MetaSized> const SlicePartialEq<B> for A
 where
     A: [const] PartialEq<B>,
 {
@@ -163,14 +163,14 @@ where
 #[doc(hidden)]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 // intermediate trait for specialization of slice's PartialOrd
-const trait SlicePartialOrd: Sized {
+const trait SlicePartialOrd: MetaSized {
     fn partial_compare(left: &[Self], right: &[Self]) -> Option<Ordering>;
 }
 
 #[doc(hidden)]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 // intermediate trait for specialization of slice's PartialOrd chaining methods
-const trait SliceChain: Sized {
+const trait SliceChain: MetaSized {
     fn chaining_lt(left: &[Self], right: &[Self]) -> ControlFlow<bool>;
     fn chaining_le(left: &[Self], right: &[Self]) -> ControlFlow<bool>;
     fn chaining_gt(left: &[Self], right: &[Self]) -> ControlFlow<bool>;
@@ -180,11 +180,14 @@ const trait SliceChain: Sized {
 type AlwaysBreak<B> = ControlFlow<B, crate::convert::Infallible>;
 
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A: [const] PartialOrd> const SlicePartialOrd for A {
+impl<A: MetaSized + [const] PartialOrd> const SlicePartialOrd for A {
     default fn partial_compare(left: &[A], right: &[A]) -> Option<Ordering> {
         // FIXME(const-hack): revert this to a const closure once possible
         #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-        const fn elem_chain<A: [const] PartialOrd>(a: &A, b: &A) -> ControlFlow<Option<Ordering>> {
+        const fn elem_chain<A: MetaSized + [const] PartialOrd>(
+            a: &A,
+            b: &A,
+        ) -> ControlFlow<Option<Ordering>> {
             match PartialOrd::partial_cmp(a, b) {
                 Some(Ordering::Equal) => ControlFlow::Continue(()),
                 non_eq => ControlFlow::Break(non_eq),
@@ -203,7 +206,7 @@ impl<A: [const] PartialOrd> const SlicePartialOrd for A {
 }
 
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A: [const] PartialOrd> const SliceChain for A {
+impl<A: MetaSized + [const] PartialOrd> const SliceChain for A {
     default fn chaining_lt(left: &[Self], right: &[Self]) -> ControlFlow<bool> {
         chaining_impl(left, right, PartialOrd::__chaining_lt, usize::__chaining_lt)
     }
@@ -220,7 +223,7 @@ impl<A: [const] PartialOrd> const SliceChain for A {
 
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 #[inline]
-const fn chaining_impl<'l, 'r, A: PartialOrd, B, C>(
+const fn chaining_impl<'l, 'r, A: MetaSized + PartialOrd, B, C>(
     left: &'l [A],
     right: &'r [A],
     elem_chain: impl [const] Fn(&'l A, &'r A) -> ControlFlow<B> + [const] Destruct,
@@ -257,7 +260,7 @@ where
 */
 
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A: [const] AlwaysApplicableOrd> const SlicePartialOrd for A {
+impl<A: MetaSized + [const] AlwaysApplicableOrd> const SlicePartialOrd for A {
     fn partial_compare(left: &[A], right: &[A]) -> Option<Ordering> {
         Some(SliceOrd::compare(left, right))
     }
@@ -277,25 +280,25 @@ always_applicable_ord! {
     [] u8, [] u16, [] u32, [] u64, [] u128, [] usize,
     [] i8, [] i16, [] i32, [] i64, [] i128, [] isize,
     [] bool, [] char,
-    [T: ?Sized] *const T, [T: ?Sized] *mut T,
-    [T: AlwaysApplicableOrd] &T,
-    [T: AlwaysApplicableOrd] &mut T,
+    [T: PointeeSized] *const T, [T: PointeeSized] *mut T,
+    [T: MetaSized + AlwaysApplicableOrd] &T,
+    [T: MetaSized + AlwaysApplicableOrd] &mut T,
     [T: AlwaysApplicableOrd] Option<T>,
 }
 
 #[doc(hidden)]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 // intermediate trait for specialization of slice's Ord
-const trait SliceOrd: Sized {
+const trait SliceOrd: MetaSized {
     fn compare(left: &[Self], right: &[Self]) -> Ordering;
 }
 
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A: [const] Ord> const SliceOrd for A {
+impl<A: MetaSized + [const] Ord> const SliceOrd for A {
     default fn compare(left: &[Self], right: &[Self]) -> Ordering {
         // FIXME(const-hack): revert this to a const closure once possible
         #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-        const fn elem_chain<A: [const] Ord>(a: &A, b: &A) -> ControlFlow<Ordering> {
+        const fn elem_chain<A: MetaSized + [const] Ord>(a: &A, b: &A) -> ControlFlow<Ordering> {
             match Ord::cmp(a, b) {
                 Ordering::Equal => ControlFlow::Continue(()),
                 non_eq => ControlFlow::Break(non_eq),
@@ -337,7 +340,7 @@ unsafe impl const UnsignedBytewiseOrd for ascii::Char {}
 // `compare_bytes` compares a sequence of unsigned bytes lexicographically, so
 // use it if the requirements for `UnsignedBytewiseOrd` are fulfilled.
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A: [const] Ord + [const] UnsignedBytewiseOrd> const SliceOrd for A {
+impl<A: MetaSized + [const] Ord + [const] UnsignedBytewiseOrd> const SliceOrd for A {
     #[inline]
     fn compare(left: &[Self], right: &[Self]) -> Ordering {
         // Since the length of a slice is always less than or equal to
@@ -364,7 +367,7 @@ impl<A: [const] Ord + [const] UnsignedBytewiseOrd> const SliceOrd for A {
 // Don't generate our own chaining loops for `memcmp`-able things either.
 
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
-impl<A: [const] PartialOrd + [const] UnsignedBytewiseOrd> const SliceChain for A {
+impl<A: MetaSized + [const] PartialOrd + [const] UnsignedBytewiseOrd> const SliceChain for A {
     #[inline]
     fn chaining_lt(left: &[Self], right: &[Self]) -> ControlFlow<bool> {
         match SliceOrd::compare(left, right) {
@@ -395,11 +398,11 @@ impl<A: [const] PartialOrd + [const] UnsignedBytewiseOrd> const SliceChain for A
     }
 }
 
-pub(super) trait SliceContains: Sized {
+pub(super) trait SliceContains: MetaSized {
     fn slice_contains(&self, x: &[Self]) -> bool;
 }
 
-impl<T> SliceContains for T
+impl<T: MetaSized> SliceContains for T
 where
     T: PartialEq,
 {
