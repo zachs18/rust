@@ -313,10 +313,10 @@
           StorageDead(_30);
           StorageLive(_37);
           StorageLive(_39);
-          _37 = copy _29 as &[u8] (Transmute);
-          _39 = copy _28 as &[u8] (Transmute);
           StorageLive(_45);
           StorageLive(_46);
+          _37 = copy _29 as &[u8] (Transmute);
+          _39 = copy _28 as &[u8] (Transmute);
           StorageLive(_40);
           _40 = copy ((_37.1: {ptr metadata for [u8]}).0: usize);
           StorageLive(_41);
@@ -380,10 +380,10 @@
           StorageDead(_51);
           StorageLive(_58);
           StorageLive(_60);
-          _58 = copy _50 as &[u8] (Transmute);
-          _60 = copy _49 as &[u8] (Transmute);
           StorageLive(_66);
           StorageLive(_67);
+          _58 = copy _50 as &[u8] (Transmute);
+          _60 = copy _49 as &[u8] (Transmute);
           StorageLive(_61);
           _61 = copy ((_58.1: {ptr metadata for [u8]}).0: usize);
           StorageLive(_62);

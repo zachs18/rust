@@ -1,8 +1,8 @@
 //! Macros used by iterators of slice.
 
 /// Convenience & performance macro for consuming the `end_or_len` field, by
-/// giving a `(&mut) usize` or `(&mut) NonNull<T>` depending whether `T` is
-/// or is not a ZST respectively.
+/// giving a `(&mut) usize` or `(&mut) NonNull<()>` depending whether the element
+/// is or is not zero-sized respectively.
 ///
 /// Internally, this reads the `end` through a pointer-to-`NonNull` so that
 /// it'll get the appropriate non-null metadata in the backend without needing
@@ -11,26 +11,34 @@ macro_rules! if_zst {
     (mut $this:ident, $len:ident => $zst_body:expr, $end:ident => $other_body:expr,) => {{
         #![allow(unused_unsafe)] // we're sometimes used within an unsafe block
 
-        if T::IS_ZST {
+        // SAFETY: slice references must have element metadata with a valid layout,
+        // and this iterator came from a slice reference.
+        let size = unsafe { mem::size_of_val_raw($this.ptr.as_ptr()) };
+
+        if size == 0 {
             // SAFETY: for ZSTs, the pointer is storing a provenance-free length,
             // so consuming and updating it as a `usize` is fine.
             let $len = unsafe { &mut *(&raw mut $this.end_or_len).cast::<usize>() };
             $zst_body
         } else {
             // SAFETY: for non-ZSTs, the type invariant ensures it cannot be null
-            let $end = unsafe { &mut *(&raw mut $this.end_or_len).cast::<NonNull<T>>() };
+            let $end = unsafe { &mut *(&raw mut $this.end_or_len).cast::<NonNull<()>>() };
             $other_body
         }
     }};
     ($this:ident, $len:ident => $zst_body:expr, $end:ident => $other_body:expr,) => {{
         #![allow(unused_unsafe)] // we're sometimes used within an unsafe block
 
-        if T::IS_ZST {
+        // SAFETY: slice references must have element metadata with a valid layout,
+        // and this iterator came from a slice reference.
+        let size = unsafe { mem::size_of_val_raw($this.ptr.as_ptr()) };
+
+        if size == 0 {
             let $len = $this.end_or_len.addr();
             $zst_body
         } else {
             // SAFETY: for non-ZSTs, the type invariant ensures it cannot be null
-            let $end = unsafe { mem::transmute::<*const T, NonNull<T>>($this.end_or_len) };
+            let $end = unsafe { mem::transmute::<*const (), NonNull<()>>($this.end_or_len) };
             $other_body
         }
     }};
@@ -41,7 +49,7 @@ macro_rules! is_empty {
     ($self: ident) => {
         if_zst!($self,
             len => len == 0,
-            end => $self.ptr == end,
+            end => $self.ptr.cast::<()>() == end,
         )
     };
 }
@@ -54,7 +62,7 @@ macro_rules! len {
                 // To get rid of some bounds checks (see `position`), we use ptr_sub instead of
                 // offset_from (Tested by `codegen/slice-position-bounds-check`.)
                 // SAFETY: by the type invariant pointers are aligned and `start <= end`
-                unsafe { end.offset_from_unsigned($self.ptr) }
+                unsafe { end.with_metadata_of($self.ptr).offset_from_unsigned($self.ptr) }
             },
         )
     }};
@@ -63,7 +71,7 @@ macro_rules! len {
 // The shared definition of the `Iter` and `IterMut` iterators
 macro_rules! iterator {
     (
-        struct $name:ident -> $ptr:ty,
+        struct $name:ident -> $ptr:ty [$unit_ptr:ty],
         $elem:ty,
         $raw_mut:tt,
         {$( $mut_:tt )?},
@@ -71,7 +79,7 @@ macro_rules! iterator {
         $array_ref:ident,
         {$($extra:tt)*}
     ) => {
-        impl<'a, T> $name<'a, T> {
+        impl<'a, T: MetaSized> $name<'a, T> {
             /// Returns the last element and moves the end of the iterator backwards by 1.
             ///
             /// # Safety
@@ -129,15 +137,17 @@ macro_rules! iterator {
                     // which is guaranteed to not overflow an `isize`. Also, the resulting pointer
                     // is in bounds of `slice`, which fulfills the other requirements for `offset`.
                     end => unsafe {
-                        *end = end.sub(offset);
-                        *end
+                        let old_end = end.with_metadata_of(self.ptr);
+                        let new_end = old_end.sub(offset);
+                        *end = new_end.cast();
+                        new_end
                     },
                 )
             }
         }
 
         #[stable(feature = "rust1", since = "1.0.0")]
-        impl<T> ExactSizeIterator for $name<'_, T> {
+        impl<T: MetaSized> ExactSizeIterator for $name<'_, T> {
             #[inline(always)]
             fn len(&self) -> usize {
                 len!(self)
@@ -150,7 +160,7 @@ macro_rules! iterator {
         }
 
         #[stable(feature = "rust1", since = "1.0.0")]
-        impl<'a, T> Iterator for $name<'a, T> {
+        impl<'a, T: MetaSized> Iterator for $name<'a, T> {
             type Item = $elem;
 
             #[inline]
@@ -158,12 +168,15 @@ macro_rules! iterator {
                 // intentionally not using the helpers because this is
                 // one of the most mono'd things in the library.
 
+                // SAFETY: iterator can only be created from a valid reference, which must have metadata
+                // which implies a valid layout.
+                let elem_size = unsafe { mem::size_of_val_raw::<T>(self.ptr.as_ptr()) };
                 let ptr = self.ptr;
                 let end_or_len = self.end_or_len;
                 // SAFETY: See inner comments. (For some reason having multiple
                 // block breaks inlining this -- if you can fix that please do!)
                 unsafe {
-                    if T::IS_ZST {
+                    if elem_size == 0 {
                         let len = end_or_len.addr();
                         if len == 0 {
                             return None;
@@ -177,7 +190,7 @@ macro_rules! iterator {
                         // SAFETY: by type invariant, the `end_or_len` field is always
                         // non-null for a non-ZST pointee.  (This transmute ensures we
                         // get `!nonnull` metadata on the load of the field.)
-                        if ptr == crate::intrinsics::transmute::<$ptr, NonNull<T>>(end_or_len) {
+                        if ptr.cast::<()>() == crate::intrinsics::transmute::<$unit_ptr, NonNull<()>>(end_or_len) {
                             return None;
                         }
                         // SAFETY: since it's not empty, per the check above, moving
@@ -192,7 +205,10 @@ macro_rules! iterator {
             }
 
             fn next_chunk<const N:usize>(&mut self) -> Result<[$elem; N], crate::array::IntoIter<$elem, N>> {
-                if T::IS_ZST {
+                // SAFETY: iterator can only be created from a valid reference, which must have metadata
+                // which implies a valid layout.
+                let elem_size = unsafe { mem::size_of_val_raw::<T>(self.ptr.as_ptr()) };
+                if elem_size == 0 {
                     return crate::array::iter_next_chunk(self);
                 }
                 let len = len!(self);
@@ -231,7 +247,7 @@ macro_rules! iterator {
                     // This iterator is now empty.
                     if_zst!(mut self,
                         len => *len = 0,
-                        end => self.ptr = *end,
+                        end => self.ptr = end.with_metadata_of(self.ptr),
                     );
                     return None;
                 }
@@ -433,7 +449,7 @@ macro_rules! iterator {
         }
 
         #[stable(feature = "rust1", since = "1.0.0")]
-        impl<'a, T> DoubleEndedIterator for $name<'a, T> {
+        impl<'a, T: MetaSized> DoubleEndedIterator for $name<'a, T> {
             #[inline]
             fn next_back(&mut self) -> Option<$elem> {
                 // could be implemented with slices, but this avoids bounds checks
@@ -455,7 +471,7 @@ macro_rules! iterator {
                     // This iterator is now empty.
                     if_zst!(mut self,
                         len => *len = 0,
-                        end => *end = self.ptr,
+                        end => *end = self.ptr.cast(),
                     );
                     return None;
                 }
@@ -476,12 +492,12 @@ macro_rules! iterator {
         }
 
         #[stable(feature = "fused", since = "1.26.0")]
-        impl<T> FusedIterator for $name<'_, T> {}
+        impl<T: MetaSized> FusedIterator for $name<'_, T> {}
 
         #[unstable(feature = "trusted_len", issue = "37572")]
-        unsafe impl<T> TrustedLen for $name<'_, T> {}
+        unsafe impl<T: MetaSized> TrustedLen for $name<'_, T> {}
 
-        impl<'a, T> UncheckedIterator for $name<'a, T> {
+        impl<'a, T: MetaSized> UncheckedIterator for $name<'a, T> {
             #[inline]
             unsafe fn next_unchecked(&mut self) -> $elem {
                 // SAFETY: The caller promised there's at least one more item.
@@ -510,7 +526,7 @@ macro_rules! iterator {
 macro_rules! forward_iterator {
     ($name:ident: $elem:ident, $iter_of:ty) => {
         #[stable(feature = "rust1", since = "1.0.0")]
-        impl<'a, $elem, P> Iterator for $name<'a, $elem, P>
+        impl<'a, $elem: MetaSized, P> Iterator for $name<'a, $elem, P>
         where
             P: FnMut(&T) -> bool,
         {
@@ -528,6 +544,9 @@ macro_rules! forward_iterator {
         }
 
         #[stable(feature = "fused", since = "1.26.0")]
-        impl<'a, $elem, P> FusedIterator for $name<'a, $elem, P> where P: FnMut(&T) -> bool {}
+        impl<'a, $elem: MetaSized, P> FusedIterator for $name<'a, $elem, P> where
+            P: FnMut(&T) -> bool
+        {
+        }
     };
 }

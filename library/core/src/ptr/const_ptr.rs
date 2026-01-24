@@ -563,7 +563,7 @@ impl<T: PointeeSized> *const T {
     ///     the two pointers must be in bounds of that object. (See below for an example.)
     ///
     /// * The distance between the pointers, in bytes, must be an exact multiple
-    ///   of the size of `T`.
+    ///   of the size of a `T` with `self`'s pointer metadata.
     ///
     /// As a consequence, the absolute distance between the pointers, in bytes, computed on
     /// mathematical integers (without "wrapping around"), cannot overflow an `isize`. This is
@@ -583,7 +583,8 @@ impl<T: PointeeSized> *const T {
     ///
     /// # Panics
     ///
-    /// This function panics if `T` is a Zero-Sized Type ("ZST").
+    /// This function panics if a `T` with `self`'s pointer metadata is zero-sized,
+    /// or if `self` and `origin`'s pointer metadata give different sizes.
     ///
     /// # Examples
     ///
@@ -623,12 +624,18 @@ impl<T: PointeeSized> *const T {
     #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     pub const unsafe fn offset_from(self, origin: *const T) -> isize
     where
-        T: Sized,
+        T: MetaSized,
     {
-        let pointee_size = size_of::<T>();
+        // SAFETY: delegated to caller
+        let pointee_size = unsafe { size_of_val_raw::<T>(self) };
+        // SAFETY: delegated to caller
+        let origin_pointee_size = unsafe { size_of_val_raw::<T>(origin) };
         assert!(0 < pointee_size && pointee_size <= isize::MAX as usize);
-        // SAFETY: the caller must uphold the safety contract for `ptr_offset_from`.
-        unsafe { intrinsics::ptr_offset_from(self, origin) }
+        assert!(pointee_size == origin_pointee_size);
+        // SAFETY: the caller must uphold the safety contract for `byte_offset_from`,
+        // and the caller must uphold the requirement that the byte offset is
+        // a whole multiple of the pointee size
+        unsafe { intrinsics::exact_div(self.byte_offset_from(origin), pointee_size as isize) }
     }
 
     /// Calculates the distance between two pointers within the same allocation. The returned value is in
@@ -645,8 +652,8 @@ impl<T: PointeeSized> *const T {
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     pub const unsafe fn byte_offset_from<U: ?Sized>(self, origin: *const U) -> isize {
-        // SAFETY: the caller must uphold the safety contract for `offset_from`.
-        unsafe { self.cast::<u8>().offset_from(origin.cast::<u8>()) }
+        // SAFETY: the caller must uphold the safety contract for `ptr_offset_from`.
+        unsafe { intrinsics::ptr_offset_from(self.cast::<u8>(), origin.cast::<u8>()) }
     }
 
     /// Calculates the distance between two pointers within the same allocation, *where it's known that
@@ -712,7 +719,7 @@ impl<T: PointeeSized> *const T {
     #[track_caller]
     pub const unsafe fn offset_from_unsigned(self, origin: *const T) -> usize
     where
-        T: Sized,
+        T: MetaSized,
     {
         #[rustc_allow_const_fn_unstable(const_eval_select)]
         const fn runtime_ptr_ge(this: *const (), origin: *const ()) -> bool {
@@ -735,10 +742,16 @@ impl<T: PointeeSized> *const T {
             ) => runtime_ptr_ge(this, origin)
         );
 
-        let pointee_size = size_of::<T>();
+        // SAFETY: delegated to caller
+        let pointee_size = unsafe { size_of_val_raw::<T>(self) };
+        // SAFETY: delegated to caller
+        let origin_pointee_size = unsafe { size_of_val_raw::<T>(origin) };
         assert!(0 < pointee_size && pointee_size <= isize::MAX as usize);
-        // SAFETY: the caller must uphold the safety contract for `ptr_offset_from_unsigned`.
-        unsafe { intrinsics::ptr_offset_from_unsigned(self, origin) }
+        assert!(pointee_size == origin_pointee_size);
+        // SAFETY: the caller must uphold the safety contract for `byte_offset_from_unsigned`,
+        // and the caller must uphold the requirement that the byte offset is
+        // a whole multiple of the pointee size
+        unsafe { intrinsics::exact_div(self.byte_offset_from_unsigned(origin), pointee_size) }
     }
 
     /// Calculates the distance between two pointers within the same allocation, *where it's known that
@@ -756,8 +769,8 @@ impl<T: PointeeSized> *const T {
     #[inline]
     #[track_caller]
     pub const unsafe fn byte_offset_from_unsigned<U: ?Sized>(self, origin: *const U) -> usize {
-        // SAFETY: the caller must uphold the safety contract for `offset_from_unsigned`.
-        unsafe { self.cast::<u8>().offset_from_unsigned(origin.cast::<u8>()) }
+        // SAFETY: the caller must uphold the safety contract for `ptr_offset_from_unsigned`.
+        unsafe { intrinsics::ptr_offset_from_unsigned(self.cast::<u8>(), origin.cast::<u8>()) }
     }
 
     /// Returns whether two pointers are guaranteed to be equal.
@@ -954,7 +967,7 @@ impl<T: PointeeSized> *const T {
     #[track_caller]
     pub const unsafe fn sub(self, count: usize) -> Self
     where
-        T: Sized,
+        T: MetaSized,
     {
         #[cfg(debug_assertions)]
         #[inline]

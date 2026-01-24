@@ -1,5 +1,6 @@
 pub use as_bytes::AsBytes;
 pub use chain::Chain;
+pub use repeat::Repeat;
 pub use uninit::Uninit;
 pub use zeroed::Zeroed;
 
@@ -9,6 +10,7 @@ use crate::ptr::{Metadata, Thin, build_metadata};
 
 mod as_bytes;
 mod chain;
+mod repeat;
 mod uninit;
 mod zeroed;
 
@@ -129,4 +131,11 @@ pub const fn chain<I1, I2>(init1: I1, init2: I2) -> Chain<I1, I2> {
 /// Create an initializer that initializes a `[u8]` with a `str`.
 pub const fn as_bytes<I>(init: I) -> AsBytes<I> {
     AsBytes::new(init)
+}
+
+// `Repeat`
+
+/// Create an initializer that initializes a `[T]` by repeating an element initializer.
+pub const fn repeat<I>(elem: I, len: usize) -> Repeat<I> {
+    Repeat::new(elem, len)
 }
