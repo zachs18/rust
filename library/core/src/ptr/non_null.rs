@@ -341,6 +341,65 @@ impl<T: PointeeSized> NonNull<T> {
         (self.cast(), super::metadata(self.as_ptr()))
     }
 
+    /// Uses the address value in a new pointer of another type.
+    ///
+    /// This operation will ignore the address part of its `meta` operand and discard existing
+    /// metadata of `self`. For pointers to a sized types (thin pointers), this has the same effect
+    /// as a simple cast. For pointers to an unsized type (fat pointers) this recombines the address
+    /// with new metadata such as slice lengths or `dyn`-vtable.
+    ///
+    /// The resulting pointer will have provenance of `self`. This operation is semantically the
+    /// same as creating a new pointer with the data pointer value of `self` but the metadata of
+    /// `meta`, being fat or thin depending on the `meta` operand.
+    ///
+    /// # Examples
+    ///
+    /// This function is primarily useful for enabling pointer arithmetic on potentially fat
+    /// pointers. The pointer is cast to a sized pointee to utilize offset operations and then
+    /// recombined with its own original metadata.
+    ///
+    /// ```
+    /// #![feature(set_ptr_value)]
+    /// # use core::fmt::Debug;
+    /// let mut arr: [i32; 3] = [1, 2, 3];
+    /// let mut ptr = arr.as_mut_ptr() as *mut dyn Debug;
+    /// let thin = ptr as *mut u8;
+    /// unsafe {
+    ///     ptr = thin.add(8).with_metadata_of(ptr);
+    ///     # assert_eq!(*(ptr as *mut i32), 3);
+    ///     println!("{:?}", &*ptr); // will print "3"
+    /// }
+    /// ```
+    ///
+    /// # *Incorrect* usage
+    ///
+    /// The provenance from pointers is *not* combined. The result must only be used to refer to the
+    /// address allowed by `self`
+    ///
+    /// ```rust,no_run
+    /// #![feature(set_ptr_value)]
+    /// let mut x = 0u32;
+    /// let mut y = 1u32;
+    ///
+    /// let x = (&mut x) as *mut u32;
+    /// let y = (&mut y) as *mut u32;
+    ///
+    /// let offset = (x as usize - y as usize) / 4;
+    /// let bad = x.wrapping_add(offset).with_metadata_of(y);
+    ///
+    /// // This dereference is UB. The pointer only has provenance for `x` but points to `y`.
+    /// println!("{:?}", unsafe { &*bad });
+    /// ```
+    #[unstable(feature = "set_ptr_value", issue = "75091")]
+    #[must_use = "returns a new pointer rather than modifying its argument"]
+    #[inline]
+    pub const fn with_metadata_of<U>(self, meta: NonNull<U>) -> NonNull<U>
+    where
+        U: PointeeSized,
+    {
+        NonNull::from_raw_parts(self.cast::<()>(), super::metadata(meta.as_ptr()))
+    }
+
     /// Gets the "address" portion of the pointer.
     ///
     /// For more details, see the equivalent method on a raw pointer, [`pointer::addr`].
