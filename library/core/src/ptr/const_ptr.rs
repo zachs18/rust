@@ -468,10 +468,13 @@ impl<T: PointeeSized> *const T {
     #[inline(always)]
     pub const fn wrapping_offset(self, count: isize) -> *const T
     where
-        T: Sized,
+        T: MetaSized,
     {
-        // SAFETY: the `arith_offset` intrinsic has no prerequisites to be called.
-        unsafe { intrinsics::arith_offset(self, count) }
+        let byte_count = match core::mem::checked_size_for_meta(metadata(self)) {
+            Some(size) => isize::wrapping_mul(size as isize, count),
+            None => 0,
+        };
+        self.wrapping_byte_offset(byte_count)
     }
 
     /// Adds a signed offset in bytes to a pointer using wrapping arithmetic.
@@ -489,7 +492,10 @@ impl<T: PointeeSized> *const T {
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     pub const fn wrapping_byte_offset(self, count: isize) -> Self {
-        self.cast::<u8>().wrapping_offset(count).with_metadata_of(self)
+        let base = self.cast::<u8>();
+        // SAFETY: the `arith_offset` intrinsic has no prerequisites to be called.
+        let new = unsafe { intrinsics::arith_offset(base, count) };
+        new.with_metadata_of(self)
     }
 
     /// Masks out bits of the pointer according to a mask.
@@ -1072,7 +1078,7 @@ impl<T: PointeeSized> *const T {
     #[inline(always)]
     pub const fn wrapping_add(self, count: usize) -> Self
     where
-        T: Sized,
+        T: MetaSized,
     {
         self.wrapping_offset(count as isize)
     }
@@ -1151,7 +1157,7 @@ impl<T: PointeeSized> *const T {
     #[inline(always)]
     pub const fn wrapping_sub(self, count: usize) -> Self
     where
-        T: Sized,
+        T: MetaSized,
     {
         self.wrapping_offset((count as isize).wrapping_neg())
     }
