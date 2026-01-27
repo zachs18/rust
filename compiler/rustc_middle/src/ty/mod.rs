@@ -1502,6 +1502,15 @@ impl<'tcx> TyCtxt<'tcx> {
             flags.insert(ReprFlags::IS_LINEAR);
         }
 
+        // NonNull is special, we need `#[rustc_scalar_valid_range_*]` work on it,
+        // even for multi-wide pointers.
+        let is_nonnull = self.is_lang_item(did.to_def_id(), LangItem::NonNull);
+
+        // This is here instead of layout because the choice must make it into metadata.
+        if is_nonnull {
+            flags.insert(ReprFlags::IS_NONNULL_PTR);
+        }
+
         // See `TyAndLayout::pass_indirectly_in_non_rustic_abis` for details.
         if find_attr!(self, did, RustcPassIndirectlyInNonRusticAbis(..)) {
             flags.insert(ReprFlags::PASS_INDIRECTLY_IN_NON_RUSTIC_ABIS);
