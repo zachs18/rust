@@ -267,22 +267,20 @@ fn layout_of_uncached<'tcx>(
                     }
                 }
                 ty::PatternKind::NotNull => {
+                    if !matches!(ty.kind(), ty::RawPtr(..)) {
+                        bug!("!null pattern type can only be used with raw pointers")
+                    }
                     if let BackendRepr::Scalar(scalar) | BackendRepr::ScalarPair(scalar, _) =
                         &mut layout.backend_repr
                     {
                         scalar.valid_range_mut().start = 1;
-                        let niche = Niche {
-                            offset: Size::ZERO,
-                            value: scalar.primitive(),
-                            valid_range: scalar.valid_range(cx),
-                        };
-
-                        layout.largest_niche = Some(niche);
-                    } else {
-                        bug!(
-                            "pattern type with `!null` pattern but not scalar/pair layout: {ty:?}, {layout:?}"
-                        )
                     }
+                    let value = Primitive::Pointer(AddressSpace::ZERO);
+                    let mut valid_range = WrappingRange::full(value.size(cx));
+                    valid_range.start = 1;
+                    let niche = Niche { offset: Size::ZERO, value, valid_range };
+
+                    layout.largest_niche = Some(niche);
                 }
 
                 ty::PatternKind::Or(variants) => match *variants[0] {
