@@ -85,3 +85,5 @@ rustflags = [
 rustc-std-workspace-core = { path = 'rustc-std-workspace-core' }
 rustc-std-workspace-alloc = { path = 'rustc-std-workspace-alloc' }
 rustc-std-workspace-std = { path = 'rustc-std-workspace-std' }
+hashbrown-0-16 = { git = "https://github.com/zachs18/hashbrown", package = "hashbrown", branch = "more_unsized-0.16" }
+hashbrown-0-17 = { git = "https://github.com/zachs18/hashbrown", package = "hashbrown", branch = "more_unsized-0.17" }

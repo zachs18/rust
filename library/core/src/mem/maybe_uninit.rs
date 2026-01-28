@@ -1774,7 +1774,7 @@ impl<T: Clone> SpecFill<T> for [MaybeUninit<T>] {
     }
 }
 
-impl<T: TrivialClone> SpecFill<T> for [MaybeUninit<T>] {
+impl<T: Clone + TrivialClone> SpecFill<T> for [MaybeUninit<T>] {
     fn spec_fill(&mut self, value: T) {
         // SAFETY: because `T` is `TrivialClone`, this is equivalent to calling
         // `T::clone` for every element. Notably, `TrivialClone` also implies

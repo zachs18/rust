@@ -456,7 +456,7 @@ impl<T: Clone, const N: usize> Clone for [T; N] {
 
 #[doc(hidden)]
 #[unstable(feature = "trivial_clone", issue = "none")]
-unsafe impl<T: TrivialClone, const N: usize> TrivialClone for [T; N] {}
+unsafe impl<T: MetaSized + TrivialClone, const N: usize> TrivialClone for [T; N] {}
 
 trait SpecArrayClone: Clone {
     fn clone<const N: usize>(array: &[Self; N]) -> [Self; N];
@@ -469,7 +469,7 @@ impl<T: Clone> SpecArrayClone for T {
     }
 }
 
-impl<T: TrivialClone> SpecArrayClone for T {
+impl<T: Clone + TrivialClone> SpecArrayClone for T {
     #[inline]
     fn clone<const N: usize>(array: &[T; N]) -> [T; N] {
         // SAFETY: `TrivialClone` implies that this is equivalent to calling

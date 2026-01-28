@@ -80,7 +80,7 @@ pub(crate) fn expand_deriving_clone(
             supports_unions: true,
             methods: Vec::new(),
             associated_types: Vec::new(),
-            is_const,
+            is_const: false, // TrivialClone is a marker trait
             is_staged_api_crate: cx.ecfg.features.staged_api(),
             safety: Safety::Unsafe(DUMMY_SP),
             // `TrivialClone` is not part of an API guarantee, so it shouldn't

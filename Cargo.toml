@@ -93,4 +93,5 @@ codegen-units = 1
 # For git dependencies, also add your source to ALLOWED_SOURCES in src/tools/tidy/src/extdeps.rs.
 [patch.crates-io]
 rustc-demangle = { git = "https://github.com/zachs18/rustc-demangle", branch = "ptr-metadata" }
-
+hashbrown-0-16 = { git = "https://github.com/zachs18/hashbrown", package = "hashbrown", branch = "more_unsized-0.16" }
+hashbrown-0-17 = { git = "https://github.com/zachs18/hashbrown", package = "hashbrown", branch = "more_unsized-0.17" }
