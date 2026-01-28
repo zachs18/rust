@@ -2482,7 +2482,7 @@ impl<T: Clone> RcFromSlice<T> for Rc<[T]> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: TrivialClone> RcFromSlice<T> for Rc<[T]> {
+impl<T: Clone + TrivialClone> RcFromSlice<T> for Rc<[T]> {
     #[inline]
     fn from_slice(v: &[T]) -> Self {
         // SAFETY: `T` implements `TrivialClone`, so this is sound and equivalent

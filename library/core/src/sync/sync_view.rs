@@ -352,7 +352,7 @@ where
 #[doc(hidden)]
 #[unstable(feature = "trivial_clone", issue = "none")]
 #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
-unsafe impl<T> const TrivialClone for SyncView<T> where T: Sync + [const] TrivialClone {}
+unsafe impl<T: ?Sized> TrivialClone for SyncView<T> where T: Sync + TrivialClone {}
 
 #[unstable(feature = "exclusive_wrapper", issue = "98407")]
 impl<T> Copy for SyncView<T> where T: Sync + Copy {}

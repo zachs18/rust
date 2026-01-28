@@ -2406,7 +2406,7 @@ impl<T: Clone> ArcFromSlice<T> for Arc<[T]> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: TrivialClone> ArcFromSlice<T> for Arc<[T]> {
+impl<T: Clone + TrivialClone> ArcFromSlice<T> for Arc<[T]> {
     #[inline]
     fn from_slice(v: &[T]) -> Self {
         // SAFETY: `T` implements `TrivialClone`, so this is sound and equivalent

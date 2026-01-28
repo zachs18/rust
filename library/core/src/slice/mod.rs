@@ -5650,7 +5650,7 @@ where
 #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
 impl<T> const CloneFromSpec<T> for [T]
 where
-    T: [const] TrivialClone + [const] Destruct,
+    T: [const] Clone + TrivialClone + [const] Destruct,
 {
     #[track_caller]
     fn spec_clone_from(&mut self, src: &[T]) {
