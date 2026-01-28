@@ -20,7 +20,7 @@ pub use adapters::{
 use crate::clone::CloneToUninit;
 use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
-use crate::ptr::{Metadata, build_metadata};
+use crate::ptr::{Metadata, build_metadata, metadata};
 
 mod adapters;
 
@@ -179,9 +179,10 @@ unsafe impl<T, Error, const N: usize> PinInit<[T], Error> for [T; N] {
 unsafe impl<T, Error, const N: usize> Init<[T], Error> for [T; N] {}
 
 /// Initialize a slice by cloning from an array of a given length.
-unsafe impl<T: Clone, Error, const N: usize> PinInit<[T], Error> for &[T; N] {
-    fn metadata(_this: &Self) -> Metadata<[T]> {
-        build_metadata!(len: N, ..)
+unsafe impl<T: MetaSized + CloneToUninit, Error, const N: usize> PinInit<[T], Error> for &[T; N] {
+    fn metadata(this: &Self) -> Metadata<[T]> {
+        let array_meta = metadata::<[T; N]>(*this);
+        build_metadata!(len: N, elem: array_meta.elem, ..)
     }
 
     unsafe fn init(
@@ -194,7 +195,7 @@ unsafe impl<T: Clone, Error, const N: usize> PinInit<[T], Error> for &[T; N] {
         unsafe { <&[T] as PinInit<[T], Error>>::init(this, dst, (), pre_zeroed) }
     }
 }
-unsafe impl<T: Clone, Error, const N: usize> Init<[T], Error> for &[T; N] {}
+unsafe impl<T: MetaSized + CloneToUninit, Error, const N: usize> Init<[T], Error> for &[T; N] {}
 
 /// Initialize a place by cloning an existing value.
 unsafe impl<T: MetaSized + CloneToUninit, Error> PinInit<T, Error> for &T {

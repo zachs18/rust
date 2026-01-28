@@ -2295,7 +2295,7 @@ impl<T> crate::clone::UseCloned for Option<T> where T: crate::clone::UseCloned {
 #[doc(hidden)]
 #[unstable(feature = "trivial_clone", issue = "none")]
 #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
-unsafe impl<T> const TrivialClone for Option<T> where T: [const] TrivialClone + [const] Destruct {}
+unsafe impl<T: TrivialClone> TrivialClone for Option<T> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]

@@ -17,7 +17,7 @@ impl<T: Clone> SpecFill<T> for [T] {
     }
 }
 
-impl<T: TrivialClone> SpecFill<T> for [T] {
+impl<T: Clone + TrivialClone> SpecFill<T> for [T] {
     default fn spec_fill(&mut self, value: T) {
         for item in self.iter_mut() {
             // SAFETY: `TrivialClone` indicates that this is equivalent to
