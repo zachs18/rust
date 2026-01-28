@@ -5,7 +5,9 @@ pub use adapters::{AsBytes, as_bytes};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{Chain, chain};
 #[unstable(feature = "in_place_init", issue = "none")]
-pub use adapters::{Repeat, repeat};
+pub use adapters::{Repeat, repeat_array, repeat_slice};
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{RepeatWith, repeat_with_array, repeat_with_slice};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{
     Uninit, uninit, uninit_slice, uninit_slice_unchecked, uninit_unchecked, uninit_with_metadata,
@@ -16,6 +18,8 @@ pub use adapters::{
     Zeroed, zeroed, zeroed_slice, zeroed_slice_unchecked, zeroed_str, zeroed_unchecked,
     zeroed_with_metadata, zeroed_with_metadata_unchecked,
 };
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use util::{ConstLength, Length, RuntimeLength};
 
 use crate::clone::CloneToUninit;
 use crate::marker::MetaSized;
@@ -23,6 +27,7 @@ use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, build_metadata, metadata};
 
 mod adapters;
+mod util;
 
 /// A trait for pinned in-place initializers.
 ///

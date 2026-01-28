@@ -1,9 +1,11 @@
 pub use as_bytes::AsBytes;
 pub use chain::Chain;
 pub use repeat::Repeat;
+pub use repeat_with::RepeatWith;
 pub use uninit::Uninit;
 pub use zeroed::Zeroed;
 
+use crate::init::{ConstLength, RuntimeLength};
 use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, Thin, build_metadata};
@@ -11,6 +13,7 @@ use crate::ptr::{Metadata, Thin, build_metadata};
 mod as_bytes;
 mod chain;
 mod repeat;
+mod repeat_with;
 mod uninit;
 mod zeroed;
 
@@ -136,6 +139,23 @@ pub const fn as_bytes<I>(init: I) -> AsBytes<I> {
 // `Repeat`
 
 /// Create an initializer that initializes a `[T]` by repeating an element initializer.
-pub const fn repeat<I>(elem: I, len: usize) -> Repeat<I> {
-    Repeat::new(elem, len)
+pub const fn repeat_slice<I>(elem: I, len: usize) -> Repeat<I, RuntimeLength> {
+    Repeat::new_slice(len, elem)
+}
+
+/// Create an initializer that initializes a `[T; N]` by repeating an element initializer.
+pub const fn repeat_array<const N: usize, I>(elem: I) -> Repeat<I, ConstLength<N>> {
+    Repeat::new_array::<N>(elem)
+}
+
+// `RepeatWith`
+
+/// Create an initializer that initializes a `[T]` by creating element initializers.
+pub const fn repeat_with_slice<F>(func: F, len: usize) -> RepeatWith<F, RuntimeLength> {
+    RepeatWith::new_slice(len, func)
+}
+
+/// Create an initializer that initializes a `[T; N]` by creating element initializers.
+pub const fn repeat_with_array<const N: usize, F>(func: F) -> RepeatWith<F, ConstLength<N>> {
+    RepeatWith::new_array::<N>(func)
 }
