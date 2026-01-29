@@ -362,6 +362,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     | ExprKind::InlineAsm(_)
                     | ExprKind::Struct(_, _, _)
                     | ExprKind::PtrMetadata(..)
+                    | ExprKind::OffsetOf(_, _, Some(_))
                     | ExprKind::Repeat(_, _)
                     | ExprKind::Yield(_, _) => true,
 
@@ -371,7 +372,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     | ExprKind::Lit(_)
                     | ExprKind::Path(_)
                     | ExprKind::Continue(_)
-                    | ExprKind::OffsetOf(_, _)
+                    | ExprKind::OffsetOf(_, _, None)
                     | ExprKind::Err(_) => unreachable!("no sub-expr expected for {:?}", expr.kind),
                 }
             }

@@ -368,8 +368,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 self.deferred_asm_checks.borrow_mut().push((asm, expr.hir_id));
                 self.check_expr_asm(asm, expr.span)
             }
-            ExprKind::OffsetOf(container, fields) => {
-                self.check_expr_offset_of(container, fields, expr)
+            ExprKind::OffsetOf(container, fields, meta_expr) => {
+                self.check_expr_offset_of(container, fields, expr, meta_expr)
             }
             ExprKind::Break(destination, ref expr_opt) => {
                 self.check_expr_break(destination, expr_opt.as_deref(), expr)
@@ -4108,10 +4108,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         container: &'tcx hir::Ty<'tcx>,
         fields: &[Ident],
         expr: &'tcx hir::Expr<'tcx>,
+        meta_expr: Option<&'tcx hir::Expr<'tcx>>,
     ) -> Ty<'tcx> {
         let mut current_container = self.lower_ty(container).normalized;
         let mut field_indices = Vec::with_capacity(fields.len());
         let mut fields = fields.into_iter();
+
+        if let Some(meta_expr) = meta_expr {
+            let meta_ty = Ty::new_ptr_metadata(self.tcx, current_container);
+            let meta_ty = self.check_expr_with_expectation(meta_expr, ExpectHasType(meta_ty));
+            tracing::warn!(
+                "FIXME(more_unsized): implement offset_for_meta in hir_typeck {meta_ty:?}"
+            );
+        }
 
         while let Some(&field) = fields.next() {
             let container = self.structurally_resolve_type(expr.span, current_container);
@@ -4271,6 +4280,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         self.typeck_results.borrow_mut().offset_of_data_mut().insert(expr.hir_id, field_indices);
 
-        self.tcx.types.usize
+        if meta_expr.is_none() {
+            self.tcx.types.usize
+        } else {
+            let option_did = self.tcx.require_lang_item(LangItem::Option, expr.span);
+            let option_adt_ref = self.tcx.adt_def(option_did);
+            let option_args = self.tcx.mk_args(&[self.tcx.types.usize.into()]);
+            Ty::new_adt(self.tcx, option_adt_ref, option_args)
+        }
     }
 }

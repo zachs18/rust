@@ -2820,6 +2820,27 @@ pub const fn align_of<T>() -> usize;
 #[lang = "offset_of"]
 pub const fn offset_of<T: PointeeSized>(variant: u32, field: u32) -> usize;
 
+/// The offset of a field inside a type with a given metadata.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// This may return `None` in the same cases where [`core::mem::checked_size_for_meta`]
+/// would return `None`.
+///
+/// The to-be-stabilized version of this intrinsic is [`core::mem::offset_for_meta`].
+/// This intrinsic is also a lang item so `offset_for_meta!` can desugar to calls to it.
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[lang = "offset_for_meta"]
+pub fn checked_offset_for_meta<T: PointeeSized>(
+    variant: u32,
+    field: u32,
+    meta: ptr::Metadata<T>,
+) -> Option<usize>;
+
 /// The offset of a field queried by its field representing type.
 ///
 /// Returns the offset of the field represented by `F`. This function essentially does the same as

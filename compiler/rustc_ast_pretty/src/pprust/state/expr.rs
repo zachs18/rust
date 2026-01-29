@@ -848,7 +848,7 @@ impl<'a> State<'a> {
                 self.end(ib);
                 self.pclose();
             }
-            ast::ExprKind::OffsetOf(container, fields) => {
+            ast::ExprKind::OffsetOf(container, fields, opt_meta) => {
                 self.word("builtin # offset_of");
                 self.popen();
                 let ib = self.ibox(0);
@@ -864,6 +864,13 @@ impl<'a> State<'a> {
                         self.print_ident(field);
                     }
                 }
+
+                if let Some(meta_expr) = opt_meta {
+                    self.word(",");
+                    self.space();
+                    self.print_expr(meta_expr, FixupContext::default());
+                }
+
                 self.end(ib);
                 self.pclose();
             }

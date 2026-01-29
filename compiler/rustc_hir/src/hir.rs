@@ -2902,8 +2902,8 @@ pub enum ExprKind<'hir> {
     /// Inline assembly (from `asm!`), with its outputs and inputs.
     InlineAsm(&'hir InlineAsm<'hir>),
 
-    /// Field offset (`offset_of!`)
-    OffsetOf(&'hir Ty<'hir>, &'hir [Ident]),
+    /// Field offset (`offset_of!` and `offset_of_meta!`)
+    OffsetOf(&'hir Ty<'hir>, &'hir [Ident], Option<&'hir Expr<'hir>>),
 
     /// A struct or struct-like variant literal expression.
     ///

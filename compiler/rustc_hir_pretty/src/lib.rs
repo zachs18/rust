@@ -1789,7 +1789,7 @@ impl<'a> State<'a> {
                 self.word("asm!");
                 self.print_inline_asm(asm);
             }
-            hir::ExprKind::OffsetOf(container, fields) => {
+            hir::ExprKind::OffsetOf(container, fields, opt_meta_expr) => {
                 self.word("offset_of!(");
                 self.print_type(container);
                 self.word(",");
@@ -1802,6 +1802,12 @@ impl<'a> State<'a> {
                         self.word(".");
                         self.print_ident(field);
                     }
+                }
+
+                if let Some(meta_expr) = opt_meta_expr {
+                    self.word(",");
+                    self.space();
+                    self.print_expr(meta_expr);
                 }
 
                 self.word(")");

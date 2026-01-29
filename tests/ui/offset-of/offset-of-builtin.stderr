@@ -10,37 +10,74 @@ error: expected expression, found `)`
 LL |     builtin # offset_of(NotEnoughArgumentsWithAComma, );
    |                                                       ^ expected expression
 
-error: expected `)`, found `too`
-  --> $DIR/offset-of-builtin.rs:14:31
+error: expected one of `!`, `)`, `.`, `::`, `?`, `{`, or an operator, found `many`
+  --> $DIR/offset-of-builtin.rs:14:35
    |
 LL |     builtin # offset_of(S, f, too many arguments);
-   |                               ^^^ expected `)`
+   |                                   ^^^^ expected one of 7 possible tokens
    |
-   = note: unexpected third argument to offset_of
+   = note: offset_of expects dot-separated field and variant names
 
 error: unexpected token: `)`
-  --> $DIR/offset-of-builtin.rs:20:30
+  --> $DIR/offset-of-builtin.rs:21:30
    |
 LL |     builtin # offset_of(S, f.);
    |                              ^
 
 error: unexpected token: `,`
-  --> $DIR/offset-of-builtin.rs:23:30
+  --> $DIR/offset-of-builtin.rs:24:30
    |
 LL |     builtin # offset_of(S, f.,);
    |                              ^
 
+error: expected expression, found `)`
+  --> $DIR/offset-of-builtin.rs:24:31
+   |
+LL |     builtin # offset_of(S, f.,);
+   |                               ^ expected expression
+
 error: offset_of expects dot-separated field and variant names
-  --> $DIR/offset-of-builtin.rs:26:28
+  --> $DIR/offset-of-builtin.rs:28:28
    |
 LL |     builtin # offset_of(S, f..);
    |                            ^^^
 
 error: offset_of expects dot-separated field and variant names
-  --> $DIR/offset-of-builtin.rs:29:28
+  --> $DIR/offset-of-builtin.rs:31:28
    |
 LL |     builtin # offset_of(S, f..,);
    |                            ^^^
 
-error: aborting due to 7 previous errors
+error: expected expression, found `)`
+  --> $DIR/offset-of-builtin.rs:31:32
+   |
+LL |     builtin # offset_of(S, f..,);
+   |                                ^ expected expression
 
+error: expected `)`, found `many`
+  --> $DIR/offset-of-builtin.rs:35:36
+   |
+LL |     builtin # offset_of(S, f, too, many arguments);
+   |                                    ^^^^ expected `)`
+   |
+   = note: unexpected fourth argument to offset_of
+
+error[E0425]: cannot find value `too` in this scope
+  --> $DIR/offset-of-builtin.rs:14:31
+   |
+LL |     builtin # offset_of(S, f, too many arguments);
+   |                               ^^^ not found in this scope
+
+error[E0425]: cannot find value `too` in this scope
+  --> $DIR/offset-of-builtin.rs:35:31
+   |
+LL |     builtin # offset_of(S, f, too, many arguments);
+   |                               ^^^ not found in this scope
+
+ WARN rustc_hir_typeck::expr FIXME(more_unsized): implement offset_for_meta in hir_typeck {type error}
+ WARN rustc_hir_typeck::expr FIXME(more_unsized): implement offset_for_meta in hir_typeck {type error}
+ WARN rustc_hir_typeck::expr FIXME(more_unsized): implement offset_for_meta in hir_typeck {type error}
+ WARN rustc_hir_typeck::expr FIXME(more_unsized): implement offset_for_meta in hir_typeck {type error}
+error: aborting due to 12 previous errors
+
+For more information about this error, try `rustc --explain E0425`.

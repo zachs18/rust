@@ -820,7 +820,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 line_spans: asm.line_spans,
             })),
 
-            hir::ExprKind::OffsetOf(_, _) => {
+            hir::ExprKind::OffsetOf(_, _, None) => {
                 let offset_of_intrinsic = tcx.require_lang_item(LangItem::OffsetOf, expr.span);
                 let mk_u32_kind = |val: u32| ExprKind::NonHirLiteral {
                     lit: ScalarInt::try_from_uint(val, Size::from_bits(32)).unwrap(),
@@ -867,6 +867,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
 
                 expr.unwrap_or_else(|| mk_usize_kind(0))
+            }
+
+            hir::ExprKind::OffsetOf(_, _, Some(meta_expr)) => {
+                unimplemented!("implement offset_of_meta MIR lowering: {meta_expr:?}")
             }
 
             hir::ExprKind::ConstBlock(ref anon_const) => {
