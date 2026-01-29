@@ -2039,12 +2039,27 @@ impl<'a> Parser<'a> {
         let container = self.parse_ty()?;
         self.expect(exp!(Comma))?;
 
-        let fields = self.parse_floating_field_access()?;
+        let fields = self.parse_floating_field_access()?.into_boxed_slice();
+        let comma = self.eat_noexpect(&TokenKind::Comma);
+
+        let opt_meta_expr = if comma {
+            // FIXME: recover
+            match self.parse_expr() {
+                Ok(expr) => Some(expr),
+                Err(e) => {
+                    let guar = e.emit();
+                    Some(self.mk_expr_err(self.token.span, guar))
+                }
+            }
+        } else {
+            None
+        };
+
         let trailing_comma = self.eat_noexpect(&TokenKind::Comma);
 
         if let Err(mut e) = self.expect_one_of(&[], &[exp!(CloseParen)]) {
             if trailing_comma {
-                e.note("unexpected third argument to offset_of");
+                e.note("unexpected fourth argument to offset_of");
             } else {
                 e.note("offset_of expects dot-separated field and variant names");
             }
@@ -2059,7 +2074,7 @@ impl<'a> Parser<'a> {
         }
 
         let span = lo.to(self.token.span);
-        Ok(self.mk_expr(span, ExprKind::OffsetOf(container, fields)))
+        Ok(self.mk_expr(span, ExprKind::OffsetOf(container, fields, opt_meta_expr)))
     }
 
     /// Built-in syntax for `builtin # ptr_metadata()` expressions.
@@ -4608,7 +4623,7 @@ impl MutVisitor for CondChecker<'_> {
             | ExprKind::Continue(_)
             | ExprKind::Ret(_)
             | ExprKind::InlineAsm(_)
-            | ExprKind::OffsetOf(_, _)
+            | ExprKind::OffsetOf(_, _, _)
             | ExprKind::MacCall(_)
             | ExprKind::Struct(_)
             | ExprKind::PtrMetadata(_)
