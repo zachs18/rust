@@ -1,6 +1,7 @@
 //! In-place initialization.
 
 use core::alloc::{Allocator, Layout};
+use core::clone::CloneToUninit;
 pub use core::init::*;
 use core::mem::{self, MaybeUninit};
 use core::ptr::{self, Metadata};
@@ -126,12 +127,12 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
 }
 
 /// Initialize a place by moving an existing value from a `Box`
-unsafe impl<T: ?Sized, A: Allocator, Error> PinInit<T, Error> for Box<T, A> {
+unsafe impl<T: ?Sized, A: Allocator, Error> PinInitOnce<T, Error> for Box<T, A> {
     fn metadata(this: &Self) -> Metadata<T> {
         ptr::metadata::<T>(&**this)
     }
 
-    unsafe fn init(
+    unsafe fn init_once(
         this: Self,
         dst: &mut MaybeUninit<T>,
         _arg: (),
@@ -151,15 +152,42 @@ unsafe impl<T: ?Sized, A: Allocator, Error> PinInit<T, Error> for Box<T, A> {
         Ok(())
     }
 }
-unsafe impl<T: ?Sized, A: Allocator, Error> Init<T, Error> for Box<T, A> {}
+unsafe impl<T: ?Sized, A: Allocator, Error> InitOnce<T, Error> for Box<T, A> {}
+
+/// Initialize a place by cloning an existing value from a `Box`
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitMut<T, Error> for Box<T, A> {
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning an existing value from a `Box`
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInit<T, Error> for Box<T, A> {
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitMut<T, Error> for Box<T, A> {}
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> Init<T, Error> for Box<T, A> {}
 
 /// Initialize a slice by moving existing values from a `Vec`
-unsafe impl<T, A: Allocator, Error> PinInit<[T], Error> for Vec<T, A> {
+unsafe impl<T, A: Allocator, Error> PinInitOnce<[T], Error> for Vec<T, A> {
     fn metadata(this: &Self) -> Metadata<[T]> {
         ptr::metadata::<[T]>(&**this)
     }
 
-    unsafe fn init(
+    unsafe fn init_once(
         mut this: Self,
         dst: &mut MaybeUninit<[T]>,
         _arg: (),
@@ -173,4 +201,32 @@ unsafe impl<T, A: Allocator, Error> PinInit<[T], Error> for Vec<T, A> {
         Ok(())
     }
 }
-unsafe impl<T, A: Allocator, Error> Init<[T], Error> for Vec<T, A> {}
+unsafe impl<T, A: Allocator, Error> InitOnce<[T], Error> for Vec<T, A> {}
+
+/// Initialize a slice by cloning existing values from a `Vec`
+unsafe impl<T: Clone, A: Allocator, Error> PinInitMut<[T], Error> for Vec<T, A> {
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<[T]>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <[T] as PinInit<[T], Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+
+/// Initialize a slice by cloning existing values from a `Vec`
+unsafe impl<T: Clone, A: Allocator, Error> PinInit<[T], Error> for Vec<T, A> {
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<[T]>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <[T] as PinInit<[T], Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+unsafe impl<T: Clone, A: Allocator, Error> InitMut<[T], Error> for Vec<T, A> {}
+unsafe impl<T: Clone, A: Allocator, Error> Init<[T], Error> for Vec<T, A> {}

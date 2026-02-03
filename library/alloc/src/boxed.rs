@@ -190,7 +190,7 @@ use core::error::{self, Error};
 use core::fmt;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
-use core::init::{Init, PinInit};
+use core::init::{InitOnce, PinInitOnce};
 use core::marker::{Tuple, Unsize};
 #[cfg(not(no_global_oom_handling))]
 use core::mem::MaybeUninit;
@@ -900,7 +900,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
 impl<T: ?Sized, A: Allocator> Box<T, A> {
     /// Allocates and initializes a `Box<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build_in(init: impl Init<T>, alloc: A) -> Box<T, A> {
+    pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Box<T, A> {
         match Self::try_build_in(init, alloc) {
             Ok(bx) => bx,
             Err(err) => err.handle_alloc_error(),
@@ -910,14 +910,14 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
     /// Allocates and initializes a `Box<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_build_in<E>(
-        init: impl Init<T, E>,
+        init: impl InitOnce<T, E>,
         alloc: A,
     ) -> Result<Box<T, A>, BuildError<T, E, A>> {
-        let metadata = PinInit::metadata(&init);
+        let metadata = PinInitOnce::metadata(&init);
         let Some(layout) = Layout::for_meta(metadata) else {
             return Err(BuildError::layout_overflow(metadata, alloc));
         };
-        let pre_zeroed = PinInit::should_zero(&init);
+        let pre_zeroed = PinInitOnce::should_zero(&init);
         let ptr = if layout.size() == 0 {
             layout.dangling_ptr()
         } else {
@@ -931,7 +931,7 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         let ptr = NonNull::from_raw_parts(ptr, metadata as Metadata<_>);
         unsafe {
             let mut uninit = Box::<MaybeUninit<T>, A>::from_non_null_in(ptr, alloc);
-            if let Err(err) = PinInit::init(init, &mut *uninit, (), pre_zeroed) {
+            if let Err(err) = PinInitOnce::init_once(init, &mut *uninit, (), pre_zeroed) {
                 let alloc = Box::into_allocator(uninit);
                 return Err(BuildError::init_error(err, alloc));
             }
@@ -953,13 +953,13 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
 impl<T: ?Sized> Box<T> {
     /// Allocates and initializes a `Box<T>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build(init: impl Init<T>) -> Box<T> {
+    pub fn build(init: impl InitOnce<T>) -> Box<T> {
         Self::build_in(init, Global)
     }
 
     /// Allocates and initializes a `Box<T>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn try_build<E>(init: impl Init<T, E>) -> Result<Box<T>, BuildError<T, E>> {
+    pub fn try_build<E>(init: impl InitOnce<T, E>) -> Result<Box<T>, BuildError<T, E>> {
         Self::try_build_in(init, Global)
     }
 }
@@ -1314,7 +1314,7 @@ impl<T: ?Sized + Thin, A: Allocator> Box<mem::MaybeUninit<T>, A> {
     /// initializes it with `init` before conversion thus guaranteeing safety.
     #[unstable(feature = "in_place_init", issue = "none")]
     #[inline]
-    pub fn initialize(mut boxed: Self, init: impl Init<T>) -> Box<T, A> {
+    pub fn initialize(mut boxed: Self, init: impl InitOnce<T>) -> Box<T, A> {
         (*boxed).initialize(init);
         // SAFETY: we just initialized `*boxed`
         unsafe { boxed.assume_init() }

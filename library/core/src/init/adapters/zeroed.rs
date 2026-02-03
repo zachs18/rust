@@ -1,4 +1,4 @@
-use crate::init::{Init, PinInit};
+use crate::init::{Init, InitMut, InitOnce, PinInit, PinInitMut, PinInitOnce};
 use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
 use crate::ptr::Metadata;
@@ -38,7 +38,7 @@ impl<T: MetaSized> Zeroed<T> {
     }
 }
 
-unsafe impl<T: MetaSized, Error> PinInit<T, Error> for Zeroed<T> {
+unsafe impl<T: MetaSized, Error> PinInitOnce<T, Error> for Zeroed<T> {
     fn metadata(this: &Self) -> Metadata<T> {
         this.metadata
     }
@@ -47,7 +47,7 @@ unsafe impl<T: MetaSized, Error> PinInit<T, Error> for Zeroed<T> {
         true
     }
 
-    unsafe fn init(
+    unsafe fn init_once(
         _this: Self,
         dst: &mut MaybeUninit<T>,
         _extra: (),
@@ -61,4 +61,36 @@ unsafe impl<T: MetaSized, Error> PinInit<T, Error> for Zeroed<T> {
         Ok(())
     }
 }
+unsafe impl<T: MetaSized, Error> PinInitMut<T, Error> for Zeroed<T> {
+    unsafe fn init_mut(
+        _this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        _extra: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        if !pre_zeroed {
+            dst.as_bytes_mut().write_filled(0);
+        }
+        // `Self` can only be constructed if `T` with meta `this.metadata`
+        // is valid as all bytes zero.
+        Ok(())
+    }
+}
+unsafe impl<T: MetaSized, Error> PinInit<T, Error> for Zeroed<T> {
+    unsafe fn init_ref(
+        _this: &Self,
+        dst: &mut MaybeUninit<T>,
+        _extra: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        if !pre_zeroed {
+            dst.as_bytes_mut().write_filled(0);
+        }
+        // `Self` can only be constructed if `T` with meta `this.metadata`
+        // is valid as all bytes zero.
+        Ok(())
+    }
+}
+unsafe impl<T: MetaSized, Error> InitOnce<T, Error> for Zeroed<T> {}
+unsafe impl<T: MetaSized, Error> InitMut<T, Error> for Zeroed<T> {}
 unsafe impl<T: MetaSized, Error> Init<T, Error> for Zeroed<T> {}

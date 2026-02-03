@@ -1,6 +1,6 @@
 use crate::any::type_name;
 use crate::clone::TrivialClone;
-use crate::init::{Init, PinInit};
+use crate::init::{InitOnce, PinInitOnce};
 use crate::marker::{Destruct, MetaSized};
 use crate::mem::ManuallyDrop;
 use crate::ptr::Thin;
@@ -1130,13 +1130,13 @@ impl<T: MetaSized> MaybeUninit<T> {
     /// For your convenience, if initialization succeeds, this also returns
     /// a mutable reference to the (now safely initialized) contents of `self`.
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn try_initialize<Error>(&mut self, init: impl Init<T, Error>) -> Result<&mut T, Error>
+    pub fn try_initialize<Error>(&mut self, init: impl InitOnce<T, Error>) -> Result<&mut T, Error>
     where
         T: Thin,
     {
         // SAFETY: `T: Thin`
         unsafe {
-            PinInit::init(init, self, (), false)?;
+            PinInitOnce::init_once(init, self, (), false)?;
         }
         // SAFETY: `self` was just initialized
         Ok(unsafe { self.assume_init_mut() })
@@ -1149,7 +1149,7 @@ impl<T: MetaSized> MaybeUninit<T> {
     /// For your convenience, this also returns a mutable reference to the
     /// (now safely initialized) contents of `self`.
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn initialize(&mut self, init: impl Init<T>) -> &mut T
+    pub fn initialize(&mut self, init: impl InitOnce<T>) -> &mut T
     where
         T: Thin,
     {
