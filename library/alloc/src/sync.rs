@@ -15,7 +15,7 @@ use core::clone::TrivialClone;
 use core::clone::{CloneToUninit, UseCloned};
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
-use core::init::{Init, PinInit};
+use core::init::{Init, InitMut, InitOnce, PinInit, PinInitMut, PinInitOnce};
 use core::intrinsics::abort;
 #[cfg(not(no_global_oom_handling))]
 use core::iter;
@@ -1252,7 +1252,7 @@ impl<T, A: Allocator> Arc<T, A> {
 impl<T: ?Sized, A: Allocator> Arc<T, A> {
     /// Allocates and initializes a `Arc<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build_in(init: impl Init<T>, alloc: A) -> Arc<T, A> {
+    pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Arc<T, A> {
         UniqueArc::into_arc(UniqueArc::build_in(init, alloc))
     }
 }
@@ -1260,7 +1260,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
 impl<T: ?Sized> Arc<T> {
     /// Allocates and initializes a `Arc<T>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build(init: impl Init<T>) -> Arc<T> {
+    pub fn build(init: impl InitOnce<T>) -> Arc<T> {
         UniqueArc::into_arc(UniqueArc::build(init))
     }
 }
@@ -4800,6 +4800,125 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
     unsafe fn from_ptr_in(ptr: *mut ArcInner<T>, alloc: A) -> Self {
         unsafe { Self::from_inner_in(NonNull::new_unchecked(ptr), alloc) }
     }
+
+    /// Returns a reference to the underlying allocator.
+    ///
+    /// Note: this is an associated function, which means that you have
+    /// to call it as `Arc::allocator(&a)` instead of `a.allocator()`. This
+    /// is so that there is no conflict with a method on the inner type.
+    #[inline]
+    #[unstable(feature = "allocator_api", issue = "32838")]
+    pub fn allocator(this: &Self) -> &A {
+        &this.alloc
+    }
+
+    /// Consumes the `Arc`, returning the wrapped pointer and allocator.
+    ///
+    /// To avoid a memory leak the pointer must be converted back to an `Arc` using
+    /// [`Arc::from_raw_in`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(allocator_api)]
+    /// use std::sync::Arc;
+    /// use std::alloc::System;
+    ///
+    /// let x = Arc::new_in("hello".to_owned(), System);
+    /// let (ptr, alloc) = Arc::into_raw_with_allocator(x);
+    /// assert_eq!(unsafe { &*ptr }, "hello");
+    /// let x = unsafe { Arc::from_raw_in(ptr, alloc) };
+    /// assert_eq!(&*x, "hello");
+    /// ```
+    #[must_use = "losing the pointer will leak memory"]
+    #[unstable(feature = "allocator_api", issue = "32838")]
+    pub fn into_raw_with_allocator(this: Self) -> (*mut T, A) {
+        let mut this = mem::ManuallyDrop::new(this);
+        let ptr = Self::as_mut_ptr(&mut this);
+        // Safety: `this` is ManuallyDrop so the allocator will not be double-dropped
+        let alloc = unsafe { ptr::read(&this.alloc) };
+        (ptr, alloc)
+    }
+
+    /// Constructs an `Arc<T, A>` from a raw pointer.
+    ///
+    /// The raw pointer must have been previously returned by a call to [`Arc<U,
+    /// A>::into_raw`][into_raw] with the following requirements:
+    ///
+    /// * If `U` is sized, it must have the same size and alignment as `T`. This
+    ///   is trivially true if `U` is `T`.
+    /// * If `U` is unsized, its data pointer must have the same size and
+    ///   alignment as `T`. This is trivially true if `Arc<U>` was constructed
+    ///   through `Arc<T>` and then converted to `Arc<U>` through an [unsized
+    ///   coercion].
+    ///
+    /// Note that if `U` or `U`'s data pointer is not `T` but has the same size
+    /// and alignment, this is basically like transmuting references of
+    /// different types. See [`mem::transmute`][transmute] for more information
+    /// on what restrictions apply in this case.
+    ///
+    /// The raw pointer must point to a block of memory allocated by `alloc`
+    ///
+    /// The user of `from_raw` has to make sure a specific value of `T` is only
+    /// dropped once.
+    ///
+    /// This function is unsafe because improper use may lead to memory unsafety,
+    /// even if the returned `Arc<T>` is never accessed.
+    ///
+    /// [into_raw]: Arc::into_raw
+    /// [transmute]: core::mem::transmute
+    /// [unsized coercion]: https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(allocator_api)]
+    ///
+    /// use std::sync::Arc;
+    /// use std::alloc::System;
+    ///
+    /// let x = Arc::new_in("hello".to_owned(), System);
+    /// let (x_ptr, alloc) = Arc::into_raw_with_allocator(x);
+    ///
+    /// unsafe {
+    ///     // Convert back to an `Arc` to prevent leak.
+    ///     let x = Arc::from_raw_in(x_ptr, System);
+    ///     assert_eq!(&*x, "hello");
+    ///
+    ///     // Further calls to `Arc::from_raw(x_ptr)` would be memory-unsafe.
+    /// }
+    ///
+    /// // The memory was freed when `x` went out of scope above, so `x_ptr` is now dangling!
+    /// ```
+    ///
+    /// Convert a slice back into its original array:
+    ///
+    /// ```
+    /// #![feature(allocator_api)]
+    ///
+    /// use std::sync::Arc;
+    /// use std::alloc::System;
+    ///
+    /// let x: Arc<[u32], _> = Arc::new_in([1, 2, 3], System);
+    /// let x_ptr: *const [u32] = Arc::into_raw_with_allocator(x).0;
+    ///
+    /// unsafe {
+    ///     let x: Arc<[u32; 3], _> = Arc::from_raw_in(x_ptr.cast::<[u32; 3]>(), System);
+    ///     assert_eq!(&*x, &[1, 2, 3]);
+    /// }
+    /// ```
+    #[inline]
+    #[unstable(feature = "allocator_api", issue = "32838")]
+    pub unsafe fn from_raw_in(ptr: *mut T, alloc: A) -> Self {
+        unsafe {
+            let offset = data_offset(ptr);
+
+            // Reverse the offset to find the original ArcInner.
+            let arc_ptr = ptr.byte_sub(offset) as *mut ArcInner<T>;
+
+            Self::from_ptr_in(arc_ptr, alloc)
+        }
+    }
 }
 
 impl<T, A: Allocator> UniqueArc<T, A> {
@@ -4831,14 +4950,14 @@ impl<T, A: Allocator> UniqueArc<T, A> {
 impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
     /// Allocates and initializes a `UniqueArc<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build_in(init: impl Init<T>, alloc: A) -> UniqueArc<T, A> {
-        let metadata = PinInit::metadata(&init);
-        let pre_zeroed = PinInit::should_zero(&init);
+    pub fn build_in(init: impl InitOnce<T>, alloc: A) -> UniqueArc<T, A> {
+        let metadata = PinInitOnce::metadata(&init);
+        let pre_zeroed = PinInitOnce::should_zero(&init);
 
         let mut this = Self::new_uninit_with_metadata_in(metadata, alloc, pre_zeroed);
 
         unsafe {
-            let Ok(_) = PinInit::init(init, &mut *this, (), pre_zeroed);
+            let Ok(_) = PinInitOnce::init_once(init, &mut *this, (), pre_zeroed);
         }
 
         unsafe { UniqueArc::assume_init(this) }
@@ -4855,16 +4974,16 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
     /// Fallibly allocates and initializes a `UniqueArc<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_build_in<E>(
-        init: impl Init<T, E>,
+        init: impl InitOnce<T, E>,
         alloc: A,
     ) -> Result<UniqueArc<T, A>, BuildError<T, E, A>> {
-        let metadata = PinInit::metadata(&init);
-        let pre_zeroed = PinInit::should_zero(&init);
+        let metadata = PinInitOnce::metadata(&init);
+        let pre_zeroed = PinInitOnce::should_zero(&init);
 
         let mut this = Self::try_new_uninit_with_metadata_in(metadata, alloc, pre_zeroed)
             .map_err(|err| err.map_err(|never| match never {}))?;
 
-        if let Err(err) = unsafe { PinInit::init(init, &mut *this, (), pre_zeroed) } {
+        if let Err(err) = unsafe { PinInitOnce::init_once(init, &mut *this, (), pre_zeroed) } {
             return Err(BuildError {
                 kind: BuildErrorKind::InitError(err),
                 alloc: UniqueArc::into_allocator(this),
@@ -4920,7 +5039,7 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
 impl<T: ?Sized> UniqueArc<T> {
     /// Allocates and initializes a `UniqueArc<T>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build(init: impl Init<T>) -> UniqueArc<T> {
+    pub fn build(init: impl InitOnce<T>) -> UniqueArc<T> {
         Self::build_in(init, Global)
     }
 }
@@ -5112,3 +5231,121 @@ unsafe impl<T: ?Sized + Allocator, A: Allocator> Allocator for Arc<T, A> {
         unsafe { (**self).shrink(ptr, old_layout, new_layout) }
     }
 }
+
+/// Initialize a place by cloning from an `Arc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitOnce<T, Error> for Arc<T, A> {
+    fn metadata(this: &Self) -> Metadata<T> {
+        ptr::metadata::<T>(&**this)
+    }
+
+    unsafe fn init_once(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(&this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from an `Arc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitMut<T, Error> for Arc<T, A> {
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from an `Arc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInit<T, Error> for Arc<T, A> {
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from an `Arc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitOnce<T, Error> for Arc<T, A> {}
+/// Initialize a place by cloning from an `Arc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitMut<T, Error> for Arc<T, A> {}
+/// Initialize a place by cloning from an `Arc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> Init<T, Error> for Arc<T, A> {}
+
+/// Initialize a place by moving from a `UniqueArc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized, A: Allocator, Error> PinInitOnce<T, Error> for UniqueArc<T, A> {
+    fn metadata(this: &Self) -> Metadata<T> {
+        ptr::metadata::<T>(&**this)
+    }
+
+    unsafe fn init_once(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        _arg: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let size = mem::size_of_val::<T>(&*this);
+        let (ptr, alloc) = UniqueArc::into_raw_with_allocator(this);
+        // Don't drop `T`, but still deallocate the `UniqueArc` when we've moved from it
+        let this = unsafe { UniqueArc::from_raw_in(ptr as *mut MaybeUninit<T>, alloc) };
+        unsafe {
+            ptr::copy_nonoverlapping(
+                UniqueArc::as_ptr(&this).cast::<u8>(),
+                dst.as_mut_ptr().cast::<u8>(),
+                size,
+            );
+        }
+        Ok(())
+    }
+}
+/// Initialize a place by cloning from a `UniqueArc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitMut<T, Error>
+    for UniqueArc<T, A>
+{
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from a `UniqueArc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInit<T, Error> for UniqueArc<T, A> {
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by moving from a `UniqueArc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized, A: Allocator, Error> InitOnce<T, Error> for UniqueArc<T, A> {}
+/// Initialize a place by cloning from a `UniqueArc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitMut<T, Error> for UniqueArc<T, A> {}
+/// Initialize a place by cloning from a `UniqueArc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> Init<T, Error> for UniqueArc<T, A> {}

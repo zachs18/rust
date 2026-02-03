@@ -1,7 +1,7 @@
 pub use as_bytes::AsBytes;
 pub use chain::Chain;
+pub use from_fn::{FromFn, NoArg, WithArg};
 pub use repeat::Repeat;
-pub use repeat_with::RepeatWith;
 pub use uninit::Uninit;
 pub use zeroed::Zeroed;
 
@@ -12,8 +12,8 @@ use crate::ptr::{Metadata, Thin, build_metadata};
 
 mod as_bytes;
 mod chain;
+mod from_fn;
 mod repeat;
-mod repeat_with;
 mod uninit;
 mod zeroed;
 
@@ -148,14 +148,14 @@ pub const fn repeat_array<const N: usize, I>(elem: I) -> Repeat<I, ConstLength<N
     Repeat::new_array::<N>(elem)
 }
 
-// `RepeatWith`
+// `FromFn`
 
-/// Create an initializer that initializes a `[T]` by creating element initializers.
-pub const fn repeat_with_slice<F>(func: F, len: usize) -> RepeatWith<F, RuntimeLength> {
-    RepeatWith::new_slice(len, func)
+/// Create an initializer that initializes a place by calling a function to produce an initializer just-in-time.
+pub const fn from_fn<T, F>(func: F) -> FromFn<T, F, NoArg> {
+    FromFn::new(func)
 }
 
-/// Create an initializer that initializes a `[T; N]` by creating element initializers.
-pub const fn repeat_with_array<const N: usize, F>(func: F) -> RepeatWith<F, ConstLength<N>> {
-    RepeatWith::new_array::<N>(func)
+/// Create an initializer that initializes a place by calling a function to produce an initializer just-in-time.
+pub const fn from_fn_with_arg<T, F>(func: F) -> FromFn<T, F, WithArg> {
+    FromFn::new_with_arg(func)
 }
