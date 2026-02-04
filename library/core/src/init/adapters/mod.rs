@@ -1,8 +1,9 @@
 pub use as_bytes::AsBytes;
 pub use chain::Chain;
-pub use from_fn::{FromFn, NoArg, WithArg};
+pub use from_fn::{FnNoArg, FnWithArg, FromFn};
 pub use repeat::Repeat;
 pub use uninit::Uninit;
+pub use with_arg::WithArg;
 pub use zeroed::Zeroed;
 
 use crate::init::{ConstLength, RuntimeLength};
@@ -15,6 +16,7 @@ mod chain;
 mod from_fn;
 mod repeat;
 mod uninit;
+mod with_arg;
 mod zeroed;
 
 // `Zeroed`
@@ -151,11 +153,18 @@ pub const fn repeat_array<const N: usize, I>(elem: I) -> Repeat<I, ConstLength<N
 // `FromFn`
 
 /// Create an initializer that initializes a place by calling a function to produce an initializer just-in-time.
-pub const fn from_fn<T, F>(func: F) -> FromFn<T, F, NoArg> {
+pub const fn from_fn<T, F>(func: F) -> FromFn<T, F, FnNoArg> {
     FromFn::new(func)
 }
 
 /// Create an initializer that initializes a place by calling a function to produce an initializer just-in-time.
-pub const fn from_fn_with_arg<T, F>(func: F) -> FromFn<T, F, WithArg> {
+pub const fn from_fn_with_arg<T, F>(func: F) -> FromFn<T, F, FnWithArg> {
     FromFn::new_with_arg(func)
+}
+
+// `WithArg`
+
+/// Create an initializer that initializes a place with an initializer and a pre-provided argument.
+pub const fn with_arg<T: MetaSized, I, Arg>(init: I, arg: Arg) -> WithArg<T, I, Arg> {
+    WithArg::new(init, arg)
 }

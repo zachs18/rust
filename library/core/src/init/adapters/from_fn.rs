@@ -28,7 +28,7 @@ use crate::ptr::{Metadata, Thin};
 /// assert_eq!(*bx, [1, 3, 5]);
 /// ```
 #[derive(Debug, Clone, Copy)]
-pub struct FromFn<T: Thin + MetaSized, F, HasArg = NoArg> {
+pub struct FromFn<T: Thin + MetaSized, F, HasArg = FnNoArg> {
     _has_arg: HasArg,
     // Necessary, otherwise the relevant impl overlaps when `F: Fn() -> F`
     _type: PhantomData<fn() -> T>,
@@ -38,27 +38,27 @@ pub struct FromFn<T: Thin + MetaSized, F, HasArg = NoArg> {
 /// Marker type for [`FromFn`] whose function does not require an argument.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct NoArg;
+pub struct FnNoArg;
 
 /// Marker type for [`FromFn`] whose function requires an argument.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct WithArg;
+pub struct FnWithArg;
 
 impl<T: Thin + MetaSized, F> FromFn<T, F> {
     pub(crate) const fn new(func: F) -> Self {
-        Self { func, _has_arg: NoArg, _type: PhantomData }
+        Self { func, _has_arg: FnNoArg, _type: PhantomData }
     }
 }
 
-impl<T: Thin + MetaSized, F> FromFn<T, F, WithArg> {
+impl<T: Thin + MetaSized, F> FromFn<T, F, FnWithArg> {
     pub(crate) const fn new_with_arg(func: F) -> Self {
-        Self { func, _has_arg: WithArg, _type: PhantomData }
+        Self { func, _has_arg: FnWithArg, _type: PhantomData }
     }
 }
 
 unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error, Arg>, F: FnOnce() -> I>
-    PinInitOnce<T, Error, Arg> for FromFn<T, F, NoArg>
+    PinInitOnce<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
     fn metadata(_this: &Self) -> Metadata<T> {
         Default::default()
@@ -76,7 +76,7 @@ unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error, Arg>, F: F
     }
 }
 unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error, Arg>, F: FnMut() -> I>
-    PinInitMut<T, Error, Arg> for FromFn<T, F, NoArg>
+    PinInitMut<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
     unsafe fn init_mut(
         this: &mut Self,
@@ -90,7 +90,7 @@ unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error, Arg>, F: F
     }
 }
 unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error, Arg>, F: Fn() -> I>
-    PinInit<T, Error, Arg> for FromFn<T, F, NoArg>
+    PinInit<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
     unsafe fn init_ref(
         this: &Self,
@@ -104,14 +104,14 @@ unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error, Arg>, F: F
     }
 }
 unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error, Arg>, F: FnOnce() -> I>
-    InitOnce<T, Error, Arg> for FromFn<T, F, NoArg>
+    InitOnce<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
 }
 unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error, Arg>, F: FnMut() -> I>
-    InitMut<T, Error, Arg> for FromFn<T, F, NoArg>
+    InitMut<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
 }
 unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error, Arg>, F: Fn() -> I>
-    Init<T, Error, Arg> for FromFn<T, F, NoArg>
+    Init<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
 }
