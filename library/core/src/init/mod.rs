@@ -5,7 +5,7 @@ pub use adapters::{AsBytes, as_bytes};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{Chain, chain};
 #[unstable(feature = "in_place_init", issue = "none")]
-pub use adapters::{FromFn, NoArg, WithArg, from_fn, from_fn_with_arg};
+pub use adapters::{FnNoArg, FnWithArg, FromFn, from_fn, from_fn_with_arg};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{Repeat, repeat_array, repeat_slice};
 #[unstable(feature = "in_place_init", issue = "none")]
@@ -14,10 +14,14 @@ pub use adapters::{
     uninit_with_metadata_unchecked,
 };
 #[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{WithArg, with_arg};
+#[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{
     Zeroed, zeroed, zeroed_slice, zeroed_slice_unchecked, zeroed_str, zeroed_unchecked,
     zeroed_with_metadata, zeroed_with_metadata_unchecked,
 };
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use dyn_init::DynInit;
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use util::{ConstLength, Length, RuntimeLength};
 
@@ -27,6 +31,7 @@ use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, build_metadata, metadata};
 
 mod adapters;
+mod dyn_init;
 mod util;
 
 /// A trait for pinned in-place initializers.
