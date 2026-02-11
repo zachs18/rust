@@ -115,3 +115,62 @@ unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error, Arg>, F: Fn()
     Init<T, Error, Arg> for FromFn<T, F, FnNoArg>
 {
 }
+
+unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error>, F: FnOnce(Arg) -> I>
+    PinInitOnce<T, Error, Arg> for FromFn<T, F, FnWithArg>
+{
+    fn metadata(_this: &Self) -> Metadata<T> {
+        Default::default()
+    }
+
+    unsafe fn init_once(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let init = (this.func)(arg);
+        // SAFETY: delegated to caller
+        unsafe { <I as PinInitOnce<T, Error>>::init_once(init, dst, (), pre_zeroed) }
+    }
+}
+unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error>, F: FnMut(Arg) -> I>
+    PinInitMut<T, Error, Arg> for FromFn<T, F, FnWithArg>
+{
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let init = (this.func)(arg);
+        // SAFETY: delegated to caller
+        unsafe { <I as PinInitOnce<T, Error>>::init_once(init, dst, (), pre_zeroed) }
+    }
+}
+unsafe impl<T: Thin + MetaSized, Error, Arg, I: PinInitOnce<T, Error>, F: Fn(Arg) -> I>
+    PinInit<T, Error, Arg> for FromFn<T, F, FnWithArg>
+{
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<T>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let init = (this.func)(arg);
+        // SAFETY: delegated to caller
+        unsafe { <I as PinInitOnce<T, Error>>::init_once(init, dst, (), pre_zeroed) }
+    }
+}
+unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error>, F: FnOnce(Arg) -> I>
+    InitOnce<T, Error, Arg> for FromFn<T, F, FnWithArg>
+{
+}
+unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error>, F: FnMut(Arg) -> I>
+    InitMut<T, Error, Arg> for FromFn<T, F, FnWithArg>
+{
+}
+unsafe impl<T: Thin + MetaSized, Error, Arg, I: InitOnce<T, Error>, F: Fn(Arg) -> I>
+    Init<T, Error, Arg> for FromFn<T, F, FnWithArg>
+{
+}
