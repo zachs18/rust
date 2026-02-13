@@ -768,7 +768,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 };
 
                 // Consume those fields of the with expression that are needed.
-                for (f_index, (_name, _vis, field_ty)) in field_tys.iter().enumerate() {
+                for (f_index, (_name, _span, _vis, field_ty)) in field_tys.iter().enumerate() {
                     let f_index = FieldIdx::from_usize(f_index);
                     let is_mentioned = fields.iter().any(|f| {
                         self.cx.typeck_results().opt_field_index(f.hir_id) == Some(f_index)

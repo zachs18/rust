@@ -857,6 +857,7 @@ symbols! {
         eii_declaration,
         eii_internals,
         eii_shared_macro,
+        elem,
         element_ty,
         elf,
         // Notes about `sym::empty`:
@@ -2259,6 +2260,7 @@ symbols! {
         vreg_pair,
         vsreg,
         vsx,
+        vtable,
         vtable_align,
         vtable_size,
         warn,
