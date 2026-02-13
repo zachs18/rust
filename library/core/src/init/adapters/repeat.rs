@@ -2,247 +2,236 @@ use crate::init::util::InitializingSlice;
 use crate::init::{
     ConstLength, Init, InitMut, InitOnce, Length, PinInit, PinInitMut, PinInitOnce, RuntimeLength,
 };
-use crate::marker::MetaSized;
+use crate::marker::{MetaSized, PhantomData};
 use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, build_metadata};
 
-trait RepeatArgKind<IArg> {
-    type Arg;
-
-    fn args(input_arg: IArg, count: usize) -> impl ExactSizeIterator<Item = Self::Arg>;
+trait ArgKind<OArg>: Sized {
+    fn args(input_arg: Self, count: usize) -> impl ExactSizeIterator<Item = OArg>;
 }
 
-#[derive(Debug, Clone, Copy)]
-struct NoIndexArg;
-
-impl<IArg: Clone> RepeatArgKind<IArg> for NoIndexArg {
-    type Arg = IArg;
-
-    fn args(input_arg: IArg, count: usize) -> impl ExactSizeIterator<Item = Self::Arg> {
-        crate::iter::repeat_n(input_arg, count)
+impl<T: Clone> ArgKind<T> for T {
+    fn args(input_arg: Self, count: usize) -> impl ExactSizeIterator<Item = T> {
+        core::iter::repeat_n(input_arg, count)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct OnlyIndexArg;
+impl<T: Clone> ArgKind<(T, usize)> for T {
+    fn args(input_arg: Self, count: usize) -> impl ExactSizeIterator<Item = (T, usize)> {
+        core::iter::repeat_n(input_arg, count).zip(0..count)
+    }
+}
 
-impl RepeatArgKind<()> for OnlyIndexArg {
-    type Arg = usize;
-
-    fn args(_input_arg: (), count: usize) -> impl ExactSizeIterator<Item = Self::Arg> {
+impl ArgKind<usize> for () {
+    fn args(_input_arg: (), count: usize) -> impl ExactSizeIterator<Item = usize> {
         0..count
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct WithIndexArg;
+macro_rules! repeat_impls {
+    ($(#[$($arg_docs:tt)*])* $Name:ident: [$($Arg:ident $(: $arg_bound:ident)?)?] IArg = $IArg:ty, OArg = $OArg:ty) => {
+        /// Initialize a slice by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, L: Length, Error, $($Arg $(: $arg_bound)? ,)? I: PinInitMut<T, Error, $OArg>>
+            PinInitOnce<[T], Error, $IArg> for $Name<I, L, $OArg>
+        {
+            fn metadata(this: &Self) -> Metadata<[T]> {
+                build_metadata!(len: this.length.length(), elem: I::metadata(&this.elem), ..)
+            }
 
-impl<IArg: Clone> RepeatArgKind<IArg> for WithIndexArg {
-    type Arg = (IArg, usize);
+            fn should_zero(this: &Self) -> bool {
+                this.length.length() > 0 && <I as PinInitOnce<T, Error, $OArg>>::should_zero(&this.elem)
+            }
 
-    fn args(input_arg: IArg, count: usize) -> impl ExactSizeIterator<Item = Self::Arg> {
-        crate::iter::repeat_n(input_arg, count).zip(0..count)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct RepeatInner<I, L: Length, K> {
-    elem: I,
-    length: L,
-    _arg_kind: K,
-}
-
-unsafe impl<
-    T: MetaSized,
-    L: Length,
-    Error,
-    IArg,
-    OArg,
-    I: PinInitMut<T, Error, OArg>,
-    K: RepeatArgKind<IArg, Arg = OArg>,
-> PinInitOnce<[T], Error, IArg> for RepeatInner<I, L, K>
-{
-    fn metadata(this: &Self) -> Metadata<[T]> {
-        build_metadata!(len: this.length.length(), elem: I::metadata(&this.elem), ..)
-    }
-
-    fn should_zero(this: &Self) -> bool {
-        I::should_zero(&this.elem)
-    }
-
-    unsafe fn init_once(
-        mut this: Self,
-        dst: &mut MaybeUninit<[T]>,
-        arg: IArg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        let dst = dst.transpose_mut();
-        let count = this.length.length();
-        debug_assert_eq!(dst.len(), count);
-        // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
-        let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
-        let elem = &mut this.elem;
-        for (idx, arg) in K::args(arg, count).enumerate() {
-            // we do this so the last element can be initialized using `init_once`,
-            // which could avoid cloning.
-            if idx < count - 1 {
-                // SAFETY: delegated to caller
-                unsafe {
-                    I::init_mut(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+            unsafe fn init_once(
+                mut this: Self,
+                dst: &mut MaybeUninit<[T]>,
+                arg: $IArg,
+                pre_zeroed: bool,
+            ) -> Result<(), Error> {
+                let dst = dst.transpose_mut();
+                let count = this.length.length();
+                debug_assert_eq!(dst.len(), count);
+                // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
+                let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
+                let elem = &mut this.elem;
+                for (idx, arg) in <$IArg as ArgKind<$OArg>>::args(arg, count).enumerate() {
+                    // we do this so the last element can be initialized using `init_once`,
+                    // which could avoid cloning in `I::init_mut`.
+                    if idx < count - 1 {
+                        // SAFETY: delegated to caller
+                        unsafe {
+                            I::init_mut(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                        }
+                        // SAFETY: we just initialized buf.data[idx]
+                        buf.initialized_len += 1;
+                    } else {
+                        // SAFETY: delegated to caller
+                        unsafe {
+                            I::init_once(this.elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                        }
+                        break;
+                    }
                 }
-                // SAFETY: we just initialized buf.data[idx]
-                buf.initialized_len += 1;
-            } else {
-                // SAFETY: delegated to caller
-                unsafe {
-                    I::init_once(this.elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                core::mem::forget(buf);
+                Ok(())
+            }
+        }
+        /// Initialize a slice by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, L: Length, Error, $($Arg $(: $arg_bound)? ,)? I: PinInitMut<T, Error, $OArg>>
+            PinInitMut<[T], Error, $IArg> for $Name<I, L, $OArg>
+        {
+            unsafe fn init_mut(
+                this: &mut Self,
+                dst: &mut MaybeUninit<[T]>,
+                arg: $IArg,
+                pre_zeroed: bool,
+            ) -> Result<(), Error> {
+                let dst = dst.transpose_mut();
+                let count = this.length.length();
+                debug_assert_eq!(dst.len(), count);
+                // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
+                let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
+                let elem = &mut this.elem;
+                for (idx, arg) in <$IArg as ArgKind<$OArg>>::args(arg, count).enumerate() {
+                    // SAFETY: delegated to caller
+                    unsafe {
+                        I::init_mut(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                    }
+                    // SAFETY: we just initialized buf.data[idx]
+                    buf.initialized_len += 1;
                 }
-                break;
+                core::mem::forget(buf);
+                Ok(())
             }
         }
-        core::mem::forget(buf);
-        Ok(())
-    }
-}
-unsafe impl<
-    T: MetaSized,
-    L: Length,
-    Error,
-    IArg,
-    OArg,
-    I: PinInitMut<T, Error, OArg>,
-    K: RepeatArgKind<IArg, Arg = OArg>,
-> PinInitMut<[T], Error, IArg> for RepeatInner<I, L, K>
-{
-    unsafe fn init_mut(
-        this: &mut Self,
-        dst: &mut MaybeUninit<[T]>,
-        arg: IArg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        let dst = dst.transpose_mut();
-        let count = this.length.length();
-        debug_assert_eq!(dst.len(), count);
-        // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
-        let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
-        let elem = &mut this.elem;
-        for (idx, arg) in K::args(arg, count).enumerate() {
-            // SAFETY: delegated to caller
-            unsafe {
-                I::init_mut(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+        /// Initialize a slice by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, L: Length, Error, $($Arg $(: $arg_bound)? ,)? I: PinInit<T, Error, $OArg>>
+            PinInit<[T], Error, $IArg> for $Name<I, L, $OArg>
+        {
+            unsafe fn init_ref(
+                this: &Self,
+                dst: &mut MaybeUninit<[T]>,
+                arg: $IArg,
+                pre_zeroed: bool,
+            ) -> Result<(), Error> {
+                let dst = dst.transpose_mut();
+                let count = this.length.length();
+                debug_assert_eq!(dst.len(), count);
+                // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
+                let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
+                let elem = &this.elem;
+                for (idx, arg) in <$IArg as ArgKind<$OArg>>::args(arg, count).enumerate() {
+                    // SAFETY: delegated to caller
+                    unsafe {
+                        I::init_ref(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                    }
+                    // SAFETY: we just initialized buf.data[idx]
+                    buf.initialized_len += 1;
+                }
+                core::mem::forget(buf);
+                Ok(())
             }
-            // SAFETY: we just initialized buf.data[idx]
-            buf.initialized_len += 1;
         }
-        core::mem::forget(buf);
-        Ok(())
-    }
-}
-unsafe impl<
-    T: MetaSized,
-    L: Length,
-    Error,
-    IArg,
-    OArg,
-    I: PinInit<T, Error, OArg>,
-    K: RepeatArgKind<IArg, Arg = OArg>,
-> PinInit<[T], Error, IArg> for RepeatInner<I, L, K>
-{
-    unsafe fn init_ref(
-        this: &Self,
-        dst: &mut MaybeUninit<[T]>,
-        arg: IArg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        let dst = dst.transpose_mut();
-        let count = this.length.length();
-        debug_assert_eq!(dst.len(), count);
-        // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
-        let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
-        let elem = &this.elem;
-        for (idx, arg) in K::args(arg, count).enumerate() {
-            // SAFETY: delegated to caller
-            unsafe {
-                I::init_ref(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+        /// Initialize a slice by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, L: Length, Error, $($Arg $(: $arg_bound)? ,)? I: InitMut<T, Error, $OArg>>
+            InitOnce<[T], Error, $IArg> for $Name<I, L, $OArg>
+        {
+        }
+        /// Initialize a slice by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, L: Length, Error, $($Arg $(: $arg_bound)? ,)? I: InitMut<T, Error, $OArg>>
+            InitMut<[T], Error, $IArg> for $Name<I, L, $OArg>
+        {
+        }
+        /// Initialize a slice by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, L: Length, Error, $($Arg $(: $arg_bound)? ,)? I: Init<T, Error, $OArg>>
+            Init<[T], Error, $IArg> for $Name<I, L, $OArg>
+        {
+        }
+
+        /// Initialize an array by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, const N: usize, Error, $($Arg $(: $arg_bound)? ,)? I: PinInitMut<T, Error, $OArg>>
+            PinInitOnce<[T; N], Error, $IArg> for $Name<I, ConstLength<N>, $OArg>
+        {
+            fn metadata(this: &Self) -> Metadata<[T; N]> {
+                build_metadata!(elem: I::metadata(&this.elem), ..)
             }
-            // SAFETY: we just initialized buf.data[idx]
-            buf.initialized_len += 1;
+
+            fn should_zero(this: &Self) -> bool {
+                N > 0 && <I as PinInitOnce<T, Error, $OArg>>::should_zero(&this.elem)
+            }
+
+            unsafe fn init_once(
+                this: Self,
+                dst: &mut MaybeUninit<[T; N]>,
+                arg: $IArg,
+                pre_zeroed: bool,
+            ) -> Result<(), Error> {
+                // SAFETY: delegated to caller
+                unsafe { <Self as PinInitOnce<[T], Error, $IArg>>::init_once(this, dst, arg, pre_zeroed) }
+            }
         }
-        core::mem::forget(buf);
-        Ok(())
-    }
+        /// Initialize an array by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, const N: usize, Error, $($Arg $(: $arg_bound)? ,)? I: PinInitMut<T, Error, $OArg>>
+            PinInitMut<[T; N], Error, $IArg> for $Name<I, ConstLength<N>, $OArg>
+        {
+            unsafe fn init_mut(
+                this: &mut Self,
+                dst: &mut MaybeUninit<[T; N]>,
+                arg: $IArg,
+                pre_zeroed: bool,
+            ) -> Result<(), Error> {
+                // SAFETY: delegated to caller
+                unsafe { <Self as PinInitMut<[T], Error, $IArg>>::init_mut(this, dst, arg, pre_zeroed) }
+            }
+        }
+        /// Initialize an array by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, const N: usize, Error, $($Arg $(: $arg_bound)? ,)? I: PinInit<T, Error, $OArg>>
+            PinInit<[T; N], Error, $IArg> for $Name<I, ConstLength<N>, $OArg>
+        {
+            unsafe fn init_ref(
+                this: &Self,
+                dst: &mut MaybeUninit<[T; N]>,
+                arg: $IArg,
+                pre_zeroed: bool,
+            ) -> Result<(), Error> {
+                // SAFETY: delegated to caller
+                unsafe { <Self as PinInit<[T], Error, $IArg>>::init_ref(this, dst, arg, pre_zeroed) }
+            }
+        }
+        /// Initialize an array by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, const N: usize, Error, $($Arg $(: $arg_bound)? ,)? I: InitMut<T, Error, $OArg>>
+            InitOnce<[T; N], Error, $IArg> for $Name<I, ConstLength<N>, $OArg>
+        {
+        }
+        /// Initialize an array by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, const N: usize, Error, $($Arg $(: $arg_bound)? ,)? I: InitMut<T, Error, $OArg>>
+            InitMut<[T; N], Error, $IArg> for $Name<I, ConstLength<N>, $OArg>
+        {
+        }
+        /// Initialize an array by repeating an element initializer,
+        $(#[$($arg_docs)*])*
+        unsafe impl<T: MetaSized, const N: usize, Error, $($Arg $(: $arg_bound)? ,)? I: Init<T, Error, $OArg>>
+            Init<[T; N], Error, $IArg> for $Name<I, ConstLength<N>, $OArg>
+        {
+        }
+
+    };
 }
 
-unsafe impl<
-    T: MetaSized,
-    const N: usize,
-    Error,
-    IArg,
-    OArg,
-    I: PinInitMut<T, Error, OArg>,
-    K: RepeatArgKind<IArg, Arg = OArg>,
-> PinInitOnce<[T; N], Error, IArg> for RepeatInner<I, ConstLength<N>, K>
-{
-    fn metadata(this: &Self) -> Metadata<[T; N]> {
-        build_metadata!(elem: I::metadata(&this.elem), ..)
-    }
-
-    fn should_zero(this: &Self) -> bool {
-        <I as PinInitOnce<T, Error, OArg>>::should_zero(&this.elem)
-    }
-
-    unsafe fn init_once(
-        this: Self,
-        dst: &mut MaybeUninit<[T; N]>,
-        arg: IArg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { <Self as PinInitOnce<[T], Error, IArg>>::init_once(this, dst, arg, pre_zeroed) }
-    }
-}
-unsafe impl<
-    T: MetaSized,
-    const N: usize,
-    Error,
-    IArg,
-    OArg,
-    I: PinInitMut<T, Error, OArg>,
-    K: RepeatArgKind<IArg, Arg = OArg>,
-> PinInitMut<[T; N], Error, IArg> for RepeatInner<I, ConstLength<N>, K>
-{
-    unsafe fn init_mut(
-        this: &mut Self,
-        dst: &mut MaybeUninit<[T; N]>,
-        arg: IArg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { <Self as PinInitMut<[T], Error, IArg>>::init_mut(this, dst, arg, pre_zeroed) }
-    }
-}
-unsafe impl<
-    T: MetaSized,
-    const N: usize,
-    Error,
-    IArg,
-    OArg,
-    I: PinInit<T, Error, OArg>,
-    K: RepeatArgKind<IArg, Arg = OArg>,
-> PinInit<[T; N], Error, IArg> for RepeatInner<I, ConstLength<N>, K>
-{
-    unsafe fn init_ref(
-        this: &Self,
-        dst: &mut MaybeUninit<[T; N]>,
-        arg: IArg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { <Self as PinInit<[T], Error, IArg>>::init_ref(this, dst, arg, pre_zeroed) }
-    }
-}
-
-/// Initialize an array or slice by cloning an initializer for each element.
+/// Initialize an array or slice by re-using an initializer for each element.
+///
+/// Created using [`repeat_array`] and [`repeat_slice`].
 ///
 /// ```rust
 /// #![feature(in_place_init)]
@@ -252,143 +241,40 @@ unsafe impl<
 /// assert_eq!(*bx, [42, 42, 42]);
 ///
 /// let bx: Box<[usize]> = Box::build(
-///     std::init::repeat_array::<3, _>(42)
+///     std::init::repeat_slice(
+///         std::init::from_fn_with_arg(|idx: usize| idx * 2 + 1),
+///         3
+///     )
 /// );
-/// assert_eq!(*bx, [42, 42, 42]);
+/// assert_eq!(*bx, [1, 3, 5]);
 /// ```
+///
+/// [`repeat_array`]: crate::init::repeat_array
+/// [`repeat_slice`]: crate::init::repeat_slice
 #[derive(Debug, Clone)]
-pub struct Repeat<I, L: Length> {
-    inner: RepeatInner<I, L, NoIndexArg>,
+pub struct Repeat<I, L: Length = RuntimeLength, ElemArg = ()> {
+    elem: I,
+    length: L,
+    _arg: PhantomData<fn(ElemArg) -> ElemArg>,
 }
-
-impl<I> Repeat<I, RuntimeLength> {
+impl<I, ElemArg> Repeat<I, RuntimeLength, ElemArg> {
     pub(crate) const fn new_slice(length: usize, elem: I) -> Self {
-        Self {
-            inner: RepeatInner { length: RuntimeLength { length }, elem, _arg_kind: NoIndexArg },
-        }
+        Self { length: RuntimeLength { length }, elem, _arg: PhantomData }
     }
-
-    pub(crate) const fn new_array<const N: usize>(elem: I) -> Repeat<I, ConstLength<N>> {
-        Repeat { inner: RepeatInner { length: ConstLength, elem, _arg_kind: NoIndexArg } }
+    pub(crate) const fn new_array<const N: usize>(elem: I) -> Repeat<I, ConstLength<N>, ElemArg> {
+        Repeat { length: ConstLength, elem, _arg: PhantomData }
     }
 }
-
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
-    PinInitOnce<[T], Error, Arg> for Repeat<I, L>
-{
-    fn metadata(this: &Self) -> Metadata<[T]> {
-        <_ as PinInitOnce<[T], Error, Arg>>::metadata(&this.inner)
-    }
-
-    fn should_zero(this: &Self) -> bool {
-        <I as PinInitOnce<T, Error, Arg>>::should_zero(&this.inner.elem)
-    }
-
-    unsafe fn init_once(
-        this: Self,
-        dst: &mut MaybeUninit<[T]>,
-        arg: Arg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { RepeatInner::init_once(this.inner, dst, arg, pre_zeroed) }
-    }
+repeat_impls! {
+    /// cloning the initializer argument for each element, if given.
+    Repeat: [Arg: Clone] IArg = Arg, OArg = Arg
 }
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
-    PinInitMut<[T], Error, Arg> for Repeat<I, L>
-{
-    unsafe fn init_mut(
-        this: &mut Self,
-        dst: &mut MaybeUninit<[T]>,
-        arg: Arg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { RepeatInner::init_mut(&mut this.inner, dst, arg, pre_zeroed) }
-    }
+repeat_impls! {
+    /// cloning the initializer argument for each element, if given,
+    /// and additionally passing the element index.
+    Repeat: [Arg: Clone] IArg = Arg, OArg = (Arg, usize)
 }
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: PinInit<T, Error, Arg>>
-    PinInit<[T], Error, Arg> for Repeat<I, L>
-{
-    unsafe fn init_ref(
-        this: &Self,
-        dst: &mut MaybeUninit<[T]>,
-        arg: Arg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { RepeatInner::init_ref(&this.inner, dst, arg, pre_zeroed) }
-    }
-}
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
-    InitOnce<[T], Error, Arg> for Repeat<I, L>
-{
-}
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
-    InitMut<[T], Error, Arg> for Repeat<I, L>
-{
-}
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: Init<T, Error, Arg>>
-    Init<[T], Error, Arg> for Repeat<I, L>
-{
-}
-
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
-    PinInitOnce<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
-{
-    fn metadata(this: &Self) -> Metadata<[T; N]> {
-        RepeatInner::metadata(&this.inner)
-    }
-
-    fn should_zero(this: &Self) -> bool {
-        <I as PinInitOnce<T, Error, Arg>>::should_zero(&this.inner.elem)
-    }
-
-    unsafe fn init_once(
-        mut this: Self,
-        dst: &mut MaybeUninit<[T; N]>,
-        arg: Arg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { <Self as PinInitMut<[T], Error, Arg>>::init_mut(&mut this, dst, arg, pre_zeroed) }
-    }
-}
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
-    PinInitMut<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
-{
-    unsafe fn init_mut(
-        this: &mut Self,
-        dst: &mut MaybeUninit<[T; N]>,
-        arg: Arg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { <Self as PinInitMut<[T], Error, Arg>>::init_mut(this, dst, arg, pre_zeroed) }
-    }
-}
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: PinInit<T, Error, Arg>>
-    PinInit<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
-{
-    unsafe fn init_ref(
-        this: &Self,
-        dst: &mut MaybeUninit<[T; N]>,
-        arg: Arg,
-        pre_zeroed: bool,
-    ) -> Result<(), Error> {
-        // SAFETY: delegated to caller
-        unsafe { <Self as PinInit<[T], Error, Arg>>::init_ref(this, dst, arg, pre_zeroed) }
-    }
-}
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
-    InitOnce<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
-{
-}
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
-    InitMut<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
-{
-}
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: Init<T, Error, Arg>>
-    Init<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
-{
+repeat_impls! {
+    /// passing the element index as the element initializer argument.
+    Repeat: [] IArg = (), OArg = usize
 }

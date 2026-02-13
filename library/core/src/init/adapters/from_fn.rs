@@ -5,6 +5,8 @@ use crate::ptr::{Metadata, Thin};
 
 /// Initialize a place by creating an initializer just-in-time.
 ///
+/// Created using [`from_fn`] and [`from_fn_with_arg`].
+///
 /// ```rust
 /// #![feature(in_place_init)]
 /// let mut i = 1;
@@ -17,16 +19,17 @@ use crate::ptr::{Metadata, Thin};
 /// );
 /// assert_eq!(*bx, [1, 3, 5]);
 ///
-/// let mut i = 1;
 /// let bx: Box<[usize]> = Box::build(
-///     std::init::repeat_array::<3, _>(std::init::from_fn(|| {
-///         let val = i;
-///         i += 2;
-///         val
-///     }))
+///     std::init::repeat_slice(
+///         std::init::from_fn_with_arg(|idx: usize| idx * 2 + 1),
+///         3,
+///     )
 /// );
 /// assert_eq!(*bx, [1, 3, 5]);
 /// ```
+///
+/// [`from_fn`]: crate::init::from_fn
+/// [`from_fn_with_arg`]: crate::init::from_fn_with_arg
 #[derive(Debug, Clone, Copy)]
 pub struct FromFn<T: Thin + MetaSized, F, HasArg = FnNoArg> {
     _has_arg: HasArg,

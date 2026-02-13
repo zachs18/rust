@@ -141,12 +141,14 @@ pub const fn as_bytes<I>(init: I) -> AsBytes<I> {
 // `Repeat`
 
 /// Create an initializer that initializes a `[T]` by repeating an element initializer.
-pub const fn repeat_slice<I>(elem: I, len: usize) -> Repeat<I, RuntimeLength> {
+pub const fn repeat_slice<I, ElemArg>(elem: I, len: usize) -> Repeat<I, RuntimeLength, ElemArg> {
     Repeat::new_slice(len, elem)
 }
 
 /// Create an initializer that initializes a `[T; N]` by repeating an element initializer.
-pub const fn repeat_array<const N: usize, I>(elem: I) -> Repeat<I, ConstLength<N>> {
+pub const fn repeat_array<const N: usize, I, ElemArg>(
+    elem: I,
+) -> Repeat<I, ConstLength<N>, ElemArg> {
     Repeat::new_array::<N>(elem)
 }
 
