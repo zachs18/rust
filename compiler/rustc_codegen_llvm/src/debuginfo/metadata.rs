@@ -307,12 +307,12 @@ fn build_pointer_metadata_di_node<'ll, 'tcx>(
             fields
                 .iter()
                 .enumerate()
-                .map(|(idx, (name, _vis, _field_ty))| {
+                .map(|(idx, (name, _span, _vis, _field_ty))| {
                     let field_ty = layout.field(cx, idx);
                     build_field_di_node(
                         cx,
                         owner,
-                        name.name.as_str(),
+                        name.as_str(),
                         field_ty,
                         layout.fields.offset(idx),
                         DIFlags::FlagZero,

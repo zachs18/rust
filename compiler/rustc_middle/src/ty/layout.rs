@@ -228,7 +228,15 @@ impl fmt::Display for ValidityRequirement {
 #[derive(Clone, Copy, Debug, HashStable)]
 pub enum MetadataFields<'tcx> {
     /// This type is monomorphic enough to know its pointer metadata's fields.
-    KnownFields(&'tcx ty::List<(rustc_span::Ident, ty::Visibility<DefId>, Ty<'tcx>)>),
+    /// The span is `None` for primitives.
+    KnownFields(
+        &'tcx ty::List<(
+            rustc_span::Symbol,
+            Option<rustc_span::Span>,
+            ty::Visibility<DefId>,
+            Ty<'tcx>,
+        )>,
+    ),
     /// This type is known to be thin, so its pointer metadata is a trivial 1-ZST,
     /// but it is too generic to know the fields specifically.
     ThinUnknownFields,
@@ -896,7 +904,7 @@ where
                         fields
                     );
 
-                    TyMaybeWithLayout::Ty(fields[i].2)
+                    TyMaybeWithLayout::Ty(fields[i].3)
                 }
 
                 // Arrays and slices.

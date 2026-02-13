@@ -13,7 +13,7 @@ use rustc_hir as hir;
 use rustc_hir::LangItem;
 use rustc_hir::def_id::DefId;
 use rustc_macros::{HashStable, TyDecodable, TyEncodable, TypeFoldable, extension};
-use rustc_span::{DUMMY_SP, Ident, Span, Symbol, kw, sym};
+use rustc_span::{DUMMY_SP, Span, Symbol, kw, sym};
 use rustc_type_ir::TyKind::*;
 use rustc_type_ir::solve::SizedTraitKind;
 use rustc_type_ir::walk::TypeWalker;
@@ -1835,10 +1835,6 @@ impl<'tcx> Ty<'tcx> {
     ) -> ty::layout::MetadataFields<'tcx> {
         use ty::layout::MetadataFields;
         let pointee = self;
-        // FIXME(ptr_metadtata_fields): use Ident::with_dummy_span(sym::*) here, or maybe just use `(Symbol, Option<Span>)`
-        let id_len = Ident::from_str("len");
-        let id_elem = Ident::from_str("elem");
-        let id_vtable = Ident::from_str("vtable");
         MetadataFields::KnownFields(match pointee.kind() {
             // Known-sized types with no metadata fields, and Foreign which has no metadata fields.
             ty::Bool
@@ -1866,23 +1862,32 @@ impl<'tcx> Ty<'tcx> {
 
             ty::UnsafeBinder(..) => todo!("FIXME(unsafe_binders)"),
 
-            ty::Str => {
-                tcx.mk_metadata_field_list(&[(id_len, ty::Visibility::Public, tcx.types.usize)])
-            }
+            ty::Str => tcx.mk_metadata_field_list(&[(
+                sym::len,
+                None,
+                ty::Visibility::Public,
+                tcx.types.usize,
+            )]),
             ty::Array(elem, _len) => tcx.mk_metadata_field_list(&[(
-                id_elem,
+                sym::elem,
+                None,
                 ty::Visibility::Public,
                 Ty::new_ptr_metadata(tcx, *elem),
             )]),
             ty::Slice(elem) => tcx.mk_metadata_field_list(&[
-                (id_len, ty::Visibility::Public, tcx.types.usize),
-                (id_elem, ty::Visibility::Public, Ty::new_ptr_metadata(tcx, *elem)),
+                (sym::len, None, ty::Visibility::Public, tcx.types.usize),
+                (sym::elem, None, ty::Visibility::Public, Ty::new_ptr_metadata(tcx, *elem)),
             ]),
             ty::Dynamic(_, _) => {
                 let dyn_metadata =
                     tcx.require_lang_item(hir::lang_items::LangItem::DynMetadata, DUMMY_SP);
                 let dyn_metadata_ty = tcx.type_of(dyn_metadata).instantiate(tcx, &[pointee.into()]);
-                tcx.mk_metadata_field_list(&[(id_vtable, ty::Visibility::Public, dyn_metadata_ty)])
+                tcx.mk_metadata_field_list(&[(
+                    sym::vtable,
+                    None,
+                    ty::Visibility::Public,
+                    dyn_metadata_ty,
+                )])
             }
             ty::Adt(adt_def, _) if adt_def.is_enum() => ty::List::empty(),
             ty::Adt(adt_def, args) => {
@@ -1892,8 +1897,10 @@ impl<'tcx> Ty<'tcx> {
                     .fields
                     .iter()
                     .map(|field| {
+                        let id = field.ident(tcx);
                         (
-                            field.ident(tcx),
+                            id.name,
+                            Some(id.span),
                             field.vis,
                             Ty::new_ptr_metadata(tcx, field.ty(tcx, args)),
                         )
@@ -1908,7 +1915,8 @@ impl<'tcx> Ty<'tcx> {
                     .enumerate()
                     .map(|(idx, field_ty)| {
                         (
-                            Ident::new(sym::integer(idx), DUMMY_SP),
+                            sym::integer(idx),
+                            None,
                             ty::Visibility::Public,
                             Ty::new_ptr_metadata(tcx, field_ty),
                         )
