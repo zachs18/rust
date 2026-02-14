@@ -899,6 +899,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
 
 impl<T: ?Sized, A: Allocator> Box<T, A> {
     /// Allocates and initializes a `Box<T, A>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Box<T, A> {
         match Self::try_build_in(init, alloc) {
@@ -952,6 +953,7 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
 
 impl<T: ?Sized> Box<T> {
     /// Allocates and initializes a `Box<T>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> Box<T> {
         Self::build_in(init, Global)

@@ -31,8 +31,8 @@ impl<T: ?Sized, E: core::fmt::Debug> core::fmt::Debug for BuildErrorKind<T, E> {
     }
 }
 
-#[cfg(not(any(no_global_oom_handling, no_rc)))]
 impl<T: ?Sized, E> BuildErrorKind<T, E> {
+    #[cfg(not(no_rc))]
     pub(crate) fn map_metadata<U: ?Sized>(
         self,
         f: impl FnOnce(Metadata<T>) -> Metadata<U>,
@@ -44,6 +44,7 @@ impl<T: ?Sized, E> BuildErrorKind<T, E> {
         }
     }
 
+    #[cfg(not(no_rc))]
     pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildErrorKind<T, E2> {
         match self {
             BuildErrorKind::LayoutOverflow(metadata) => BuildErrorKind::LayoutOverflow(metadata),
@@ -78,6 +79,7 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
     ///
     /// If `self.kind` is [`InitError(err)`](BuildErrorKind::InitError), returns `(err, self.alloc)`.
     #[cold]
+    #[cfg(not(no_global_oom_handling))]
     pub fn handle_alloc_error_with_allocator(self) -> (E, A) {
         match self.kind {
             BuildErrorKind::LayoutOverflow(metadata) => {
@@ -95,6 +97,7 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
     ///
     /// If `self.kind` is [`InitError(err)`](BuildErrorKind::InitError), returns `err`.
     #[cold]
+    #[cfg(not(no_global_oom_handling))]
     pub fn handle_alloc_error(self) -> E {
         match self.kind {
             BuildErrorKind::LayoutOverflow(metadata) => {
@@ -105,7 +108,7 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
         }
     }
 
-    #[cfg(not(any(no_global_oom_handling, no_rc)))]
+    #[cfg(not(no_rc))]
     pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildError<T, E2, A> {
         BuildError { kind: self.kind.map_err(f), alloc: self.alloc }
     }
