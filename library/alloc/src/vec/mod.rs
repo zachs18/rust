@@ -77,6 +77,9 @@
 use core::clone::TrivialClone;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
+use core::init::InitOnce;
+#[cfg(not(no_global_oom_handling))]
+use core::init::{self, InitMut, PinInitOnce};
 #[cfg(not(no_global_oom_handling))]
 use core::iter;
 #[cfg(not(no_global_oom_handling))]
@@ -1043,6 +1046,62 @@ const impl<T, A: [const] Allocator + [const] Destruct> Vec<T, A> {
         unsafe {
             let end = self.as_mut_ptr().add(len);
             ptr::write(end, value);
+            self.len = len + 1;
+            // SAFETY: We just wrote a value to the pointer that will live the lifetime of the reference.
+            &mut *end
+        }
+    }
+}
+
+#[cfg(not(no_global_oom_handling))]
+impl<T, A: Allocator> Vec<T, A> {
+    /// Initializes an element at the back of a collection.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Time complexity
+    ///
+    /// Takes amortized *O*(1) time. If the vector's length would exceed its
+    /// capacity after the push, *O*(*capacity*) time is taken to copy the
+    /// vector's elements to a larger allocation. This expensive operation is
+    /// offset by the *capacity* *O*(1) insertions it allows.
+    #[inline]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[rustc_confusables("push_back", "put", "append")]
+    pub fn push_emplace<I: InitOnce<T>>(&mut self, init: I) {
+        let _ = self.push_emplace_mut(init);
+    }
+
+    /// Initializes an element at the back of a collection, returning a reference to it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Time complexity
+    ///
+    /// Takes amortized *O*(1) time. If the vector's length would exceed its
+    /// capacity after the push, *O*(*capacity*) time is taken to copy the
+    /// vector's elements to a larger allocation. This expensive operation is
+    /// offset by the *capacity* *O*(1) insertions it allows.
+    #[inline]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[must_use = "if you don't need a reference to the value, use `Vec::push_emplace` instead"]
+    pub fn push_emplace_mut<I: InitOnce<T>>(&mut self, init: I) -> &mut T {
+        // Inform codegen that the length does not change across grow_one().
+        let len = self.len;
+        // This will panic or abort if we would allocate > isize::MAX bytes
+        // or if the length increment would overflow for zero-sized types.
+        if len == self.buf.capacity() {
+            self.buf.grow_one();
+        }
+
+        unsafe {
+            let end = self.as_mut_ptr().add(len);
+            let dst = end.as_uninit_mut().unwrap();
+            let Ok(_) = I::init_once(init, dst, (), false);
             self.len = len + 1;
             // SAFETY: We just wrote a value to the pointer that will live the lifetime of the reference.
             &mut *end
@@ -2797,6 +2856,33 @@ impl<T, A: Allocator> Vec<T, A> {
         }
     }
 
+    /// Initializes new element at the end of the `Vec` and returns a reference to it if there
+    /// is sufficient spare capacity, otherwise an error is returned with the initializer.
+    ///
+    /// Unlike [`push_emplace`] this method will not reallocate when there's insufficient capacity.
+    /// The caller should use [`reserve`] or [`try_reserve`] to ensure that there is enough capacity.
+    ///
+    /// [`push_emplace`]: Vec::push_emplace
+    /// [`reserve`]: Vec::reserve
+    /// [`try_reserve`]: Vec::try_reserve
+    #[inline]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    //#[unstable(feature = "vec_push_within_capacity", issue = "100486")]
+    pub fn push_emplace_within_capacity<I: InitOnce<T>>(&mut self, init: I) -> Result<&mut T, I> {
+        if self.len == self.buf.capacity() {
+            return Err(init);
+        }
+
+        unsafe {
+            let end = self.as_mut_ptr().add(self.len);
+            let Ok(_) = I::init_once(init, end.as_uninit_mut().unwrap(), (), false);
+            self.len += 1;
+
+            // SAFETY: We just wrote a value to the pointer that will live the lifetime of the reference.
+            Ok(&mut *end)
+        }
+    }
+
     /// Removes the last element from a vector and returns it, or [`None`] if it
     /// is empty.
     ///
@@ -3153,6 +3239,75 @@ impl<T, A: Allocator> Vec<T, A> {
             self.extend_trusted(iter::repeat_with(f).take(new_len - len));
         } else {
             self.truncate(new_len);
+        }
+    }
+
+    /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the `Vec` is extended by the
+    /// difference, with each additional slot filled using the provided
+    /// initializer.
+    ///
+    /// If `new_len` is less than `len`, the `Vec` is simply truncated.
+    ///
+    /// This method uses an initializer to create new values.
+    /// If you'd rather [`Clone`] a given value, use [`Vec::resize`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut vec = vec![1, 2, 3];
+    /// vec.resize_with(5, Default::default);
+    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    ///
+    /// let mut vec = vec![];
+    /// let mut p = 1;
+    /// vec.resize_with(4, || { p *= 2; p });
+    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// ```
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn resize_emplace<I>(&mut self, new_len: usize, init: I)
+    where
+        I: InitMut<T>,
+    {
+        let len = self.len();
+        if new_len > len {
+            self.extend_emplace_slice(init::repeat_slice(init, new_len - len));
+        } else {
+            self.truncate(new_len);
+        }
+    }
+
+    /// Appends elements using an initializer for `[T]` in a slice to the `Vec`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut vec = vec![1];
+    /// vec.extend_from_slice(&[2, 3, 4]);
+    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// ```
+    ///
+    /// [`extend`]: Vec::extend
+    #[cfg(not(no_global_oom_handling))]
+    #[stable(feature = "vec_extend_from_slice", since = "1.6.0")]
+    pub fn extend_emplace_slice<I: InitOnce<[T]>>(&mut self, init: I) {
+        let orig_len = self.len();
+        let added_len = <I as PinInitOnce<[T]>>::metadata(&init).len;
+        self.reserve(added_len);
+        let dst = self.spare_capacity_mut()[..added_len].transpose_mut();
+        unsafe {
+            let Ok(_) = I::init_once(init, dst, (), false);
+            self.set_len(orig_len + added_len);
         }
     }
 
