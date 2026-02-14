@@ -27,7 +27,9 @@ use core::ops::{CoerceUnsized, Deref, DerefMut, DerefPure, DispatchFromDyn, Lega
 use core::ops::{Residual, Try};
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::{Pin, PinCoerceUnsized};
-use core::ptr::{self, Metadata, NonNull, build_metadata};
+#[cfg(not(no_global_oom_handling))]
+use core::ptr::build_metadata;
+use core::ptr::{self, Metadata, NonNull};
 #[cfg(not(no_global_oom_handling))]
 use core::slice::from_raw_parts_mut;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
@@ -1251,6 +1253,7 @@ impl<T, A: Allocator> Arc<T, A> {
 
 impl<T: ?Sized, A: Allocator> Arc<T, A> {
     /// Allocates and initializes a `Arc<T, A>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Arc<T, A> {
         UniqueArc::into_arc(UniqueArc::build_in(init, alloc))
@@ -1259,6 +1262,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
 
 impl<T: ?Sized> Arc<T> {
     /// Allocates and initializes a `Arc<T>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> Arc<T> {
         UniqueArc::into_arc(UniqueArc::build(init))
@@ -4949,6 +4953,7 @@ impl<T, A: Allocator> UniqueArc<T, A> {
 
 impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
     /// Allocates and initializes a `UniqueArc<T, A>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> UniqueArc<T, A> {
         let metadata = PinInitOnce::metadata(&init);
@@ -4996,6 +5001,7 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
     /// Allocates a `UniqueArc<MaybeUninit<T>, A>` for a particular pointer metadata.
     ///
     /// If `zeroed` is `true`, the `MaybeUninit<T>` will be zeroed.
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn new_uninit_with_metadata_in(
         value_metadata: Metadata<T>,
@@ -5038,6 +5044,7 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
 
 impl<T: ?Sized> UniqueArc<T> {
     /// Allocates and initializes a `UniqueArc<T>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> UniqueArc<T> {
         Self::build_in(init, Global)
@@ -5081,8 +5088,27 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
         unsafe { self.ptr.as_ref() }
     }
 
-    #[cfg(not(no_global_oom_handling))]
-    fn as_ptr(this: &Self) -> *const T {
+    /// Provides a raw pointer to the data.
+    ///
+    /// The counts are not affected in any way and the `UniqueArc` is not consumed. The pointer is
+    /// valid for as long as there are strong counts in the `UniqueArc`, including if it is
+    /// converted to an `Arc`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::{Arc, UniqueArc};
+    ///
+    /// let x = UniqueArc::new(0);
+    /// let x_ptr = UniqueArc::as_ptr(&x);
+    /// let y = UniqueArc::into_arc(x);
+    /// assert_eq!(x_ptr, Arc::as_ptr(&y));
+    /// assert_eq!(unsafe { *x_ptr }, 0);
+    /// ```
+    #[unstable(feature = "unique_rc_arc", issue = "112566")]
+    #[rustc_never_returns_null_ptr]
+    pub fn as_ptr(this: &Self) -> *const T {
         let ptr: *mut ArcInner<T> = NonNull::as_ptr(this.ptr);
 
         // SAFETY: This cannot go through Deref::deref or UniqueArc::inner because
@@ -5091,8 +5117,29 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
         unsafe { &raw mut (*ptr).data }
     }
 
-    #[cfg(not(no_global_oom_handling))]
-    fn as_mut_ptr(this: &mut Self) -> *mut T {
+    /// Provides a mutable raw pointer to the data.
+    ///
+    /// The counts are not affected in any way and the `UniqueArc` is not consumed. The pointer is
+    /// valid for as long as there are strong counts in the `UniqueArc`, including if it is
+    /// converted to an `Arc`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(unique_rc_arc)]
+    /// use std::sync::{Arc, UniqueArc};
+    ///
+    /// let mut x = UniqueArc::new(0);
+    /// let x_ptr = UniqueArc::as_mut_ptr(&mut x);
+    /// unsafe { *x_ptr = 42; }
+    /// let y = UniqueArc::into_arc(x);
+    /// assert_eq!(x_ptr.cast_const(), Arc::as_ptr(&y));
+    /// assert_eq!(unsafe { *x_ptr }, 42);
+    /// assert_eq!(*y, 42);
+    /// ```
+    #[unstable(feature = "unique_rc_arc", issue = "112566")]
+    #[rustc_never_returns_null_ptr]
+    pub fn as_mut_ptr(this: &mut Self) -> *mut T {
         let ptr: *mut ArcInner<T> = NonNull::as_ptr(this.ptr);
 
         // SAFETY: This cannot go through Deref::deref or UniqueArc::inner because
@@ -5130,7 +5177,6 @@ impl<T: ?Sized, A: Allocator + Clone> UniqueArc<T, A> {
     }
 }
 
-#[cfg(not(no_global_oom_handling))]
 impl<T: ?Sized, A: Allocator> UniqueArc<mem::MaybeUninit<T>, A> {
     unsafe fn assume_init(self) -> UniqueArc<T, A> {
         let (ptr, alloc) = UniqueArc::into_inner_with_allocator(self);

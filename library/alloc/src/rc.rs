@@ -262,7 +262,9 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 #[cfg(not(no_global_oom_handling))]
 use core::pin::Pin;
 use core::pin::PinCoerceUnsized;
-use core::ptr::{self, Metadata, NonNull, build_metadata, drop_in_place};
+#[cfg(not(no_global_oom_handling))]
+use core::ptr::build_metadata;
+use core::ptr::{self, Metadata, NonNull, drop_in_place};
 #[cfg(not(no_global_oom_handling))]
 use core::slice::from_raw_parts_mut;
 use core::{borrow, fmt, hint};
@@ -376,6 +378,7 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
         (this.ptr, unsafe { ptr::read(&this.alloc) })
     }
 
+    #[cfg(not(no_global_oom_handling))]
     #[inline]
     fn from_boxed_inner(mut bx: Box<RcInner<T>, A>) -> Self {
         // There is an implicit weak pointer owned by all the strong
@@ -1114,6 +1117,7 @@ impl<T, A: Allocator> Rc<T, A> {
 
 impl<T: ?Sized, A: Allocator> Rc<T, A> {
     /// Allocates and initializes a `Rc<T, A>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Rc<T, A> {
         UniqueRc::into_rc(UniqueRc::build_in(init, alloc))
@@ -1122,6 +1126,7 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
 
 impl<T: ?Sized> Rc<T> {
     /// Allocates and initializes a `Rc<T>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> Rc<T> {
         UniqueRc::into_rc(UniqueRc::build(init))
@@ -4543,6 +4548,7 @@ impl<T, A: Allocator> UniqueRc<T, A> {
 
 impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     /// Allocates and initializes a `UniqueRc<T, A>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> UniqueRc<T, A> {
         let metadata = PinInitOnce::metadata(&init);
@@ -4587,6 +4593,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     /// Allocates a `UniqueRc<MaybeUninit<T>, A>` for a particular pointer metadata.
     ///
     /// If `zeroed` is `true`, the `MaybeUninit<T>` will be zeroed.
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn new_uninit_with_metadata_in(
         value_metadata: Metadata<T>,
@@ -4631,6 +4638,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
 
 impl<T: ?Sized> UniqueRc<T> {
     /// Allocates and initializes a `UniqueRc<T>`
+    #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> UniqueRc<T> {
         Self::build_in(init, Global)
@@ -4920,7 +4928,6 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     }
 }
 
-#[cfg(not(no_global_oom_handling))]
 impl<T: ?Sized, A: Allocator> UniqueRc<mem::MaybeUninit<T>, A> {
     /// Converts to `UniqueRc<T>`.
     ///
