@@ -2644,7 +2644,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
                 self.fcx
                     .associated_value(def_id, name)
                     .filter(|x| self.is_relevant_kind_for_mode(x.kind))
-                    .map_or_else(SmallVec::new, |x| SmallVec::from_buf([x]))
+                    .map_or_default(|x| SmallVec::from_buf([x]))
             }
         } else {
             self.tcx

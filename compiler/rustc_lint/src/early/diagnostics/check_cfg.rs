@@ -416,6 +416,6 @@ pub(super) fn unexpected_cfg_value(
         code_sugg,
         invocation_help,
         has_value: value.is_some(),
-        value: value.map_or_else(String::new, |(v, _span)| v.to_string()),
+        value: value.map_or_default(|(v, _span)| v.to_string()),
     }
 }

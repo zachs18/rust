@@ -515,7 +515,7 @@ fn report_conflicting_impls<'tcx>(
                     impl_span,
                     format!(
                         "conflicting implementation{}",
-                        overlap.self_ty.map_or_else(String::new, |ty| format!(" for `{ty}`"))
+                        overlap.self_ty.map_or_default(|ty| format!(" for `{ty}`"))
                     ),
                 );
             }
@@ -551,7 +551,7 @@ fn report_conflicting_impls<'tcx>(
         format!(
             "conflicting implementations of trait `{}`{}",
             overlap.trait_ref.print_trait_sugared(),
-            overlap.self_ty.map_or_else(String::new, |ty| format!(" for type `{ty}`")),
+            overlap.self_ty.map_or_default(|ty| format!(" for type `{ty}`")),
         )
     };
 

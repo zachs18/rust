@@ -77,7 +77,7 @@ fn eval_body_using_ecx<'tcx, R: InterpretationResult<'tcx>>(
     trace!(
         "eval_body_using_ecx: pushing stack frame for global: {}{}",
         with_no_trimmed_paths!(ecx.tcx.def_path_str(cid.instance.def_id())),
-        cid.promoted.map_or_else(String::new, |p| format!("::{p:?}"))
+        cid.promoted.map_or_default(|p| format!("::{p:?}"))
     );
 
     // This can't use `init_stack_frame` since `body` is not a function,

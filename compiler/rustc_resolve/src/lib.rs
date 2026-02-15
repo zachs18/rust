@@ -18,6 +18,7 @@
 #![feature(control_flow_into_value)]
 #![feature(default_field_values)]
 #![feature(iter_intersperse)]
+#![feature(result_option_map_or_default)]
 #![feature(rustc_attrs)]
 #![feature(trim_prefix_suffix)]
 #![recursion_limit = "256"]

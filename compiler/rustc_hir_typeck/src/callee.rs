@@ -672,8 +672,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         self.tcx
                             .associated_item(pick.callee.def_id)
                             .trait_container(self.tcx)
-                            .map_or_else(
-                                || String::new(),
+                            .map_or_default(
                                 |trait_def_id| self.tcx.def_path_str(trait_def_id) + "::"
                             ),
                         segment.ident

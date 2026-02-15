@@ -2167,9 +2167,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
 
             ty::Foreign(..) => unreachable!("tried to assemble `Sized` for unsized type"),
 
-            ty::Tuple(tys) => {
-                ty::Binder::dummy(tys.last().map_or_else(Vec::new, |&last| vec![last]))
-            }
+            ty::Tuple(tys) => ty::Binder::dummy(tys.last().map_or_default(|&last| vec![last])),
 
             ty::Pat(ty, _) => ty::Binder::dummy(vec![*ty]),
 

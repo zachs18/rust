@@ -25,6 +25,7 @@
 #![cfg_attr(bootstrap, feature(if_let_guard))]
 #![feature(box_patterns)]
 #![feature(iter_order_by)]
+#![feature(result_option_map_or_default)]
 #![feature(rustc_attrs)]
 #![feature(try_blocks)]
 // tidy-alphabetical-end

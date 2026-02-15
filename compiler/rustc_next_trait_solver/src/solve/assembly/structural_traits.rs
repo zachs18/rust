@@ -157,7 +157,7 @@ where
 
         // impl {Meta,}Sized for ()
         // impl {Meta,}Sized for (T1, T2, .., Tn) where Tn: {Meta,}Sized if n >= 1
-        ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.last().map_or_else(Vec::new, |ty| vec![ty]))),
+        ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.last().map_or_default(|ty| vec![ty]))),
 
         // impl {Meta,}Sized for Adt<Args...>
         //   where {meta,pointee,}sized_constraint(Adt)<Args...>: {Meta,}Sized

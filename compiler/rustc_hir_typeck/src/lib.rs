@@ -5,6 +5,7 @@
 #![feature(iter_intersperse)]
 #![feature(iter_order_by)]
 #![feature(never_type)]
+#![feature(result_option_map_or_default)]
 #![feature(trim_prefix_suffix)]
 // tidy-alphabetical-end
 

@@ -24,6 +24,7 @@
 #![feature(map_try_insert)]
 #![feature(negative_impls)]
 #![feature(read_buf)]
+#![feature(result_option_map_or_default)]
 #![feature(rustc_attrs)]
 // tidy-alphabetical-end
 
@@ -478,11 +479,9 @@ impl RealFileName {
             FileNameDisplayPreference::Local => {
                 self.local.as_ref().unwrap_or(&self.maybe_remapped).name.to_string_lossy()
             }
-            FileNameDisplayPreference::Short => self
-                .maybe_remapped
-                .name
-                .file_name()
-                .map_or_else(|| "".into(), |f| f.to_string_lossy()),
+            FileNameDisplayPreference::Short => {
+                self.maybe_remapped.name.file_name().map_or_default(|f| f.to_string_lossy())
+            }
             FileNameDisplayPreference::Scope(scope) => self.path(scope).to_string_lossy(),
         }
     }

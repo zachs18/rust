@@ -96,10 +96,8 @@ impl EarlyLintPass for WhileTrue {
             && !cond.span.from_expansion()
         {
             let condition_span = e.span.with_hi(cond.span.hi());
-            let replace = format!(
-                "{}loop",
-                label.map_or_else(String::new, |label| format!("{}: ", label.ident,))
-            );
+            let replace =
+                format!("{}loop", label.map_or_default(|label| format!("{}: ", label.ident,)));
             cx.emit_span_lint(
                 WHILE_TRUE,
                 condition_span,

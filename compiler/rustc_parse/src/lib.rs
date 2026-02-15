@@ -8,6 +8,7 @@
 #![feature(debug_closure_helpers)]
 #![feature(default_field_values)]
 #![feature(iter_intersperse)]
+#![feature(result_option_map_or_default)]
 #![recursion_limit = "256"]
 // tidy-alphabetical-end
 

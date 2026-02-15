@@ -5,6 +5,7 @@
 #![feature(box_patterns)]
 #![feature(decl_macro)]
 #![feature(never_type)]
+#![feature(result_option_map_or_default)]
 #![feature(slice_ptr_get)]
 #![feature(trait_alias)]
 #![feature(try_blocks)]

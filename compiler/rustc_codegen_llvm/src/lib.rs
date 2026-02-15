@@ -13,6 +13,7 @@
 #![feature(iter_intersperse)]
 #![feature(macro_derive)]
 #![feature(once_cell_try)]
+#![feature(result_option_map_or_default)]
 #![feature(trim_prefix_suffix)]
 #![feature(try_blocks)]
 // tidy-alphabetical-end

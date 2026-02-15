@@ -252,9 +252,7 @@ impl<'hir> Visitor<'hir> for CheckLoopVisitor<'hir> {
                         Some(kind) => {
                             let suggestion = format!(
                                 "break{}",
-                                break_destination
-                                    .label
-                                    .map_or_else(String::new, |l| format!(" {}", l.ident))
+                                break_destination.label.map_or_default(|l| format!(" {}", l.ident))
                             );
                             self.tcx.dcx().emit_err(BreakNonLoop {
                                 span: e.span,

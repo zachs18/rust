@@ -13,6 +13,7 @@
 #![feature(macro_metavar_expr_concat)]
 #![feature(negative_impls)]
 #![feature(never_type)]
+#![feature(result_option_map_or_default)]
 #![feature(rustc_attrs)]
 // tidy-alphabetical-end
 

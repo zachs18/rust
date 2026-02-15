@@ -557,7 +557,7 @@ impl DiagnosticSpanLine {
         h_end: usize,
     ) -> DiagnosticSpanLine {
         DiagnosticSpanLine {
-            text: sf.get_line(index).map_or_else(String::new, |l| l.into_owned()),
+            text: sf.get_line(index).map_or_default(|l| l.into_owned()),
             highlight_start: h_start,
             highlight_end: h_end,
         }

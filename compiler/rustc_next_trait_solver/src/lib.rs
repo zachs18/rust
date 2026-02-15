@@ -8,6 +8,7 @@
 #![allow(rustc::direct_use_of_rustc_type_ir)]
 #![allow(rustc::usage_of_type_ir_inherent)]
 #![allow(rustc::usage_of_type_ir_traits)]
+#![feature(result_option_map_or_default)]
 // tidy-alphabetical-end
 
 pub mod canonical;
