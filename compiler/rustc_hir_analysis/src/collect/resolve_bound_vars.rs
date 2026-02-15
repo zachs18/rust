@@ -1721,7 +1721,7 @@ impl<'a, 'tcx> BoundVarContext<'a, 'tcx> {
         // Therefore, we would compute `object_lifetime_defaults` to a
         // vector like `['x, 'static]`. Note that the vector only
         // includes type parameters.
-        let object_lifetime_defaults = type_def_id.map_or_else(Vec::new, |def_id| {
+        let object_lifetime_defaults: Vec<_> = type_def_id.map_or_default(|def_id| {
             let in_body = {
                 let mut scope = self.scope;
                 loop {
