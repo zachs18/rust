@@ -18,7 +18,7 @@ pub(crate) fn coroutine_hidden_types<'tcx>(
     let bound_tys = tcx.mk_type_list_from_iter(
         coroutine_layout
             .as_ref()
-            .map_or_else(|| [].iter(), |l| l.field_tys.iter())
+            .map_or_default(|l| l.field_tys.iter())
             .filter(|decl| !decl.ignore_for_traits)
             .map(|decl| {
                 let ty = fold_regions(tcx, decl.ty, |re, debruijn| {

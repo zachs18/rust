@@ -1,6 +1,7 @@
 //! Queries that are independent from the main solver code.
 
 // tidy-alphabetical-start
+#![feature(result_option_map_or_default)]
 #![recursion_limit = "256"]
 // tidy-alphabetical-end
 
