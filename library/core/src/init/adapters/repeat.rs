@@ -28,6 +28,8 @@ impl ArgKind<usize> for () {
     }
 }
 
+// FIXME(in_place_init): thread IsZero through this somehow, to get the
+// same optimization as Vec's SpecFromElem
 macro_rules! repeat_impls {
     ($(#[$($arg_docs:tt)*])* $Name:ident: [$($Arg:ident $(: $arg_bound:ident)?)?] IArg = $IArg:ty, OArg = $OArg:ty) => {
         /// Initialize a slice by repeating an element initializer,
