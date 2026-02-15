@@ -24,6 +24,9 @@ pub use adapters::{
 pub use dyn_init::DynInit;
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use util::{ConstLength, Length, RuntimeLength};
+#[doc(hidden)]
+#[unstable(feature = "std_internals", issue = "none")]
+pub use util::{IsZero, NoneIsZero};
 
 use crate::clone::CloneToUninit;
 use crate::marker::MetaSized;
