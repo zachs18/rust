@@ -124,12 +124,6 @@ pub use self::into_iter::IntoIter;
 mod into_iter;
 
 #[cfg(not(no_global_oom_handling))]
-use self::is_zero::IsZero;
-
-#[cfg(not(no_global_oom_handling))]
-mod is_zero;
-
-#[cfg(not(no_global_oom_handling))]
 mod in_place_collect;
 
 mod partial_eq;

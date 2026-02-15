@@ -1,13 +1,30 @@
-use core::mem::SizedTypeProperties;
-use core::num::{NonZero, Saturating, Wrapping};
+use crate::marker::{MetaSized, PointeeSized};
+use crate::mem::size_of_val;
+use crate::num::{NonZero, Saturating, Wrapping};
 
-use crate::boxed::Box;
-
+/// Whether this value's representation is all zeros,
+/// or can be represented with all zeroes.
+#[doc(hidden)]
+#[unstable(feature = "std_internals", issue = "none")]
 #[rustc_specialization_trait]
-pub(super) unsafe trait IsZero {
+pub unsafe trait IsZero {
     /// Whether this value's representation is all zeros,
     /// or can be represented with all zeroes.
     fn is_zero(&self) -> bool;
+}
+
+/// Whether `Option::<Self>::None`'s representation is all zeros,
+/// or can be represented with all zeroes.
+#[doc(hidden)]
+#[unstable(feature = "std_internals", issue = "none")]
+#[rustc_specialization_trait]
+pub unsafe trait NoneIsZero {}
+
+unsafe impl<T: NoneIsZero> IsZero for Option<T> {
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self.is_none()
+    }
 }
 
 macro_rules! impl_is_zero {
@@ -46,7 +63,7 @@ impl_is_zero!(f64, |x: f64| x.to_bits() == 0);
 // `IsZero` cannot be soundly implemented for pointers because of provenance
 // (see #135338).
 
-unsafe impl<T, const N: usize> IsZero for [T; N] {
+unsafe impl<T: MetaSized, const N: usize> IsZero for [T; N] {
     #[inline]
     default fn is_zero(&self) -> bool {
         // If the array is of length zero,
@@ -57,11 +74,17 @@ unsafe impl<T, const N: usize> IsZero for [T; N] {
     }
 }
 
-unsafe impl<T: IsZero, const N: usize> IsZero for [T; N] {
+unsafe impl<T: MetaSized + IsZero, const N: usize> IsZero for [T; N] {
     #[inline]
     fn is_zero(&self) -> bool {
-        if T::IS_ZST {
-            // If T is a ZST, then there is at most one possible value of `T`,
+        if N == 0 {
+            // If the array is of length zero,
+            // then it doesn't actually contain any `T`s,
+            // so `T::clone` doesn't need to be called,
+            // and we can "zero-initialize" all zero bytes of the array.
+            true
+        } else if size_of_val(self) == 0 {
+            // If T is zero-sized, then there is at most one possible value of `T`,
             // so we only need to check one element for zeroness.
             // We can't unconditionally return `true` here, since, e.g.
             // `T = [NonTrivialCloneZst; 5]` is a ZST that implements `IsZero`
@@ -113,20 +136,7 @@ impl_is_zero_tuples!(A, B, C, D, E, F, G, H);
 // zero-initializing instead is ok.
 // `Option<&mut T>` never implements `Clone`, so there's no need for an impl of
 // `SpecFromElem`.
-
-unsafe impl<T: ?Sized> IsZero for Option<&T> {
-    #[inline]
-    fn is_zero(&self) -> bool {
-        self.is_none()
-    }
-}
-
-unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
-    #[inline]
-    fn is_zero(&self) -> bool {
-        self.is_none()
-    }
-}
+unsafe impl<T: PointeeSized> NoneIsZero for &T {}
 
 // `Option<NonZero<u32>>` and similar have a representation guarantee that
 // they're the same size as the corresponding `u32` type, as well as a guarantee
@@ -136,12 +146,7 @@ unsafe impl<T: ?Sized> IsZero for Option<Box<T>> {
 // the only niche available to represent `None` is the one that's all zeros.
 macro_rules! impl_is_zero_option_of_nonzero_int {
     ($($t:ty),+ $(,)?) => {$(
-        unsafe impl IsZero for Option<NonZero<$t>> {
-            #[inline]
-            fn is_zero(&self) -> bool {
-                self.is_none()
-            }
-        }
+        unsafe impl NoneIsZero for NonZero<$t> {}
     )+};
 }
 
@@ -149,16 +154,15 @@ impl_is_zero_option_of_nonzero_int!(u8, u16, u32, u64, u128, usize, i8, i16, i32
 
 macro_rules! impl_is_zero_option_of_int {
     ($($t:ty),+ $(,)?) => {$(
-        unsafe impl IsZero for Option<$t> {
-            #[inline]
-            fn is_zero(&self) -> bool {
-                const {
-                    let none: Self = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
-                    assert!(none.is_none());
-                }
-                self.is_none()
-            }
-        }
+        unsafe impl NoneIsZero for $t {}
+        const _: () = {
+            // SAFETY: This is *not* a stable layout guarantee, but
+            // inside `core` we're allowed to rely on the current rustc
+            // behavior that options of integers will have `None` represented
+            // as a tag of 0 and some padding.
+            let none: Option<$t> = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
+            assert!(none.is_none());
+        };
     )+};
 }
 

@@ -1,6 +1,7 @@
+use core::init::IsZero;
 use core::ptr;
 
-use super::{IsZero, Vec};
+use super::Vec;
 use crate::alloc::Allocator;
 use crate::raw_vec::RawVec;
 

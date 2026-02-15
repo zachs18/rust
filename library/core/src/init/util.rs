@@ -1,5 +1,9 @@
+pub use is_zero::{IsZero, NoneIsZero};
+
 use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
+
+mod is_zero;
 
 /// Used by [`init`] APIs to represent the length of an array or slice.
 ///
