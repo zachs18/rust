@@ -103,13 +103,25 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
 
             let kind = match &e.kind {
                 ExprKind::Array(exprs) => hir::ExprKind::Array(self.lower_exprs(exprs)),
+                ExprKind::InitArray(exprs) => hir::ExprKind::InitArray(self.lower_exprs(exprs)),
                 ExprKind::ConstBlock(c) => hir::ExprKind::ConstBlock(self.lower_const_block(c)),
                 ExprKind::Repeat(expr, count) => {
                     let expr = self.lower_expr(expr);
                     let count = self.lower_array_length_to_const_arg(count);
                     hir::ExprKind::Repeat(expr, count)
                 }
+                ExprKind::InitArrayRepeat(expr, count) => {
+                    let expr = self.lower_expr(expr);
+                    let count = self.lower_array_length_to_const_arg(count);
+                    hir::ExprKind::InitArrayRepeat(expr, count)
+                }
+                ExprKind::InitSliceRepeat(expr, count) => {
+                    let expr = self.lower_expr(expr);
+                    let count = self.lower_expr(count);
+                    hir::ExprKind::InitSliceRepeat(expr, count)
+                }
                 ExprKind::Tup(elts) => hir::ExprKind::Tup(self.lower_exprs(elts)),
+                ExprKind::InitTuple(elts) => hir::ExprKind::InitTuple(self.lower_exprs(elts)),
                 ExprKind::Call(f, args) => {
                     if let Some(legacy_args) = self.resolver.legacy_const_generic_args(f, self.tcx)
                     {
@@ -364,6 +376,18 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         rest,
                     )
                 }
+                ExprKind::InitStruct(se) => hir::ExprKind::InitStruct(
+                    self.arena.alloc(self.lower_qpath(
+                        e.id,
+                        &se.qself,
+                        &se.path,
+                        ParamMode::Optional,
+                        AllowReturnTypeNotation::No,
+                        ImplTraitContext::Disallowed(ImplTraitPosition::Path),
+                        None,
+                    )),
+                    self.arena.alloc_from_iter(se.fields.iter().map(|x| self.lower_expr_field(x))),
+                ),
                 ExprKind::PtrMetadata(pme) => {
                     let rest = match &pme.rest {
                         StructRest::Base(e) => hir::StructTailExpr::Base(self.lower_expr(e)),

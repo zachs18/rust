@@ -308,6 +308,11 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for ExportableItemsChecker<'tcx, 'a> {
             | ty::FnPtr(_, _)
             | ty::CoroutineClosure(_, _)
             | ty::CoroutineWitness(_, _)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::UnsafeBinder(_)
             | ty::Alias(ty::AliasTy { kind: ty::AliasTyKind::Opaque { .. }, .. }) => {

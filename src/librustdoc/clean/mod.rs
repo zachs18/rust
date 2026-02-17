@@ -2321,6 +2321,13 @@ pub(crate) fn clean_middle_ty<'tcx>(
         ty::CoroutineWitness(..) => panic!("CoroutineWitness"),
         ty::Infer(..) => panic!("Infer"),
 
+        // These have no syntax, so should never occur in rustdoc(?)
+        ty::InitArray(..) => panic!("InitArray"),
+        ty::InitArrayRepeat(..) => panic!("InitArrayRepeat"),
+        ty::InitSliceRepeat(..) => panic!("InitSliceRepeat"),
+        ty::InitStruct(..) => panic!("InitStruct"),
+        ty::InitTuple(..) => panic!("InitTuple"),
+
         ty::Error(_) => FatalError.raise(),
     }
 }

@@ -142,6 +142,11 @@ pub fn ty_dtor_span<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Span> {
         | ty::Infer(_)
         | ty::Slice(_)
         | ty::Array(_, _)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..)
         | ty::UnsafeBinder(_) => None,
 
         ty::Adt(adt_def, _) => {

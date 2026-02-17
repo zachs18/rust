@@ -2487,6 +2487,11 @@ impl Expr<'_> {
             | ExprKind::MethodCall(..)
             | ExprKind::OffsetOf(..)
             | ExprKind::PtrMetadata(..)
+            | ExprKind::InitArray(..)
+            | ExprKind::InitArrayRepeat(..)
+            | ExprKind::InitSliceRepeat(..)
+            | ExprKind::InitStruct(..)
+            | ExprKind::InitTuple(..)
             | ExprKind::Path(..)
             | ExprKind::Repeat(..)
             | ExprKind::Struct(..)
@@ -2544,6 +2549,11 @@ impl Expr<'_> {
             | ExprKind::Use(..)
             | ExprKind::Struct(..)
             | ExprKind::PtrMetadata(..)
+            | ExprKind::InitArray(..)
+            | ExprKind::InitArrayRepeat(..)
+            | ExprKind::InitSliceRepeat(..)
+            | ExprKind::InitStruct(..)
+            | ExprKind::InitTuple(..)
             | ExprKind::Tup(..)
             | ExprKind::If(..)
             | ExprKind::Match(..)
@@ -2653,8 +2663,17 @@ impl Expr<'_> {
                     || init_side_effects
             }
 
+            ExprKind::InitSliceRepeat(elem, len) => {
+                elem.can_have_side_effects() || len.can_have_side_effects()
+            }
+            ExprKind::InitStruct(_, fields) => {
+                fields.iter().map(|field| field.expr).any(|e| e.can_have_side_effects())
+            }
+
             ExprKind::Array(args)
             | ExprKind::Tup(args)
+            | ExprKind::InitArray(args)
+            | ExprKind::InitTuple(args)
             | ExprKind::Call(
                 Expr {
                     kind:
@@ -2666,7 +2685,9 @@ impl Expr<'_> {
                 },
                 args,
             ) => args.iter().any(|arg| arg.can_have_side_effects()),
-            ExprKind::Repeat(arg, _) => arg.can_have_side_effects(),
+            ExprKind::Repeat(arg, _) | ExprKind::InitArrayRepeat(arg, _) => {
+                arg.can_have_side_effects()
+            }
             ExprKind::If(..)
             | ExprKind::Match(..)
             | ExprKind::MethodCall(..)
@@ -2922,6 +2943,32 @@ pub enum ExprKind<'hir> {
     /// E.g., `[1; 5]`. The first expression is the element
     /// to be repeated; the second is the number of times to repeat it.
     Repeat(&'hir Expr<'hir>, &'hir ConstArg<'hir>),
+
+    /// An array-like initializer expression.
+    ///
+    /// E.g. `do init array [1, 2, 3, 4]`
+    InitArray(&'hir [Expr<'hir>]),
+
+    /// An array initializer constructed from one repeatable element initializer and a constant length
+    ///
+    /// E.g. `do init array [1; 4]`
+    InitArrayRepeat(&'hir Expr<'hir>, &'hir ConstArg<'hir>),
+
+    /// An slice initializer constructed from one repeatable element initializer and a dynamic length.
+    ///
+    /// E.g. `do init slice [1; 4]`
+    InitSliceRepeat(&'hir Expr<'hir>, &'hir Expr<'hir>),
+
+    /// An initializer expression for a struct or struct-like variant.
+    ///
+    /// E.g. `do init struct Foo { x: 1, y: 2 }`
+    /// FIXME(in_place_init): maybe allow `..` and fill in from field default exprs at initialization time?
+    InitStruct(&'hir QPath<'hir>, &'hir [ExprField<'hir>]),
+
+    /// A tuple-like initializer expression.
+    ///
+    /// E.g. `do init tuple (1, 2, 3, 4)`
+    InitTuple(&'hir [Expr<'hir>]),
 
     /// A suspension point for coroutines (i.e., `yield <expr>`).
     Yield(&'hir Expr<'hir>, YieldSource),

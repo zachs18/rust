@@ -362,6 +362,11 @@ impl<'tcx> TyCtxt<'tcx> {
                     | ExprKind::InlineAsm(_)
                     | ExprKind::Struct(_, _, _)
                     | ExprKind::PtrMetadata(..)
+                    | ExprKind::InitArray(..)
+                    | ExprKind::InitArrayRepeat(..)
+                    | ExprKind::InitSliceRepeat(..)
+                    | ExprKind::InitStruct(..)
+                    | ExprKind::InitTuple(..)
                     | ExprKind::OffsetOf(_, _, Some(_))
                     | ExprKind::Repeat(_, _)
                     | ExprKind::Yield(_, _) => true,

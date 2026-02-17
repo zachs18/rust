@@ -376,6 +376,18 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
                 return Ok(self);
             }
 
+            ty::InitArray(elem_tys) => ty::InitArray(elem_tys.try_fold_with(folder)?),
+            ty::InitArrayRepeat(elem_ty, sz) => {
+                ty::InitArrayRepeat(elem_ty.try_fold_with(folder)?, sz.try_fold_with(folder)?)
+            }
+            ty::InitSliceRepeat(elem_ty) => ty::InitSliceRepeat(elem_ty.try_fold_with(folder)?),
+            ty::InitStruct(adt_ty, vidx, field_tys) => ty::InitStruct(
+                adt_ty.try_fold_with(folder)?,
+                vidx,
+                field_tys.try_fold_with(folder)?,
+            ),
+            ty::InitTuple(elem_tys) => ty::InitTuple(elem_tys.try_fold_with(folder)?),
+
             ty::Bool
             | ty::Char
             | ty::Str
@@ -421,6 +433,16 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
                 // FIXME(untyped_ptr): if this changes to use const generics, fold over them here
                 ty::UntypedPtr { is_nonnull }
             }
+
+            ty::InitArray(elem_tys) => ty::InitArray(elem_tys.fold_with(folder)),
+            ty::InitArrayRepeat(typ, sz) => {
+                ty::InitArrayRepeat(typ.fold_with(folder), sz.fold_with(folder))
+            }
+            ty::InitSliceRepeat(elem_ty) => ty::InitSliceRepeat(elem_ty.fold_with(folder)),
+            ty::InitStruct(adt_ty, vidx, field_tys) => {
+                ty::InitStruct(adt_ty.fold_with(folder), vidx, field_tys.fold_with(folder))
+            }
+            ty::InitTuple(elem_tys) => ty::InitTuple(elem_tys.fold_with(folder)),
 
             ty::Bool
             | ty::Char
@@ -474,6 +496,18 @@ impl<'tcx> TypeSuperVisitable<TyCtxt<'tcx>> for Ty<'tcx> {
                 try_visit!(ty.visit_with(visitor));
                 pat.visit_with(visitor)
             }
+
+            ty::InitArray(elem_tys) => elem_tys.visit_with(visitor),
+            ty::InitArrayRepeat(elem_ty, sz) => {
+                try_visit!(elem_ty.visit_with(visitor));
+                sz.visit_with(visitor)
+            }
+            ty::InitSliceRepeat(elem_ty) => elem_ty.visit_with(visitor),
+            ty::InitStruct(adt_ty, _vidx, field_tys) => {
+                try_visit!(adt_ty.visit_with(visitor));
+                field_tys.visit_with(visitor)
+            }
+            ty::InitTuple(elem_tys) => elem_tys.visit_with(visitor),
 
             ty::Error(guar) => guar.visit_with(visitor),
 

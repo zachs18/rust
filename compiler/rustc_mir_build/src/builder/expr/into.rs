@@ -673,6 +673,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 block.unit()
             }
 
+            ExprKind::InitStruct(..) => todo!(),
+
             ExprKind::PtrMetadata(box PtrMetadataExpr { ref user_ty, ref fields, ref base }) => {
                 let scope = this.local_temp_lifetime();
 
@@ -1002,6 +1004,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::Repeat { .. }
             | ExprKind::Array { .. }
             | ExprKind::Tuple { .. }
+            | ExprKind::InitArray { .. }
+            | ExprKind::InitArrayRepeat { .. }
+            | ExprKind::InitSliceRepeat { .. }
+            | ExprKind::InitTuple { .. }
             | ExprKind::Closure { .. }
             | ExprKind::ConstBlock { .. }
             | ExprKind::Literal { .. }

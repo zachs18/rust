@@ -1037,6 +1037,7 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                         | ty::CoroutineClosure(..)
                         | ty::Coroutine(..)
                         | ty::CoroutineWitness(..)
+                        |ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..)
                         | ty::Never
                         | ty::Tuple(..)
                         // Integers and floats always have `u8` as their discriminant.

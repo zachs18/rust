@@ -49,6 +49,8 @@ pub fn trivial_dropck_outlives<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
 
         // `T is PAT` and `[T]` have same properties as T.
         ty::Pat(ty, _) | ty::Slice(ty) => trivial_dropck_outlives(tcx, *ty),
+        // `do init array [elem; len]` and `do init slice [elem; len]` have the same properties as `typeof(elem)`.
+        ty::InitArrayRepeat(ty, _) | ty::InitSliceRepeat(ty) => trivial_dropck_outlives(tcx, *ty),
         ty::Array(ty, size) => {
             // Empty array never has a dtor. See issue #110288.
             match size.try_to_target_usize(tcx) {
@@ -60,6 +62,11 @@ pub fn trivial_dropck_outlives<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
         // (T1..Tn) and closures have same properties as T1..Tn --
         // check if *all* of them are trivial.
         ty::Tuple(tys) => tys.iter().all(|t| trivial_dropck_outlives(tcx, t)),
+        ty::InitTuple(tys) | ty::InitArray(tys) => {
+            tys.iter().all(|t| trivial_dropck_outlives(tcx, t))
+        }
+
+        ty::InitStruct(_adt, _vidx, _fields) => todo!("does adt need to be live?"),
 
         ty::Closure(_, args) => trivial_dropck_outlives(tcx, args.as_closure().tupled_upvars_ty()),
         ty::CoroutineClosure(_, args) => {
@@ -288,18 +295,46 @@ pub fn dtorck_constraint_for_ty_inner<'tcx>(
             // these types never have a destructor
         }
 
-        ty::Pat(ety, _) | ty::Array(ety, _) | ty::Slice(ety) => {
+        ty::Pat(ety, _)
+        | ty::Array(ety, _)
+        | ty::Slice(ety)
+        | ty::InitArrayRepeat(ety, _)
+        | ty::InitSliceRepeat(ety) => {
             // single-element containers, behave like their element
             rustc_data_structures::stack::ensure_sufficient_stack(|| {
                 dtorck_constraint_for_ty_inner(tcx, typing_env, span, depth + 1, ety, constraints)
             });
         }
 
-        ty::Tuple(tys) => rustc_data_structures::stack::ensure_sufficient_stack(|| {
-            for ty in tys.iter() {
-                dtorck_constraint_for_ty_inner(tcx, typing_env, span, depth + 1, ty, constraints);
-            }
-        }),
+        ty::Tuple(tys) | ty::InitArray(tys) | ty::InitTuple(tys) => {
+            rustc_data_structures::stack::ensure_sufficient_stack(|| {
+                for ty in tys.iter() {
+                    dtorck_constraint_for_ty_inner(
+                        tcx,
+                        typing_env,
+                        span,
+                        depth + 1,
+                        ty,
+                        constraints,
+                    );
+                }
+            })
+        }
+
+        ty::InitStruct(_adt, _vidx, fields) => {
+            rustc_data_structures::stack::ensure_sufficient_stack(|| {
+                for ty in fields.iter() {
+                    dtorck_constraint_for_ty_inner(
+                        tcx,
+                        typing_env,
+                        span,
+                        depth + 1,
+                        ty,
+                        constraints,
+                    );
+                }
+            })
+        }
 
         ty::Closure(_, args) => rustc_data_structures::stack::ensure_sufficient_stack(|| {
             for ty in args.as_closure().upvar_tys() {

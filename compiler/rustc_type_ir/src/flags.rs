@@ -351,6 +351,28 @@ impl<I: Interner> FlagComputation<I> {
                 self.add_tys(types);
             }
 
+            ty::InitArray(types) => {
+                self.add_tys(types);
+            }
+
+            ty::InitArrayRepeat(tt, len) => {
+                self.add_ty(tt);
+                self.add_const(len);
+            }
+
+            ty::InitSliceRepeat(ty) => {
+                self.add_ty(ty);
+            }
+
+            ty::InitStruct(adt_ty, _variant_idx, field_tys) => {
+                self.add_ty(adt_ty);
+                self.add_tys(field_tys);
+            }
+
+            ty::InitTuple(types) => {
+                self.add_tys(types);
+            }
+
             ty::FnDef(_, args) => {
                 self.add_args(args.as_slice());
             }

@@ -117,6 +117,24 @@ pub trait Ty<I: Interner<Ty = Self>>:
         It: Iterator<Item = T>,
         T: CollectAndApply<Self, Self>;
 
+    fn new_init_tuple(interner: I, tys: &[I::Ty]) -> Self;
+
+    fn new_init_tuple_from_iter<It, T>(interner: I, iter: It) -> T::Output
+    where
+        It: Iterator<Item = T>,
+        T: CollectAndApply<Self, Self>;
+
+    fn new_init_array(interner: I, tys: &[I::Ty]) -> Self;
+
+    fn new_init_array_from_iter<It, T>(interner: I, iter: It) -> T::Output
+    where
+        It: Iterator<Item = T>,
+        T: CollectAndApply<Self, Self>;
+
+    fn new_init_array_repeat(interner: I, elem: I::Ty, len: I::Const) -> Self;
+
+    fn new_init_slice_repeat(interner: I, elem: I::Ty) -> Self;
+
     fn new_fn_def(interner: I, def_id: I::FunctionId, args: I::GenericArgs) -> Self;
 
     fn new_fn_ptr(interner: I, sig: ty::Binder<I, ty::FnSig<I>>) -> Self;
@@ -193,6 +211,11 @@ pub trait Ty<I: Interner<Ty = Self>>:
             | ty::CoroutineClosure(_, _)
             | ty::Coroutine(_, _)
             | ty::CoroutineWitness(_, _)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)
             | ty::Alias(_)

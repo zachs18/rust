@@ -190,6 +190,24 @@ impl RustcInternal for RigidTy {
                 def.0.internal(tables, tcx),
                 args.internal(tables, tcx),
             ),
+            RigidTy::InitArray(elems) => {
+                rustc_ty::TyKind::InitArray(tcx.mk_type_list(&elems.internal(tables, tcx)))
+            }
+            RigidTy::InitArrayRepeat(elem, len) => rustc_ty::TyKind::InitArrayRepeat(
+                elem.internal(tables, tcx),
+                len.internal(tables, tcx),
+            ),
+            RigidTy::InitSliceRepeat(elem) => {
+                rustc_ty::TyKind::InitSliceRepeat(elem.internal(tables, tcx))
+            }
+            RigidTy::InitStruct(adt, vidx, fields) => rustc_ty::TyKind::InitStruct(
+                adt.internal(tables, tcx),
+                *vidx as u32,
+                tcx.mk_type_list(&fields.internal(tables, tcx)),
+            ),
+            RigidTy::InitTuple(elems) => {
+                rustc_ty::TyKind::InitTuple(tcx.mk_type_list(&elems.internal(tables, tcx)))
+            }
             RigidTy::Dynamic(predicate, region) => rustc_ty::TyKind::Dynamic(
                 tcx.mk_poly_existential_predicates(&predicate.internal(tables, tcx)),
                 region.internal(tables, tcx),

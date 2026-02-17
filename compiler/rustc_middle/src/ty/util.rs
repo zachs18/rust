@@ -422,6 +422,11 @@ impl<'tcx> TyCtxt<'tcx> {
                 | ty::PtrMetadata(..)
                 | ty::FnDef(..)
                 | ty::FnPtr(..)
+                | ty::InitArray(..)
+                | ty::InitArrayRepeat(..)
+                | ty::InitSliceRepeat(..)
+                | ty::InitStruct(..)
+                | ty::InitTuple(..)
                 | ty::Closure(..)
                 | ty::Coroutine(..)
                 | ty::CoroutineClosure(..)
@@ -1396,6 +1401,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::Foreign(_)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::UnsafeBinder(_)
             | ty::Infer(_)
             | ty::Alias(..)
@@ -1448,6 +1458,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::Foreign(_)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::UnsafeBinder(_)
             | ty::Infer(_)
             | ty::Alias(..)
@@ -1505,6 +1520,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::Foreign(_)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Infer(_)
             | ty::Alias(..)
             | ty::Param(_)
@@ -1684,6 +1704,12 @@ impl<'tcx> Ty<'tcx> {
                 false
             }
 
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => false,
+
             ty::Foreign(_) | ty::CoroutineWitness(..) | ty::Error(_) | ty::UnsafeBinder(_) => false,
         }
     }
@@ -1782,6 +1808,24 @@ pub fn needs_drop_components_with_async<'tcx>(
         }
         // If any field needs drop, then the whole tuple does.
         ty::Tuple(fields) => fields.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
+            acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
+            Ok(acc)
+        }),
+
+        // If any contained initializer needs drop, then the whole initializer does.
+        ty::InitArray(elems) => elems.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
+            acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
+            Ok(acc)
+        }),
+        ty::InitArrayRepeat(elem, _size) => needs_drop_components_with_async(tcx, elem, asyncness),
+        ty::InitSliceRepeat(elem) => needs_drop_components_with_async(tcx, elem, asyncness),
+        ty::InitStruct(_for_adt, _vidx, fields) => {
+            fields.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
+                acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
+                Ok(acc)
+            })
+        }
+        ty::InitTuple(elems) => elems.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
             acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
             Ok(acc)
         }),

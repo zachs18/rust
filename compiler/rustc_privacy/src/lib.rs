@@ -282,6 +282,13 @@ where
                     try_visit!(self.visit_clauses(tcx.explicit_item_bounds(def_id).skip_binder()));
                 }
             }
+            ty::InitStruct(adt, vidx, fields) => {
+                // This doesn't *currently* have its own def-id (but may have subcomponents
+                // with def-ids that should be visited recursively).
+                let _: Ty<'_> = adt;
+                let _: u32 = vidx;
+                let _: &[Ty<'_>] = fields.as_slice();
+            }
             // These types don't have their own def-ids (but may have subcomponents
             // with def-ids that should be visited recursively).
             ty::Bool
@@ -298,6 +305,10 @@ where
             | ty::Ref(..)
             | ty::UntypedPtr { .. }
             | ty::PtrMetadata(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitTuple(..)
             | ty::Pat(..)
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)

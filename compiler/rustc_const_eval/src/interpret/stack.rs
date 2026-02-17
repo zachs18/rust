@@ -517,6 +517,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 | ty::Array(..)
                 | ty::Closure(..)
                 | ty::CoroutineClosure(..)
+                | ty::InitArray(..)
+                | ty::InitArrayRepeat(..)
+                | ty::InitSliceRepeat(..)
+                | ty::InitStruct(..)
+                | ty::InitTuple(..)
                 | ty::Never
                 | ty::Error(_) => true,
 

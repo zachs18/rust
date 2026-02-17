@@ -293,6 +293,11 @@ where
                     | ty::Pat(..)
                     | ty::FnPtr(..)
                     | ty::Tuple(_)
+                    | ty::InitArray(..)
+                    | ty::InitArrayRepeat(..)
+                    | ty::InitSliceRepeat(..)
+                    | ty::InitStruct(..)
+                    | ty::InitTuple(..)
                     | ty::Bound(..)
                     | ty::Never
                     | ty::Infer(_)

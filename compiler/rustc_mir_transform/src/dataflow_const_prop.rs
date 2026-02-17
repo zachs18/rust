@@ -904,6 +904,7 @@ fn try_write_constant<'tcx>(
         ty::Array(_, _)
         | ty::Pat(_, _)
         | ty::PtrMetadata(..)
+        | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..)
 
         // Do not attempt to support indirection in constants.
         | ty::Ref(..) | ty::RawPtr(..) | ty::UntypedPtr { .. } | ty::FnPtr(..) | ty::Str | ty::Slice(_)

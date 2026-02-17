@@ -148,6 +148,17 @@ fn push_inner<I: Interner>(stack: &mut TypeWalkerStack<I>, parent: I::GenericArg
                 stack.extend(args.iter().rev());
             }
             ty::Tuple(ts) => stack.extend(ts.iter().rev().map(|ty| ty.into())),
+            ty::InitArray(ts) => stack.extend(ts.iter().rev().map(|ty| ty.into())),
+            ty::InitArrayRepeat(ty, len) => {
+                stack.push(len.into());
+                stack.push(ty.into());
+            }
+            ty::InitSliceRepeat(t) => stack.push(t.into()),
+            ty::InitStruct(adt_ty, _vidx, fs) => {
+                stack.extend(fs.iter().rev().map(|ty| ty.into()));
+                stack.push(adt_ty.into());
+            }
+            ty::InitTuple(ts) => stack.extend(ts.iter().rev().map(|ty| ty.into())),
             ty::FnPtr(sig_tys, _hdr) => {
                 stack.extend(
                     sig_tys.skip_binder().inputs_and_output.iter().rev().map(|ty| ty.into()),

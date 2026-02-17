@@ -422,6 +422,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             ExprKind::UnsafeBinderCast(kind, inner_expr, ty) => {
                 self.check_expr_unsafe_binder_cast(expr.span, kind, inner_expr, ty, expected)
             }
+            ExprKind::InitArray(args) => self.check_expr_init_array(args, expected, expr),
+            ExprKind::InitArrayRepeat(element, ref count) => {
+                self.check_expr_init_array_repeat(element, count, expected, expr)
+            }
+            ExprKind::InitSliceRepeat(element, count) => {
+                self.check_expr_init_slice_repeat(element, count, expected, expr)
+            }
+            ExprKind::InitStruct(..) => todo!(),
+            ExprKind::InitTuple(elts) => self.check_expr_init_tuple(elts, expected, expr),
             ExprKind::Err(guar) => Ty::new_error(tcx, guar),
         }
     }
@@ -1814,6 +1823,161 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 ObligationCauseCode::TupleInitializerSized,
             );
             tuple
+        }
+    }
+
+    fn check_expr_init_array(
+        &self,
+        elements: &'tcx [hir::Expr<'tcx>],
+        expected: Expectation<'tcx>,
+        expr: &'tcx hir::Expr<'tcx>,
+    ) -> Ty<'tcx> {
+        let mut expectations = expected
+            .only_has_type(self)
+            .and_then(|ty| match self.try_structurally_resolve_type(expr.span, ty).kind() {
+                &ty::InitArray(flds) => Some(flds),
+                _ => None,
+            })
+            .unwrap_or_default()
+            .iter();
+
+        let elements = elements.iter().map(|e| {
+            let ty = expectations.next().unwrap_or_else(|| self.next_ty_var(e.span));
+            self.check_expr_coercible_to_type(e, ty, None);
+            ty
+        });
+
+        let initializer = Ty::new_init_array_from_iter(self.tcx, elements);
+
+        if let Err(guar) = initializer.error_reported() {
+            Ty::new_error(self.tcx, guar)
+        } else {
+            self.require_type_is_sized(
+                initializer,
+                expr.span,
+                ObligationCauseCode::InitInitializerSized,
+            );
+            initializer
+        }
+    }
+
+    fn check_expr_init_tuple(
+        &self,
+        elements: &'tcx [hir::Expr<'tcx>],
+        expected: Expectation<'tcx>,
+        expr: &'tcx hir::Expr<'tcx>,
+    ) -> Ty<'tcx> {
+        let mut expectations = expected
+            .only_has_type(self)
+            .and_then(|ty| match self.try_structurally_resolve_type(expr.span, ty).kind() {
+                &ty::InitTuple(flds) => Some(flds),
+                _ => None,
+            })
+            .unwrap_or_default()
+            .iter();
+
+        let elements = elements.iter().map(|e| {
+            let ty = expectations.next().unwrap_or_else(|| self.next_ty_var(e.span));
+            self.check_expr_coercible_to_type(e, ty, None);
+            ty
+        });
+
+        let initializer = Ty::new_init_tuple_from_iter(self.tcx, elements);
+
+        if let Err(guar) = initializer.error_reported() {
+            Ty::new_error(self.tcx, guar)
+        } else {
+            self.require_type_is_sized(
+                initializer,
+                expr.span,
+                ObligationCauseCode::InitInitializerSized,
+            );
+            initializer
+        }
+    }
+
+    fn check_expr_init_array_repeat(
+        &self,
+        elem: &'tcx hir::Expr<'tcx>,
+        count: &'tcx hir::ConstArg<'tcx>,
+        expected: Expectation<'tcx>,
+        expr: &'tcx hir::Expr<'tcx>,
+    ) -> Ty<'tcx> {
+        let tcx = self.tcx;
+        let count_span = count.span;
+        let count = self.try_structurally_resolve_const(
+            count_span,
+            self.normalize(count_span, self.lower_const_arg(count, tcx.types.usize)),
+        );
+
+        if let Some(count) = count.try_to_target_usize(tcx) {
+            self.suggest_array_len(expr, count);
+        }
+
+        let elem_expected = expected.only_has_type(self).and_then(|ty| {
+            let ty = self.try_structurally_resolve_type(expr.span, ty);
+            match ty.kind() {
+                &ty::InitArrayRepeat(elem, _) => Some(elem),
+                _ => None,
+            }
+        });
+
+        let elem = match elem_expected {
+            Some(expected) => {
+                self.check_expr_coercible_to_type(elem, expected, None);
+                expected
+            }
+            None => self.check_expr_with_expectation(elem, NoExpectation),
+        };
+
+        let initializer = Ty::new_init_array_repeat(self.tcx, elem, count);
+        if let Err(guar) = initializer.error_reported() {
+            Ty::new_error(self.tcx, guar)
+        } else {
+            self.require_type_is_sized(
+                initializer,
+                expr.span,
+                ObligationCauseCode::InitInitializerSized,
+            );
+            initializer
+        }
+    }
+
+    fn check_expr_init_slice_repeat(
+        &self,
+        elem: &'tcx hir::Expr<'tcx>,
+        count: &'tcx hir::Expr<'tcx>,
+        expected: Expectation<'tcx>,
+        expr: &'tcx hir::Expr<'tcx>,
+    ) -> Ty<'tcx> {
+        let elem_expected = expected.only_has_type(self).and_then(|ty| {
+            let ty = self.try_structurally_resolve_type(expr.span, ty);
+            match ty.kind() {
+                &ty::InitSliceRepeat(elem) => Some(elem),
+                _ => None,
+            }
+        });
+
+        let elem = match elem_expected {
+            Some(expected) => {
+                self.check_expr_coercible_to_type(elem, expected, None);
+                expected
+            }
+            None => self.check_expr_with_expectation(elem, NoExpectation),
+        };
+
+        self.check_expr_coercible_to_type(count, self.tcx.types.usize, None);
+
+        let initializer = Ty::new_init_slice_repeat(self.tcx, elem);
+        if let Err(guar) = initializer.error_reported() {
+            Ty::new_error(self.tcx, guar)
+        } else {
+            self.require_type_is_sized(
+                initializer,
+                expr.span,
+                ObligationCauseCode::InitInitializerSized,
+            );
+            initializer
         }
     }
 

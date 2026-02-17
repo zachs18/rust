@@ -507,6 +507,44 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 self.print_adt_expr(&**adt_expr, depth_lvl + 1);
                 print_indented!(self, "}", depth_lvl);
             }
+            InitArrayRepeat { value, count } => {
+                print_indented!(self, "InitArrayRepeat {", depth_lvl);
+                print_indented!(self, format!("count: {:?}", count), depth_lvl + 1);
+                print_indented!(self, "value:", depth_lvl + 1);
+                self.print_expr(*value, depth_lvl + 2);
+                print_indented!(self, "}", depth_lvl);
+            }
+            InitSliceRepeat { value, count } => {
+                print_indented!(self, "InitSliceRepeat {", depth_lvl);
+                print_indented!(self, "count:", depth_lvl + 1);
+                self.print_expr(*count, depth_lvl + 2);
+                print_indented!(self, "value:", depth_lvl + 1);
+                self.print_expr(*value, depth_lvl + 2);
+                print_indented!(self, "}", depth_lvl);
+            }
+            InitArray { fields } => {
+                print_indented!(self, "InitArray {", depth_lvl);
+                print_indented!(self, "fields: [", depth_lvl + 1);
+                for field_id in fields.iter() {
+                    self.print_expr(*field_id, depth_lvl + 2);
+                }
+                print_indented!(self, "]", depth_lvl + 1);
+                print_indented!(self, "}", depth_lvl);
+            }
+            InitTuple { fields } => {
+                print_indented!(self, "InitTuple {", depth_lvl);
+                print_indented!(self, "fields: [", depth_lvl + 1);
+                for field_id in fields.iter() {
+                    self.print_expr(*field_id, depth_lvl + 2);
+                }
+                print_indented!(self, "]", depth_lvl + 1);
+                print_indented!(self, "}", depth_lvl);
+            }
+            InitStruct(init_adt_expr) => {
+                print_indented!(self, "InitStruct {", depth_lvl);
+                self.print_init_adt_expr(&**init_adt_expr, depth_lvl + 1);
+                print_indented!(self, "}", depth_lvl);
+            }
             PtrMetadata(ptr_metadata_expr) => {
                 print_indented!(self, "PtrMetadata {", depth_lvl);
                 self.print_ptr_metadata_expr(&**ptr_metadata_expr, depth_lvl + 1);
@@ -657,6 +695,23 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
         }
         print_indented!(self, "]", depth_lvl + 1);
         print_indented!(self, "}", depth_lvl);
+    }
+
+    fn print_init_adt_expr(&mut self, init_adt_expr: &InitAdtExpr<'tcx>, depth_lvl: usize) {
+        print_indented!(self, "adt_def:", depth_lvl);
+        self.print_adt_def(init_adt_expr.adt_def, depth_lvl + 1);
+        print_indented!(
+            self,
+            format!("variant_index: {:?}", init_adt_expr.variant_index),
+            depth_lvl + 1
+        );
+        print_indented!(self, format!("args: {:?}", init_adt_expr.args), depth_lvl + 1);
+        print_indented!(self, format!("user_ty: {:?}", init_adt_expr.user_ty), depth_lvl + 1);
+
+        for field_expr in init_adt_expr.fields.iter() {
+            print_indented!(self, format!("field {}:", field_expr.name.as_u32()), depth_lvl + 1);
+            self.print_expr(field_expr.expr, depth_lvl + 2);
+        }
     }
 
     fn print_ptr_metadata_expr(

@@ -140,6 +140,93 @@ fn push_debuginfo_type_name<'tcx>(
                 output.push(')');
             }
         }
+        ty::InitTuple(component_types) => {
+            if cpp_like_debuginfo {
+                output.push_str("init_tuple$<");
+            } else {
+                output.push_str("do init tuple (");
+            }
+
+            for component_type in component_types {
+                push_debuginfo_type_name(tcx, component_type, true, output, visited);
+                push_arg_separator(cpp_like_debuginfo, output);
+            }
+            if !component_types.is_empty() {
+                pop_arg_separator(output);
+            }
+
+            if cpp_like_debuginfo {
+                push_close_angle_bracket(cpp_like_debuginfo, output);
+            } else {
+                output.push(')');
+            }
+        }
+        ty::InitArray(component_types) => {
+            if cpp_like_debuginfo {
+                output.push_str("init_array$<");
+            } else {
+                output.push_str("do init array [");
+            }
+
+            for component_type in component_types {
+                push_debuginfo_type_name(tcx, component_type, true, output, visited);
+                push_arg_separator(cpp_like_debuginfo, output);
+            }
+            if !component_types.is_empty() {
+                pop_arg_separator(output);
+            }
+
+            if cpp_like_debuginfo {
+                push_close_angle_bracket(cpp_like_debuginfo, output);
+            } else {
+                output.push(']');
+            }
+        }
+        ty::InitArrayRepeat(inner_type, len) => {
+            if cpp_like_debuginfo {
+                output.push_str("init_array_repeat$<");
+                push_debuginfo_type_name(tcx, inner_type, true, output, visited);
+                match len.kind() {
+                    ty::ConstKind::Param(param) => write!(output, ",{}>", param.name).unwrap(),
+                    _ => write!(
+                        output,
+                        ",{}>",
+                        len.try_to_target_usize(tcx)
+                            .expect("expected monomorphic const in codegen")
+                    )
+                    .unwrap(),
+                }
+            } else {
+                output.push_str("do init array [");
+                push_debuginfo_type_name(tcx, inner_type, true, output, visited);
+                match len.kind() {
+                    ty::ConstKind::Param(param) => write!(output, "; {}]", param.name).unwrap(),
+                    _ => write!(
+                        output,
+                        "; {}]",
+                        len.try_to_target_usize(tcx)
+                            .expect("expected monomorphic const in codegen")
+                    )
+                    .unwrap(),
+                }
+            }
+        }
+        ty::InitSliceRepeat(inner_type) => {
+            if cpp_like_debuginfo {
+                output.push_str("init_slice_repeat$<");
+            } else {
+                output.push_str("do init slice [");
+            }
+
+            push_debuginfo_type_name(tcx, inner_type, true, output, visited);
+
+            if cpp_like_debuginfo {
+                push_close_angle_bracket(cpp_like_debuginfo, output);
+            } else {
+                output.push(']');
+            }
+        }
+        ty::InitStruct(..) => todo!(),
         ty::RawPtr(inner_type, mutbl) => {
             if cpp_like_debuginfo {
                 match mutbl {

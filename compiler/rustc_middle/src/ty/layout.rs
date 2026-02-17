@@ -948,6 +948,22 @@ where
 
                 ty::Tuple(tys) => TyMaybeWithLayout::Ty(tys[i]),
 
+                ty::InitArray(elem_tys) => TyMaybeWithLayout::Ty(elem_tys[i]),
+                ty::InitArrayRepeat(elem_ty, _len) => {
+                    assert_eq!(i, 0);
+                    TyMaybeWithLayout::Ty(elem_ty)
+                }
+                ty::InitSliceRepeat(elem_ty) => {
+                    if i == 0 {
+                        TyMaybeWithLayout::Ty(cx.tcx().types.usize)
+                    } else {
+                        assert_eq!(i, 1);
+                        TyMaybeWithLayout::Ty(elem_ty)
+                    }
+                }
+                ty::InitStruct(_adt_ty, _vidx, _field_tys) => unimplemented!(),
+                ty::InitTuple(elem_tys) => TyMaybeWithLayout::Ty(elem_tys[i]),
+
                 // ADTs.
                 ty::Adt(def, args) => {
                     match this.variants {

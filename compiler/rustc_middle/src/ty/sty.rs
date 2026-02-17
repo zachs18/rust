@@ -714,6 +714,46 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_init_array(tcx: TyCtxt<'tcx>, ts: &[Ty<'tcx>]) -> Ty<'tcx> {
+        Ty::new(tcx, InitArray(tcx.mk_type_list(ts)))
+    }
+
+    pub fn new_init_array_from_iter<I, T>(tcx: TyCtxt<'tcx>, iter: I) -> T::Output
+    where
+        I: Iterator<Item = T>,
+        T: CollectAndApply<Ty<'tcx>, Ty<'tcx>>,
+    {
+        T::collect_and_apply(iter, |ts| Ty::new_init_array(tcx, ts))
+    }
+
+    #[inline]
+    pub fn new_init_tuple(tcx: TyCtxt<'tcx>, ts: &[Ty<'tcx>]) -> Ty<'tcx> {
+        Ty::new(tcx, InitTuple(tcx.mk_type_list(ts)))
+    }
+
+    pub fn new_init_tuple_from_iter<I, T>(tcx: TyCtxt<'tcx>, iter: I) -> T::Output
+    where
+        I: Iterator<Item = T>,
+        T: CollectAndApply<Ty<'tcx>, Ty<'tcx>>,
+    {
+        T::collect_and_apply(iter, |ts| Ty::new_init_tuple(tcx, ts))
+    }
+
+    #[inline]
+    pub fn new_init_array_repeat(
+        tcx: TyCtxt<'tcx>,
+        elem: Ty<'tcx>,
+        len: ty::Const<'tcx>,
+    ) -> Ty<'tcx> {
+        Ty::new(tcx, InitArrayRepeat(elem, len))
+    }
+
+    #[inline]
+    pub fn new_init_slice_repeat(tcx: TyCtxt<'tcx>, elem: Ty<'tcx>) -> Ty<'tcx> {
+        Ty::new(tcx, InitSliceRepeat(elem))
+    }
+
+    #[inline]
     pub fn new_fn_def(
         tcx: TyCtxt<'tcx>,
         def_id: DefId,
@@ -1074,6 +1114,38 @@ impl<'tcx> rustc_type_ir::inherent::Ty<TyCtxt<'tcx>> for Ty<'tcx> {
         T: CollectAndApply<Self, Self>,
     {
         Ty::new_tup_from_iter(interner, iter)
+    }
+
+    fn new_init_tuple(interner: TyCtxt<'tcx>, tys: &[Ty<'tcx>]) -> Self {
+        Ty::new_init_tuple(interner, tys)
+    }
+
+    fn new_init_tuple_from_iter<It, T>(interner: TyCtxt<'tcx>, iter: It) -> T::Output
+    where
+        It: Iterator<Item = T>,
+        T: CollectAndApply<Self, Self>,
+    {
+        Ty::new_init_tuple_from_iter(interner, iter)
+    }
+
+    fn new_init_array(interner: TyCtxt<'tcx>, tys: &[Ty<'tcx>]) -> Self {
+        Ty::new_init_array(interner, tys)
+    }
+
+    fn new_init_array_from_iter<It, T>(interner: TyCtxt<'tcx>, iter: It) -> T::Output
+    where
+        It: Iterator<Item = T>,
+        T: CollectAndApply<Self, Self>,
+    {
+        Ty::new_init_array_from_iter(interner, iter)
+    }
+
+    fn new_init_array_repeat(interner: TyCtxt<'tcx>, elem: Ty<'tcx>, len: Const<'tcx>) -> Self {
+        Ty::new_init_array_repeat(interner, elem, len)
+    }
+
+    fn new_init_slice_repeat(interner: TyCtxt<'tcx>, elem: Ty<'tcx>) -> Self {
+        Ty::new_init_slice_repeat(interner, elem)
     }
 
     fn tuple_fields(self) -> &'tcx ty::List<Ty<'tcx>> {
@@ -1734,6 +1806,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)
             | ty::Error(_)
@@ -1775,6 +1852,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Array(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
+            | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..)
             | ty::Never
             | ty::Error(_)
             // Extern types have metadata = ().
@@ -1854,6 +1932,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never => ty::List::empty(),
 
             ty::Pat(base_ty, ..) => {
@@ -2055,6 +2138,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::Ref(..)
             | ty::UntypedPtr { .. }
             | ty::PtrMetadata(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
             | ty::Pat(..)
@@ -2154,6 +2242,12 @@ impl<'tcx> Ty<'tcx> {
             // Might be, but not "trivial" so just giving the safe answer.
             ty::Adt(..) | ty::Closure(..) | ty::CoroutineClosure(..) => false,
 
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => false,
+
             ty::UnsafeBinder(_) => false,
 
             // Needs normalization or revealing to determine, so no is the safe answer.
@@ -2212,6 +2306,11 @@ impl<'tcx> Ty<'tcx> {
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Alias(..)
             | ty::Error(_) => false,
         }

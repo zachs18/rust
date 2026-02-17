@@ -3438,15 +3438,18 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 dcx.span_err(ty_span, format!("cannot use `{ty}` in this position")),
             ),
             // FIXME(FRTs): support these types?
-            ty::Array(..) | ty::Pat(..) | ty::PtrMetadata(..) | ty::UntypedPtr { .. } => {
-                Ty::new_error(
-                    tcx,
-                    dcx.span_err(
-                        ty_span,
-                        format!("type `{ty}` is not yet supported in `field_of!`"),
-                    ),
-                )
-            }
+            ty::Array(..)
+            | ty::Pat(..)
+            | ty::PtrMetadata(..)
+            | ty::UntypedPtr { .. }
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => Ty::new_error(
+                tcx,
+                dcx.span_err(ty_span, format!("type `{ty}` is not yet supported in `field_of!`")),
+            ),
         }
     }
 

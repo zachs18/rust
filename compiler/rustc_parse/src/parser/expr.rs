@@ -4586,6 +4586,7 @@ impl MutVisitor for CondChecker<'_> {
             | ExprKind::Call(_, _)
             | ExprKind::MethodCall(_)
             | ExprKind::Tup(_)
+            | ExprKind::InitTuple(_)
             | ExprKind::Paren(_) => {
                 let forbid_let_reason = self.forbid_let_reason;
                 self.forbid_let_reason = Some(errors::ForbiddenLetReason::OtherForbidden);
@@ -4602,6 +4603,7 @@ impl MutVisitor for CondChecker<'_> {
             }
             ExprKind::Let(_, _, _, Recovered::Yes(_))
             | ExprKind::Array(_)
+            | ExprKind::InitArray(_)
             | ExprKind::ConstBlock(_)
             | ExprKind::Lit(_)
             | ExprKind::If(_, _, _)
@@ -4622,8 +4624,11 @@ impl MutVisitor for CondChecker<'_> {
             | ExprKind::OffsetOf(_, _, _)
             | ExprKind::MacCall(_)
             | ExprKind::Struct(_)
+            | ExprKind::InitStruct(_)
             | ExprKind::PtrMetadata(_)
             | ExprKind::Repeat(_, _)
+            | ExprKind::InitArrayRepeat(_, _)
+            | ExprKind::InitSliceRepeat(_, _)
             | ExprKind::Yield(_)
             | ExprKind::Yeet(_)
             | ExprKind::Become(_)

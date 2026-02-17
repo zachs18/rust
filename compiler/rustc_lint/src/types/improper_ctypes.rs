@@ -653,6 +653,21 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
                 }
             }
 
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
+                // FIXME(in_place_init): implement this
+                FfiUnsafe {
+                    ty,
+                    reason: DiagMessage::Str(
+                        "FIXME(in_place_init): implement FFI-safety linting".into(),
+                    ),
+                    help: None,
+                }
+            }
+
             ty::Array(inner_ty, _) => self.visit_type(state, inner_ty),
 
             ty::FnPtr(sig_tys, hdr) => {

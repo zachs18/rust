@@ -242,6 +242,77 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 block.and(Rvalue::Aggregate(Box::new(AggregateKind::Tuple), fields))
             }
+            ExprKind::InitArray { ref fields } => {
+                // see (*) above
+                // first process the set of fields
+                let fields: IndexVec<FieldIdx, _> = fields
+                    .into_iter()
+                    .copied()
+                    .map(|f| {
+                        unpack!(
+                            block = this.as_operand(
+                                block,
+                                scope,
+                                f,
+                                LocalInfo::Boring,
+                                NeedsTemporary::Maybe
+                            )
+                        )
+                    })
+                    .collect();
+
+                block.and(Rvalue::Aggregate(Box::new(AggregateKind::InitArray), fields))
+            }
+            ExprKind::InitTuple { ref fields } => {
+                // see (*) above
+                // first process the set of fields
+                let fields: IndexVec<FieldIdx, _> = fields
+                    .into_iter()
+                    .copied()
+                    .map(|f| {
+                        unpack!(
+                            block = this.as_operand(
+                                block,
+                                scope,
+                                f,
+                                LocalInfo::Boring,
+                                NeedsTemporary::Maybe
+                            )
+                        )
+                    })
+                    .collect();
+
+                block.and(Rvalue::Aggregate(Box::new(AggregateKind::InitTuple), fields))
+            }
+            ExprKind::InitArrayRepeat { value, count } => {
+                let value_operand = unpack!(
+                    block =
+                        this.as_operand(block, scope, value, LocalInfo::Boring, NeedsTemporary::No)
+                );
+                block.and(Rvalue::Aggregate(
+                    Box::new(AggregateKind::InitArrayRepeat(
+                        value_operand.ty(&this.local_decls, this.tcx),
+                        count,
+                    )),
+                    [value_operand].into(),
+                ))
+            }
+            ExprKind::InitSliceRepeat { value, count } => {
+                let value_operand = unpack!(
+                    block =
+                        this.as_operand(block, scope, value, LocalInfo::Boring, NeedsTemporary::No)
+                );
+                let count_operand = unpack!(
+                    block =
+                        this.as_operand(block, scope, count, LocalInfo::Boring, NeedsTemporary::No)
+                );
+                block.and(Rvalue::Aggregate(
+                    Box::new(AggregateKind::InitSliceRepeat(
+                        value_operand.ty(&this.local_decls, this.tcx),
+                    )),
+                    [count_operand, value_operand].into(),
+                ))
+            }
             ExprKind::Closure(box ClosureExpr {
                 closure_id,
                 args,
@@ -387,6 +458,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
             | ExprKind::PtrMetadata { .. }
+            | ExprKind::InitStruct(..)
             | ExprKind::Loop { .. }
             | ExprKind::LoopMatch { .. }
             | ExprKind::LogicalOp { .. }

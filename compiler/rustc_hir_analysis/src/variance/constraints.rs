@@ -241,6 +241,14 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 bug!("Unexpected unnameable type in variance computation: {ty}");
             }
 
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
+                bug!("FIXME(in_place_init): variance computation: {ty}");
+            }
+
             ty::Ref(region, ty, mutbl) => {
                 self.add_constraints_from_region(current, region, variance);
                 self.add_constraints_from_mt(current, &ty::TypeAndMut { ty, mutbl }, variance);

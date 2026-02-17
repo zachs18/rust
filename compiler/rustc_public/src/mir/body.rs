@@ -635,6 +635,16 @@ impl Rvalue {
                 AggregateKind::Tuple => Ok(Ty::new_tuple(
                     &ops.iter().map(|op| op.ty(locals)).collect::<Result<Vec<_>, _>>()?,
                 )),
+                AggregateKind::InitTuple => Ok(Ty::new_init_tuple(
+                    &ops.iter().map(|op| op.ty(locals)).collect::<Result<Vec<_>, _>>()?,
+                )),
+                AggregateKind::InitArray => Ok(Ty::new_init_array(
+                    &ops.iter().map(|op| op.ty(locals)).collect::<Result<Vec<_>, _>>()?,
+                )),
+                AggregateKind::InitArrayRepeat(elem, ref len) => {
+                    Ok(Ty::new_init_array_repeat(elem, len.clone()))
+                }
+                AggregateKind::InitSliceRepeat(elem) => Ok(Ty::new_init_slice_repeat(elem)),
                 AggregateKind::Adt(def, _, ref args, _, _) => Ok(def.ty_with_args(args)),
                 AggregateKind::Closure(def, ref args) => Ok(Ty::new_closure(def, args.clone())),
                 AggregateKind::Coroutine(def, ref args) => Ok(Ty::new_coroutine(def, args.clone())),
@@ -653,6 +663,10 @@ impl Rvalue {
 pub enum AggregateKind {
     Array(Ty),
     Tuple,
+    InitArray,
+    InitArrayRepeat(Ty, TyConst),
+    InitSliceRepeat(Ty),
+    InitTuple,
     Adt(AdtDef, VariantIdx, GenericArgs, Option<UserTypeAnnotationIndex>, Option<FieldIdx>),
     PtrMetadata(Ty, Option<UserTypeAnnotationIndex>),
     Closure(ClosureDef, GenericArgs),

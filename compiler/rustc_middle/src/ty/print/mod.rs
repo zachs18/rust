@@ -337,6 +337,11 @@ fn characteristic_def_id_of_type_cached<'a>(
         | ty::FnPtr(..)
         | ty::UntypedPtr { .. }
         | ty::UnsafeBinder(_)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..)
         | ty::Alias(..)
         | ty::Placeholder(..)
         | ty::Param(_)

@@ -442,6 +442,51 @@ pub(crate) fn encode_ty<'tcx>(
             typeid.push_str(&s);
         }
 
+        // Initializer types
+        ty::InitArray(tys) => {
+            // u10array_initI<element-type1..element-typeN>E as vendor extended type
+            let mut s = String::from("u10array_initI");
+            for ty in tys.iter() {
+                s.push_str(&encode_ty(tcx, ty, dict, options));
+            }
+            s.push('E');
+            compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
+            typeid.push_str(&s);
+        }
+
+        ty::InitTuple(tys) => {
+            // u10tuple_initI<element-type1..element-typeN>E as vendor extended type
+            let mut s = String::from("u10tuple_initI");
+            for ty in tys.iter() {
+                s.push_str(&encode_ty(tcx, ty, dict, options));
+            }
+            s.push('E');
+            compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
+            typeid.push_str(&s);
+        }
+
+        ty::InitArrayRepeat(elem, len) => {
+            // u17array_repeat_initI<array-length><element-type>E as vendor extended type
+            let len = len.try_to_target_usize(tcx).expect("expected monomorphic const in cfi");
+            let mut s = String::from("u17array_repeat_initI");
+            let _ = write!(s, "{len}");
+            s.push_str(&encode_ty(tcx, *elem, dict, options));
+            s.push('E');
+            compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
+            typeid.push_str(&s);
+        }
+
+        ty::InitSliceRepeat(elem) => {
+            // u17slice_repeat_initI<element-type>E as vendor extended type
+            let mut s = String::from("u17slice_repeat_initI");
+            s.push_str(&encode_ty(tcx, *elem, dict, options));
+            s.push('E');
+            compress(dict, DictKey::Ty(ty, TyQ::None), &mut s);
+            typeid.push_str(&s);
+        }
+
+        ty::InitStruct(..) => todo!(),
+
         // User-defined types
         ty::Adt(adt_def, args) => {
             let mut s = String::new();

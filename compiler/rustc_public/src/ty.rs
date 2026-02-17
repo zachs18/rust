@@ -54,9 +54,29 @@ impl Ty {
         Ty::from_rigid_kind(RigidTy::Ref(reg, pointee_ty, mutability))
     }
 
-    /// Create a new pointer type.
+    /// Create a new tuple type.
     pub fn new_tuple(tys: &[Ty]) -> Ty {
         Ty::from_rigid_kind(RigidTy::Tuple(Vec::from(tys)))
+    }
+
+    /// Create a new tuple initializer type.
+    pub fn new_init_tuple(tys: &[Ty]) -> Ty {
+        Ty::from_rigid_kind(RigidTy::Tuple(Vec::from(tys)))
+    }
+
+    /// Create a new array initializer type.
+    pub fn new_init_array(tys: &[Ty]) -> Ty {
+        Ty::from_rigid_kind(RigidTy::Tuple(Vec::from(tys)))
+    }
+
+    /// Create a new array-repeat initializer type.
+    pub fn new_init_array_repeat(elem: Ty, len: TyConst) -> Ty {
+        Ty::from_rigid_kind(RigidTy::InitArrayRepeat(elem, len))
+    }
+
+    /// Create a new slice-repeat initializer type.
+    pub fn new_init_slice_repeat(elem: Ty) -> Ty {
+        Ty::from_rigid_kind(RigidTy::InitSliceRepeat(elem))
     }
 
     /// Create a new closure type.
@@ -573,6 +593,11 @@ pub enum RigidTy {
     Never,
     Tuple(Vec<Ty>),
     CoroutineWitness(CoroutineWitnessDef, GenericArgs),
+    InitArray(Vec<Ty>),
+    InitArrayRepeat(Ty, TyConst),
+    InitSliceRepeat(Ty),
+    InitStruct(Ty, usize, Vec<Ty>),
+    InitTuple(Vec<Ty>),
 }
 
 impl RigidTy {

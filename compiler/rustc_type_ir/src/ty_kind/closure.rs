@@ -103,6 +103,22 @@ use crate::{self as ty, Interner};
 ///   `yield` inside the coroutine.
 /// * `GR`: The "return type", which is the type of value returned upon
 ///   completion of the coroutine.
+///
+/// ## `do init` Expressions
+///
+/// InitExpressions are handled similarly in `InitExpressionArgs`.
+/// TODO: docs
+/// The set of
+/// type parameters is similar, but `CK` and `CS` are replaced by the
+/// following type parameters:
+///
+/// * `GS`: The coroutine's "resume type", which is the type of the
+///   argument passed to `resume`, and the type of `yield` expressions
+///   inside the coroutine.
+/// * `GY`: The "yield type", which is the type of values passed to
+///   `yield` inside the coroutine.
+/// * `GR`: The "return type", which is the type of value returned upon
+///   completion of the coroutine.
 #[derive_where(Clone, Copy, PartialEq, Hash, Debug; I: Interner)]
 #[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
 pub struct ClosureArgs<I: Interner> {

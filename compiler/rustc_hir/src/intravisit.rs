@@ -963,6 +963,21 @@ pub fn walk_expr<'v, V: Visitor<'v>>(visitor: &mut V, expression: &'v Expr<'v>) 
         }
         ExprKind::Lit(lit) => try_visit!(visitor.visit_lit(*hir_id, lit, false)),
         ExprKind::Err(_) => {}
+        ExprKind::InitArray(subexpressions) | ExprKind::InitTuple(subexpressions) => {
+            walk_list!(visitor, visit_expr, subexpressions);
+        }
+        ExprKind::InitArrayRepeat(ref element, ref count) => {
+            try_visit!(visitor.visit_expr(element));
+            try_visit!(visitor.visit_const_arg_unambig(count));
+        }
+        ExprKind::InitSliceRepeat(ref element, ref count) => {
+            try_visit!(visitor.visit_expr(element));
+            try_visit!(visitor.visit_expr(count));
+        }
+        ExprKind::InitStruct(qpath, fields) => {
+            try_visit!(visitor.visit_qpath(qpath, *hir_id, *span));
+            walk_list!(visitor, visit_expr_field, fields);
+        }
     }
     V::Result::output()
 }

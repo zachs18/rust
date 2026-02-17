@@ -551,6 +551,12 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
         }
         // FIXME(untyped_ptr): impl debug info if this type ever exists outside typed ptrs
         ty::UntypedPtr { .. } => unimplemented!(),
+        // FIXME(in_place_init): impl debug info
+        ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..) => unimplemented!(),
         ty::Alias(..)
         | ty::Param(_)
         | ty::Bound(..)
