@@ -378,6 +378,14 @@ fn evaluate_host_effect_for_copy_clone_goal<'tcx>(
         // impl Copy/Clone for (T1, T2, .., Tn) where T1: Copy/Clone, T2: Copy/Clone, .. Tn: Copy/Clone
         ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.to_vec())),
 
+        // impl Copy/Clone for initializers where all fields: Copy/Clone
+        ty::InitArray(elems) | ty::InitTuple(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
+        // note: the `usize` field of `InitSliceRepeat` is always `const Copy`
+        ty::InitArrayRepeat(elem, _) | ty::InitSliceRepeat(elem) => {
+            Ok(ty::Binder::dummy(vec![elem]))
+        }
+        ty::InitStruct(_adt, _vidx, fields) => Ok(ty::Binder::dummy(fields.to_vec())),
+
         // impl Copy/Clone for Closure where Self::TupledUpvars: Copy/Clone
         ty::Closure(_, args) => Ok(ty::Binder::dummy(vec![args.as_closure().tupled_upvars_ty()])),
 
@@ -503,6 +511,14 @@ fn evaluate_host_effect_for_destruct_goal<'tcx>(
         // FIXME(unsafe_binders): Unsafe binders could implement `[const] Drop`
         // if their inner type implements it.
         ty::UnsafeBinder(_) => return Err(EvaluationFailure::NoSolution),
+
+        // FIXME(in_place_init): Initializers could implement `[const] Destruct` if all their
+        // element/field initializers do
+        ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..) => return Err(EvaluationFailure::NoSolution),
 
         ty::Dynamic(..) | ty::Param(_) | ty::Alias(..) | ty::Placeholder(_) | ty::Foreign(_) => {
             return Err(EvaluationFailure::NoSolution);

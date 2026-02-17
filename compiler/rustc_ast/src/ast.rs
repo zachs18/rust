@@ -1612,6 +1612,11 @@ impl Expr {
             | ExprKind::If(..)
             | ExprKind::IncludedBytes(..)
             | ExprKind::Index(..)
+            | ExprKind::InitArray(_)
+            | ExprKind::InitArrayRepeat(..)
+            | ExprKind::InitSliceRepeat(..)
+            | ExprKind::InitStruct(_)
+            | ExprKind::InitTuple(..)
             | ExprKind::InlineAsm(..)
             | ExprKind::Lit(_)
             | ExprKind::Loop(..)
@@ -1902,6 +1907,33 @@ pub enum ExprKind {
     /// E.g., `[1; 5]`. The expression is the element to be
     /// repeated; the constant is the number of times to repeat it.
     Repeat(Box<Expr>, AnonConst),
+
+    /// An array-like `do init array` or `do init slice` expression.
+    ///
+    /// E.g., `do init array [1, 2]` or `do init slice [1, 2]`.
+    InitArray(ThinVec<Box<Expr>>),
+
+    /// A `do init array [elem; CONST_LEN]` expression.
+    ///
+    /// E.g., `do init array [1; 5]`. The first expression is the element initializer to be
+    /// repeated; the second is the constant number of times to repeat it.
+    InitArrayRepeat(Box<Expr>, AnonConst),
+
+    /// A `do init slice [elem; len]` expression.
+    ///
+    /// E.g., `do init slice [1; 5]`. The first expression is the element initializer to be
+    /// repeated; the second is the number of times to repeat it.
+    InitSliceRepeat(Box<Expr>, Box<Expr>),
+
+    /// A `do init struct` expression.
+    ///
+    /// E.g., `do init Foo {x: 1, y: 2}`.
+    InitStruct(Box<StructExpr>),
+
+    /// A `do init tuple` expression.
+    ///
+    /// E.g., `do init tuple (1, 2)`.
+    InitTuple(ThinVec<Box<Expr>>),
 
     /// No-op: used solely so we can pretty-print faithfully.
     Paren(Box<Expr>),

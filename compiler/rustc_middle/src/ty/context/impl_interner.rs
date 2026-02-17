@@ -528,6 +528,11 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
             | ty::Coroutine(_, _)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)
             | ty::UnsafeBinder(_) => {

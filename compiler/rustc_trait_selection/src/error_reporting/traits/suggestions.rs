@@ -3165,8 +3165,16 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     err.note("argument required to be sized due to `extern \"rust-call\"` ABI");
                 }
             }
+            ObligationCauseCode::InitElem => {
+                err.note("initializer elements must have `Sized` type");
+            }
             ObligationCauseCode::SliceOrArrayElem => {
                 err.note("slice and array elements must have `Sized` type");
+            }
+            ObligationCauseCode::InitLen(init_len) => {
+                err.note(format!(
+                    "the length for array initializer `{init_len}` must be type `usize`"
+                ));
             }
             ObligationCauseCode::ArrayLen(array_ty) => {
                 err.note(format!("the length of array `{array_ty}` must be type `usize`"));
@@ -3588,6 +3596,9 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
             }
             ObligationCauseCode::TupleInitializerSized => {
                 err.note("tuples must have a statically known size to be initialized");
+            }
+            ObligationCauseCode::InitInitializerSized => {
+                err.note("`do init` values must have a statically known size to be initialized");
             }
             ObligationCauseCode::StructInitializerSized => {
                 err.note("structs must have a statically known size to be initialized");

@@ -629,6 +629,17 @@ impl<'tcx> Stable<'tcx> for mir::AggregateKind<'tcx> {
                 )
             }
             mir::AggregateKind::Tuple => crate::mir::AggregateKind::Tuple,
+            mir::AggregateKind::InitTuple => crate::mir::AggregateKind::InitTuple,
+            mir::AggregateKind::InitArray => crate::mir::AggregateKind::InitArray,
+            mir::AggregateKind::InitArrayRepeat(ty, len) => {
+                crate::mir::AggregateKind::InitArrayRepeat(
+                    ty.stable(tables, cx),
+                    len.stable(tables, cx),
+                )
+            }
+            mir::AggregateKind::InitSliceRepeat(ty) => {
+                crate::mir::AggregateKind::InitSliceRepeat(ty.stable(tables, cx))
+            }
             mir::AggregateKind::Adt(def_id, var_idx, generic_arg, user_ty_index, field_idx) => {
                 crate::mir::AggregateKind::Adt(
                     tables.adt_def(*def_id),

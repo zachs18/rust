@@ -470,6 +470,20 @@ impl<'tcx> Stable<'tcx> for ty::TyKind<'tcx> {
                 tables.coroutine_witness_def(*def_id),
                 args.stable(tables, cx),
             )),
+            ty::InitArray(elems) => TyKind::RigidTy(RigidTy::InitArray(
+                elems.iter().map(|ty| ty.stable(tables, cx)).collect(),
+            )),
+            ty::InitArrayRepeat(elem, sz) => TyKind::RigidTy(RigidTy::InitArrayRepeat(
+                elem.stable(tables, cx),
+                sz.stable(tables, cx),
+            )),
+            ty::InitSliceRepeat(elem) => {
+                TyKind::RigidTy(RigidTy::InitSliceRepeat(elem.stable(tables, cx)))
+            }
+            ty::InitStruct(..) => todo!(),
+            ty::InitTuple(elems) => TyKind::RigidTy(RigidTy::InitTuple(
+                elems.iter().map(|ty| ty.stable(tables, cx)).collect(),
+            )),
             ty::Placeholder(..) | ty::Infer(_) | ty::Error(_) => {
                 unreachable!();
             }

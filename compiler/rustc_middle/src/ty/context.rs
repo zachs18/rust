@@ -1921,7 +1921,12 @@ impl<'tcx> TyCtxt<'tcx> {
                 Infer,
                 Alias,
                 Pat,
-                Foreign
+                Foreign,
+                InitArray,
+                InitArrayRepeat,
+                InitSliceRepeat,
+                InitStruct,
+                InitTuple
             )?;
 
             writeln!(fmt, "GenericArgs interner: #{}", self.interners.args.len())?;

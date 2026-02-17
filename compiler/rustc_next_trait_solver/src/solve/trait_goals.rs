@@ -824,6 +824,11 @@ where
                 | ty::Closure(..)
                 | ty::CoroutineClosure(..)
                 | ty::Coroutine(..)
+                | ty::InitArray(..)
+                | ty::InitArrayRepeat(..)
+                | ty::InitSliceRepeat(..)
+                | ty::InitStruct(..)
+                | ty::InitTuple(..)
                 | ty::UnsafeBinder(_)
                 | ty::CoroutineWitness(..) => {
                     ecx.add_goal(
@@ -1479,6 +1484,11 @@ where
             | ty::CoroutineClosure(..)
             | ty::Coroutine(_, _)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)
             | ty::Adt(_, _)

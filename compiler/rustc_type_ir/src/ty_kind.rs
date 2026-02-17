@@ -248,6 +248,33 @@ pub enum TyKind<I: Interner> {
     /// ```
     CoroutineWitness(I::CoroutineId, I::GenericArgs),
 
+    /// The anonymous type of a `do init array [a, b, c, d]` or `do init slice [a, b, c, d]`
+    /// array-like expression.
+    ///
+    /// FIXME(in_place_init): should we allow initailzing the elements out of order? Currently we don't.
+    InitArray(I::Tys),
+
+    /// The anonymous type of a `do init array [elem; CONST_LEN]` array-repeat-like expression.
+    ///
+    /// The `Ty` is of the element initializer, the `Const` is the length.
+    InitArrayRepeat(I::Ty, I::Const),
+
+    /// The anonymous type of a `do init slice [elem; non_const_len]` array-repeat-like expression.
+    ///
+    /// The `Ty` is of the element initializer; the length is always a `usize`.
+    InitSliceRepeat(I::Ty),
+
+    /// The anonymous type of a `do init` or `try do init` struct-like expression.
+    ///
+    /// The `Ty` is of the ADT being initialized, the `usize` is the variant index,
+    /// and the `Tys` is the TODO: handle out-of-order fields and passing in args.
+    InitStruct(I::Ty, u32, I::Tys),
+
+    /// The anonymous type of a `do init tuple (a, b, c, d)` tuple-like expression.
+    ///
+    /// FIXME(in_place_init): should we allow initailzing the fields out of order? Currently we don't
+    InitTuple(I::Tys),
+
     /// The never type `!`.
     Never,
 
@@ -360,6 +387,11 @@ impl<I: Interner> TyKind<I> {
             | ty::CoroutineClosure(_, _)
             | ty::Coroutine(_, _)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_) => true,
 
@@ -417,6 +449,13 @@ impl<I: Interner> fmt::Debug for TyKind<I> {
             CoroutineClosure(d, s) => f.debug_tuple("CoroutineClosure").field(d).field(&s).finish(),
             Coroutine(d, s) => f.debug_tuple("Coroutine").field(d).field(&s).finish(),
             CoroutineWitness(d, s) => f.debug_tuple("CoroutineWitness").field(d).field(&s).finish(),
+            InitArray(s) => f.debug_tuple("InitArray").field(&s).finish(),
+            InitArrayRepeat(s, c) => f.debug_tuple("InitArrayRepeat").field(&s).field(&c).finish(),
+            InitSliceRepeat(s) => f.debug_tuple("InitSliceRepeat").field(&s).finish(),
+            InitStruct(d, vidx, s) => {
+                f.debug_tuple("InitStruct").field(d).field(&vidx).field(&s).finish()
+            }
+            InitTuple(s) => f.debug_tuple("InitTuple").field(&s).finish(),
             Never => write!(f, "!"),
             Tuple(t) => {
                 write!(f, "(")?;
@@ -951,6 +990,48 @@ where
         ))
     }
 }
+
+#[derive_where(Debug, Clone, PartialEq, Hash; I: Interner)]
+#[cfg_attr(feature = "nightly", derive(HashStable_NoContext))]
+#[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
+pub struct InitExpressionInner<I: Interner> {
+    pub kind: InitExpressionKind<I>,
+    pub tys: I::Tys,
+}
+
+#[derive_where(Debug, Clone, PartialEq, Hash; I: Interner)]
+#[cfg_attr(feature = "nightly", derive(HashStable_NoContext))]
+#[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
+pub enum InitExpressionKind<I: Interner> {
+    /// A `do init StructName { .. }` expression for a struct, union, or struct-variant of an enum.
+    StructVariant {
+        ty: I::AdtId,
+        // FIXME(init_expression): use VariantIdx or something
+        variant: usize,
+        // FIXME(init_expression): use FieldIdx or something
+        fields: Box<[(usize, Box<[InitExpressionFieldArg]>)]>,
+    },
+}
+
+#[cfg_attr(feature = "nightly", derive(HashStable_NoContext))]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Hash,
+    TypeVisitable_Generic,
+    GenericTypeVisitable,
+    TypeFoldable_Generic
+)]
+pub enum InitExpressionFieldArg {
+    InputArg,
+    StructPtr,
+    OtherFieldPtr(usize),
+}
+
+impl<I: Interner> Eq for InitExpressionInner<I> {}
+impl<I: Interner> Eq for InitExpressionKind<I> {}
 
 // This is just a `FnSig` without the `FnHeader` fields.
 #[derive_where(Clone, Copy, Debug, PartialEq, Hash; I: Interner)]

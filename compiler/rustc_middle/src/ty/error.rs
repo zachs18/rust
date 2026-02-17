@@ -206,6 +206,11 @@ impl<'tcx> Ty<'tcx> {
                 format!("{:#}", tcx.coroutine_kind(def_id).unwrap()).into()
             }
             ty::CoroutineWitness(..) => "coroutine witness".into(),
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => "initializer".into(),
             ty::Tuple(..) => "tuple".into(),
             ty::Placeholder(..) => "higher-ranked type".into(),
             ty::Bound(..) => "bound type variable".into(),

@@ -1130,6 +1130,26 @@ impl<'tcx> ThirBuildCx<'tcx> {
             hir::ExprKind::Array(fields) => ExprKind::Array { fields: self.mirror_exprs(fields) },
             hir::ExprKind::Tup(fields) => ExprKind::Tuple { fields: self.mirror_exprs(fields) },
 
+            hir::ExprKind::InitArray(fields) => {
+                ExprKind::InitArray { fields: self.mirror_exprs(fields) }
+            }
+            hir::ExprKind::InitArrayRepeat(value, _) => {
+                let ty = self.typeck_results.expr_ty(expr);
+                let ty::InitArrayRepeat(_, count) = ty.kind() else {
+                    span_bug!(expr.span, "unexpected init array repeat expr ty: {:?}", ty);
+                };
+
+                ExprKind::InitArrayRepeat { value: self.mirror_expr(value), count: *count }
+            }
+            hir::ExprKind::InitSliceRepeat(value, count) => ExprKind::InitSliceRepeat {
+                value: self.mirror_expr(value),
+                count: self.mirror_expr(count),
+            },
+            hir::ExprKind::InitStruct(..) => todo!(),
+            hir::ExprKind::InitTuple(fields) => {
+                ExprKind::InitTuple { fields: self.mirror_exprs(fields) }
+            }
+
             hir::ExprKind::Yield(v, _) => ExprKind::Yield { value: self.mirror_expr(v) },
             hir::ExprKind::Err(_) => unreachable!("cannot lower a `hir::ExprKind::Err` to THIR"),
         };

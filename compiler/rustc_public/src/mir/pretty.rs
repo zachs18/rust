@@ -407,6 +407,22 @@ fn pretty_aggregate<W: Write>(
             write!(writer, "(")?;
             ")"
         }
+        AggregateKind::InitArray => {
+            write!(writer, "do init array [")?;
+            "]"
+        }
+        AggregateKind::InitTuple => {
+            write!(writer, "do init tuple (")?;
+            ")"
+        }
+        AggregateKind::InitArrayRepeat(..) => {
+            write!(writer, "do init array repeat from (")?;
+            ")"
+        }
+        AggregateKind::InitSliceRepeat(..) => {
+            write!(writer, "do init slice repeat from (")?;
+            ")"
+        }
         AggregateKind::PtrMetadata(pointee_ty, _) => {
             write!(writer, "builtin # ptr_metadata(for {pointee_ty}) from (")?;
             ")"

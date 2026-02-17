@@ -1,6 +1,6 @@
 use super::{
-    AdtExpr, AdtExprBase, Arm, Block, ClosureExpr, Expr, ExprKind, InlineAsmExpr, InlineAsmOperand,
-    Pat, PatKind, PtrMetadataExpr, PtrMetadataExprBase, Stmt, StmtKind, Thir,
+    AdtExpr, AdtExprBase, Arm, Block, ClosureExpr, Expr, ExprKind, InitAdtExpr, InlineAsmExpr,
+    InlineAsmOperand, Pat, PatKind, PtrMetadataExpr, PtrMetadataExprBase, Stmt, StmtKind, Thir,
 };
 use crate::thir::LoopMatchMatchData;
 
@@ -115,10 +115,17 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
         }
         Become { value } => visitor.visit_expr(&visitor.thir()[value]),
         ConstBlock { did: _, args: _ } => {}
-        Repeat { value, count: _ } => {
+        Repeat { value, count: _ } | InitArrayRepeat { value, count: _ } => {
             visitor.visit_expr(&visitor.thir()[value]);
         }
-        Array { ref fields } | Tuple { ref fields } => {
+        InitSliceRepeat { value, count } => {
+            visitor.visit_expr(&visitor.thir()[value]);
+            visitor.visit_expr(&visitor.thir()[count]);
+        }
+        Array { ref fields }
+        | Tuple { ref fields }
+        | InitArray { ref fields }
+        | InitTuple { ref fields } => {
             for &field in &**fields {
                 visitor.visit_expr(&visitor.thir()[field]);
             }
@@ -136,6 +143,17 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
             }
             if let AdtExprBase::Base(base) = base {
                 visitor.visit_expr(&visitor.thir()[base.base]);
+            }
+        }
+        InitStruct(box InitAdtExpr {
+            ref fields,
+            adt_def: _,
+            variant_index: _,
+            args: _,
+            user_ty: _,
+        }) => {
+            for field in &**fields {
+                visitor.visit_expr(&visitor.thir()[field.expr]);
             }
         }
         PtrMetadata(box PtrMetadataExpr { ref fields, ref base, user_ty: _ }) => {

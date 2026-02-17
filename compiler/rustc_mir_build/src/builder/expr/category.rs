@@ -53,6 +53,7 @@ impl Category {
             | ExprKind::Use { .. }
             | ExprKind::Adt { .. }
             | ExprKind::PtrMetadata { .. }
+            | ExprKind::InitStruct(..)
             | ExprKind::Borrow { .. }
             | ExprKind::RawBorrow { .. }
             | ExprKind::Yield { .. }
@@ -62,6 +63,10 @@ impl Category {
 
             ExprKind::Array { .. }
             | ExprKind::Tuple { .. }
+            | ExprKind::InitArray { .. }
+            | ExprKind::InitArrayRepeat { .. }
+            | ExprKind::InitSliceRepeat { .. }
+            | ExprKind::InitTuple { .. }
             | ExprKind::Closure { .. }
             | ExprKind::Unary { .. }
             | ExprKind::Binary { .. }

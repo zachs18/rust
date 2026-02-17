@@ -1591,19 +1591,51 @@ impl<'a> State<'a> {
             hir::ExprKind::Array(exprs) => {
                 self.print_expr_vec(exprs);
             }
+            hir::ExprKind::InitArray(exprs) => {
+                self.word("do init array");
+                self.space();
+                self.print_expr_vec(exprs);
+            }
             hir::ExprKind::ConstBlock(ref anon_const) => {
                 self.print_inline_const(anon_const);
             }
             hir::ExprKind::Repeat(element, ref count) => {
                 self.print_expr_repeat(element, count);
             }
+            hir::ExprKind::InitArrayRepeat(element, ref count) => {
+                self.word("do init array");
+                self.space();
+                self.print_expr_repeat(element, count);
+            }
+            hir::ExprKind::InitSliceRepeat(element, count) => {
+                self.word("do init slice");
+                self.space();
+                // inlined print_expr_repeat to change `count`
+                let ib = self.ibox(INDENT_UNIT);
+                self.word("[");
+                self.print_expr(element);
+                self.word_space(";");
+                self.print_expr(count);
+                self.word("]");
+                self.end(ib)
+            }
             hir::ExprKind::Struct(qpath, fields, wth) => {
                 self.print_expr_struct(qpath, fields, wth);
+            }
+            hir::ExprKind::InitStruct(qpath, fields) => {
+                self.word("do init struct");
+                self.space();
+                self.print_expr_struct(qpath, fields, rustc_hir::StructTailExpr::None);
             }
             hir::ExprKind::PtrMetadata(pointee_ty, fields, wth) => {
                 self.print_expr_ptr_metadata(pointee_ty, fields, wth);
             }
             hir::ExprKind::Tup(exprs) => {
+                self.print_expr_tup(exprs);
+            }
+            hir::ExprKind::InitTuple(exprs) => {
+                self.word("do init tuple");
+                self.space();
                 self.print_expr_tup(exprs);
             }
             hir::ExprKind::Call(func, args) => {

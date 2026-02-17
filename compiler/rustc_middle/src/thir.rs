@@ -191,6 +191,21 @@ pub enum PtrMetadataExprBase<'tcx> {
 }
 
 #[derive(Clone, Debug, HashStable)]
+pub struct InitAdtExpr<'tcx> {
+    /// The ADT we're constructing.
+    pub adt_def: AdtDef<'tcx>,
+    /// The variant of the ADT.
+    pub variant_index: VariantIdx,
+    pub args: GenericArgsRef<'tcx>,
+
+    /// Optional user-given args: for something like `let x =
+    /// Bar::<T> { ... }`.
+    pub user_ty: UserTy<'tcx>,
+
+    pub fields: Box<[FieldExpr]>,
+}
+
+#[derive(Clone, Debug, HashStable)]
 pub struct ClosureExpr<'tcx> {
     pub closure_id: LocalDefId,
     pub args: UpvarArgs<'tcx>,
@@ -502,6 +517,26 @@ pub enum ExprKind<'tcx> {
     /// A pointer metadata constructor, e.g. `builtin # ptr_metadata { len: 42, elem }`,
     /// `builtin # ptr_metadata { len: 42, ..base}`, or `builtin # ptr_metadata { for [T]; len: 42, .. }`.
     PtrMetadata(Box<PtrMetadataExpr<'tcx>>),
+    /// An array initializer, e.g. `do init array [a, b, c, d]`
+    InitArray {
+        fields: Box<[ExprId]>,
+    },
+    /// An array-repeat initializer, e.g. `do init array [elem; CONST_LEN]`
+    InitArrayRepeat {
+        value: ExprId,
+        count: ty::Const<'tcx>,
+    },
+    /// An slice-repeat initializer, e.g. `do init slice [elem; len]`
+    InitSliceRepeat {
+        value: ExprId,
+        count: ExprId,
+    },
+    /// An ADT initializer, e.g. `do init struct Foo {x: 1, y: 2}`
+    InitStruct(Box<InitAdtExpr<'tcx>>),
+    /// A tuple initializer, e.g. `do init tuple (a, b, c, d)`
+    InitTuple {
+        fields: Box<[ExprId]>,
+    },
     /// A type ascription on a place.
     PlaceTypeAscription {
         source: ExprId,

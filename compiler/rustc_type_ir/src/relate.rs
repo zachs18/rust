@@ -533,6 +533,45 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             Ok(Ty::new_unsafe_binder(cx, relation.binders(*a_binder, *b_binder)?))
         }
 
+        (ty::InitTuple(as_), ty::InitTuple(bs)) => {
+            if as_.len() == bs.len() {
+                Ok(Ty::new_init_tuple_from_iter(
+                    cx,
+                    iter::zip(as_.iter(), bs.iter()).map(|(a, b)| relation.relate(a, b)),
+                )?)
+            } else {
+                // FIXME(in_place_init): new (or generalize) TypeError variant?
+                Err(TypeError::TupleSize(ExpectedFound::new(as_.len(), bs.len())))
+            }
+        }
+
+        (ty::InitArray(as_), ty::InitArray(bs)) => {
+            if as_.len() == bs.len() {
+                Ok(Ty::new_init_array_from_iter(
+                    cx,
+                    iter::zip(as_.iter(), bs.iter()).map(|(a, b)| relation.relate(a, b)),
+                )?)
+            } else {
+                // FIXME(in_place_init): new (or generalize) TypeError variant?
+                Err(TypeError::TupleSize(ExpectedFound::new(as_.len(), bs.len())))
+            }
+        }
+
+        (ty::InitArrayRepeat(a_elem, a_len), ty::InitArrayRepeat(b_elem, b_len)) => {
+            let elem = relation.relate(a_elem, b_elem)?;
+            let len = relation.relate(a_len, b_len)?;
+            Ok(Ty::new_init_array_repeat(cx, elem, len))
+        }
+
+        (ty::InitSliceRepeat(a_elem), ty::InitSliceRepeat(b_elem)) => {
+            let elem = relation.relate(a_elem, b_elem)?;
+            Ok(Ty::new_init_slice_repeat(cx, elem))
+        }
+
+        (ty::InitStruct(..), ty::InitStruct(..)) => {
+            todo!()
+        }
+
         _ => Err(TypeError::Sorts(ExpectedFound::new(a, b))),
     }
 }

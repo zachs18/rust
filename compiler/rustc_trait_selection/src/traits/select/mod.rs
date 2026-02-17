@@ -2243,6 +2243,13 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
 
             ty::UnsafeBinder(binder_ty) => binder_ty.map_bound(|ty| vec![ty]),
 
+            // Initializers are only well-formed if all their fields are sized.
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => ty::Binder::dummy(vec![]),
+
             ty::Alias(..)
             | ty::Param(_)
             | ty::Placeholder(..)
@@ -2269,12 +2276,12 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::UntypedPtr { .. }
             | ty::PtrMetadata(..)
             | ty::Array(..) => {
-                unreachable!("tried to assemble `Sized` for type with libcore-provided impl")
+                unreachable!("tried to assemble `Clone` for type with libcore-provided impl")
             }
 
             // FIXME(unsafe_binder): Should we conditionally
             // (i.e. universally) implement copy/clone?
-            ty::UnsafeBinder(_) => unreachable!("tried to assemble `Sized` for unsafe binder"),
+            ty::UnsafeBinder(_) => unreachable!("tried to assemble `Clone` for unsafe binder"),
 
             ty::Tuple(tys) => {
                 // (*) binder moved here
@@ -2284,6 +2291,21 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             ty::Pat(ty, _) => {
                 // (*) binder moved here
                 ty::Binder::dummy(vec![ty])
+            }
+
+            ty::InitArray(elems) | ty::InitTuple(elems) => {
+                // (*) binder moved here
+                ty::Binder::dummy(elems.iter().collect())
+            }
+
+            ty::InitArrayRepeat(elem, _) | ty::InitSliceRepeat(elem) => {
+                // (*) binder moved here
+                ty::Binder::dummy(vec![elem])
+            }
+
+            ty::InitStruct(_adt, _vidx, fields) => {
+                // (*) binder moved here
+                ty::Binder::dummy(fields.iter().collect())
             }
 
             ty::Coroutine(def_id, args) => match self.tcx().coroutine_movability(def_id) {
@@ -2408,6 +2430,20 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             ty::Pat(ty, _) | ty::Array(ty, _) | ty::Slice(ty) => {
                 ty::Binder::dummy(AutoImplConstituents { types: vec![ty], assumptions: vec![] })
             }
+
+            ty::InitArray(tys) | ty::InitTuple(tys) => ty::Binder::dummy(AutoImplConstituents {
+                types: tys.iter().collect(),
+                assumptions: vec![],
+            }),
+
+            ty::InitArrayRepeat(elem, _) | ty::InitSliceRepeat(elem) => {
+                ty::Binder::dummy(AutoImplConstituents { types: vec![elem], assumptions: vec![] })
+            }
+
+            ty::InitStruct(_adt, _vidx, fields) => ty::Binder::dummy(AutoImplConstituents {
+                types: fields.iter().collect(),
+                assumptions: vec![],
+            }),
 
             ty::Tuple(tys) => {
                 // (T1, ..., Tn) -- meets any bound that all of T1...Tn meet

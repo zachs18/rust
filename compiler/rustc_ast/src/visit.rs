@@ -978,6 +978,16 @@ macro_rules! common_visitor_and_walkers {
                     visit_visitable!($($mut)? vis, element, count),
                 ExprKind::Struct(se) =>
                     visit_visitable!($($mut)? vis, se),
+                ExprKind::InitArray(exprs) =>
+                    visit_visitable!($($mut)? vis, exprs),
+                ExprKind::InitArrayRepeat(element, count) =>
+                    visit_visitable!($($mut)? vis, element, count),
+                ExprKind::InitSliceRepeat(element, count) =>
+                    visit_visitable!($($mut)? vis, element, count),
+                ExprKind::InitStruct(se) =>
+                    visit_visitable!($($mut)? vis, se),
+                ExprKind::InitTuple(exprs) =>
+                    visit_visitable!($($mut)? vis, exprs),
                 ExprKind::Tup(exprs) =>
                     visit_visitable!($($mut)? vis, exprs),
                 ExprKind::Call(callee_expression, arguments) =>

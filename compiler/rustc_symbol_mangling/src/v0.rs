@@ -551,6 +551,14 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
                 self.print_def_path(def_id, args)?;
             }
 
+            // TODO: implement these with a DefId instead(?)
+            // actually, for the non-struct ones, could probably just mangle like tuples/arrays/etc do
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => todo!(),
+
             // We may still encounter projections here due to the printing
             // logic sometimes passing identity-substituted impl headers.
             ty::Alias(ty::AliasTy { kind: ty::Projection { def_id }, args, .. }) => {

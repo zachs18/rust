@@ -223,6 +223,22 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for TransformTy<'tcx> {
                 }
             }
 
+            // FIXME(in_place_init): Implement this
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
+                if self.options.contains(TransformTyOptions::GENERALIZE_POINTERS) {
+                    bug!(
+                        "FIXME(in_place_init): How should builtin initializer types interact with \
+                        TransformTyOptions::GENERALIZE_POINTERS"
+                    )
+                } else {
+                    t.super_fold_with(self)
+                }
+            }
+
             ty::FnPtr(..) => {
                 if self.options.contains(TransformTyOptions::GENERALIZE_POINTERS) {
                     Ty::new_imm_ptr(self.tcx, self.tcx.types.unit)

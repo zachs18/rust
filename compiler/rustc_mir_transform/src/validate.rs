@@ -1055,6 +1055,38 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
             }
             Rvalue::Aggregate(kind, fields) => match **kind {
                 AggregateKind::Tuple => {}
+                AggregateKind::InitTuple => {}
+                AggregateKind::InitArray => {}
+                AggregateKind::InitArrayRepeat(elem_ty, _count) => {
+                    if let [elem] = &*fields.raw {
+                        if !self.mir_assign_valid_types(elem.ty(self.body, self.tcx), elem_ty) {
+                            self.fail(
+                                location,
+                                "InitArrayRepeat initializer field has the wrong type",
+                            );
+                        }
+                    } else {
+                        self.fail(location, "InitArrayRepeat has wrong number of fields");
+                    }
+                }
+                AggregateKind::InitSliceRepeat(elem_ty) => {
+                    if let [len, elem] = &*fields.raw {
+                        if !self.mir_assign_valid_types(elem.ty(self.body, self.tcx), elem_ty) {
+                            self.fail(
+                                location,
+                                "InitSliceRepeat initializer field has the wrong type",
+                            );
+                        }
+                        if !self.mir_assign_valid_types(
+                            len.ty(self.body, self.tcx),
+                            self.tcx.types.usize,
+                        ) {
+                            self.fail(location, "InitSliceRepeat length field has the wrong type");
+                        }
+                    } else {
+                        self.fail(location, "InitSliceRepeat has wrong number of fields");
+                    }
+                }
                 AggregateKind::Array(dest) => {
                     for src in fields {
                         if !self.mir_assign_valid_types(src.ty(self.body, self.tcx), dest) {

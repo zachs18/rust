@@ -15,7 +15,7 @@ use crate::inherent::*;
 use crate::visit::TypeVisitableExt as _;
 use crate::{self as ty, Interner};
 
-/// See `simplify_type`.
+/// See [`simplify_type`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "nightly",
@@ -47,6 +47,11 @@ pub enum SimplifiedType<DefId> {
     Closure(DefId),
     Coroutine(DefId),
     CoroutineWitness(DefId),
+    InitArray,
+    InitArrayRepeat,
+    InitSliceRepeat,
+    InitStruct,
+    InitTuple,
     Function(usize),
     UnsafeBinder,
     Placeholder,
@@ -145,6 +150,11 @@ pub fn simplify_type<I: Interner>(
         ty::CoroutineClosure(def_id, _) => Some(SimplifiedType::Closure(def_id.into())),
         ty::Coroutine(def_id, _) => Some(SimplifiedType::Coroutine(def_id.into())),
         ty::CoroutineWitness(def_id, _) => Some(SimplifiedType::CoroutineWitness(def_id.into())),
+        ty::InitArray(..) => Some(SimplifiedType::InitArray),
+        ty::InitArrayRepeat(..) => Some(SimplifiedType::InitArrayRepeat),
+        ty::InitSliceRepeat(..) => Some(SimplifiedType::InitSliceRepeat),
+        ty::InitTuple(..) => Some(SimplifiedType::InitTuple),
+        ty::InitStruct(..) => Some(SimplifiedType::InitStruct),
         ty::Never => Some(SimplifiedType::Never),
         ty::Tuple(tys) => Some(SimplifiedType::Tuple(tys.len())),
         ty::FnPtr(sig_tys, _hdr) => {
@@ -314,6 +324,11 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Foreign(_)
             | ty::Placeholder(_)
             | ty::UnsafeBinder(_) => {}
@@ -473,6 +488,47 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
             ty::CoroutineWitness(lhs_def_id, lhs_args) => match rhs.kind() {
                 ty::CoroutineWitness(rhs_def_id, rhs_args) => {
                     lhs_def_id == rhs_def_id && self.args_may_unify_inner(lhs_args, rhs_args, depth)
+                }
+                _ => false,
+            },
+
+            ty::InitArray(lhs) => match rhs.kind() {
+                ty::InitArray(rhs) => {
+                    lhs.len() == rhs.len()
+                        && iter::zip(lhs.iter(), rhs.iter())
+                            .all(|(lhs, rhs)| self.types_may_unify_inner(lhs, rhs, depth))
+                }
+                _ => false,
+            },
+
+            ty::InitArrayRepeat(lhs_ty, lhs_len) => match rhs.kind() {
+                ty::InitArrayRepeat(rhs_ty, rhs_len) => {
+                    self.types_may_unify_inner(lhs_ty, rhs_ty, depth)
+                        && self.consts_may_unify_inner(lhs_len, rhs_len)
+                }
+                _ => false,
+            },
+
+            ty::InitSliceRepeat(lhs_ty) => {
+                matches!(rhs.kind(), ty::InitSliceRepeat(rhs_ty) if self.types_may_unify_inner(lhs_ty, rhs_ty, depth))
+            }
+
+            ty::InitStruct(lhs_adt, lhs_vidx, lhs_tys) => match rhs.kind() {
+                ty::InitStruct(rhs_adt, rhs_vidx, rhs_tys) => {
+                    self.types_may_unify_inner(lhs_adt, rhs_adt, depth)
+                        && lhs_vidx == rhs_vidx
+                        && lhs_tys.len() == rhs_tys.len()
+                        && iter::zip(lhs_tys.iter(), rhs_tys.iter())
+                            .all(|(lhs, rhs)| self.types_may_unify_inner(lhs, rhs, depth))
+                }
+                _ => false,
+            },
+
+            ty::InitTuple(lhs) => match rhs.kind() {
+                ty::InitTuple(rhs) => {
+                    lhs.len() == rhs.len()
+                        && iter::zip(lhs.iter(), rhs.iter())
+                            .all(|(lhs, rhs)| self.types_may_unify_inner(lhs, rhs, depth))
                 }
                 _ => false,
             },

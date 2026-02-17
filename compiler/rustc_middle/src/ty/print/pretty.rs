@@ -1073,6 +1073,44 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
                 ty.print(self)?;
                 write!(self, "]")?;
             }
+            ty::InitArray(elem_tys) => {
+                write!(self, "{{InitArray with (")?;
+                self.comma_sep(elem_tys.iter())?;
+                if elem_tys.len() == 1 {
+                    write!(self, ",")?;
+                }
+                write!(self, ")}}")?;
+            }
+            ty::InitArrayRepeat(elem_ty, sz) => {
+                write!(self, "{{InitArrayRepeat with ")?;
+                elem_ty.print(self)?;
+                write!(self, ", length ")?;
+                sz.print(self)?;
+                write!(self, "}}")?;
+            }
+            ty::InitSliceRepeat(elem_ty) => {
+                write!(self, "{{InitSliceRepeat with ")?;
+                elem_ty.print(self)?;
+                write!(self, "}}")?;
+            }
+            ty::InitStruct(adt_ty, vidx, field_tys) => {
+                write!(self, "{{InitStruct for ")?;
+                adt_ty.print(self)?;
+                write!(self, " (variant {vidx}) with (")?;
+                self.comma_sep(field_tys.iter())?;
+                if field_tys.len() == 1 {
+                    write!(self, ",")?;
+                }
+                write!(self, ")}}")?;
+            }
+            ty::InitTuple(elem_tys) => {
+                write!(self, "{{InitTuple with (")?;
+                self.comma_sep(elem_tys.iter())?;
+                if elem_tys.len() == 1 {
+                    write!(self, ",")?;
+                }
+                write!(self, ")}}")?;
+            }
         }
 
         Ok(())
