@@ -43,6 +43,11 @@ impl<'tcx> Printer<'tcx> for TypeNamePrinter<'tcx> {
             | ty::FnPtr(..)
             | ty::Never
             | ty::Tuple(_)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Dynamic(_, _)
             | ty::UnsafeBinder(_) => self.pretty_print_type(ty),
 

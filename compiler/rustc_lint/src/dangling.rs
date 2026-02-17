@@ -304,7 +304,13 @@ fn is_temporary_rvalue(expr: &Expr<'_>) -> bool {
         //        Some false negatives are possible for now.
         ExprKind::Index(..) | ExprKind::Field(..) | ExprKind::Unary(..) => false,
 
-        ExprKind::Struct(..) | ExprKind::PtrMetadata(..) => true,
+        ExprKind::Struct(..)
+        | ExprKind::PtrMetadata(..)
+        | ExprKind::InitArray(..)
+        | ExprKind::InitArrayRepeat(..)
+        | ExprKind::InitSliceRepeat(..)
+        | ExprKind::InitStruct(..)
+        | ExprKind::InitTuple(..) => true,
 
         // FIXME: this has false negatives, but I do not want to deal with 'static/const promotion just yet.
         ExprKind::Array(..) => false,

@@ -757,6 +757,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | ty::CoroutineClosure(..)
                 | ty::Coroutine(_, _)
                 | ty::CoroutineWitness(..)
+                | ty::InitArray(..)
+                | ty::InitArrayRepeat(..)
+                | ty::InitSliceRepeat(..)
+                | ty::InitStruct(..)
+                | ty::InitTuple(..)
                 | ty::UnsafeBinder(_)
                 | ty::Never
                 | ty::Tuple(_)
@@ -937,6 +942,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | ty::FnPtr(..)
                 | ty::Closure(..)
                 | ty::CoroutineClosure(..)
+                | ty::InitArray(..)
+                | ty::InitArrayRepeat(..)
+                | ty::InitSliceRepeat(..)
+                | ty::InitStruct(..)
+                | ty::InitTuple(..)
                 | ty::Never
                 | ty::Tuple(_)
                 | ty::UnsafeBinder(_) => {
@@ -1207,7 +1217,16 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         match *self_ty.kind() {
             // These impls are built-in because we cannot express sufficiently
             // generic impls in libcore.
-            ty::FnDef(..) | ty::FnPtr(..) | ty::Error(_) | ty::Tuple(..) | ty::Pat(..) => {
+            ty::FnDef(..)
+            | ty::FnPtr(..)
+            | ty::Error(_)
+            | ty::Tuple(..)
+            | ty::Pat(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
                 candidates.vec.push(BuiltinCandidate);
             }
 
@@ -1325,6 +1344,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Array(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Error(_) => {
                 candidates.vec.push(SizedCandidate);
@@ -1479,6 +1503,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::CoroutineClosure(..)
             | ty::Coroutine(_, _)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Alias(..)
             | ty::Param(_)
@@ -1520,6 +1549,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::UnsafeBinder(_)
             | ty::Never
             | ty::Tuple(..)
@@ -1575,6 +1609,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::Coroutine(..)
             | ty::UnsafeBinder(_)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Bound(..) => {
                 candidates.vec.push(BikeshedGuaranteedNoDropCandidate);
             }

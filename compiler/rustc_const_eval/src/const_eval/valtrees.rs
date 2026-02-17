@@ -138,6 +138,11 @@ fn const_to_valtree_inner<'tcx>(
             todo!()
         }
 
+        ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..) => {
+            // FIXME(in_place_init): Implement this
+            todo!()
+        }
+
         // Technically we could allow function pointers (represented as `ty::Instance`), but this is not guaranteed to
         // agree with runtime equality tests.
         ty::FnPtr(..) => Err(ValTreeCreationError::NonSupportedType(ty)),
@@ -321,7 +326,14 @@ pub fn valtree_to_const_value<'tcx>(
             intern_const_alloc_recursive(&mut ecx, InternKind::Constant, &place).unwrap();
             op_to_const(&ecx, &place.into(), /* for diagnostics */ false)
         }
-        ty::Tuple(_) | ty::Array(_, _) | ty::Adt(..) => {
+        ty::Tuple(_)
+        | ty::Array(_, _)
+        | ty::Adt(..)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..) => {
             let layout = tcx.layout_of(typing_env.as_query_input(cv.ty)).unwrap();
             if layout.is_zst() {
                 // Fast path to avoid some allocations.

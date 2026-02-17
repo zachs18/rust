@@ -409,6 +409,11 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
             | ExprKind::PtrMetadata { .. }
+            | ExprKind::InitArray { .. }
+            | ExprKind::InitArrayRepeat { .. }
+            | ExprKind::InitSliceRepeat { .. }
+            | ExprKind::InitStruct(..)
+            | ExprKind::InitTuple { .. }
             | ExprKind::Array { .. }
             | ExprKind::Binary { .. }
             | ExprKind::Block { .. }

@@ -92,6 +92,12 @@ where
             .skip_norm_wip()
             .map_bound(|bound| bound.types.to_vec())),
 
+        ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..) => unimplemented!(),
+
         ty::UnsafeBinder(bound_ty) => Ok(bound_ty.map_bound(|ty| vec![ty])),
 
         // For `PhantomData<T>`, we pass `T`.
@@ -124,10 +130,11 @@ where
     I: Interner,
 {
     match ty.kind() {
-        // impl * for u*, i*, bool, f*, FnDef, FnPtr, *(const/mut) T, char
-        // impl * for &mut? T, [T; N], dyn* Trait, !, Coroutine, CoroutineWitness
-        // impl * for Closure, CoroutineClosure
-        // * = Sized, Aligned, MetaSized, MetaAligned, Thin
+        // impl ** for u*, i*, bool, f*, FnDef, FnPtr, *(const/mut) T, char
+        // impl ** for &mut? T, [T; N], dyn* Trait, !, Coroutine, CoroutineWitness
+        // impl ** for Closure, CoroutineClosure
+        // impl ** for typeof(do init *)
+        // ** = Sized, Aligned, MetaSized, MetaAligned, Thin
         ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
         | ty::Uint(_)
         | ty::Int(_)
@@ -146,6 +153,11 @@ where
         | ty::Pat(..)
         | ty::Closure(..)
         | ty::CoroutineClosure(..)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..)
         | ty::Never
         | ty::Error(_) => Ok(ty::Binder::dummy(vec![])),
 
@@ -281,6 +293,13 @@ where
         ty::CoroutineClosure(_, args) => {
             Ok(ty::Binder::dummy(vec![args.as_coroutine_closure().tupled_upvars_ty()]))
         }
+
+        // impl Copy/Clone for typeof(do init *) where ...Self::Fields: Copy/Clone
+        ty::InitArray(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
+        ty::InitArrayRepeat(elem, _len) => Ok(ty::Binder::dummy(vec![elem])),
+        ty::InitSliceRepeat(elem) => Ok(ty::Binder::dummy(vec![elem])),
+        ty::InitStruct(_for_adt, _vidx, fields) => Ok(ty::Binder::dummy(fields.to_vec())),
+        ty::InitTuple(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
 
         // only when `coroutine_clone` is enabled and the coroutine is movable
         // impl Copy/Clone for Coroutine where T: Copy/Clone forall T in (upvars, witnesses)
@@ -434,6 +453,11 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<I: Intern
         | ty::Dynamic(_, _)
         | ty::Coroutine(_, _)
         | ty::CoroutineWitness(..)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..)
         | ty::Never
         | ty::Tuple(_)
         | ty::Pat(_, _)
@@ -610,6 +634,11 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_async_callable<I: 
         | ty::Dynamic(_, _)
         | ty::Coroutine(_, _)
         | ty::CoroutineWitness(..)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..)
         | ty::Never
         | ty::UnsafeBinder(_)
         | ty::Tuple(_)
@@ -774,6 +803,11 @@ pub(in crate::solve) fn extract_fn_def_from_const_callable<I: Interner>(
         | ty::Dynamic(_, _)
         | ty::Coroutine(_, _)
         | ty::CoroutineWitness(..)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..)
         | ty::Never
         | ty::Tuple(_)
         | ty::Pat(_, _)
@@ -867,6 +901,14 @@ pub(in crate::solve) fn const_conditions_for_destruct<I: Interner>(
         // FIXME(unsafe_binders): Unsafe binders could implement `[const] Drop`
         // if their inner type implements it.
         ty::UnsafeBinder(_) => Err(NoSolution),
+
+        // FIXME(in_place_init): Initializers could implement `[const] Destruct` if all their
+        // element/field initializers do
+        ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..) => Err(NoSolution),
 
         ty::Dynamic(..) | ty::Param(_) | ty::Alias(..) | ty::Placeholder(_) | ty::Foreign(_) => {
             Err(NoSolution)

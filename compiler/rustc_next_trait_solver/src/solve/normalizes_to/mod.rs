@@ -834,6 +834,11 @@ where
             | ty::Infer(ty::IntVar(..) | ty::FloatVar(..))
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Never
             | ty::Foreign(..)
             | ty::Adt(_, _)

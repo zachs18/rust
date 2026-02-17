@@ -1086,6 +1086,11 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
             | ty::Dynamic(..)
             | ty::Closure(..)
             | ty::Pat(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..) => interp_ok(false),
             // Some types only occur during typechecking, they have no layout.

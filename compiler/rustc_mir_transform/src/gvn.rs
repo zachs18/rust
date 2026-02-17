@@ -1387,6 +1387,8 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             let is_zst = match *kind {
                 AggregateKind::Array(..)
                 | AggregateKind::Tuple
+                | AggregateKind::InitArray
+                | AggregateKind::InitTuple
                 | AggregateKind::PtrMetadata(..)
                 | AggregateKind::Closure(..)
                 | AggregateKind::CoroutineClosure(..) => true,
@@ -1395,6 +1397,12 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 // Coroutines are never ZST, as they at least contain the implicit states.
                 AggregateKind::Coroutine(..) => false,
                 AggregateKind::RawPtr(..) => bug!("MIR for RawPtr aggregate must have 2 fields"),
+                AggregateKind::InitArrayRepeat(..) => {
+                    bug!("MIR for InitArrayRepeat aggregate must have 1 field")
+                }
+                AggregateKind::InitSliceRepeat(..) => {
+                    bug!("MIR for InitSliceRepeat aggregate must have 2 fields")
+                }
             };
 
             if is_zst {
@@ -1408,7 +1416,13 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
         }));
 
         let variant_index = match *kind {
-            AggregateKind::Array(..) | AggregateKind::Tuple | AggregateKind::PtrMetadata(..) => {
+            AggregateKind::Array(..)
+            | AggregateKind::Tuple
+            | AggregateKind::PtrMetadata(..)
+            | AggregateKind::InitArray
+            | AggregateKind::InitArrayRepeat(..)
+            | AggregateKind::InitSliceRepeat(..)
+            | AggregateKind::InitTuple => {
                 assert!(!field_ops.is_empty());
                 FIRST_VARIANT
             }

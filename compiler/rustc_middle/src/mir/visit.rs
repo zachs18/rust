@@ -788,6 +788,15 @@ macro_rules! make_mir_visitor {
                                 self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
                             }
                             AggregateKind::Tuple => {}
+                            AggregateKind::InitArray => {}
+                            AggregateKind::InitTuple => {}
+                            AggregateKind::InitArrayRepeat(ty, len) => {
+                                self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
+                                self.visit_ty_const($(& $mutability)? *len, location);
+                            }
+                            AggregateKind::InitSliceRepeat(ty) => {
+                                self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
+                            }
                             AggregateKind::Adt(
                                 _adt_def,
                                 _variant_index,

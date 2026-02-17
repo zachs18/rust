@@ -2229,6 +2229,10 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
             AggregateKind::Tuple | AggregateKind::RawPtr(..) => {
                 unreachable!("This should have been covered in check_rvalues");
             }
+            AggregateKind::InitArray
+            | AggregateKind::InitArrayRepeat(..)
+            | AggregateKind::InitSliceRepeat(..)
+            | AggregateKind::InitTuple => todo!(),
         }
     }
 
@@ -2254,6 +2258,10 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 AggregateKind::PtrMetadata(_, user_ty) => user_ty,
                 AggregateKind::Array(_) => None,
                 AggregateKind::Tuple => None,
+                AggregateKind::InitArray => None,
+                AggregateKind::InitArrayRepeat(..) => None,
+                AggregateKind::InitSliceRepeat(..) => None,
+                AggregateKind::InitTuple => None,
                 AggregateKind::Closure(_, _) => None,
                 AggregateKind::Coroutine(_, _) => None,
                 AggregateKind::CoroutineClosure(_, _) => None,
@@ -2273,8 +2281,16 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
 
         self.prove_aggregate_predicates(aggregate_kind, location);
 
-        if *aggregate_kind == AggregateKind::Tuple {
-            // tuple rvalue field type is always the type of the op. Nothing to check here.
+        if matches!(
+            aggregate_kind,
+            AggregateKind::Tuple
+                | AggregateKind::InitTuple
+                | AggregateKind::InitArray
+                | AggregateKind::InitSliceRepeat(..)
+                | AggregateKind::InitArrayRepeat(..)
+        ) {
+            // tuple and `do init` initializer rvalue field type
+            // is always the type of the op. Nothing to check here.
             return;
         }
 
@@ -2491,7 +2507,11 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
             AggregateKind::Array(_)
             | AggregateKind::Tuple
             | AggregateKind::RawPtr(..)
-            | AggregateKind::PtrMetadata(..) => {
+            | AggregateKind::PtrMetadata(..)
+            | AggregateKind::InitArray
+            | AggregateKind::InitArrayRepeat(..)
+            | AggregateKind::InitSliceRepeat(..)
+            | AggregateKind::InitTuple => {
                 (CRATE_DEF_ID.to_def_id(), ty::InstantiatedPredicates::empty())
             }
         };

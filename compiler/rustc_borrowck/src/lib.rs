@@ -1594,6 +1594,10 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | AggregateKind::Array(..)
                     | AggregateKind::PtrMetadata(..)
                     | AggregateKind::Tuple { .. }
+                    | AggregateKind::InitArray
+                    | AggregateKind::InitArrayRepeat(..)
+                    | AggregateKind::InitSliceRepeat(..)
+                    | AggregateKind::InitTuple
                     | AggregateKind::RawPtr(..) => (),
                 }
 
@@ -1899,6 +1903,11 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::CoroutineClosure(_, _)
                     | ty::Coroutine(_, _)
                     | ty::CoroutineWitness(..)
+                    | ty::InitArray(..)
+                    | ty::InitArrayRepeat(..)
+                    | ty::InitSliceRepeat(..)
+                    | ty::InitStruct(..)
+                    | ty::InitTuple(..)
                     | ty::Never
                     | ty::Tuple(_)
                     | ty::UnsafeBinder(_)
@@ -1926,6 +1935,11 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::CoroutineClosure(..)
                     | ty::Coroutine(_, _)
                     | ty::PtrMetadata(..)
+                    | ty::InitArray(..)
+                    | ty::InitArrayRepeat(..)
+                    | ty::InitSliceRepeat(..)
+                    | ty::InitStruct(..)
+                    | ty::InitTuple(..)
                     | ty::Tuple(_) => (),
                     ty::Bool
                     | ty::Char

@@ -190,8 +190,14 @@ pub enum ObligationCauseCode<'tcx> {
     /// An array `[T; N]` can only be indexed (and is only well-formed if) `N` has type usize.
     ArrayLen(Ty<'tcx>),
 
+    /// An array initializer `[T; N]` is only well-formed if `N` has type usize.
+    InitLen(Ty<'tcx>),
+
     /// A tuple is WF only if its middle elements are `Sized`.
     TupleElem,
+
+    /// A `do init` initializer is WF only if its elements are `Sized`.
+    InitElem,
 
     /// Represents a clause that comes from a specific item.
     /// The span corresponds to the clause.
@@ -258,6 +264,8 @@ pub enum ObligationCauseCode<'tcx> {
         /// This is used to suggest wrapping it in a `const { ... }` block.
         elt_span: Span,
     },
+    /// `do init` field initializers must be `Sized`.
+    InitInitializerSized,
 
     /// Types of fields (other than the last, except for packed structs) in a struct must be sized.
     FieldSized {

@@ -548,6 +548,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::Tuple { .. }
             | ExprKind::Adt { .. }
             | ExprKind::PtrMetadata { .. }
+            | ExprKind::InitArray { .. }
+            | ExprKind::InitArrayRepeat { .. }
+            | ExprKind::InitSliceRepeat { .. }
+            | ExprKind::InitStruct(..)
+            | ExprKind::InitTuple { .. }
             | ExprKind::Closure { .. }
             | ExprKind::Unary { .. }
             | ExprKind::Binary { .. }

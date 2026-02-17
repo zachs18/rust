@@ -206,7 +206,12 @@ impl<I: Interner> TypeVisitor<I> for OutlivesCollector<'_, I> {
             | ty::FnPtr(..)
             | ty::UnsafeBinder(_)
             | ty::Dynamic(_, _)
-            | ty::Tuple(_) => {
+            | ty::Tuple(_)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
                 ty.super_visit_with(self);
             }
         }

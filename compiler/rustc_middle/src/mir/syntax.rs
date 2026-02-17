@@ -1535,6 +1535,13 @@ pub enum AggregateKind<'tcx> {
     Array(Ty<'tcx>),
     Tuple,
 
+    InitArray,
+    // The type is of the element initializer, the const is the length
+    InitArrayRepeat(Ty<'tcx>, ty::Const<'tcx>),
+    /// The type is of the element
+    InitSliceRepeat(Ty<'tcx>),
+    InitTuple,
+
     /// The second field is the variant index. It's equal to 0 for struct
     /// and union expressions. The last field is the
     /// active field number and is present only for union expressions

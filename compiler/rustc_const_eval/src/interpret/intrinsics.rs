@@ -293,6 +293,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     | ty::CoroutineClosure(_, _)
                     | ty::Coroutine(_, _)
                     | ty::CoroutineWitness(..)
+                    | ty::InitArray(..)
+                    | ty::InitArrayRepeat(..)
+                    | ty::InitSliceRepeat(..)
+                    | ty::InitStruct(..)
+                    | ty::InitTuple(..)
                     | ty::UnsafeBinder(_)
                     | ty::Never
                     | ty::Tuple(_)

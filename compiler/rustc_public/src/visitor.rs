@@ -182,6 +182,17 @@ impl Visitable for RigidTy {
                 r.visit(visitor)
             }
             RigidTy::Tuple(fields) => fields.visit(visitor),
+            RigidTy::InitArray(fields) => fields.visit(visitor),
+            RigidTy::InitArrayRepeat(elem, len) => {
+                elem.visit(visitor)?;
+                len.visit(visitor)
+            }
+            RigidTy::InitSliceRepeat(elem) => elem.visit(visitor),
+            RigidTy::InitStruct(ty, _, fields) => {
+                ty.visit(visitor)?;
+                fields.visit(visitor)
+            }
+            RigidTy::InitTuple(fields) => fields.visit(visitor),
         }
     }
 }

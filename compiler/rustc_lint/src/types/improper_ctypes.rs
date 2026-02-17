@@ -808,6 +808,21 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
                 }
             }
 
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
+                // FIXME(in_place_init): implement this
+                FfiUnsafe {
+                    ty,
+                    reason: DiagMessage::Str(
+                        "FIXME(in_place_init): implement FFI-safety linting".into(),
+                    ),
+                    help: None,
+                }
+            }
+
             ty::FnPtr(sig_tys, hdr) => {
                 let sig = sig_tys.with(hdr);
                 if sig.abi().is_rustic_abi() {

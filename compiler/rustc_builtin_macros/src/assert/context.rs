@@ -199,6 +199,11 @@ impl<'cx, 'a> Context<'cx, 'a> {
                     self.manage_cond_expr(local_expr);
                 }
             }
+            ExprKind::InitArray(local_exprs) => {
+                for local_expr in local_exprs {
+                    self.manage_cond_expr(local_expr);
+                }
+            }
             ExprKind::Binary(op, lhs, rhs) => {
                 self.with_is_consumed_management(
                     matches!(
@@ -267,7 +272,23 @@ impl<'cx, 'a> Context<'cx, 'a> {
                 self.manage_cond_expr(local_expr);
                 self.manage_cond_expr(&mut elem.value);
             }
+            ExprKind::InitArrayRepeat(local_expr, len) => {
+                self.manage_cond_expr(local_expr);
+                self.manage_cond_expr(&mut len.value);
+            }
+            ExprKind::InitSliceRepeat(local_expr, len) => {
+                self.manage_cond_expr(local_expr);
+                self.manage_cond_expr(len);
+            }
             ExprKind::Struct(elem) => {
+                for field in &mut elem.fields {
+                    self.manage_cond_expr(&mut field.expr);
+                }
+                if let StructRest::Base(local_expr) = &mut elem.rest {
+                    self.manage_cond_expr(local_expr);
+                }
+            }
+            ExprKind::InitStruct(elem) => {
                 for field in &mut elem.fields {
                     self.manage_cond_expr(&mut field.expr);
                 }
@@ -284,6 +305,11 @@ impl<'cx, 'a> Context<'cx, 'a> {
                 }
             }
             ExprKind::Tup(local_exprs) => {
+                for local_expr in local_exprs {
+                    self.manage_cond_expr(local_expr);
+                }
+            }
+            ExprKind::InitTuple(local_exprs) => {
                 for local_expr in local_exprs {
                     self.manage_cond_expr(local_expr);
                 }

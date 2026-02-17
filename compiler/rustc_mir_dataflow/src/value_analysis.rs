@@ -470,6 +470,10 @@ impl<'tcx> Map<'tcx> {
                             }
                             AggregateKind::RawPtr(..)
                             | AggregateKind::PtrMetadata(..)
+                            | AggregateKind::InitArray
+                            | AggregateKind::InitArrayRepeat(..)
+                            | AggregateKind::InitSliceRepeat(..)
+                            | AggregateKind::InitTuple
                             | AggregateKind::Array(_)
                             | AggregateKind::Tuple
                             | AggregateKind::Closure(..)

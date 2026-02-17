@@ -161,6 +161,13 @@ fn recurse_build<'tcx>(
         ExprKind::Adt(_) => {
             maybe_supported_error(GenericConstantTooComplexSub::AdtNotSupported(node.span))?
         }
+        ExprKind::InitArray { .. }
+        | ExprKind::InitArrayRepeat { .. }
+        | ExprKind::InitSliceRepeat { .. }
+        | ExprKind::InitStruct(..)
+        | ExprKind::InitTuple { .. } => {
+            maybe_supported_error(GenericConstantTooComplexSub::InitNotSupported(node.span))?
+        }
         ExprKind::PtrMetadata(_) => maybe_supported_error(
             GenericConstantTooComplexSub::PtrMetadataConstructionNotSupported(node.span),
         )?,
@@ -262,6 +269,8 @@ impl<'a, 'tcx> IsThirPolymorphic<'a, 'tcx> {
                 self.visit_expr(&self.thir()[value]);
                 count.has_non_region_param()
             }
+            // Unlike `ExprKind::Repeat`, here the length is part of the type, so is already handled.
+            thir::ExprKind::InitArrayRepeat { .. } => false,
             thir::ExprKind::Scope { .. }
             | thir::ExprKind::If { .. }
             | thir::ExprKind::Call { .. }
@@ -295,6 +304,10 @@ impl<'a, 'tcx> IsThirPolymorphic<'a, 'tcx> {
             | thir::ExprKind::Array { .. }
             | thir::ExprKind::Tuple { .. }
             | thir::ExprKind::Adt(_)
+            | thir::ExprKind::InitArray { .. }
+            | thir::ExprKind::InitTuple { .. }
+            | thir::ExprKind::InitStruct(..)
+            | thir::ExprKind::InitSliceRepeat { .. }
             | thir::ExprKind::PtrMetadata(_)
             | thir::ExprKind::PlaceTypeAscription { .. }
             | thir::ExprKind::ValueTypeAscription { .. }

@@ -136,12 +136,12 @@ impl<'a> State<'a> {
         self.end(ib);
     }
 
-    fn print_expr_repeat(&mut self, element: &ast::Expr, count: &ast::AnonConst) {
+    fn print_expr_repeat(&mut self, element: &ast::Expr, count: &ast::Expr) {
         let ib = self.ibox(INDENT_UNIT);
         self.word("[");
         self.print_expr(element, FixupContext::default());
         self.word_space(";");
-        self.print_expr(&count.value, FixupContext::default());
+        self.print_expr(count, FixupContext::default());
         self.word("]");
         self.end(ib);
     }
@@ -505,19 +505,44 @@ impl<'a> State<'a> {
             ast::ExprKind::Array(exprs) => {
                 self.print_expr_vec(exprs);
             }
+            ast::ExprKind::InitArray(exprs) => {
+                self.word("do init array");
+                self.space();
+                self.print_expr_vec(exprs);
+            }
             ast::ExprKind::ConstBlock(anon_const) => {
                 self.print_expr_anon_const(anon_const, attrs);
             }
             ast::ExprKind::Repeat(element, count) => {
+                self.print_expr_repeat(element, &count.value);
+            }
+            ast::ExprKind::InitArrayRepeat(element, count) => {
+                self.word("do init array");
+                self.space();
+                self.print_expr_repeat(element, &count.value);
+            }
+            ast::ExprKind::InitSliceRepeat(element, count) => {
+                self.word("do init slice");
+                self.space();
                 self.print_expr_repeat(element, count);
             }
             ast::ExprKind::Struct(se) => {
+                self.print_expr_struct(&se.qself, &se.path, &se.fields, &se.rest);
+            }
+            ast::ExprKind::InitStruct(se) => {
+                self.word("do init struct");
+                self.space();
                 self.print_expr_struct(&se.qself, &se.path, &se.fields, &se.rest);
             }
             ast::ExprKind::PtrMetadata(pme) => {
                 self.print_expr_ptr_metadata(&pme.pointee_ty, &pme.fields, &pme.rest);
             }
             ast::ExprKind::Tup(exprs) => {
+                self.print_expr_tup(exprs);
+            }
+            ast::ExprKind::InitTuple(exprs) => {
+                self.word("do init tuple");
+                self.space();
                 self.print_expr_tup(exprs);
             }
             ast::ExprKind::Call(func, args) => {

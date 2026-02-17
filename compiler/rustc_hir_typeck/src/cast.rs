@@ -203,6 +203,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..)
             | ty::Adt(..)
             | ty::Never
             | ty::Error(_) => {

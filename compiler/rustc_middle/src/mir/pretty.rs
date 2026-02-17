@@ -1162,6 +1162,27 @@ impl<'tcx> Debug for Rvalue<'tcx> {
                         }
                     }
 
+                    AggregateKind::InitArray => write!(fmt, "do init array {places:?}"),
+                    AggregateKind::InitArrayRepeat(_, len) => {
+                        write!(fmt, "do init array [{:?}; {len:?}]", places[FieldIdx::ZERO])
+                    }
+                    AggregateKind::InitSliceRepeat(_) => {
+                        // the length is the `FieldIdx::ZERO`
+                        write!(
+                            fmt,
+                            "do init slice [{:?}; {:?}]",
+                            places[FieldIdx::ONE],
+                            places[FieldIdx::ZERO]
+                        )
+                    }
+                    AggregateKind::InitTuple => {
+                        if places.is_empty() {
+                            write!(fmt, "do init tuple ()")
+                        } else {
+                            fmt_tuple(fmt, "do init tuple ")
+                        }
+                    }
+
                     AggregateKind::Adt(adt_did, variant, args, _user_ty, _) => {
                         ty::tls::with(|tcx| {
                             let variant_def = &tcx.adt_def(adt_did).variant(variant);

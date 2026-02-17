@@ -439,6 +439,10 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 self.walk_struct_expr(fields, opt_with)?;
             }
 
+            hir::ExprKind::InitStruct(_, fields) => {
+                self.walk_struct_expr(fields, &hir::StructTailExpr::None)?;
+            }
+
             hir::ExprKind::PtrMetadata(_, fields, ref opt_with) => {
                 self.walk_ptr_metadata_expr(fields, opt_with)?;
             }
@@ -470,6 +474,10 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Array(exprs) => {
+                self.consume_exprs(exprs)?;
+            }
+
+            hir::ExprKind::InitTuple(exprs) | hir::ExprKind::InitArray(exprs) => {
                 self.consume_exprs(exprs)?;
             }
 
@@ -565,6 +573,15 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             hir::ExprKind::Repeat(base, _) => {
                 self.consume_expr(base)?;
+            }
+
+            hir::ExprKind::InitArrayRepeat(base, _) => {
+                self.consume_expr(base)?;
+            }
+
+            hir::ExprKind::InitSliceRepeat(base, len) => {
+                self.consume_expr(base)?;
+                self.consume_expr(len)?;
             }
 
             hir::ExprKind::Closure(closure) => {
@@ -1462,6 +1479,11 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             | hir::ExprKind::Continue(..)
             | hir::ExprKind::Struct(..)
             | hir::ExprKind::PtrMetadata(..)
+            | hir::ExprKind::InitArray(..)
+            | hir::ExprKind::InitArrayRepeat(..)
+            | hir::ExprKind::InitSliceRepeat(..)
+            | hir::ExprKind::InitStruct(..)
+            | hir::ExprKind::InitTuple(..)
             | hir::ExprKind::Repeat(..)
             | hir::ExprKind::InlineAsm(..)
             | hir::ExprKind::OffsetOf(..)

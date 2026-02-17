@@ -9,7 +9,7 @@ use rustc_abi::{self as abi, ExternAbi, FieldIdx, Integer, VariantIdx};
 use rustc_hir::def_id::DefId;
 use rustc_hir::find_attr;
 use rustc_middle::ty::layout::{IntegerExt, TyAndLayout};
-use rustc_middle::ty::{self, AdtDef, Instance, Ty, Unnormalized, VariantDef};
+use rustc_middle::ty::{self, AdtDef, Instance, Ty, VariantDef};
 use rustc_middle::{bug, mir, span_bug};
 use rustc_target::callconv::{ArgAbi, FnAbi};
 use tracing::field::Empty;

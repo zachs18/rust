@@ -831,6 +831,32 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
                 }
             }
 
+            ty::InitArray(tys) | ty::InitTuple(tys) => {
+                for elem in tys {
+                    self.require_sized(elem, ObligationCauseCode::InitElem);
+                }
+            }
+            ty::InitArrayRepeat(elem, len) => {
+                self.require_sized(elem, ObligationCauseCode::InitElem);
+                // Note that the len being WF is implicitly checked while visiting.
+                // Here we just check that it's of type usize.
+                let cause = self.cause(ObligationCauseCode::InitLen(t));
+                self.out.push(traits::Obligation::with_depth(
+                    tcx,
+                    cause,
+                    self.recursion_depth,
+                    self.param_env,
+                    ty::Binder::dummy(ty::PredicateKind::Clause(ty::ClauseKind::ConstArgHasType(
+                        len,
+                        tcx.types.usize,
+                    ))),
+                ));
+            }
+            ty::InitSliceRepeat(elem) => {
+                self.require_sized(elem, ObligationCauseCode::InitElem);
+            }
+            ty::InitStruct(..) => todo!(),
+
             ty::RawPtr(_, _) | ty::PtrMetadata(_) => {
                 // Simple cases that are WF if their type args are WF.
             }
