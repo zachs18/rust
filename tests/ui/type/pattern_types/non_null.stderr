@@ -15,7 +15,10 @@ error: layout_of((*const T) is !null) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -62,7 +65,10 @@ error: layout_of(Option<(*const ()) is !null>) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -124,7 +130,10 @@ error: layout_of(Option<(*const ()) is !null>) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(0 bytes),
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -184,7 +193,10 @@ error: layout_of((*const [u8]) is !null) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,

@@ -520,7 +520,7 @@ pub(crate) mod rustc {
             // Append the fields, in memory order, to the layout.
             for &field_idx in in_memory_order.iter() {
                 // Add interfield padding.
-                let padding_needed = offsets[field_idx] - size;
+                let padding_needed = offsets[field_idx].exact_offset() - size;
                 let padding = Self::padding(padding_needed.bytes_usize());
 
                 let field_ty = ty_field(cx, (ty, layout), field_idx);

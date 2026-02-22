@@ -9,10 +9,10 @@ use rustc_public_bridge::context::CompilerCtxt;
 use rustc_target::callconv;
 
 use crate::abi::{
-    AddressSpace, ArgAbi, CallConvention, FieldsShape, FloatLength, FnAbi, IntegerLength,
-    IntegerType, Layout, LayoutShape, NumScalableVectors, PassMode, Primitive, ReprFlags,
-    ReprOptions, Scalar, TagEncoding, TyAndLayout, ValueAbi, VariantFields, VariantsShape,
-    WrappingRange,
+    AddressSpace, ArgAbi, CallConvention, FieldOffset, FieldsShape, FloatLength, FnAbi,
+    IntegerLength, IntegerType, Layout, LayoutShape, NumScalableVectors, OffsetAccuracy, PassMode,
+    Primitive, ReprFlags, ReprOptions, Scalar, TagEncoding, TyAndLayout, ValueAbi, VariantFields,
+    VariantsShape, WrappingRange,
 };
 use crate::compiler_interface::BridgeTys;
 use crate::target::MachineSize as Size;
@@ -177,6 +177,37 @@ impl<'tcx> Stable<'tcx> for callconv::PassMode<'tcx, ty::Ty<'tcx>> {
     }
 }
 
+impl<'tcx> Stable<'tcx> for rustc_abi::OffsetAccuracy {
+    type T = OffsetAccuracy;
+
+    fn stable<'cx>(
+        &self,
+        _tables: &mut Tables<'cx, BridgeTys>,
+        _cx: &CompilerCtxt<'cx, BridgeTys>,
+    ) -> Self::T {
+        match self {
+            rustc_abi::OffsetAccuracy::Exact => OffsetAccuracy::Exact,
+            rustc_abi::OffsetAccuracy::RoundedUp => OffsetAccuracy::RoundedUp,
+            rustc_abi::OffsetAccuracy::LowerBound => OffsetAccuracy::LowerBound,
+        }
+    }
+}
+
+impl<'tcx> Stable<'tcx> for rustc_abi::FieldOffset {
+    type T = FieldOffset;
+
+    fn stable<'cx>(
+        &self,
+        tables: &mut Tables<'cx, BridgeTys>,
+        cx: &CompilerCtxt<'cx, BridgeTys>,
+    ) -> Self::T {
+        FieldOffset {
+            offset: self.offset.stable(tables, cx),
+            accuracy: self.accuracy.stable(tables, cx),
+        }
+    }
+}
+
 impl<'tcx> Stable<'tcx> for rustc_abi::FieldsShape<rustc_abi::FieldIdx> {
     type T = FieldsShape;
 
@@ -220,7 +251,15 @@ impl<'tcx> Stable<'tcx> for rustc_abi::Variants<rustc_abi::FieldIdx, rustc_abi::
                         .iter()
                         .map(|v| match &v.fields {
                             rustc_abi::FieldsShape::Arbitrary { offsets, .. } => VariantFields {
-                                offsets: offsets.iter().as_slice().stable(tables, cx),
+                                offsets: offsets
+                                    .iter()
+                                    .map(|offset| {
+                                        if offset.accuracy != rustc_abi::OffsetAccuracy::Exact {
+                                            unimplemented!("unsized enum")
+                                        }
+                                        offset.offset.stable(tables, cx)
+                                    })
+                                    .collect(),
                             },
                             _ => panic!("variant layout should be Arbitrary"),
                         })

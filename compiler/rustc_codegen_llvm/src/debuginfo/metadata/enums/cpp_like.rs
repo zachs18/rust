@@ -873,7 +873,8 @@ fn build_union_fields_for_direct_tag_enum_or_coroutine<'ll, 'tcx>(
             Endian::Big => (8, 0),
         };
 
-        let tag_field_offset = enum_type_and_layout.fields.offset(tag_field.as_usize()).bytes();
+        let tag_field_offset =
+            enum_type_and_layout.fields.exact_offset(tag_field.as_usize()).bytes();
         let lo_offset = Size::from_bytes(tag_field_offset + lo_offset);
         let hi_offset = Size::from_bytes(tag_field_offset + hi_offset);
 
@@ -904,7 +905,7 @@ fn build_union_fields_for_direct_tag_enum_or_coroutine<'ll, 'tcx>(
             enum_type_di_node,
             TAG_FIELD_NAME,
             enum_type_and_layout.field(cx, tag_field.as_usize()),
-            enum_type_and_layout.fields.offset(tag_field.as_usize()),
+            enum_type_and_layout.fields.exact_offset(tag_field.as_usize()),
             di_flags,
             tag_base_type_di_node,
             None,

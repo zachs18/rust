@@ -1,9 +1,9 @@
 use std::fmt;
 
 use itertools::Either;
-use rustc_abi as abi;
 use rustc_abi::{
-    BackendRepr, FIRST_VARIANT, FieldIdx, Primitive, Size, TagEncoding, VariantIdx, Variants,
+    self as abi, BackendRepr, FIRST_VARIANT, FieldIdx, OffsetAccuracy, Primitive, Size,
+    TagEncoding, VariantIdx, Variants,
 };
 use rustc_hir::LangItem;
 use rustc_middle::mir::interpret::{Pointer, Scalar, alloc_range};
@@ -423,12 +423,17 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
         let val = if field.is_zst() {
             OperandValue::ZeroSized
         } else if field.size == self.layout.size {
-            assert_eq!(offset.bytes(), 0);
+            assert_eq!(offset.offset.bytes(), 0);
             fx.codegen_transmute_operand(bx, *self, field)
         } else {
             let (in_scalar, imm) = match (self.val, self.layout.backend_repr) {
                 // Extract a scalar component from a pair.
                 (OperandValue::Pair(a_llval, b_llval), BackendRepr::ScalarPair(a, b)) => {
+                    debug_assert!(
+                        matches!(offset.accuracy, OffsetAccuracy::Exact),
+                        "ScalarPair should have no unsized fields"
+                    );
+                    let offset = offset.offset;
                     if offset.bytes() == 0 {
                         assert_eq!(field.size, a.size(bx.cx()));
                         (Some(a), a_llval)
@@ -486,7 +491,6 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
         i: usize,
     ) -> Self {
         let field = self.layout.field(bx.cx(), i);
-        let offset = self.layout.fields.offset(i);
 
         if !bx.is_backend_ref(self.layout) && bx.is_backend_ref(field) {
             // Part of https://github.com/rust-lang/compiler-team/issues/838
@@ -498,6 +502,10 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
             let field_place = place.project_field(bx, i);
             return bx.load_operand(field_place);
         }
+
+        // if this is not OperandValue::Ref, then it is Sized, so it has no unsized fields,
+        // so `exact_offset` is fine
+        let offset = self.layout.fields.exact_offset(i);
 
         let val = if field.is_zst() {
             OperandValue::ZeroSized
@@ -869,7 +877,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRefBuilder<'tcx, V> {
         } else {
             let variant_layout = self.layout.for_variant(bx.cx(), variant);
             let field_offset = variant_layout.fields.offset(field.as_usize());
-            field_offset == Size::ZERO
+            field_offset.guaranteed_zero()
         };
 
         let mut update = |tgt: &mut Either<V, abi::Scalar>, src, from_scalar| {
@@ -937,7 +945,12 @@ impl<'a, 'tcx, V: CodegenObject> OperandRefBuilder<'tcx, V> {
     /// necessary for writing things like enum tags that aren't in any variant.
     pub(super) fn insert_imm(&mut self, f: FieldIdx, imm: V) {
         let field_offset = self.layout.fields.offset(f.as_usize());
-        let is_zero_offset = field_offset == Size::ZERO;
+        assert_eq!(
+            field_offset.accuracy,
+            OffsetAccuracy::Exact,
+            "insert_imm field should have exact offset"
+        );
+        let is_zero_offset = field_offset.offset == Size::ZERO;
         match &mut self.val {
             OperandValueBuilder::Immediate(val @ Either::Right(_)) if is_zero_offset => {
                 *val = Either::Left(imm);

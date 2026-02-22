@@ -2,7 +2,7 @@ mod adt;
 
 use std::borrow::Cow;
 
-use rustc_abi::{ExternAbi, FieldIdx, VariantIdx};
+use rustc_abi::{ExternAbi, FieldIdx, OffsetAccuracy, VariantIdx};
 use rustc_ast::Mutability;
 use rustc_hir::LangItem;
 use rustc_middle::span_bug;
@@ -271,9 +271,16 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                     self.write_type_id(field_ty, &field_place)?
                 }
                 sym::offset => {
+                    // FIXME(more_unsized): maybe make `offset: Option<usize>` instead
                     let offset = layout.fields.offset(idx as usize);
+                    if !matches!(offset.accuracy, OffsetAccuracy::Exact) {
+                        tracing::warn!(
+                            "FIXME(more_unsized): inaccurate offset in reflection {offset:?}"
+                        );
+                    }
                     self.write_scalar(
-                        ScalarInt::try_from_target_usize(offset.bytes(), self.tcx.tcx).unwrap(),
+                        ScalarInt::try_from_target_usize(offset.offset.bytes(), self.tcx.tcx)
+                            .unwrap(),
                         &field_place,
                     )?;
                 }

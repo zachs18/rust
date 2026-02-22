@@ -103,13 +103,17 @@ where
                 // Unions and are always treated as a series of 64-bit integer chunks
             }
             FieldsShape::Arbitrary { .. } => {
+                assert!(
+                    arg.layout.is_sized(),
+                    "FIXME(more_unsized): determine if this needs to handle unsized, and fix for FieldOffset if so"
+                );
                 // Structures are split up into a series of 64-bit integer chunks, but any aligned
                 // doubles not part of another aggregate are passed as floats.
                 let mut last_offset = Size::ZERO;
 
                 for i in 0..arg.layout.fields.count() {
                     let field = arg.layout.field(cx, i);
-                    let offset = arg.layout.fields.offset(i);
+                    let offset = arg.layout.fields.offset(i).offset;
 
                     // We only care about aligned doubles
                     if let BackendRepr::Scalar(scalar) = field.backend_repr {

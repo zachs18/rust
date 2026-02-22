@@ -82,6 +82,10 @@ fn classify<'a, Ty, C>(
             FieldsShape::Arbitrary { .. } => match arg_layout.variants {
                 Variants::Multiple { .. } => {}
                 Variants::Single { .. } | Variants::Empty => {
+                    assert!(
+                        arg_layout.is_sized(),
+                        "FIXME(more_unsized): determine if this needs to handle unsized, and fix if so"
+                    );
                     // Match Clang by ignoring whether a struct is packed and just considering
                     // whether individual fields are aligned. GCC currently uses only integer
                     // registers when passing packed structs.
@@ -89,7 +93,7 @@ fn classify<'a, Ty, C>(
                         classify(
                             cx,
                             &arg_layout.field(cx, i),
-                            offset + arg_layout.fields.offset(i),
+                            offset + arg_layout.fields.exact_offset(i),
                             double_words,
                         );
                     }

@@ -62,8 +62,12 @@ where
             BackendRepr::SimdScalableVector { .. } => panic!("scalable vectors are unsupported"),
 
             BackendRepr::ScalarPair(..) | BackendRepr::Memory { .. } => {
+                assert!(
+                    layout.is_sized(),
+                    "FIXME(more_unsized): determine if this needs to handle unsized, and fix if so"
+                );
                 for i in 0..layout.fields.count() {
-                    let field_off = off + layout.fields.offset(i);
+                    let field_off = off + layout.fields.exact_offset(i);
                     classify(cx, layout.field(cx, i), cls, field_off)?;
                 }
 

@@ -14,7 +14,10 @@ error: layout_of(UnivariantU8) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -58,7 +61,10 @@ error: layout_of(UnivariantU8) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -106,7 +112,10 @@ error: layout_of(TwoVariantsU8) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -156,7 +165,10 @@ error: layout_of(TwoVariantsU8) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -193,7 +205,10 @@ error: layout_of(TwoVariantsU8) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -229,7 +244,10 @@ error: layout_of(DeadBranchHasOtherFieldU8) = Layout {
            },
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -267,8 +285,14 @@ error: layout_of(DeadBranchHasOtherFieldU8) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(8 bytes),
-                               Size(8 bytes),
+                               FieldOffset {
+                                   offset: Size(8 bytes),
+                                   accuracy: Exact,
+                               },
+                               FieldOffset {
+                                   offset: Size(8 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -296,7 +320,10 @@ error: layout_of(DeadBranchHasOtherFieldU8) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(8 bytes),
+                               FieldOffset {
+                                   offset: Size(8 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,

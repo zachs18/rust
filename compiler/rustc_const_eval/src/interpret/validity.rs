@@ -13,8 +13,8 @@ use std::num::NonZero;
 use either::{Left, Right};
 use hir::def::DefKind;
 use rustc_abi::{
-    BackendRepr, FieldIdx, FieldsShape, Scalar as ScalarAbi, Size, VariantIdx, Variants,
-    WrappingRange,
+    BackendRepr, FieldIdx, FieldsShape, OffsetAccuracy, Scalar as ScalarAbi, Size, VariantIdx,
+    Variants, WrappingRange,
 };
 use rustc_ast::Mutability;
 use rustc_data_structures::fx::FxHashSet;
@@ -1320,8 +1320,11 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 }
                 FieldsShape::Arbitrary { offsets, .. } => {
                     for (field, &offset) in offsets.iter_enumerated() {
+                        if offset.accuracy != OffsetAccuracy::Exact {
+                            tracing::warn!("FIXME(more_unsized): ValidityVisitor multi-unsized");
+                        }
                         let field = layout.field(cx, field.as_usize());
-                        union_data_range_uncached(cx, field, base_offset + offset, out);
+                        union_data_range_uncached(cx, field, base_offset + offset.offset, out);
                     }
                 }
             }

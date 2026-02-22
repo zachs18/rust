@@ -1,5 +1,5 @@
 use either::{Left, Right};
-use rustc_abi::{Align, FieldIdx, HasDataLayout, Size, TargetDataLayout};
+use rustc_abi::{Align, FieldIdx, HasDataLayout, OffsetAccuracy, Size, TargetDataLayout};
 use rustc_hir::def_id::DefId;
 use rustc_hir::limit::Limit;
 use rustc_middle::mir::interpret::{ErrorHandled, InvalidMetaKind, ReportedErrorInfo};
@@ -12,7 +12,7 @@ use rustc_middle::ty::{
     self, GenericArgsRef, Ty, TyCtxt, TypeFoldable, TypeVisitableExt, TypingEnv, TypingMode,
     Variance,
 };
-use rustc_middle::{bug, mir, span_bug, throw_unsup};
+use rustc_middle::{bug, mir, span_bug, throw_unsup, throw_unsup_format};
 use rustc_span::Span;
 use rustc_target::callconv::FnAbi;
 use tracing::{debug, trace};
@@ -507,6 +507,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 let unsized_offset_unadjusted = layout.fields.offset(layout.fields.count() - 1);
                 let sized_align = layout.align.abi;
+
+                if matches!(unsized_offset_unadjusted.accuracy, OffsetAccuracy::LowerBound) {
+                    throw_unsup_format!(
+                        "FIXME(more_unsized): implement multi-unsized structs in consteval"
+                    );
+                }
+                let unsized_offset_unadjusted = unsized_offset_unadjusted.offset;
 
                 // Recurse to get the size of the dynamically sized field (must be
                 // the last field). Can't have foreign types here, how would we

@@ -14,7 +14,10 @@ error: layout_of(NonZero<u32>) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -59,7 +62,10 @@ error: layout_of((u32) is 1..) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -104,7 +110,10 @@ error: layout_of(Option<(u32) is 1..>) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -164,7 +173,10 @@ error: layout_of(Option<(u32) is 1..>) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(0 bytes),
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -215,7 +227,10 @@ error: layout_of(Option<NonZero<u32>>) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -275,7 +290,10 @@ error: layout_of(Option<NonZero<u32>>) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(0 bytes),
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -326,7 +344,10 @@ error: layout_of(NonZeroU32New) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -399,7 +420,10 @@ error: layout_of((i8) is -10..=10) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -444,7 +468,10 @@ error: layout_of((i8) is i8::MIN..=0) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
