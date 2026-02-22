@@ -1353,6 +1353,7 @@ fn build_tuple_type_di_node<'ll, 'tcx>(
             NO_SCOPE_METADATA,
             DIFlags::FlagZero,
         ),
+        // FIXME(more_unsized): handle multi-unsized-field structs
         // Fields:
         |cx, tuple_di_node| {
             component_types
