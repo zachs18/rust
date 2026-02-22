@@ -221,7 +221,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let cx = ty::layout::LayoutCx::new(*self.tcx, self.typing_env);
 
                 let layout = layout.for_variant(&cx, VariantIdx::from_u32(variant));
-                let offset = layout.fields.offset(field).bytes();
+                // FIXME(more_unsized): disallow `offset_of!` for relevant fields earlier
+                let offset = layout.fields.exact_offset(field).bytes();
 
                 self.write_scalar(Scalar::from_target_usize(offset, self), dest)?;
             }

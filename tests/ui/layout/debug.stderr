@@ -30,7 +30,10 @@ error: layout_of(E) = Layout {
            },
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -89,9 +92,18 @@ error: layout_of(E) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(4 bytes),
-                               Size(4 bytes),
-                               Size(8 bytes),
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
+                               FieldOffset {
+                                   offset: Size(8 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -142,9 +154,18 @@ error: layout_of(S) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
-                   Size(8 bytes),
-                   Size(4 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
+                   FieldOffset {
+                       offset: Size(8 bytes),
+                       accuracy: Exact,
+                   },
+                   FieldOffset {
+                       offset: Size(4 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -214,7 +235,10 @@ error: layout_of(Result<i32, i32>) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -265,7 +289,10 @@ error: layout_of(Result<i32, i32>) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(4 bytes),
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -303,7 +330,10 @@ error: layout_of(Result<i32, i32>) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(4 bytes),
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,

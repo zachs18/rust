@@ -1663,6 +1663,62 @@ impl Scalar {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "nightly", derive(HashStable_Generic))]
+pub enum OffsetAccuracy {
+    /// The offset is exactly correct.
+    ///
+    /// This is the case for fields that are before any unsized field in memory.
+    Exact,
+    /// The offset is correct, when rounded up to the effective alignment of the field.
+    ///
+    /// This is the case for the first unsized field, if its alignment is not statically known.
+    RoundedUp,
+    /// The offset is a lower bound, and is not necessarily accurate.
+    ///
+    /// This is the case for the fields after the first unsized field.
+    LowerBound,
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "nightly", derive(HashStable_Generic))]
+pub struct FieldOffset {
+    pub offset: Size,
+    pub accuracy: OffsetAccuracy,
+}
+
+impl FieldOffset {
+    pub fn exact(offset: Size) -> Self {
+        Self { offset, accuracy: OffsetAccuracy::Exact }
+    }
+
+    pub fn is_exact_and(self, f: impl FnOnce(Size) -> bool) -> bool {
+        matches!(self.accuracy, OffsetAccuracy::Exact) && f(self.offset)
+    }
+
+    pub fn exact_offset(self) -> Size {
+        assert!(
+            matches!(self.accuracy, OffsetAccuracy::Exact),
+            "FieldOffset::exact_offset called on non-exact offset {self:?}"
+        );
+        self.offset
+    }
+
+    /// Is this field offset guaranteed to be `Size::ZERO`?
+    ///
+    /// This is always accurate for `OffsetAccuracy::Exact`, and for `OffsetAccuracy::RoundedUp`
+    /// (since 0 rounded up to any alignment is still 0).
+    ///
+    /// This returns `false` for `OffsetAccuracy::LowerBound`, as it cannot be known statically.
+    pub fn guaranteed_zero(self) -> bool {
+        // zero rounded up to any alignment is still zero
+        match self.accuracy {
+            OffsetAccuracy::Exact | OffsetAccuracy::RoundedUp => self.offset.bytes() == 0,
+            OffsetAccuracy::LowerBound => false,
+        }
+    }
+}
+
 // NOTE: This struct is generic over the FieldIdx for rust-analyzer usage.
 /// Describes how the fields of a type are located in memory.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -1688,11 +1744,8 @@ pub enum FieldsShape<FieldIdx: Idx> {
         /// Offsets for the first byte of each field,
         /// ordered to match the source definition order.
         /// This vector does not go in increasing order.
-        /// This is exact for `Sized` fields that are not after an unsized field.
-        /// For the first in-memory-order unsized field, the offset is this value rounded up to its effective alignment.
-        /// For any field after the first in-memory-order unsized field, this is a lower bound.
         // FIXME(eddyb) use small vector optimization for the common case.
-        offsets: IndexVec<FieldIdx, Size>,
+        offsets: IndexVec<FieldIdx, FieldOffset>,
 
         /// Maps memory order field indices to source order indices,
         /// depending on how the fields were reordered (if at all).
@@ -1717,22 +1770,33 @@ impl<FieldIdx: Idx> FieldsShape<FieldIdx> {
     }
 
     #[inline]
-    pub fn offset(&self, i: usize) -> Size {
+    pub fn offset(&self, i: usize) -> FieldOffset {
         match *self {
             FieldsShape::Primitive => {
                 unreachable!("FieldsShape::offset: `Primitive`s have no fields")
             }
             FieldsShape::Union(count) => {
                 assert!(i < count.get(), "tried to access field {i} of union with {count} fields");
-                Size::ZERO
+                FieldOffset { offset: Size::ZERO, accuracy: OffsetAccuracy::Exact }
             }
             FieldsShape::Array { stride, count } => {
                 let i = u64::try_from(i).unwrap();
                 assert!(i < count, "tried to access field {i} of array with {count} fields");
-                stride * i
+
+                FieldOffset { offset: stride * i, accuracy: OffsetAccuracy::Exact }
             }
             FieldsShape::Arbitrary { ref offsets, .. } => offsets[FieldIdx::new(i)],
         }
+    }
+
+    #[inline]
+    pub fn exact_offset(&self, i: usize) -> Size {
+        let offset = self.offset(i);
+        assert!(
+            matches!(offset.accuracy, OffsetAccuracy::Exact),
+            "FieldsShape::exact_offset called for non-exact offset {i:?}: {offset:?}"
+        );
+        offset.offset
     }
 
     /// Gets source indices of the fields by increasing offsets.
@@ -2320,18 +2384,6 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
 /// A univariant, but with a prefix of an arbitrary size & alignment (e.g., enum tag).
 #[derive(Copy, Clone, Debug)]
 pub struct StructPrefix(Size, Align);
-
-#[derive(Clone, Debug)]
-pub struct FieldOffset<FieldIdx> {
-    base: Size,
-    then_after: Vec<FieldIdx>,
-}
-
-impl<FieldIdx> FieldOffset<FieldIdx> {
-    pub fn static_offset(&self) -> Option<Size> {
-        self.then_after.is_empty().then_some(self.base)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub enum AbiFromStrErr {

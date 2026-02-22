@@ -10,7 +10,7 @@
 use std::marker::PhantomData;
 use std::ops::Range;
 
-use rustc_abi::{self as abi, FieldIdx, Size, VariantIdx};
+use rustc_abi::{self as abi, FieldIdx, OffsetAccuracy, Size, VariantIdx};
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::{bug, mir, span_bug, ty};
@@ -193,7 +193,12 @@ where
                 &field_layout,
                 SizeAndAlignSemantics::FOR_FIELD_OFFSET,
             )? {
-                Some((_, align)) => {
+                Some((_, align))
+                    if matches!(
+                        offset.accuracy,
+                        OffsetAccuracy::Exact | OffsetAccuracy::RoundedUp
+                    ) =>
+                {
                     // For packed types, we need to cap alignment.
                     let align = if let ty::Adt(def, _) = base.layout().ty.kind()
                         && let Some(packed) = def.repr().pack
@@ -202,12 +207,15 @@ where
                     } else {
                         align
                     };
-                    (field_meta, offset.align_to(align))
+                    (field_meta, offset.offset.align_to(align))
                 }
-                None if offset == Size::ZERO => {
+                Some(..) => {
+                    todo!("implement multi-unsized structs")
+                }
+                None if offset.guaranteed_zero() => {
                     // If the offset is 0, then rounding it up to alignment wouldn't change anything,
                     // so we can do this even for types where we cannot determine the alignment.
-                    (field_meta, offset)
+                    (field_meta, Size::ZERO)
                 }
                 None => {
                     // We cannot know the alignment of this field, so we cannot adjust.
@@ -217,7 +225,15 @@ where
         } else {
             // base_meta could be present; we might be accessing a sized field of an unsized
             // struct.
-            (AnyMemPlaceMeta(None), offset)
+            match offset.accuracy {
+                OffsetAccuracy::Exact => {}
+                OffsetAccuracy::RoundedUp => {
+                    unreachable!("sized field should never have RoundedUp offset accuracy")
+                }
+                OffsetAccuracy::LowerBound => todo!("implement multi-unsized structs"),
+            }
+
+            (AnyMemPlaceMeta(None), offset.offset)
         };
 
         base.offset_with_meta(offset, OffsetMode::Inbounds, meta, field_layout, self)

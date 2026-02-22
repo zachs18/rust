@@ -245,8 +245,14 @@ error: fn_abi_of(test_generic) = FnAbi {
                            ),
                            fields: Arbitrary {
                                offsets: [
-                                   Size(0 bytes),
-                                   Size(8 bytes),
+                                   FieldOffset {
+                                       offset: Size(0 bytes),
+                                       accuracy: Exact,
+                                   },
+                                   FieldOffset {
+                                       offset: Size(8 bytes),
+                                       accuracy: Exact,
+                                   },
                                ],
                                in_memory_order: [
                                    0,
@@ -954,8 +960,14 @@ error: fn_abi_of(assoc_test) = FnAbi {
                            ),
                            fields: Arbitrary {
                                offsets: [
-                                   Size(0 bytes),
-                                   Size(8 bytes),
+                                   FieldOffset {
+                                       offset: Size(0 bytes),
+                                       accuracy: Exact,
+                                   },
+                                   FieldOffset {
+                                       offset: Size(8 bytes),
+                                       accuracy: Exact,
+                                   },
                                ],
                                in_memory_order: [
                                    0,

@@ -119,6 +119,28 @@ impl Layout {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub enum OffsetAccuracy {
+    /// The offset is exactly correct.
+    ///
+    /// This is the case for fields that are before any unsized field in memory.
+    Exact,
+    /// The offset is correct, when rounded up to the effective alignment of the field.
+    ///
+    /// This is the case for the first unsized field, if its alignment is not statically known.
+    RoundedUp,
+    /// The offset is a lower bound, and is not necessarily accurate.
+    ///
+    /// This is the case for the fields after the first unsized field.
+    LowerBound,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub struct FieldOffset {
+    pub offset: Size,
+    pub accuracy: OffsetAccuracy,
+}
+
 /// Describes how the fields of a type are shaped in memory.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum FieldsShape {
@@ -143,7 +165,7 @@ pub enum FieldsShape {
         /// ordered to match the source definition order.
         /// I.e.: It follows the same order as [super::ty::VariantDef::fields()].
         /// This vector does not go in increasing order.
-        offsets: Vec<Size>,
+        offsets: Vec<FieldOffset>,
     },
 }
 
@@ -154,7 +176,8 @@ impl FieldsShape {
             FieldsShape::Union(_) | FieldsShape::Array { .. } => (0..self.count()).collect(),
             FieldsShape::Arbitrary { offsets, .. } => {
                 let mut indices = (0..offsets.len()).collect::<Vec<_>>();
-                indices.sort_by_key(|idx| offsets[*idx]);
+                // FIXME(more_unsized): probably need to add `in_memory_order` and use that here
+                indices.sort_by_key(|idx| offsets[*idx].offset);
                 indices
             }
         }

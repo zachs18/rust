@@ -4,8 +4,8 @@ use rustc_hashes::Hash64;
 use rustc_index::{Idx, IndexVec};
 
 use crate::{
-    AbiAlign, BackendRepr, FieldsShape, HasDataLayout, LayoutData, Niche, Primitive, Scalar, Size,
-    Variants,
+    AbiAlign, BackendRepr, FieldOffset, FieldsShape, HasDataLayout, LayoutData, Niche, Primitive,
+    Scalar, Size, Variants,
 };
 
 /// "Simple" layout constructors that cannot fail.
@@ -107,7 +107,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
         LayoutData {
             variants: Variants::Single { index: VariantIdx::new(0) },
             fields: FieldsShape::Arbitrary {
-                offsets: [Size::ZERO, b_offset].into(),
+                offsets: [Size::ZERO, b_offset].map(FieldOffset::exact).into(),
                 in_memory_order: [FieldIdx::new(0), FieldIdx::new(1)].into(),
             },
             backend_repr: BackendRepr::ScalarPair(a, b),

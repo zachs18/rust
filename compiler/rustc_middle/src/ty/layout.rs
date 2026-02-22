@@ -1118,7 +1118,7 @@ where
                         variants,
                         ..
                     } if variants.len() == 2
-                        && this.fields.offset(tag_field.as_usize()) == offset =>
+                        && this.fields.exact_offset(tag_field.as_usize()) == offset =>
                     {
                         let tagged_variant = if *untagged_variant == VariantIdx::ZERO {
                             VariantIdx::from_u32(1)
@@ -1155,7 +1155,7 @@ where
                     // (requires passing in the expected address space from the caller)
                     let ptr_end = offset + Primitive::Pointer(AddressSpace::ZERO).size(cx);
                     for i in 0..variant.fields.count() {
-                        let field_start = variant.fields.offset(i);
+                        let field_start = variant.fields.exact_offset(i);
                         if field_start <= offset {
                             let field = variant.field(cx, i);
                             result = field.to_result().ok().and_then(|field| {
