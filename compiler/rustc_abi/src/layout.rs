@@ -1215,13 +1215,19 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let optimize_field_order = !repr.inhibit_struct_field_reordering();
 
         // unsizable fields are excluded so that we use the same seed for the sized and unsized layouts.
-        let field_seed = fields
+        let non_unsizable_field_seed = fields
             .iter_enumerated()
             .filter(|&(idx, _)| !field_unsizabilities[idx])
             .fold(Hash64::ZERO, |acc, (_, f)| acc.wrapping_add(f.randomization_seed));
 
         if optimize_field_order && fields.len() > 1 {
-            let end = if optimize_field_order {
+            // Split the fields into three groups:
+            // 1. Non-unsizable `Sized` fields.
+            // 2. Non-unsizable unsized fields.
+            // 3. Unsizable fields.
+
+            // partition `in_memory_order` into non-unsizable and unsizable fields
+            let non_unsizable_end = {
                 let mut low = 0;
                 let mut high = in_memory_order.len();
                 let predicate = |f| field_unsizabilities[f];
@@ -1240,14 +1246,36 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 }
                 debug_assert_eq!(low, high);
                 low
-            } else {
-                // If we aren't optimizing field order, then
-                0
             };
-            let (rearrangeable, non_rearrangeable) = in_memory_order.raw.split_at_mut(end);
+            let (non_unsizable, unsizable) = in_memory_order.raw.split_at_mut(non_unsizable_end);
 
-            rearrangeable.sort_unstable();
-            non_rearrangeable.sort_unstable();
+            // partition `non_unsizable` into sized and unsized fields
+            let sized_end = {
+                let mut low = 0;
+                let mut high = non_unsizable.len();
+                let predicate = |f: FieldIdx| !fields[f].is_sized();
+                while low < high {
+                    while low < high && !predicate(non_unsizable[low]) {
+                        low += 1;
+                    }
+                    while low < high && predicate(non_unsizable[high - 1]) {
+                        high -= 1;
+                    }
+                    if low < high {
+                        non_unsizable.swap(low, high);
+                        low += 1;
+                        high -= 1;
+                    }
+                }
+                debug_assert_eq!(low, high);
+                low
+            };
+            let (sized_non_unsizable, unsized_non_unsizable) =
+                non_unsizable.split_at_mut(sized_end);
+
+            sized_non_unsizable.sort_unstable();
+            unsized_non_unsizable.sort_unstable();
+            unsizable.sort_unstable();
 
             // If `-Z randomize-layout` was enabled for the type definition we can shuffle
             // the field ordering to try and catch some code making assumptions about layouts
@@ -1260,32 +1288,30 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     // `ReprOptions.field_shuffle_seed` is a deterministic seed we can use to randomize field
                     // ordering.
                     let mut rng = rand_xoshiro::Xoshiro128StarStar::seed_from_u64(
-                        field_seed.wrapping_add(repr.field_shuffle_seed).as_u64(),
+                        non_unsizable_field_seed.wrapping_add(repr.field_shuffle_seed).as_u64(),
                     );
 
-                    // Shuffle the ordering of the non-unsizable fields.
-                    rearrangeable.shuffle(&mut rng);
-
-                    // `ReprOptions.field_shuffle_seed` is a deterministic seed we can use to randomize field
-                    // ordering.
-                    let mut rng = rand_xoshiro::Xoshiro128StarStar::seed_from_u64(
-                        repr.field_shuffle_seed.as_u64(),
-                    );
-
-                    // Shuffle the ordering of the unsizable fields, using *only* `ReprOptions.field_shuffle_seed`
-                    // so it is the order same for `Foo<T>` and `Foo<dyn Trait>`
-                    non_rearrangeable.shuffle(&mut rng);
+                    // Shuffle the ordering within each group.
+                    // It's find to shuffle the unsizable fields too, since they are shuffled based on
+                    // a seed that only considers the non-unsizable fields.
+                    sized_non_unsizable.shuffle(&mut rng);
+                    unsized_non_unsizable.shuffle(&mut rng);
+                    unsizable.shuffle(&mut rng);
                 }
                 // Otherwise we just leave things alone and actually optimize the type's fields
             } else {
                 // To allow unsizing `&Foo<Type>` -> `&Foo<dyn Trait>`, the layout of the struct
                 // (i.e. the field order) must not depend on the unsizable fields
                 let max_field_align =
-                    rearrangeable.iter().map(|&fidx| fields[fidx].align.bytes()).max().unwrap_or(1);
+                    std::iter::chain(&*sized_non_unsizable, &*unsized_non_unsizable)
+                        .map(|&fidx| fields[fidx].align.bytes())
+                        .max()
+                        .unwrap_or(1);
 
                 // We cannot consider niches in unsizable fields for this purpose, because
                 // we cannot let those niches affect this type's field ordering.
-                let largest_niche_size = rearrangeable
+                // FIXME(more_unsized): also check in unsized_non_unsizable
+                let largest_niche_size = sized_non_unsizable
                     .iter()
                     .filter_map(|&fidx| fields[fidx].largest_niche)
                     .map(|n| n.available(dl))
@@ -1342,7 +1368,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                         // bool to the front but it would require packing the tuple together with the
                         // u16 to build a 4-byte group so that the u32 can be placed after it without
                         // padding. This kind of packing can't be achieved by sorting.
-                        rearrangeable.sort_by_key(|&x| {
+                        sized_non_unsizable.sort_by_key(|&x| {
                             let f = &fields[x];
                             let field_size = f.size.bytes();
                             let niche_size = f.largest_niche.map_or(0, |n| n.available(dl));
@@ -1378,7 +1404,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                         // regardless of the prefix.
                         // And put the largest niche in an alignment group at the end
                         // so it can be used as discriminant in jagged enums
-                        rearrangeable.sort_by_key(|&x| {
+                        sized_non_unsizable.sort_by_key(|&x| {
                             let f = &fields[x];
                             let niche_size = f.largest_niche.map_or(0, |n| n.available(dl));
                             (alignment_group_key(f), niche_size)
@@ -1388,6 +1414,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
 
                 // FIXME(Kixiron): We can always shuffle fields within a given alignment class
                 //                 regardless of the status of `-Z randomize-layout`
+
+                // FIXME(more_unsized): We can also sort the unsized_non_unsizable fields by alignment
             }
         }
 
@@ -1395,26 +1423,27 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         // That is, if field 5 has offset 0, the first element of in_memory_order is 5.
         // We now write field offsets to the corresponding offset slot;
         // field 5 with offset 0 puts 0 in offsets[5].
-        let mut unsized_field = None::<&F>;
+
+        // This is exact for `Sized` fields that are not after an unsized field.
+        // For the first in-memory-order unsized field, the offset is this value rounded up to its effective alignment.
+        // For any field after the first in-memory-order unsized field, this is a lower bound.
         let mut offsets = IndexVec::from_elem(Size::ZERO, fields);
-        let mut offset = Size::ZERO;
+        let mut past_unsized_field = false;
+
+        // If we have not seen an unsized field yet, then `min_offset` is accurate,
+        // otherwise it is a lower-bound.
+        let mut min_offset = Size::ZERO;
         let mut largest_niche = None;
         let mut largest_niche_available = 0;
         if let Some(StructPrefix(prefix_size, prefix_align)) = prefix {
             let prefix_align =
                 if let Some(pack) = pack { prefix_align.min(pack) } else { prefix_align };
             align = align.max(prefix_align);
-            offset = prefix_size.align_to(prefix_align);
+            min_offset = prefix_size.align_to(prefix_align);
         }
+
         for &i in &in_memory_order {
             let field = &fields[i];
-            if let Some(unsized_field) = unsized_field {
-                return Err(LayoutCalculatorError::UnexpectedUnsized(*unsized_field));
-            }
-
-            if field.is_unsized() {
-                unsized_field = Some(field);
-            }
 
             // Invariant: offset < dl.obj_size_bound() <= 1<<61
             let field_align = if let Some(pack) = pack {
@@ -1422,14 +1451,20 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             } else {
                 field.align
             };
-            offset = offset.align_to(field_align.abi);
+            min_offset = min_offset.align_to(field_align.abi);
             align = align.max(field_align.abi);
             max_repr_align = max_repr_align.max(field.max_repr_align);
 
-            debug!("univariant offset: {:?} field: {:#?}", offset, field);
-            offsets[i] = offset;
+            debug!(
+                "univariant offset: {:?} field: {:#?}, past_unsized: {:?}",
+                min_offset, field, past_unsized_field
+            );
+            offsets[i] = min_offset;
 
-            if let Some(mut niche) = field.largest_niche {
+            if let Some(mut niche) = field.largest_niche
+                && !past_unsized_field
+                && !field.is_unsized()
+            {
                 let available = niche.available(dl);
                 // Pick up larger niches.
                 let prefer_new_niche = match niche_bias {
@@ -1439,13 +1474,18 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 };
                 if prefer_new_niche {
                     largest_niche_available = available;
-                    niche.offset += offset;
+                    niche.offset += min_offset;
                     largest_niche = Some(niche);
                 }
             }
 
-            offset =
-                offset.checked_add(field.size, dl).ok_or(LayoutCalculatorError::SizeOverflow)?;
+            min_offset = min_offset
+                .checked_add(field.size, dl)
+                .ok_or(LayoutCalculatorError::SizeOverflow)?;
+
+            if field.is_unsized() {
+                past_unsized_field = true;
+            }
         }
 
         // The unadjusted ABI alignment does not include repr(align), but does include repr(pack).
@@ -1457,15 +1497,15 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         // `align` must not be modified after this point, or `unadjusted_abi_align` could be inaccurate.
         let align = align;
 
-        debug!("univariant min_size: {:?}", offset);
-        let min_size = offset;
+        debug!("univariant min_size: {:?}", min_offset);
+        let min_size = min_offset;
         let size = min_size.align_to(align);
         // FIXME(oli-obk): deduplicate and harden these checks
         if size.bytes() >= dl.obj_size_bound() {
             return Err(LayoutCalculatorError::SizeOverflow);
         }
         let mut layout_of_single_non_zst_field = None;
-        let sized = unsized_field.is_none();
+        let sized = !past_unsized_field;
         let mut abi = BackendRepr::Memory { sized };
 
         let optimize_abi = !repr.inhibit_newtype_abi_optimization();
@@ -1558,7 +1598,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             unadjusted_abi_align
         };
 
-        let seed = field_seed.wrapping_add(repr.field_shuffle_seed);
+        let seed = non_unsizable_field_seed.wrapping_add(repr.field_shuffle_seed);
 
         Ok(LayoutData {
             variants: Variants::Single { index: VariantIdx::new(0) },

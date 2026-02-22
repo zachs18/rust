@@ -1,12 +1,12 @@
 //! Computing the size and alignment of a value.
 
-use rustc_abi::{Align, WrappingRange};
+use rustc_abi::{Align, FieldsShape, WrappingRange};
 use rustc_hir::LangItem;
 use rustc_middle::bug;
 use rustc_middle::ty::print::{with_no_trimmed_paths, with_no_visible_paths};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::DUMMY_SP;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::common::IntPredicate;
 use crate::mir::operand::OperandRef;
@@ -169,6 +169,15 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         sum
     };
 
+    let max = |bx: &mut Bx, lhs, rhs| {
+        let cmp = bx.icmp(IntPredicate::IntUGT, lhs, rhs);
+        bx.select(cmp, lhs, rhs)
+    };
+    let min = |bx: &mut Bx, lhs, rhs| {
+        let cmp = bx.icmp(IntPredicate::IntULT, lhs, rhs);
+        bx.select(cmp, lhs, rhs)
+    };
+
     // Invariant: all valid sizes (including intermediate sizes) are `<= isize::MAX`,
     // and all valid alignments are powers of 2.
     // Therefore, we can calculate such that the output is correct if the size and align
@@ -272,46 +281,49 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             CalculationResult::Invalid
         }
-        ty::Adt(..) | ty::Tuple(..) => {
-            // First get the size of all statically known fields.
-            // Don't use size_of because it also rounds up to alignment, which we
-            // want to avoid, as the unsized field's alignment could be smaller.
-            assert!(!t.is_simd());
-            debug!("DST {} layout: {:?}", t, layout);
+        ty::Adt(adt_def, ..) if adt_def.is_union() => {
+            let FieldsShape::Union(field_count) = layout.fields else {
+                bug!("union ({t:?}) had non-Union FieldsShape: {:?}", layout.fields)
+            };
 
-            let i = layout.fields.count() - 1;
-            let unsized_offset_unadjusted = layout.fields.offset(i).bytes();
-            let sized_align = layout.align.bytes();
-            debug!(
-                "DST {} offset of dyn field: {}, statically sized align: {}",
-                t, unsized_offset_unadjusted, sized_align
-            );
-            let unsized_offset_unadjusted = bx.const_usize(unsized_offset_unadjusted);
-            let sized_align = bx.const_usize(sized_align);
+            // FIXME(more_unsized): optimize this
+            let mut adt_valid = None;
+            let mut adt_size = bx.const_usize(0);
+            let mut adt_align = bx.const_usize(layout.align.bytes());
 
-            // Recurse to get the size of the dynamically sized field (must be
-            // the last field).
-            let field_ty = layout.field(bx, i);
-            let field_meta = AnyPlaceMeta(
-                if field_ty.is_sized() || field_ty.ty.is_thin(bx.tcx(), bx.typing_env()) {
-                    None
-                } else {
-                    let meta =
-                        info.0.expect("non-Thin Adt/Tuple should have metadata").change_sizedness();
-                    Some(
-                        meta.extract_or_load_field(bx, i)
-                            .expect_sized("pointer metadata must be sized"),
-                    )
-                },
-            );
-            let (mut valid, unsized_size, mut unsized_align) =
+            let field_meta = |bx: &mut Bx, i: usize| {
+                let Some(meta) = info.0 else { return AnyPlaceMeta(None) };
+
+                let meta = meta.change_sizedness();
+                AnyPlaceMeta(Some(
+                    meta.extract_or_load_field(bx, i)
+                        .expect_sized("pointer metadata must be sized"),
+                ))
+            };
+
+            for field_idx in 0..field_count.get() {
+                let field_ty = layout.field(bx, field_idx);
+                let field_meta = field_meta(bx, field_idx);
                 match size_and_align_of_dst_impl(bx, field_ty.ty, field_meta, checked) {
-                    CalculationResult::Unchecked { size, align } => (None, size, align),
                     CalculationResult::Invalid => return CalculationResult::Invalid,
-                    CalculationResult::Checked { valid, size, align } => (Some(valid), size, align),
-                };
-
-            // # First compute the dynamic alignment
+                    CalculationResult::Unchecked { size: field_size, align: field_align } => {
+                        adt_size = max(bx, field_size, adt_size);
+                        adt_align = max(bx, field_align, adt_align);
+                    }
+                    CalculationResult::Checked {
+                        valid: field_valid,
+                        size: field_size,
+                        align: field_align,
+                    } => {
+                        adt_valid = match adt_valid {
+                            Some(adt_valid) => Some(bx.and(adt_valid, field_valid)),
+                            None => Some(field_valid),
+                        };
+                        adt_size = max(bx, field_size, adt_size);
+                        adt_align = max(bx, field_align, adt_align);
+                    }
+                }
+            }
 
             // For packed types, we need to cap the alignment.
             if let ty::Adt(def, _) = t.kind()
@@ -319,84 +331,240 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             {
                 if packed.bytes() == 1 {
                     // We know this will be capped to 1.
-                    unsized_align = bx.const_usize(1);
+                    adt_align = bx.const_usize(1);
                 } else {
                     // We have to dynamically compute `min(unsized_align, packed)`.
                     let packed = bx.const_usize(packed.bytes());
-                    let cmp = bx.icmp(IntPredicate::IntULT, unsized_align, packed);
-                    unsized_align = bx.select(cmp, unsized_align, packed);
+                    adt_align = min(bx, adt_align, packed);
                 }
             }
 
-            // Choose max of two known alignments (combined value must
-            // be aligned according to more restrictive of the two).
-            let full_align = match (
-                bx.const_to_opt_u128(sized_align, false),
-                bx.const_to_opt_u128(unsized_align, false),
-            ) {
-                (Some(sized_align), Some(unsized_align)) => {
-                    // If both alignments are constant, (the sized_align should always be), then
-                    // pick the correct alignment statically.
-                    bx.const_usize(std::cmp::max(sized_align, unsized_align) as u64)
-                }
-                _ => {
-                    let cmp = bx.icmp(IntPredicate::IntUGT, sized_align, unsized_align);
-                    bx.select(cmp, sized_align, unsized_align)
+            // Round up full size to alignment
+            adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, adt_align);
+
+            match adt_valid {
+                Some(adt_valid) => CalculationResult::Checked {
+                    valid: adt_valid,
+                    size: adt_size,
+                    align: adt_align,
+                },
+                None => CalculationResult::Unchecked { size: adt_size, align: adt_align },
+            }
+        }
+        ty::Adt(adt_def, ..) if adt_def.is_enum() => {
+            unimplemented!("unsized enums")
+        }
+        ty::Adt(..) | ty::Tuple(..) => {
+            let FieldsShape::Arbitrary { in_memory_order, .. } = &layout.fields else {
+                bug!(
+                    "struct or tuple ({:?}) should have FieldsShape::Arbitrary, not {:?}",
+                    t,
+                    layout.fields
+                )
+            };
+
+            // For packed types, we need to cap the alignment.
+            let clamp_field_align = |bx: &mut Bx, field_align| {
+                if let ty::Adt(def, _) = t.kind()
+                    && let Some(packed) = def.repr().pack
+                {
+                    if packed.bytes() == 1 {
+                        // We know this will be capped to 1.
+                        bx.const_usize(1)
+                    } else {
+                        // We have to dynamically compute `min(unsized_align, packed)`.
+                        let packed = bx.const_usize(packed.bytes());
+                        let cmp = bx.icmp(IntPredicate::IntULT, field_align, packed);
+                        bx.select(cmp, field_align, packed)
+                    }
+                } else {
+                    field_align
                 }
             };
 
-            // # Then compute the dynamic size
+            // FIXME(more_unsized): optimize this
+            let mut adt_valid = None;
+            let mut adt_size = bx.const_usize(0);
+            let mut adt_align = bx.const_usize(layout.align.bytes());
 
-            // For unions, the size is the max size of the fields, rounded up to the alignment
-            if let ty::Adt(def, ..) = t.kind()
-                && def.is_union()
-            {
-                // For now, with only one unsized field, the max of the sizes of the sized fields
-                // is just the unsized layout's size.
-                let sized_size = bx.const_usize(layout.size.bytes());
-                let cmp = bx.icmp(IntPredicate::IntUGT, sized_size, unsized_size);
-                let full_size = bx.select(cmp, sized_size, unsized_size);
+            let field_meta = |bx: &mut Bx, i: usize| {
+                let Some(meta) = info.0 else { return AnyPlaceMeta(None) };
 
-                let full_size = round_up_to_alignment(bx, &mut valid, full_size, full_align);
+                let meta = meta.change_sizedness();
+                AnyPlaceMeta(Some(
+                    meta.extract_or_load_field(bx, i)
+                        .expect_sized("pointer metadata must be sized"),
+                ))
+            };
 
-                match valid {
-                    Some(valid) => {
-                        return CalculationResult::Checked {
-                            valid,
-                            size: full_size,
-                            align: full_align,
+            for field_idx in in_memory_order {
+                let field_ty = layout.field(bx, field_idx.as_usize());
+                let field_meta = field_meta(bx, field_idx.as_usize());
+                match size_and_align_of_dst_impl(bx, field_ty.ty, field_meta, checked) {
+                    CalculationResult::Invalid => return CalculationResult::Invalid,
+                    CalculationResult::Unchecked { size: field_size, align: field_align } => {
+                        let field_align = clamp_field_align(bx, field_align);
+                        adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, field_align);
+                        adt_size = add(bx, &mut adt_valid, adt_size, field_size);
+
+                        // We have to dynamically compute `max(adt_align, field_align)`.
+                        adt_align = max(bx, field_align, adt_align);
+                    }
+                    CalculationResult::Checked {
+                        valid: field_valid,
+                        size: field_size,
+                        align: field_align,
+                    } => {
+                        adt_valid = match adt_valid {
+                            Some(adt_valid) => Some(bx.and(adt_valid, field_valid)),
+                            None => Some(field_valid),
                         };
-                    }
-                    None => {
-                        return CalculationResult::Unchecked { size: full_size, align: full_align };
+                        let field_align = clamp_field_align(bx, field_align);
+                        adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, field_align);
+                        adt_size = add(bx, &mut adt_valid, adt_size, field_size);
+
+                        // We have to dynamically compute `max(adt_align, field_align)`.
+                        adt_align = max(bx, field_align, adt_align);
                     }
                 }
             }
 
-            // The full formula for the size would be:
-            // let unsized_offset_adjusted = unsized_offset_unadjusted.align_to(unsized_align);
-            // let full_size = (unsized_offset_adjusted + unsized_size).align_to(full_align);
-            // However, `unsized_size` is a multiple of `unsized_align`. Therefore, we can
-            // equivalently do the `align_to(unsized_align)` *after* adding `unsized_size`:
-            //
-            // let full_size =
-            //     (unsized_offset_unadjusted + unsized_size)
-            //     .align_to(unsized_align)
-            //     .align_to(full_align);
-            //
-            // Furthermore, `align >= unsized_align`, and therefore we only need to do:
-            // let full_size = (unsized_offset_unadjusted + unsized_size).align_to(full_align);
+            // Round up full size to alignment
+            adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, adt_align);
 
-            let full_size = add(bx, &mut valid, unsized_offset_unadjusted, unsized_size);
-
-            let full_size = round_up_to_alignment(bx, &mut valid, full_size, full_align);
-
-            match valid {
-                Some(valid) => {
-                    CalculationResult::Checked { valid, size: full_size, align: full_align }
-                }
-                None => CalculationResult::Unchecked { size: full_size, align: full_align },
+            match adt_valid {
+                Some(adt_valid) => CalculationResult::Checked {
+                    valid: adt_valid,
+                    size: adt_size,
+                    align: adt_align,
+                },
+                None => CalculationResult::Unchecked { size: adt_size, align: adt_align },
             }
+
+            // // First get the size of all statically known fields.
+            // // Don't use size_of because it also rounds up to alignment, which we
+            // // want to avoid, as the unsized field's alignment could be smaller.
+            // assert!(!t.is_simd());
+            // debug!("DST {} layout: {:?}", t, layout);
+
+            // let i = layout.fields.count() - 1;
+            // let unsized_offset_unadjusted = layout.fields.offset(i).bytes();
+            // let sized_align = layout.align.bytes();
+            // debug!(
+            //     "DST {} offset of dyn field: {}, statically sized align: {}",
+            //     t, unsized_offset_unadjusted, sized_align
+            // );
+            // let unsized_offset_unadjusted = bx.const_usize(unsized_offset_unadjusted);
+            // let sized_align = bx.const_usize(sized_align);
+
+            // // Recurse to get the size of the dynamically sized field (must be
+            // // the last field).
+            // let field_ty = layout.field(bx, i);
+            // let field_meta = AnyPlaceMeta(
+            //     if field_ty.is_sized() || field_ty.ty.is_thin(bx.tcx(), bx.typing_env()) {
+            //         None
+            //     } else {
+            //         let meta =
+            //             info.0.expect("non-Thin Adt/Tuple should have metadata").change_sizedness();
+            //         Some(
+            //             meta.extract_or_load_field(bx, i)
+            //                 .expect_sized("pointer metadata must be sized"),
+            //         )
+            //     },
+            // );
+            // let (mut valid, unsized_size, mut unsized_align) =
+            //     match size_and_align_of_dst_impl(bx, field_ty.ty, field_meta, checked) {
+            //         CalculationResult::Unchecked { size, align } => (None, size, align),
+            //         CalculationResult::Invalid => return CalculationResult::Invalid,
+            //         CalculationResult::Checked { valid, size, align } => (Some(valid), size, align),
+            //     };
+
+            // // # First compute the dynamic alignment
+
+            // // For packed types, we need to cap the alignment.
+            // if let ty::Adt(def, _) = t.kind()
+            //     && let Some(packed) = def.repr().pack
+            // {
+            //     if packed.bytes() == 1 {
+            //         // We know this will be capped to 1.
+            //         unsized_align = bx.const_usize(1);
+            //     } else {
+            //         // We have to dynamically compute `min(unsized_align, packed)`.
+            //         let packed = bx.const_usize(packed.bytes());
+            //         let cmp = bx.icmp(IntPredicate::IntULT, unsized_align, packed);
+            //         unsized_align = bx.select(cmp, unsized_align, packed);
+            //     }
+            // }
+
+            // // Choose max of two known alignments (combined value must
+            // // be aligned according to more restrictive of the two).
+            // let full_align = match (
+            //     bx.const_to_opt_u128(sized_align, false),
+            //     bx.const_to_opt_u128(unsized_align, false),
+            // ) {
+            //     (Some(sized_align), Some(unsized_align)) => {
+            //         // If both alignments are constant, (the sized_align should always be), then
+            //         // pick the correct alignment statically.
+            //         bx.const_usize(std::cmp::max(sized_align, unsized_align) as u64)
+            //     }
+            //     _ => {
+            //         let cmp = bx.icmp(IntPredicate::IntUGT, sized_align, unsized_align);
+            //         bx.select(cmp, sized_align, unsized_align)
+            //     }
+            // };
+
+            // // # Then compute the dynamic size
+
+            // // For unions, the size is the max size of the fields, rounded up to the alignment
+            // if let ty::Adt(def, ..) = t.kind()
+            //     && def.is_union()
+            // {
+            //     // For now, with only one unsized field, the max of the sizes of the sized fields
+            //     // is just the unsized layout's size.
+            //     let sized_size = bx.const_usize(layout.size.bytes());
+            //     let cmp = bx.icmp(IntPredicate::IntUGT, sized_size, unsized_size);
+            //     let full_size = bx.select(cmp, sized_size, unsized_size);
+
+            //     let full_size = round_up_to_alignment(bx, &mut valid, full_size, full_align);
+
+            //     match valid {
+            //         Some(valid) => {
+            //             return CalculationResult::Checked {
+            //                 valid,
+            //                 size: full_size,
+            //                 align: full_align,
+            //             };
+            //         }
+            //         None => {
+            //             return CalculationResult::Unchecked { size: full_size, align: full_align };
+            //         }
+            //     }
+            // }
+
+            // // The full formula for the size would be:
+            // // let unsized_offset_adjusted = unsized_offset_unadjusted.align_to(unsized_align);
+            // // let full_size = (unsized_offset_adjusted + unsized_size).align_to(full_align);
+            // // However, `unsized_size` is a multiple of `unsized_align`. Therefore, we can
+            // // equivalently do the `align_to(unsized_align)` *after* adding `unsized_size`:
+            // //
+            // // let full_size =
+            // //     (unsized_offset_unadjusted + unsized_size)
+            // //     .align_to(unsized_align)
+            // //     .align_to(full_align);
+            // //
+            // // Furthermore, `align >= unsized_align`, and therefore we only need to do:
+            // // let full_size = (unsized_offset_unadjusted + unsized_size).align_to(full_align);
+
+            // let full_size = add(bx, &mut valid, unsized_offset_unadjusted, unsized_size);
+
+            // let full_size = round_up_to_alignment(bx, &mut valid, full_size, full_align);
+
+            // match valid {
+            //     Some(valid) => {
+            //         CalculationResult::Checked { valid, size: full_size, align: full_align }
+            //     }
+            //     None => CalculationResult::Unchecked { size: full_size, align: full_align },
+            // }
         }
         _ => bug!("size_and_align_of_dst: {t} not supported"),
     }
