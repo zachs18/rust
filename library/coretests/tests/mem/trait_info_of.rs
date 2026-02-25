@@ -1,5 +1,5 @@
 use std::any::TypeId;
-use std::ptr::DynMetadata;
+use std::ptr::{DynMetadata, build_metadata};
 
 struct Garlic(i32);
 trait Blah {
@@ -28,7 +28,9 @@ fn test_dyn_creation() {
         assert_eq!(
             std::ptr::from_raw_parts::<dyn Blah>(
                 &raw const garlic,
-                const { TypeId::of::<Garlic>().trait_info_of::<dyn Blah>() }.unwrap().get_vtable()
+                build_metadata!(for dyn Blah;
+                    vtable: const { TypeId::of::<Garlic>().trait_info_of::<dyn Blah>() }.unwrap().get_vtable(),
+                ),
             )
             .as_ref()
             .unwrap()
@@ -44,7 +46,7 @@ fn test_dyn_creation() {
             .unwrap()
         }.get_vtable(),
         unsafe {
-            crate::mem::transmute::<_, DynMetadata<*const ()>>(
+            crate::mem::transmute::<_, DynMetadata<()>>(
                 const {
                     TypeId::of::<Garlic>().trait_info_of::<dyn Blah>()
                 }.unwrap().get_vtable(),
