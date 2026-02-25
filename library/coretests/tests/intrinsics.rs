@@ -205,11 +205,11 @@ fn test_type_id_vtable() {
 
     struct B {}
 
-    const A_VTABLE: Option<DynMetadata<*const ()>> =
+    const A_VTABLE: Option<DynMetadata<()>> =
         type_id_vtable(TypeId::of::<A>(), TypeId::of::<dyn Debug>());
     assert!(A_VTABLE.is_some());
 
-    const B_VTABLE: Option<DynMetadata<*const ()>> =
+    const B_VTABLE: Option<DynMetadata<()>> =
         type_id_vtable(TypeId::of::<B>(), TypeId::of::<dyn Debug>());
     assert!(B_VTABLE.is_none());
 }
