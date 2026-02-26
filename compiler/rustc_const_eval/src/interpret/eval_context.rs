@@ -1,5 +1,5 @@
 use either::{Left, Right};
-use rustc_abi::{Align, FieldIdx, HasDataLayout, OffsetAccuracy, Size, TargetDataLayout};
+use rustc_abi::{Align, FieldIdx, FieldsShape, HasDataLayout, Size, TargetDataLayout};
 use rustc_hir::def_id::DefId;
 use rustc_hir::limit::Limit;
 use rustc_middle::mir::interpret::{ErrorHandled, InvalidMetaKind, ReportedErrorInfo};
@@ -496,86 +496,135 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             return interp_ok(Some((layout.size, layout.align.abi)));
         }
         match layout.ty.kind() {
-            ty::Adt(..) | ty::Tuple(..) => {
-                // First get the size of all statically known fields.
-                // Don't use type_of::sizing_type_of because that expects t to be sized,
-                // and it also rounds up to alignment, which we want to avoid,
-                // as the unsized field's alignment could be smaller.
-                assert!(!layout.ty.is_simd());
-                assert!(layout.fields.count() > 0);
-                trace!("DST layout: {:?}", layout);
-
-                let unsized_offset_unadjusted = layout.fields.offset(layout.fields.count() - 1);
-                let sized_align = layout.align.abi;
-
-                if matches!(unsized_offset_unadjusted.accuracy, OffsetAccuracy::LowerBound) {
-                    throw_unsup_format!(
-                        "FIXME(more_unsized): implement multi-unsized structs in consteval"
+            ty::Adt(adt_def, ..) if adt_def.is_union() => {
+                let FieldsShape::Union(field_count) = layout.fields else {
+                    span_bug!(
+                        self.cur_span(),
+                        "union ({:?}) had non-Union FieldsShape: {:?}",
+                        layout.ty,
+                        layout.fields
                     );
-                }
-                let unsized_offset_unadjusted = unsized_offset_unadjusted.offset;
-
-                // Recurse to get the size of the dynamically sized field (must be
-                // the last field). Can't have foreign types here, how would we
-                // adjust alignment and size for them?
-                let field = layout.field(self, layout.fields.count() - 1);
-
-                let field_meta = AnyMemPlaceMeta(
-                    if field.is_sized() || field.ty.is_thin(*self.tcx, self.typing_env) {
-                        None
-                    } else {
-                        let metadata = metadata
-                            .0
-                            .expect("non-Thin value should have metadata")
-                            .change_sizedness();
-                        let field_meta = self.project_field(
-                            &metadata,
-                            FieldIdx::from_usize(layout.fields.count() - 1),
-                        )?;
-                        Some(field_meta.expect_sized("pointer metadata must be sized"))
-                    },
-                );
-
-                let Some((unsized_size, mut unsized_align)) =
-                    self.size_and_align_from_meta(&field_meta, &field, semantics)?
-                else {
-                    // The field layout calculation was invalid without UB.
-                    return interp_ok(None);
                 };
 
-                // # First compute the dynamic alignment
+                // FIXME(more_unsized): optimize this
+                let mut adt_size = Size::ZERO;
+                let mut adt_align = Align::ONE;
 
-                // Packed type alignment needs to be capped.
-                if let ty::Adt(def, _) = layout.ty.kind()
-                    && let Some(packed) = def.repr().pack
-                {
-                    unsized_align = unsized_align.min(packed);
+                let field_meta = |i: usize| {
+                    let Some(meta) = metadata.0 else { return interp_ok(AnyMemPlaceMeta(None)) };
+
+                    let meta = meta.change_sizedness();
+                    let field_meta = self.project_field(&meta, FieldIdx::from_usize(i))?;
+                    interp_ok(AnyMemPlaceMeta(Some(
+                        field_meta.expect_sized("pointer metadata must be sized"),
+                    )))
+                };
+
+                for field_idx in 0..field_count.get() {
+                    let field_ty = layout.field(self, field_idx);
+                    let field_meta = field_meta(field_idx)?;
+                    match self.size_and_align_from_meta(&field_meta, &field_ty, semantics)? {
+                        None => return interp_ok(None),
+                        Some((field_size, field_align)) => {
+                            adt_size = Size::max(adt_size, field_size);
+                            adt_align = Align::max(adt_align, field_align);
+                        }
+                    }
                 }
 
-                // Choose max of two known alignments (combined value must
-                // be aligned according to more restrictive of the two).
-                let full_align = sized_align.max(unsized_align);
+                // For packed types, we need to cap the alignment
+                if let Some(packed) = adt_def.repr().pack {
+                    adt_align = Align::min(adt_align, packed);
+                }
 
-                // # Then compute the dynamic size
-
-                let unsized_offset_adjusted = unsized_offset_unadjusted.align_to(unsized_align);
-                let full_size = (unsized_offset_adjusted + unsized_size).align_to(full_align);
-
-                // Just for our sanitiy's sake, assert that this is equal to what codegen would compute.
-                assert_eq!(
-                    full_size,
-                    (unsized_offset_unadjusted + unsized_size).align_to(full_align)
-                );
+                // Round up full size to alignment
+                adt_size = adt_size.align_to(adt_align);
 
                 // Check if this brought us over the size limit.
-                if full_size > self.max_size_of_val() {
+                if adt_size > self.max_size_of_val() {
                     if semantics.overflow_is_ub {
                         throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
                     } else {
                         interp_ok(None)
                     }
                 } else {
-                    interp_ok(Some((full_size, full_align)))
+                    interp_ok(Some((adt_size, adt_align)))
+                }
+            }
+            ty::Adt(adt_def, ..) if adt_def.is_enum() => {
+                throw_unsup_format!(
+                    "FIXME(more_unsized): implement multi-unsized enums in consteval"
+                );
+            }
+            ty::Adt(..) | ty::Tuple(..) => {
+                let FieldsShape::Arbitrary { in_memory_order, .. } = &layout.fields else {
+                    span_bug!(
+                        self.cur_span(),
+                        "struct or tuple ({:?}) should have FieldsShape::Arbitrary, not {:?}",
+                        layout.ty,
+                        layout.fields
+                    )
+                };
+
+                // For packed types, we need to cap the alignment.
+                let clamp_field_align = |field_align| {
+                    if let ty::Adt(def, _) = layout.ty.kind()
+                        && let Some(packed) = def.repr().pack
+                    {
+                        Align::min(field_align, packed)
+                    } else {
+                        field_align
+                    }
+                };
+
+                // FIXME(more_unsized): optimize this
+                let mut adt_size = Size::ZERO;
+                let mut adt_align = Align::ONE;
+
+                let field_meta = |i: usize| {
+                    let Some(meta) = metadata.0 else { return interp_ok(AnyMemPlaceMeta(None)) };
+
+                    let meta = meta.change_sizedness();
+                    let field_meta = self.project_field(&meta, FieldIdx::from_usize(i))?;
+                    interp_ok(AnyMemPlaceMeta(Some(
+                        field_meta.expect_sized("pointer metadata must be sized"),
+                    )))
+                };
+
+                for field_idx in in_memory_order {
+                    let field_ty = layout.field(self, field_idx.as_usize());
+                    let field_meta = field_meta(field_idx.as_usize())?;
+                    match self.size_and_align_from_meta(&field_meta, &field_ty, semantics)? {
+                        None => return interp_ok(None),
+                        Some((field_size, field_align)) => {
+                            let field_align = clamp_field_align(field_align);
+                            adt_align = Align::max(adt_align, field_align);
+                            adt_size += field_size;
+
+                            // Check if this brought us over the size limit.
+                            if adt_size > self.max_size_of_val() {
+                                if semantics.overflow_is_ub {
+                                    throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
+                                } else {
+                                    return interp_ok(None);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Round up full size to alignment
+                adt_size = adt_size.align_to(adt_align);
+
+                // Check if this brought us over the size limit.
+                if adt_size > self.max_size_of_val() {
+                    if semantics.overflow_is_ub {
+                        throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
+                    } else {
+                        interp_ok(None)
+                    }
+                } else {
+                    interp_ok(Some((adt_size, adt_align)))
                 }
             }
             ty::Dynamic(expected_trait, _) => {
