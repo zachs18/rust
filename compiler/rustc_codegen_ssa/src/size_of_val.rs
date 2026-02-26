@@ -339,7 +339,7 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 }
             }
 
-            // Round up full size to alignment
+            // Round up full size to alignment (includes checking for overflow in checked mode)
             adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, adt_align);
 
             match adt_valid {
@@ -429,7 +429,7 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 }
             }
 
-            // Round up full size to alignment
+            // Round up full size to alignment (includes checking for overflow in checked mode)
             adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, adt_align);
 
             match adt_valid {
