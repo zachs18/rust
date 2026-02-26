@@ -6,7 +6,7 @@ mod simd;
 
 use std::assert_matches;
 
-use rustc_abi::{FieldIdx, HasDataLayout, Size, VariantIdx};
+use rustc_abi::{FieldIdx, HasDataLayout, OffsetAccuracy, Size, VariantIdx};
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
 use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, read_target_uint, write_target_uint};
 use rustc_middle::mir::{self, BinOp, ConstValue, NonDivergingIntrinsic};
@@ -222,7 +222,18 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 let layout = layout.for_variant(&cx, VariantIdx::from_u32(variant));
                 // FIXME(more_unsized): disallow `offset_of!` for relevant fields earlier
-                let offset = layout.fields.exact_offset(field).bytes();
+                let offset = layout.fields.offset(field);
+                let offset = match offset.accuracy {
+                    OffsetAccuracy::Exact => offset.offset,
+                    OffsetAccuracy::LowerBound => panic!(
+                        "cannot statically get offset of field that is laid out after an unsized field"
+                    ),
+                    OffsetAccuracy::RoundedUp => {
+                        let field_layout = layout.field(self, field);
+                        offset.offset.align_to(*field_layout.align)
+                    }
+                };
+                let offset = offset.bytes();
 
                 self.write_scalar(Scalar::from_target_usize(offset, self), dest)?;
             }
