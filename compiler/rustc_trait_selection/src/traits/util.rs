@@ -379,7 +379,9 @@ pub fn sizedness_fast_path<'tcx>(
     {
         let sizedness = match tcx.as_lang_item(trait_pred.def_id()) {
             Some(LangItem::Sized) => SizedTraitKind::Sized,
+            Some(LangItem::Aligned) => SizedTraitKind::Aligned,
             Some(LangItem::MetaSized) => SizedTraitKind::MetaSized,
+            Some(LangItem::MetaAligned) => SizedTraitKind::MetaAligned,
             Some(LangItem::ThinPointeeTrait) => SizedTraitKind::Thin,
             _ => return false,
         };
@@ -410,17 +412,28 @@ pub fn sizedness_fast_path<'tcx>(
 /// To improve performance, sizedness traits are not elaborated and so special-casing is required
 /// in the trait solver to find a `Sized` candidate for a `MetaSized` or `Thin` obligation. Returns the
 /// predicate to used in the candidate for such a `obligation`, given a `candidate`.
+/// FIXME(more_unsized): doc about `Aligned`/`MetaAligned`.
 pub(crate) fn lazily_elaborate_sizedness_candidate<'tcx>(
     infcx: &InferCtxt<'tcx>,
     obligation: &PolyTraitObligation<'tcx>,
     candidate: PolyTraitPredicate<'tcx>,
 ) -> PolyTraitPredicate<'tcx> {
-    if !matches!(
+    match (
+        infcx.tcx.as_lang_item(candidate.def_id()),
         infcx.tcx.as_lang_item(obligation.predicate.def_id()),
-        Some(LangItem::MetaSized | LangItem::ThinPointeeTrait),
-    ) || !infcx.tcx.is_lang_item(candidate.def_id(), LangItem::Sized)
-    {
-        return candidate;
+    ) {
+        (
+            Some(LangItem::Sized),
+            Some(
+                LangItem::Aligned
+                | LangItem::MetaSized
+                | LangItem::MetaAligned
+                | LangItem::ThinPointeeTrait,
+            ),
+        ) => {}
+        (Some(LangItem::Aligned), Some(LangItem::MetaAligned)) => {}
+        (Some(LangItem::MetaSized), Some(LangItem::MetaAligned)) => {}
+        _ => return candidate,
     }
 
     if obligation.predicate.polarity() != PredicatePolarity::Positive

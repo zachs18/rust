@@ -472,8 +472,12 @@ pub enum AdtDestructorKind {
 pub enum SizedTraitKind {
     /// `Sized` trait
     Sized,
+    /// `Aligned` trait
+    Aligned,
     /// `MetaSized` trait
     MetaSized,
+    /// `MetaAligned` trait
+    MetaAligned,
     /// `Thin` trait for thin pointees.
     Thin,
 }
@@ -483,7 +487,9 @@ impl SizedTraitKind {
     pub fn require_lang_item<I: Interner>(self, cx: I) -> I::TraitId {
         cx.require_trait_lang_item(match self {
             SizedTraitKind::Sized => SolverTraitLangItem::Sized,
+            SizedTraitKind::Aligned => SolverTraitLangItem::Aligned,
             SizedTraitKind::MetaSized => SolverTraitLangItem::MetaSized,
+            SizedTraitKind::MetaAligned => SolverTraitLangItem::MetaAligned,
             SizedTraitKind::Thin => SolverTraitLangItem::ThinPointeeTrait,
         })
     }

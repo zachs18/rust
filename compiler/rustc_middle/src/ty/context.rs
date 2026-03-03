@@ -993,7 +993,13 @@ impl<'tcx> TyCtxt<'tcx> {
     pub fn is_sizedness_trait(self, def_id: DefId) -> bool {
         matches!(
             self.as_lang_item(def_id),
-            Some(LangItem::Sized | LangItem::MetaSized | LangItem::ThinPointeeTrait)
+            Some(
+                LangItem::Sized
+                    | LangItem::Aligned
+                    | LangItem::MetaSized
+                    | LangItem::MetaAligned
+                    | LangItem::ThinPointeeTrait
+            )
         )
     }
 

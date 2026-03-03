@@ -26,9 +26,8 @@ use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, DerefAdjustKind,
 };
 use rustc_middle::ty::{
-    self, AdtKind, CanonicalUserType, GenericArgsRef, GenericParamDefKind, IsIdentity,
-    SizedTraitKind, Ty, TyCtxt, TypeFoldable, TypeVisitable, TypeVisitableExt, UserArgs,
-    UserSelfTy,
+    self, AdtKind, CanonicalUserType, GenericArgsRef, GenericParamDefKind, IsIdentity, Ty, TyCtxt,
+    TypeFoldable, TypeVisitable, TypeVisitableExt, UserArgs, UserSelfTy,
 };
 use rustc_middle::{bug, span_bug};
 use rustc_session::lint;
@@ -479,30 +478,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
-    pub(crate) fn require_type_has_static_alignment(&self, ty: Ty<'tcx>, span: Span) {
+    pub(crate) fn require_type_has_static_alignment(
+        &self,
+        ty: Ty<'tcx>,
+        span: Span,
+        code: traits::ObligationCauseCode<'tcx>,
+    ) {
         if !ty.references_error() {
-            let tail = self.tcx.struct_or_union_tail_raw(
-                ty,
-                &self.misc(span),
-                |ty| {
-                    if self.next_trait_solver() {
-                        self.try_structurally_resolve_type(span, ty)
-                    } else {
-                        self.normalize(span, ty)
-                    }
-                },
-                || {},
-            );
-            // Sized types have static alignment, and so do slices.
-            if tail.has_trivial_sizedness(self.tcx, SizedTraitKind::Sized)
-                || matches!(tail.kind(), ty::Slice(..))
-            {
-                // Nothing else is required here.
-            } else {
-                // We can't be sure, let's required full `Sized`.
-                let lang_item = self.tcx.require_lang_item(LangItem::Sized, span);
-                self.require_type_meets(ty, span, ObligationCauseCode::Misc, lang_item);
-            }
+            let lang_item = self.tcx.require_lang_item(LangItem::Aligned, span);
+            self.require_type_meets(ty, span, code, lang_item);
         }
     }
 

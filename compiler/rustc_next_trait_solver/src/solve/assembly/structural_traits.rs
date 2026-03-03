@@ -120,9 +120,10 @@ where
     I: Interner,
 {
     match ty.kind() {
-        // impl {Meta,}Sized for u*, i*, bool, f*, FnDef, FnPtr, *(const/mut) T, char
-        // impl {Meta,}Sized for &mut? T, [T; N], dyn* Trait, !, Coroutine, CoroutineWitness
-        // impl {Meta,}Sized for Closure, CoroutineClosure
+        // impl * for u*, i*, bool, f*, FnDef, FnPtr, *(const/mut) T, char
+        // impl * for &mut? T, [T; N], dyn* Trait, !, Coroutine, CoroutineWitness
+        // impl * for Closure, CoroutineClosure
+        // * = Sized, Aligned, MetaSized, MetaAligned, Thin
         ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
         | ty::Uint(_)
         | ty::Int(_)
@@ -144,15 +145,40 @@ where
         | ty::Never
         | ty::Error(_) => Ok(ty::Binder::dummy(vec![])),
 
-        // impl MetaSized for str, [T], dyn Trait
-        ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
+        // impl MetaSized,Aligned for str
+        ty::Str => match sizedness {
             SizedTraitKind::Sized | SizedTraitKind::Thin => Err(NoSolution),
-            SizedTraitKind::MetaSized => Ok(ty::Binder::dummy(vec![])),
+            SizedTraitKind::Aligned | SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
+                Ok(ty::Binder::dummy(vec![]))
+            }
+        },
+
+        // impl MetaSized,MetaAligned for [T]
+        // impl Aligned for [T] where T: Aligned
+        ty::Slice(elem) => match sizedness {
+            SizedTraitKind::Sized | SizedTraitKind::Thin => Err(NoSolution),
+            SizedTraitKind::Aligned => Ok(ty::Binder::dummy(vec![elem])),
+            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
+                Ok(ty::Binder::dummy(vec![]))
+            }
+        },
+
+        // impl MetaSized,MetaAligned for dyn Trait
+        ty::Dynamic(..) => match sizedness {
+            SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {
+                Err(NoSolution)
+            }
+            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
+                Ok(ty::Binder::dummy(vec![]))
+            }
         },
 
         // impl Thin for extern type
         ty::Foreign(..) => match sizedness {
-            SizedTraitKind::Sized | SizedTraitKind::MetaSized => Err(NoSolution),
+            SizedTraitKind::Sized
+            | SizedTraitKind::Aligned
+            | SizedTraitKind::MetaSized
+            | SizedTraitKind::MetaAligned => Err(NoSolution),
             SizedTraitKind::Thin => Ok(ty::Binder::dummy(vec![])),
         },
 

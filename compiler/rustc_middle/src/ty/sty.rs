@@ -2065,13 +2065,27 @@ impl<'tcx> Ty<'tcx> {
 
             ty::Array(elem, _len) => elem.has_trivial_sizedness(tcx, sizedness),
 
-            ty::Str | ty::Slice(_) | ty::Dynamic(_, _) => match sizedness {
+            ty::Str => match sizedness {
                 SizedTraitKind::Sized | SizedTraitKind::Thin => false,
-                SizedTraitKind::MetaSized => true,
+                SizedTraitKind::Aligned
+                | SizedTraitKind::MetaSized
+                | SizedTraitKind::MetaAligned => true,
+            },
+            ty::Slice(elem) => match sizedness {
+                SizedTraitKind::Sized | SizedTraitKind::Thin => false,
+                SizedTraitKind::Aligned => elem.has_trivial_sizedness(tcx, sizedness),
+                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => true,
+            },
+            ty::Dynamic(_, _) => match sizedness {
+                SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => false,
+                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => true,
             },
 
             ty::Foreign(..) => match sizedness {
-                SizedTraitKind::Sized | SizedTraitKind::MetaSized => false,
+                SizedTraitKind::Sized
+                | SizedTraitKind::Aligned
+                | SizedTraitKind::MetaSized
+                | SizedTraitKind::MetaAligned => false,
                 SizedTraitKind::Thin => true,
             },
 

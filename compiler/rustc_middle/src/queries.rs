@@ -2701,6 +2701,10 @@ rustc_queries! {
         desc { "check whether the item has a `where Self: Sized` bound" }
     }
 
+    query generics_require_aligned_self(def_id: DefId) -> bool {
+        desc { "check whether the item has a `where Self: Aligned` bound" }
+    }
+
     query generics_require_thin_self(def_id: DefId) -> bool {
         desc { "check whether the item has a `where Self: Thin` bound" }
     }
