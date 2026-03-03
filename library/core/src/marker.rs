@@ -168,8 +168,26 @@ unsafe impl<T: Sync + PointeeSized> Send for &T {}
 // and we know that the supertraits are always implemented if the subtrait is just by looking at
 // the builtin impls.
 #[rustc_coinductive]
-pub trait Sized: MetaSized + crate::ptr::Thin {
+pub trait Sized: Aligned + MetaSized + crate::ptr::Thin {
     // Empty.
+}
+
+/// Types with a constant alignment known at compile time.
+#[unstable(feature = "sized_hierarchy", issue = "144404")]
+#[lang = "aligned"]
+#[diagnostic::on_unimplemented(
+    message = "the alignment for values of type `{Self}` cannot be known at compilation time",
+    label = "doesn't have a alignment known at compile-time"
+)]
+#[fundamental]
+#[rustc_specialization_trait]
+#[rustc_deny_explicit_impl]
+#[rustc_dyn_incompatible_trait]
+// `Aligned` being coinductive, despite having supertraits, is okay for the same reasons as
+// `Sized` above.
+#[rustc_coinductive]
+pub trait Aligned: MetaAligned + PointeeSized {
+    // Empty
 }
 
 /// Types with a size that can be determined from pointer metadata.
@@ -185,7 +203,24 @@ pub trait Sized: MetaSized + crate::ptr::Thin {
 // `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
 #[rustc_coinductive]
-pub trait MetaSized: PointeeSized {
+pub trait MetaSized: MetaAligned + PointeeSized {
+    // Empty
+}
+
+/// Types with an alignment that can be determined from pointer metadata.
+#[unstable(feature = "sized_hierarchy", issue = "144404")]
+#[lang = "meta_aligned"]
+#[diagnostic::on_unimplemented(
+    message = "the alignment for values of type `{Self}` cannot be known",
+    label = "doesn't have a known alignment"
+)]
+#[fundamental]
+#[rustc_specialization_trait]
+#[rustc_deny_explicit_impl]
+// `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
+// `Sized` above.
+#[rustc_coinductive]
+pub trait MetaAligned: PointeeSized {
     // Empty
 }
 

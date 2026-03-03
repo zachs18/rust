@@ -6,6 +6,7 @@ LL | fn unsize_sized<T: 'static>(x: Box<T>) -> Box<dyn Sized> {
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
    = note: for a trait to be dyn compatible it needs to allow building a vtable
            for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
@@ -16,6 +17,7 @@ LL | fn unsize_subtrait(x: Box<dyn Foo>) -> Box<dyn Sized> {
    |                           ^^^^^^^ `Foo` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/sized-3.rs:4:30
@@ -33,6 +35,7 @@ LL | fn unsize_subtrait(x: Box<dyn Foo>) -> Box<dyn Sized> {
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
    = note: for a trait to be dyn compatible it needs to allow building a vtable
            for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
@@ -44,6 +47,7 @@ LL |     let _bx = unsize_sized(Box::new(vec![1, 2, 3]));
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
    = note: for a trait to be dyn compatible it needs to allow building a vtable
            for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
@@ -54,6 +58,7 @@ LL |     let bx: Box<dyn Foo> = Box::new(vec![1, 2, 3]);
    |                     ^^^ `Foo` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/sized-3.rs:4:30
@@ -70,6 +75,7 @@ LL |     let _bx = unsize_subtrait(bx);
    |                               ^^ `Foo` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/sized-3.rs:4:30
@@ -87,6 +93,7 @@ LL |     let _bx = unsize_subtrait(bx);
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
    = note: for a trait to be dyn compatible it needs to allow building a vtable
            for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 

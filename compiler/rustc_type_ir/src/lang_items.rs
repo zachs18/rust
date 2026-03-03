@@ -24,6 +24,7 @@ pub enum SolverAdtLangItem {
 
 pub enum SolverTraitLangItem {
     // tidy-alphabetical-start
+    Aligned,
     AsyncFn,
     AsyncFnKindHelper,
     AsyncFnMut,
@@ -47,6 +48,7 @@ pub enum SolverTraitLangItem {
     Future,
     HashTrait,
     Iterator,
+    MetaAligned,
     MetaSized,
     Ord,
     PointeeSized,

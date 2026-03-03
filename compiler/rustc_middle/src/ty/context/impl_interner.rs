@@ -785,6 +785,7 @@ bidirectional_lang_item_map! {
     SolverTraitLangItem, fn lang_item_to_solver_trait_lang_item, fn solver_trait_lang_item_to_lang_item;
 
 // tidy-alphabetical-start
+    Aligned,
     AsyncFn,
     AsyncFnKindHelper,
     AsyncFnMut,
@@ -808,6 +809,7 @@ bidirectional_lang_item_map! {
     Future,
     HashTrait,
     Iterator,
+    MetaAligned,
     MetaSized,
     Ord,
     PointeeSized,

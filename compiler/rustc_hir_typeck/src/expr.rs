@@ -4227,7 +4227,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         let field_ty = self.field_ty(expr.span, field, args);
 
                         if self.tcx.features().offset_of_slice() {
-                            self.require_type_has_static_alignment(field_ty, expr.span);
+                            self.require_type_has_static_alignment(
+                                field_ty,
+                                expr.span,
+                                ObligationCauseCode::Misc,
+                            );
                         } else {
                             self.require_type_is_sized(
                                 field_ty,
@@ -4256,7 +4260,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     {
                         if let Some(&field_ty) = tys.get(index) {
                             if self.tcx.features().offset_of_slice() {
-                                self.require_type_has_static_alignment(field_ty, expr.span);
+                                self.require_type_has_static_alignment(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::Misc,
+                                );
                             } else {
                                 self.require_type_is_sized(
                                     field_ty,

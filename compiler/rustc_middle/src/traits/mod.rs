@@ -769,12 +769,13 @@ pub enum DynCompatibilityViolation {
     /// Trait is marked `#[rustc_dyn_incompatible_trait]`.
     ExplicitlyDynIncompatible(SmallVec<[Span; 1]>),
 
-    /// `Self: Sized` and/or `Thin` declared on the trait.
-    /// We only report one, preferring `Sized`, then `Thin`.
+    /// `Self: Sized`, `Aligned`, and/or `Thin` declared on the trait.
+    /// We only report one, preferring `Sized`, then `Thin`, then `Aligned`.
     SizednessSelf {
         spans: SmallVec<[Span; 1]>,
         sized: bool,
         thin: bool,
+        aligned: bool,
     },
 
     /// Supertrait reference references `Self` an in illegal location
@@ -805,12 +806,13 @@ impl DynCompatibilityViolation {
         match self {
             Self::ExplicitlyDynIncompatible(_) => "it opted out of dyn-compatibility".into(),
             Self::SizednessSelf { sized: true, .. } => "it requires `Self: Sized`".into(),
-            Self::SizednessSelf { thin, .. } => {
+            Self::SizednessSelf { thin: true, .. } => "it requires `Self: Thin`".into(),
+            Self::SizednessSelf { aligned, .. } => {
                 debug_assert!(
-                    thin,
+                    aligned,
                     "DynCompatibilityViolation::SizednessSelf with no required sizedness?"
                 );
-                "it requires `Self: Thin`".into()
+                "it requires `Self: Aligned`".into()
             }
             Self::SupertraitSelf(spans) => {
                 if spans.iter().any(|sp| *sp != DUMMY_SP) {

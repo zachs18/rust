@@ -135,11 +135,25 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         SizedTraitKind::Sized,
                     );
                 }
+                Some(LangItem::Aligned) => {
+                    self.assemble_builtin_sized_candidate(
+                        obligation.predicate.self_ty().skip_binder(),
+                        &mut candidates,
+                        SizedTraitKind::Aligned,
+                    );
+                }
                 Some(LangItem::MetaSized) => {
                     self.assemble_builtin_sized_candidate(
                         obligation.predicate.self_ty().skip_binder(),
                         &mut candidates,
                         SizedTraitKind::MetaSized,
+                    );
+                }
+                Some(LangItem::MetaAligned) => {
+                    self.assemble_builtin_sized_candidate(
+                        obligation.predicate.self_ty().skip_binder(),
+                        &mut candidates,
+                        SizedTraitKind::MetaAligned,
                     );
                 }
                 Some(LangItem::PointeeSized) => {
@@ -955,8 +969,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         );
 
         if self.tcx().is_sizedness_trait(obligation.predicate.def_id()) {
-            // `dyn MetaSized` is valid, but should get its `MetaSized` impl from
-            // being `dyn` (SizedCandidate), not from the object candidate.
+            // `dyn MetaSized` (or `dyn MetaAligned`) is valid, but should
+            // get `MetaSized` (and `MetaAligned`) impl from being `dyn`
+            // (SizedCandidate), not from the object candidate.
             return;
         }
 
@@ -1332,17 +1347,32 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates.vec.push(SizedCandidate);
             }
 
-            // `MetaSized` but not `Sized` or `Thin`.
-            ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
+            // `str` is `MetaSized`, `Aligned`, and `MetaAligned` but not `Sized` or `Thin`.
+            // `[T]` `MetaSized` and `MetaAligned`, conditionally `Aligned`,
+            // but not `Sized` or `Thin`.
+            ty::Str | ty::Slice(_) => match sizedness {
                 SizedTraitKind::Sized | SizedTraitKind::Thin => {}
-                SizedTraitKind::MetaSized => {
+                SizedTraitKind::Aligned
+                | SizedTraitKind::MetaSized
+                | SizedTraitKind::MetaAligned => {
+                    candidates.vec.push(SizedCandidate);
+                }
+            },
+
+            // `MetaSized` and `MetaAligned`, but not `Sized`, `Aligned`, or `Thin`.
+            ty::Dynamic(..) => match sizedness {
+                SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {}
+                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
                     candidates.vec.push(SizedCandidate);
                 }
             },
 
             // `Thin` but not `MetaSized` or `Sized`.
             ty::Foreign(..) => match sizedness {
-                SizedTraitKind::Sized | SizedTraitKind::MetaSized => {}
+                SizedTraitKind::Sized
+                | SizedTraitKind::Aligned
+                | SizedTraitKind::MetaSized
+                | SizedTraitKind::MetaAligned => {}
                 SizedTraitKind::Thin => {
                     candidates.vec.push(SizedCandidate);
                 }
