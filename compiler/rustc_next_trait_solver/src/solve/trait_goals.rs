@@ -1346,6 +1346,9 @@ where
             return Err(NoSolution);
         }
 
+        // FIXME(more_unsized): make this work for multi-unsizable-field ADTs.
+        // which will/may require returning `Vec<Candidate<I>>`
+
         let tail_field_ty = def.struct_or_union_tail_ty(cx).unwrap();
 
         let a_tail_ty = tail_field_ty.instantiate(cx, a_args).skip_norm_wip();
