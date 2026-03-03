@@ -8,6 +8,7 @@ error: fn_abi_of(i8) = FnAbi {
                            align: AbiAlign {
                                abi: Align(1 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -46,6 +47,7 @@ error: fn_abi_of(i8) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -97,6 +99,7 @@ error: fn_abi_of(u8) = FnAbi {
                            align: AbiAlign {
                                abi: Align(1 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -135,6 +138,7 @@ error: fn_abi_of(u8) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -186,6 +190,7 @@ error: fn_abi_of(i16) = FnAbi {
                            align: AbiAlign {
                                abi: Align(2 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -224,6 +229,7 @@ error: fn_abi_of(i16) = FnAbi {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -275,6 +281,7 @@ error: fn_abi_of(u16) = FnAbi {
                            align: AbiAlign {
                                abi: Align(2 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -313,6 +320,7 @@ error: fn_abi_of(u16) = FnAbi {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -364,6 +372,7 @@ error: fn_abi_of(i32) = FnAbi {
                            align: AbiAlign {
                                abi: Align(4 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -402,6 +411,7 @@ error: fn_abi_of(i32) = FnAbi {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -453,6 +463,7 @@ error: fn_abi_of(u32) = FnAbi {
                            align: AbiAlign {
                                abi: Align(4 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -491,6 +502,7 @@ error: fn_abi_of(u32) = FnAbi {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(

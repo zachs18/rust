@@ -3,6 +3,7 @@ error: layout_of(UnsignedAroundZero) = Layout {
            align: AbiAlign {
                abi: Align(2 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -50,6 +51,7 @@ error: layout_of(UnsignedAroundZero) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -71,6 +73,7 @@ error: layout_of(UnsignedAroundZero) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -92,6 +95,7 @@ error: layout_of(UnsignedAroundZero) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -124,6 +128,7 @@ error: layout_of(SignedAroundZero) = Layout {
            align: AbiAlign {
                abi: Align(2 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -171,6 +176,7 @@ error: layout_of(SignedAroundZero) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -192,6 +198,7 @@ error: layout_of(SignedAroundZero) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -213,6 +220,7 @@ error: layout_of(SignedAroundZero) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },

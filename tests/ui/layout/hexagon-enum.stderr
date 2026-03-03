@@ -3,6 +3,7 @@ error: layout_of(A) = Layout {
            align: AbiAlign {
                abi: Align(1 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -50,6 +51,7 @@ error: layout_of(A) = Layout {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -82,6 +84,7 @@ error: layout_of(B) = Layout {
            align: AbiAlign {
                abi: Align(1 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -129,6 +132,7 @@ error: layout_of(B) = Layout {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -161,6 +165,7 @@ error: layout_of(C) = Layout {
            align: AbiAlign {
                abi: Align(2 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -208,6 +213,7 @@ error: layout_of(C) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -240,6 +246,7 @@ error: layout_of(P) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -287,6 +294,7 @@ error: layout_of(P) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -319,6 +327,7 @@ error: layout_of(T) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -366,6 +375,7 @@ error: layout_of(T) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },

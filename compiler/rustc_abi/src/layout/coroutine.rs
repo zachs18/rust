@@ -313,6 +313,8 @@ pub(super) fn layout<
         // FIXME: Remove when <https://github.com/rust-lang/rust/issues/125735> is implemented and aliased coroutine fields are wrapped in `UnsafePinned`.
         largest_niche: None,
         uninhabited,
+        // Coroutines have only `Sized` fields, and `Sized: Aligned`.
+        align_is_exact: true,
         size,
         align,
         max_repr_align: None,

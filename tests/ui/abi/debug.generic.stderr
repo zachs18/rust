@@ -41,6 +41,7 @@ error: fn_abi_of(test) = FnAbi {
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -79,6 +80,7 @@ error: fn_abi_of(test) = FnAbi {
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -137,6 +139,7 @@ error: fn_abi_of(TestFnPtr) = FnAbi {
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -184,6 +187,7 @@ error: fn_abi_of(TestFnPtr) = FnAbi {
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -233,6 +237,7 @@ error: fn_abi_of(test_generic) = FnAbi {
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Pointer(
@@ -287,6 +292,7 @@ error: fn_abi_of(test_generic) = FnAbi {
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -333,6 +339,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -371,6 +378,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -405,6 +413,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -443,6 +452,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -483,6 +493,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -522,6 +533,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -556,6 +568,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -595,6 +608,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -635,6 +649,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Float(
@@ -672,6 +687,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -706,6 +722,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -744,6 +761,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -784,6 +802,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -822,6 +841,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -856,6 +876,7 @@ error: ABIs are not compatible
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Int(
@@ -894,6 +915,7 @@ error: ABIs are not compatible
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -948,6 +970,7 @@ error: fn_abi_of(assoc_test) = FnAbi {
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Scalar(
                                Initialized {
                                    value: Pointer(
@@ -1014,6 +1037,7 @@ error: fn_abi_of(assoc_test) = FnAbi {
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
