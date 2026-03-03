@@ -196,6 +196,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             largest_niche: element.largest_niche.filter(|_| count != 0),
             uninhabited: element.uninhabited && count != 0,
             align: element.align,
+            align_is_exact: element.align_is_exact,
             size,
             max_repr_align: None,
             unadjusted_abi_align: element.align.abi,
@@ -422,6 +423,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
     ) -> LayoutCalculatorResult<FieldIdx, VariantIdx, F> {
         let dl = self.cx.data_layout();
         let mut align = if repr.pack.is_some() { dl.i8_align } else { dl.aggregate_align };
+        let mut align_is_exact = true;
         let mut max_repr_align = repr.align;
 
         // If all the non-ZST fields have the same repr and union repr optimizations aren't
@@ -444,6 +446,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             }
 
             align = align.max(field.align.abi);
+            align_is_exact &= field.align_is_exact;
             max_repr_align = max_repr_align.max(field.max_repr_align);
             size = cmp::max(size, field.size);
 
@@ -488,6 +491,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         }
         // `align` must not be modified after this, or `unadjusted_abi_align` could be inaccurate.
         let align = align;
+        let align_is_exact = align_is_exact;
 
         // If all non-ZST fields have the same ABI, we may forward that ABI
         // for the union as a whole, unless otherwise inhibited.
@@ -530,6 +534,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             backend_repr,
             largest_niche: None,
             uninhabited: false,
+            align_is_exact,
             align: AbiAlign::new(align),
             size: size.align_to(align),
             max_repr_align,
@@ -820,6 +825,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 uninhabited,
                 size,
                 align: AbiAlign::new(align),
+                // FIXME(more_unsized): fix this for unsized enums
+                align_is_exact: true,
                 max_repr_align,
                 unadjusted_abi_align,
                 randomization_seed: combined_seed,
@@ -1171,6 +1178,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             largest_niche,
             uninhabited,
             backend_repr: abi,
+            // FIXME(more_unsized): fix this for unsized enums
+            align_is_exact: true,
             align: AbiAlign::new(align),
             size,
             max_repr_align,
@@ -1215,6 +1224,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         let dl = self.cx.data_layout();
         let pack = repr.pack;
         let mut align = if pack.is_some() { dl.i8_align } else { dl.aggregate_align };
+        let mut align_is_exact = true;
         let mut max_repr_align = repr.align;
         let mut in_memory_order: IndexVec<u32, FieldIdx> = fields.indices().collect();
         let optimize_field_order = !repr.inhibit_struct_field_reordering();
@@ -1457,11 +1467,15 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 field.align
             };
 
-            if field.is_unsized() && matches!(offset.accuracy, OffsetAccuracy::Exact) {
+            if field.is_unsized()
+                && !field.align_is_exact
+                && matches!(offset.accuracy, OffsetAccuracy::Exact)
+            {
                 offset.accuracy = OffsetAccuracy::RoundedUp;
             }
             offset.offset = offset.offset.align_to(field_align.abi);
             align = align.max(field_align.abi);
+            align_is_exact &= field.align_is_exact;
             max_repr_align = max_repr_align.max(field.max_repr_align);
 
             debug!(
@@ -1506,6 +1520,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         }
         // `align` must not be modified after this point, or `unadjusted_abi_align` could be inaccurate.
         let align = align;
+        let align_is_exact = align_is_exact;
 
         debug!("univariant min_size: {:?}", offset);
         let min_size = offset.offset;
@@ -1619,6 +1634,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             backend_repr: abi,
             largest_niche,
             uninhabited,
+            align_is_exact,
             align: AbiAlign::new(align),
             size,
             max_repr_align,
@@ -1722,6 +1738,7 @@ where
         uninhabited: false,
         size,
         align: AbiAlign::new(align),
+        align_is_exact: true,
         max_repr_align: None,
         unadjusted_abi_align: elt.align.abi,
         randomization_seed: elt.randomization_seed.wrapping_add(Hash64::new(count)),

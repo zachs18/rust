@@ -3,6 +3,7 @@ error: layout_of(Univariant) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Scalar(
                Initialized {
                    value: Int(
@@ -50,6 +51,7 @@ error: layout_of(Univariant) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Scalar(
                            Initialized {
                                value: Int(
@@ -95,6 +97,7 @@ error: layout_of(TwoVariants) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: ScalarPair(
                Initialized {
                    value: Int(
@@ -148,6 +151,7 @@ error: layout_of(TwoVariants) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: ScalarPair(
                            Initialized {
                                value: Int(
@@ -188,6 +192,7 @@ error: layout_of(TwoVariants) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: ScalarPair(
                            Initialized {
                                value: Int(
@@ -239,6 +244,7 @@ error: layout_of(DeadBranchHasOtherField) = Layout {
            align: AbiAlign {
                abi: Align(8 bytes),
            },
+           align_is_exact: true,
            backend_repr: Memory {
                sized: true,
            },
@@ -280,6 +286,7 @@ error: layout_of(DeadBranchHasOtherField) = Layout {
                        align: AbiAlign {
                            abi: Align(8 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -315,6 +322,7 @@ error: layout_of(DeadBranchHasOtherField) = Layout {
                        align: AbiAlign {
                            abi: Align(8 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },

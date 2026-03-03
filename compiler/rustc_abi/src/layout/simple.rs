@@ -21,6 +21,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
             backend_repr: BackendRepr::Memory { sized },
             largest_niche: None,
             uninhabited: false,
+            align_is_exact: true,
             align: AbiAlign::new(dl.i8_align),
             size: Size::ZERO,
             max_repr_align: None,
@@ -38,6 +39,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
             backend_repr: BackendRepr::Memory { sized: true },
             largest_niche: None,
             uninhabited: true,
+            align_is_exact: true,
             align: AbiAlign::new(dl.i8_align),
             size: Size::ZERO,
             max_repr_align: None,
@@ -82,6 +84,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
             uninhabited: false,
             size,
             align,
+            align_is_exact: true,
             max_repr_align: None,
             unadjusted_abi_align: align.abi,
             randomization_seed: Hash64::new(randomization_seed),
@@ -113,6 +116,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
             backend_repr: BackendRepr::ScalarPair(a, b),
             largest_niche,
             uninhabited: false,
+            align_is_exact: true,
             align: AbiAlign::new(align),
             size,
             max_repr_align: None,
@@ -121,6 +125,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
         }
     }
 
+    /// FIXME(more_unsized): rename this to `absent*`
     /// Returns a dummy layout for an uninhabited variant.
     ///
     /// Uninhabited variants get pruned as part of the layout calculation,
@@ -139,6 +144,7 @@ impl<FieldIdx: Idx, VariantIdx: Idx> LayoutData<FieldIdx, VariantIdx> {
             backend_repr: BackendRepr::Memory { sized: true },
             largest_niche: None,
             uninhabited: true,
+            align_is_exact: true,
             align: AbiAlign::new(dl.i8_align),
             size: Size::ZERO,
             max_repr_align: None,

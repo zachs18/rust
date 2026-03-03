@@ -8,6 +8,7 @@ error: fn_abi_of(pass_zst) = FnAbi {
                            align: AbiAlign {
                                abi: $SOME_ALIGN,
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -36,6 +37,7 @@ error: fn_abi_of(pass_zst) = FnAbi {
                        align: AbiAlign {
                            abi: $SOME_ALIGN,
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
