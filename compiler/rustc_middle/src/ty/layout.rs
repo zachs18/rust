@@ -24,7 +24,7 @@ use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::query::TyCtxtAt;
 use crate::traits::ObligationCause;
 use crate::ty::normalize_erasing_regions::NormalizationError;
-use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt};
+use crate::ty::{self, CoroutineArgsExt, SizedTraitKind, Ty, TyCtxt, TypeVisitableExt};
 
 #[extension(pub trait IntegerExt)]
 impl abi::Integer {
@@ -350,9 +350,8 @@ pub enum SizeSkeleton<'tcx> {
         /// If true, this pointer is never null.
         non_zero: bool,
         /// The type which determines the unsized metadata, if any,
-        /// of this pointer. Either a type parameter or a projection
-        /// depending on one, with regions erased.
-        tail: Ty<'tcx>,
+        /// of this pointer. Has regions erased.
+        reduced: Ty<'tcx>,
     },
 }
 
@@ -389,10 +388,17 @@ impl<'tcx> SizeSkeleton<'tcx> {
             ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {
                 let non_zero = !ty.is_raw_ptr();
 
-                let tail = tcx.struct_or_union_tail_raw(
+                if pointee.is_thin(tcx, typing_env) {
+                    let layout = tcx
+                        .layout_of(typing_env.as_query_input(Ty::new_mut_ptr(tcx, tcx.types.unit)))
+                        .expect("concrete type");
+                    return Ok(SizeSkeleton::Known(layout.size, Some(layout.align.abi)));
+                }
+
+                let reduced = tcx.reduce_pointee_raw(
                     pointee,
                     &ObligationCause::dummy(),
-                    |ty| match tcx.try_normalize_erasing_regions(typing_env, ty) {
+                    &mut |ty| match tcx.try_normalize_erasing_regions(typing_env, ty) {
                         Ok(ty) => ty,
                         Err(e) => Ty::new_error_with_message(
                             tcx,
@@ -403,19 +409,15 @@ impl<'tcx> SizeSkeleton<'tcx> {
                             ),
                         ),
                     },
-                    || {},
+                    SizedTraitKind::Thin,
                 );
 
-                match tail.kind() {
-                    _ if tail.is_sized(tcx, typing_env) => {
-                        let layout = tcx
-                            .layout_of(
-                                typing_env.as_query_input(Ty::new_mut_ptr(tcx, tcx.types.unit)),
-                            )
-                            .expect("concrete type");
-                        Ok(SizeSkeleton::Known(layout.size, Some(layout.align.abi)))
-                    }
-                    ty::Slice(elem) if elem.is_sized(tcx, typing_env) => {
+                let Some(reduced) = reduced else {
+                    bug!("non-`Thin` type had `None` deepest single wide field")
+                };
+
+                match reduced.kind() {
+                    ty::Slice(elem) if elem.is_thin(tcx, typing_env) => {
                         let layout = tcx
                             .layout_of(typing_env.as_query_input(Ty::new_mut_ptr(
                                 tcx,
@@ -426,14 +428,15 @@ impl<'tcx> SizeSkeleton<'tcx> {
                     }
                     ty::Param(_)
                     | ty::Slice(_)
+                    | ty::Array(..)
                     | ty::Alias(ty::AliasTy {
                         kind: ty::Projection { .. } | ty::Inherent { .. },
                         ..
                     }) => {
-                        debug_assert!(tail.has_non_region_param());
+                        debug_assert!(reduced.has_non_region_param());
                         Ok(SizeSkeleton::Pointer {
                             non_zero,
-                            tail: tcx.erase_and_anonymize_regions(tail),
+                            reduced: tcx.erase_and_anonymize_regions(reduced),
                         })
                     }
                     ty::Error(guar) => {
@@ -442,7 +445,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
                     }
                     _ => bug!(
                         "SizeSkeleton::compute({ty}): layout errored ({err:?}), yet \
-                              tail `{tail}` is not a type parameter or a projection",
+                              reduced `{reduced}` is not a type parameter or a projection",
                     ),
                 }
             }
@@ -511,7 +514,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
                 let v0 = zero_or_ptr_variant(0)?;
                 // Newtype.
                 if def.variants().len() == 1 {
-                    if let Some(SizeSkeleton::Pointer { non_zero, tail }) = v0 {
+                    if let Some(SizeSkeleton::Pointer { non_zero, reduced }) = v0 {
                         return Ok(SizeSkeleton::Pointer {
                             non_zero: non_zero
                                 || match tcx.layout_scalar_valid_range(def.did()) {
@@ -521,7 +524,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
                                     }
                                     _ => false,
                                 },
-                            tail,
+                            reduced,
                         });
                     } else {
                         return Err(err);
@@ -531,9 +534,9 @@ impl<'tcx> SizeSkeleton<'tcx> {
                 let v1 = zero_or_ptr_variant(1)?;
                 // Nullable pointer enum optimization.
                 match (v0, v1) {
-                    (Some(SizeSkeleton::Pointer { non_zero: true, tail }), None)
-                    | (None, Some(SizeSkeleton::Pointer { non_zero: true, tail })) => {
-                        Ok(SizeSkeleton::Pointer { non_zero: false, tail })
+                    (Some(SizeSkeleton::Pointer { non_zero: true, reduced }), None)
+                    | (None, Some(SizeSkeleton::Pointer { non_zero: true, reduced })) => {
+                        Ok(SizeSkeleton::Pointer { non_zero: false, reduced })
                     }
                     _ => Err(err),
                 }
@@ -558,9 +561,10 @@ impl<'tcx> SizeSkeleton<'tcx> {
     pub fn same_size(self, other: SizeSkeleton<'tcx>) -> bool {
         match (self, other) {
             (SizeSkeleton::Known(a, _), SizeSkeleton::Known(b, _)) => a == b,
-            (SizeSkeleton::Pointer { tail: a, .. }, SizeSkeleton::Pointer { tail: b, .. }) => {
-                a == b
-            }
+            (
+                SizeSkeleton::Pointer { reduced: a, .. },
+                SizeSkeleton::Pointer { reduced: b, .. },
+            ) => a == b,
             // constants are always pre-normalized into a canonical form so this
             // only needs to check if their pointers are identical.
             (SizeSkeleton::Generic(a), SizeSkeleton::Generic(b)) => a == b,

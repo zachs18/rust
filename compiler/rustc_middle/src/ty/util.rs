@@ -225,18 +225,37 @@ impl<'tcx> TyCtxt<'tcx> {
         )
     }
 
-    /// Returns true if a type has metadata.
-    pub fn type_has_metadata(self, ty: Ty<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
-        if ty.is_sized(self, typing_env) {
-            return false;
-        }
+    /// Reduce `ty` to its single (nested) field that is *not* known to implement
+    /// the given sizedness trait, or return `None` if `ty` (and thus all of
+    /// its fields) implements it.
+    ///
+    /// This is analogous to a least-upper-bound in the "field tree", i.e.
+    /// if multiple nested fields are not known to implement `sizedness`, then
+    /// the returned type will "contain" all of them. E.g. if multiple direct
+    /// fields of `ty` are not known to implement `sizedness`, then `ty` itself
+    /// is returned.
+    ///
+    /// Should only be called if `ty` has no inference variables and does not
+    /// need its lifetimes preserved (e.g. as part of codegen); otherwise
+    /// normalization attempt may cause compiler bugs.
+    pub fn reduce_pointee_for_codegen(
+        self,
+        ty: Ty<'tcx>,
+        typing_env: ty::TypingEnv<'tcx>,
+        sizedness: SizedTraitKind,
+    ) -> Option<Ty<'tcx>> {
+        let tcx = self;
+        tcx.reduce_pointee_raw(
+            ty,
+            &ObligationCause::dummy(),
+            &mut |ty| tcx.normalize_erasing_regions(typing_env, ty),
+            sizedness,
+        )
+    }
 
-        let tail = self.struct_or_union_tail_for_codegen(ty, typing_env);
-        match tail.kind() {
-            ty::Foreign(..) => false,
-            ty::Str | ty::Slice(..) | ty::Dynamic(..) => true,
-            _ => bug!("unexpected unsized tail: {:?}", tail),
-        }
+    /// Returns true if a type is not known to not have metadata. (i.e. `T: Thin` is not known to hold).
+    pub fn type_has_metadata(self, ty: Ty<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
+        !ty.is_thin(self, typing_env)
     }
 
     /// Returns the deeply last field of nested structures, or the same type if
@@ -318,8 +337,8 @@ impl<'tcx> TyCtxt<'tcx> {
         ty
     }
 
-    /// Same as applying `struct_or_union_tail` on `source` and `target`, but only
-    /// keeps going as long as the two types are instances of the same
+    /// Find all leaf fields in `source` that are different from those in `target`,
+    /// but only keeps going as long as the two types are instances of the same
     /// structure definitions.
     /// For `(Foo<Foo<T>>, Foo<dyn Trait>)`, the result will be `(Foo<T>, dyn Trait)`,
     /// whereas struct_or_union_tail produces `T`, and `Trait`, respectively.
@@ -327,52 +346,220 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Should only be called if the types have no inference variables and do
     /// not need their lifetimes preserved (e.g., as part of codegen); otherwise,
     /// normalization attempt may cause compiler bugs.
-    pub fn struct_or_union_lockstep_tails_for_codegen(
+    pub fn lockstep_differing_fields_for_codegen(
         self,
         source: Ty<'tcx>,
         target: Ty<'tcx>,
         typing_env: ty::TypingEnv<'tcx>,
-    ) -> (Ty<'tcx>, Ty<'tcx>) {
+    ) -> Vec<(Ty<'tcx>, Ty<'tcx>)> {
         let tcx = self;
-        tcx.struct_or_union_lockstep_tails_raw(source, target, |ty| {
-            tcx.normalize_erasing_regions(typing_env, ty)
-        })
+        let mut dst = vec![];
+        tcx.lockstep_differing_fields_raw(
+            source,
+            target,
+            |ty| tcx.normalize_erasing_regions(typing_env, ty),
+            &mut dst,
+        );
+        dst
     }
 
-    /// Same as applying `struct_or_union_tail` on `source` and `target`, but only
-    /// keeps going as long as the two types are instances of the same
-    /// structure definitions.
-    /// For `(Foo<Foo<T>>, Foo<dyn Trait>)`, the result will be `(Foo<T>, Trait)`,
-    /// whereas struct_or_union_tail produces `T`, and `Trait`, respectively.
+    /// Reduce `ty` to its single (nested) field that is *not* known to implement
+    /// the given sizedness trait, or return `None` if `ty` (and thus all of
+    /// its fields) implements it.
     ///
-    /// See also `struct_or_union_lockstep_tails_for_codegen`, which is suitable for use
+    /// This is analogous to a least-upper-bound in the "field tree", i.e.
+    /// if multiple nested fields are not known to implement `sizedness`, then
+    /// the returned type will "contain" all of them. E.g. if multiple direct
+    /// fields of `ty` are not known to implement `sizedness`, then `ty` itself
+    /// is returned.
+    ///
+    /// Should only be called if `ty` has no inference variables and does not
+    /// need its lifetimes preserved (e.g. as part of codegen); otherwise
+    /// normalization attempt may cause compiler bugs.
+    ///
+    /// This is parameterized over the normalization strategy (i.e. how to
+    /// handle `<T as Trait>::Assoc` and `impl Trait`). You almost certainly do
+    /// **NOT** want to pass the identity function here, unless you know what
+    /// you're doing, or you're within normalization code itself and will handle
+    /// an unnormalized tail recursively.
+    ///
+    /// See also `reduce_pointee_for_codegen`, which is suitable for use
     /// during codegen.
-    pub fn struct_or_union_lockstep_tails_raw(
+    pub fn reduce_pointee_raw(
+        self,
+        mut ty: Ty<'tcx>,
+        cause: &ObligationCause<'tcx>,
+        normalize: &mut (impl FnMut(Ty<'tcx>) -> Ty<'tcx> + ?Sized),
+        sizedness: SizedTraitKind,
+    ) -> Option<Ty<'tcx>> {
+        let recursion_limit = self.recursion_limit();
+        let mut iteration = 0;
+        loop {
+            if !recursion_limit.value_within_limit(iteration) {
+                let suggested_limit = match recursion_limit {
+                    Limit(0) => Limit(2),
+                    limit => limit * 2,
+                };
+                let reported = self.dcx().emit_err(crate::error::RecursionLimitReached {
+                    span: cause.span,
+                    ty,
+                    suggested_limit,
+                });
+                return Some(Ty::new_error(self, reported));
+            }
+            iteration += 1;
+            match *ty.kind() {
+                // `Sized`
+                ty::Never
+                | ty::Bool
+                | ty::Char
+                | ty::Int(_)
+                | ty::Uint(_)
+                | ty::Float(_)
+                | ty::Ref(..)
+                | ty::RawPtr(..)
+                | ty::UntypedPtr { .. }
+                | ty::PtrMetadata(..)
+                | ty::FnDef(..)
+                | ty::FnPtr(..)
+                | ty::Closure(..)
+                | ty::Coroutine(..)
+                | ty::CoroutineClosure(..)
+                | ty::CoroutineWitness(..) => return None,
+                // `Thin`, but not `MetaAligned` or any of its subtraits
+                ty::Foreign(_) => match sizedness {
+                    SizedTraitKind::Thin => return None,
+                    SizedTraitKind::Sized
+                    | SizedTraitKind::Aligned
+                    | SizedTraitKind::MetaSized
+                    | SizedTraitKind::MetaAligned => return Some(ty),
+                },
+                // Assume type error types are `Sized`.
+                ty::Error(_) => return None,
+
+                // `MetaSized + Aligned`, but not `Thin` or `Sized`
+                ty::Str => match sizedness {
+                    SizedTraitKind::Aligned
+                    | SizedTraitKind::MetaSized
+                    | SizedTraitKind::MetaAligned => return None,
+                    SizedTraitKind::Sized | SizedTraitKind::Thin => return Some(ty),
+                },
+
+                // `MetaSized`, but not `Thin` or `Sized`.
+                // `Aligned` if and only if the element is.
+                ty::Slice(elem) => match sizedness {
+                    SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => return None,
+                    SizedTraitKind::Sized | SizedTraitKind::Thin => return Some(ty),
+                    SizedTraitKind::Aligned => ty = elem,
+                },
+
+                // `MetaSized`, but not `Thin` or `Sized` or `Aligned`
+                ty::Dynamic(..) => match sizedness {
+                    SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => return None,
+                    SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {
+                        return Some(ty);
+                    }
+                },
+
+                ty::Adt(def, args) => {
+                    let mut single_wide_field = None;
+                    for variant in def.variants() {
+                        for field in &variant.fields {
+                            let field_ty = field.ty(self, args);
+                            let field_reduction =
+                                self.reduce_pointee_raw(field_ty, cause, normalize, sizedness);
+                            if field_reduction.is_some() {
+                                if single_wide_field.is_some() {
+                                    // ADT has multiple relevant fields,
+                                    // so ADT itself is the most-reduced type
+                                    return Some(ty);
+                                }
+                                single_wide_field = field_reduction;
+                            }
+                        }
+                    }
+                    return single_wide_field;
+                }
+
+                ty::Tuple(tys) => {
+                    // FIXME(more_unsized): maybe use a manual stack instead of recursion
+                    let mut single_wide_field = None;
+                    for field_ty in tys {
+                        let field_reduction =
+                            self.reduce_pointee_raw(field_ty, cause, normalize, sizedness);
+                        if field_reduction.is_some() {
+                            if single_wide_field.is_some() {
+                                // tuple has multiple relevant fields,
+                                // so tuple itself is the most-reduced type
+                                return Some(ty);
+                            }
+                            single_wide_field = field_reduction;
+                        }
+                    }
+                    return single_wide_field;
+                }
+
+                ty::Pat(inner, _) | ty::Array(inner, _) => {
+                    ty = inner;
+                }
+
+                ty::UnsafeBinder(binder) => {
+                    ty = binder.skip_binder();
+                }
+
+                ty::Alias(..)
+                | ty::Param(..)
+                | ty::Bound(..)
+                | ty::Placeholder(..)
+                | ty::Infer(..) => {
+                    let normalized = normalize(ty);
+                    if ty == normalized {
+                        return Some(ty);
+                    } else {
+                        ty = normalized;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Find all leaf fields in `source` that are different from those in `target`,
+    /// but only keeps going as long as the two types are instances of the same
+    /// structure definitions.
+    /// For `(Foo<Foo<T>>, Foo<dyn Trait>)`, the result will be `(Foo<T>, dyn Trait)`.
+    ///
+    /// See also `lockstep_differing_fields_for_codegen`, which is suitable for use
+    /// during codegen.
+    pub fn lockstep_differing_fields_raw(
         self,
         source: Ty<'tcx>,
         target: Ty<'tcx>,
-        normalize: impl Fn(Ty<'tcx>) -> Ty<'tcx>,
-    ) -> (Ty<'tcx>, Ty<'tcx>) {
+        normalize: impl Fn(Ty<'tcx>) -> Ty<'tcx> + Copy,
+        dst: &mut Vec<(Ty<'tcx>, Ty<'tcx>)>,
+    ) {
         let (mut a, mut b) = (source, target);
+
         loop {
+            if a == b {
+                return;
+            }
             match (a.kind(), b.kind()) {
-                (&ty::Adt(a_def, a_args), &ty::Adt(b_def, b_args))
-                    if a_def == b_def && (a_def.is_struct() || a_def.is_union()) =>
-                {
-                    if let Some(f) = a_def.non_enum_variant().tail_opt() {
-                        a = f.ty(self, a_args);
-                        b = f.ty(self, b_args);
-                    } else {
-                        break;
+                (&ty::Adt(a_def, a_args), &ty::Adt(b_def, b_args)) if a_def == b_def => {
+                    for variant in a_def.variants() {
+                        for f in variant.fields.iter() {
+                            let a_field = f.ty(self, a_args);
+                            let b_field = f.ty(self, b_args);
+
+                            self.lockstep_differing_fields_raw(a_field, b_field, normalize, dst);
+                        }
                     }
+                    break;
                 }
                 (&ty::Tuple(a_tys), &ty::Tuple(b_tys)) if a_tys.len() == b_tys.len() => {
-                    if let Some(&a_last) = a_tys.last() {
-                        a = a_last;
-                        b = *b_tys.last().unwrap();
-                    } else {
-                        break;
+                    for (a_field, b_field) in std::iter::zip(a_tys, b_tys) {
+                        self.lockstep_differing_fields_raw(a_field, b_field, normalize, dst);
                     }
+                    break;
                 }
                 (ty::Alias(..), _) | (_, ty::Alias(..)) => {
                     // If either side is a projection, attempt to
@@ -392,7 +579,10 @@ impl<'tcx> TyCtxt<'tcx> {
                 _ => break,
             }
         }
-        (a, b)
+
+        if a != b {
+            dst.push((a, b));
+        }
     }
 
     /// Calculate the destructor of a given type.

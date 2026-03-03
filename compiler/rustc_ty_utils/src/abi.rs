@@ -454,8 +454,6 @@ fn fn_abi_sanity_check<'tcx>(
         spec_abi: ExternAbi,
         arg: &ArgAbi<'tcx, Ty<'tcx>>,
     ) {
-        let tcx = cx.tcx();
-
         if spec_abi.is_rustic_abi() {
             if arg.layout.is_zst() {
                 // Casting closures to function pointers depends on ZST closure types being
@@ -532,17 +530,8 @@ fn fn_abi_sanity_check<'tcx>(
                 // With metadata. Must be unsized and not on the stack.
                 assert!(arg.layout.is_unsized() && !on_stack);
                 // Also, must not be `extern` type.
-                let tail = tcx.struct_or_union_tail_for_codegen(arg.layout.ty, cx.typing_env);
-                if matches!(tail.kind(), ty::Foreign(..)) {
-                    // These types do not have metadata, so having `meta_attrs` is bogus.
-                    // Conceptually, unsized arguments must be copied around, which requires dynamically
-                    // determining their size. Therefore, we cannot allow `extern` types here. Consult
-                    // t-opsem before removing this check.
-                    panic!("unsized arguments must not be `extern` types");
-                    // FIXME(ptr_metadata_v2): now that we have a full ArgAbi for the metadata,
-                    // could it just be PassMode::Ignore instead of being disallowed?
-                    // We can't determine their size, but IDK if that's still necessary.
-                }
+                // FIXME(more_unsized): reintroduce the `ty::Foreign` check,
+                // expanded to make this fail on all `T: !MetaSized`.
             }
         }
     }
