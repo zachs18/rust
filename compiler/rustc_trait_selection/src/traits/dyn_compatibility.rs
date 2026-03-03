@@ -93,17 +93,19 @@ fn dyn_compatibility_violations_for_trait(
     // Check the trait itself.
     let has_sized_self = trait_has_sized_self(tcx, trait_def_id);
     let has_thin_self = has_sized_self || trait_has_thin_self(tcx, trait_def_id);
-    if has_sized_self || has_thin_self {
-        // We don't want to include the requirement from `Sized` and `Thin`
-        // themselves to be `Sized` or `Thin` in the list.
+    let has_aligned_self = has_sized_self || trait_has_aligned_self(tcx, trait_def_id);
+    if has_sized_self || has_thin_self || has_aligned_self {
+        // We don't want to include the requirement from `Sized`, `Thing`, and `Aligned` themselves to be `Sized`, `Thin`, or `Aligned` in the list.
         let mut spans = get_sized_bounds(tcx, trait_def_id);
         if !has_sized_self {
             spans.extend(get_thin_bounds(tcx, trait_def_id));
+            spans.extend(get_aligned_bounds(tcx, trait_def_id));
         }
         violations.push(DynCompatibilityViolation::SizednessSelf {
             spans,
             sized: has_sized_self,
             thin: has_thin_self,
+            aligned: has_aligned_self,
         });
     } else if let Some(span) = tcx.trait_def(trait_def_id).force_dyn_incompatible {
         violations.push(DynCompatibilityViolation::ExplicitlyDynIncompatible([span].into()));
@@ -146,6 +148,24 @@ fn sized_trait_bound_spans<'tcx>(
     })
 }
 
+fn aligned_trait_bound_spans<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    bounds: hir::GenericBounds<'tcx>,
+) -> impl 'tcx + Iterator<Item = Span> {
+    bounds.iter().filter_map(move |b| match b {
+        hir::GenericBound::Trait(trait_ref)
+            if trait_has_aligned_self(
+                tcx,
+                trait_ref.trait_ref.trait_def_id().unwrap_or_else(|| FatalError.raise()),
+            ) =>
+        {
+            // Fetch spans for supertraits that are `Aligned`: `trait T: Super`
+            Some(trait_ref.span)
+        }
+        _ => None,
+    })
+}
+
 fn thin_trait_bound_spans<'tcx>(
     tcx: TyCtxt<'tcx>,
     bounds: hir::GenericBounds<'tcx>,
@@ -166,6 +186,10 @@ fn thin_trait_bound_spans<'tcx>(
 
 fn get_sized_bounds(tcx: TyCtxt<'_>, trait_def_id: DefId) -> SmallVec<[Span; 1]> {
     get_bounds(tcx, trait_def_id, sized_trait_bound_spans)
+}
+
+fn get_aligned_bounds(tcx: TyCtxt<'_>, trait_def_id: DefId) -> SmallVec<[Span; 1]> {
+    get_bounds(tcx, trait_def_id, aligned_trait_bound_spans)
 }
 
 fn get_thin_bounds(tcx: TyCtxt<'_>, trait_def_id: DefId) -> SmallVec<[Span; 1]> {
@@ -328,6 +352,10 @@ fn trait_has_sized_self(tcx: TyCtxt<'_>, trait_def_id: DefId) -> bool {
     tcx.generics_require_sized_self(trait_def_id)
 }
 
+fn trait_has_aligned_self(tcx: TyCtxt<'_>, trait_def_id: DefId) -> bool {
+    tcx.generics_require_aligned_self(trait_def_id)
+}
+
 fn trait_has_thin_self(tcx: TyCtxt<'_>, trait_def_id: DefId) -> bool {
     tcx.generics_require_thin_self(trait_def_id)
 }
@@ -338,6 +366,14 @@ fn generics_require_sized_self(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     };
 
     generics_require(tcx, def_id, sized_def_id)
+}
+
+fn generics_require_aligned_self(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    let Some(aligned_def_id) = tcx.lang_items().aligned_trait() else {
+        return false; /* No Aligned trait, can't require it! */
+    };
+
+    generics_require(tcx, def_id, aligned_def_id)
 }
 
 fn generics_require_thin_self(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
@@ -1000,6 +1036,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         dyn_compatibility_violations,
         is_dyn_compatible,
         generics_require_sized_self,
+        generics_require_aligned_self,
         generics_require_thin_self,
         ..*providers
     };

@@ -601,7 +601,8 @@ pub fn report_dyn_incompatibility<'tcx>(
     let mut messages = vec![];
 
     for violation in violations {
-        if let DynCompatibilityViolation::SizednessSelf { ref spans, sized, thin } = *violation
+        if let DynCompatibilityViolation::SizednessSelf { ref spans, sized, aligned, thin } =
+            *violation
             && !spans.is_empty()
         {
             // Do not report `SizednessSelf` without spans pointing at `SizednessSelf` obligations
@@ -609,6 +610,7 @@ pub fn report_dyn_incompatibility<'tcx>(
             reported_violations.insert(DynCompatibilityViolation::SizednessSelf {
                 spans: vec![].into(),
                 sized,
+                aligned,
                 thin,
             });
         }

@@ -240,8 +240,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         );
         let types = match tcx.as_lang_item(trait_def) {
             Some(LangItem::Sized) => self.sizedness_conditions(self_ty, SizedTraitKind::Sized),
+            Some(LangItem::Aligned) => self.sizedness_conditions(self_ty, SizedTraitKind::Aligned),
             Some(LangItem::MetaSized) => {
                 self.sizedness_conditions(self_ty, SizedTraitKind::MetaSized)
+            }
+            Some(LangItem::MetaAligned) => {
+                self.sizedness_conditions(self_ty, SizedTraitKind::MetaAligned)
             }
             Some(LangItem::PointeeSized) => {
                 bug!("`PointeeSized` is removing during lowering");

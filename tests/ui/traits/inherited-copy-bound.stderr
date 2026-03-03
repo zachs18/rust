@@ -26,6 +26,7 @@ LL |     let z = &x as &dyn Foo;
    |                        ^^^ `Foo` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: the trait is not dyn compatible because it requires `Self: Aligned`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/inherited-copy-bound.rs:5:12

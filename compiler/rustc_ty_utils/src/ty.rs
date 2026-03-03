@@ -41,11 +41,31 @@ fn sizedness_constraints_for_ty<'tcx>(
         | ty::CoroutineWitness(..)
         | ty::Never => None,
 
-        ty::Str | ty::Slice(..) | ty::Dynamic(_, _) => match sizedness {
+        ty::Str => match sizedness {
             // Never `Sized` or `Thin`
             SizedTraitKind::Sized | SizedTraitKind::Thin => Some(vec![ty]),
-            // Always `MetaSized`
-            SizedTraitKind::MetaSized => None,
+            // Always `MetaSized`, `Aligned`, and `MetaAligned`
+            SizedTraitKind::Aligned | SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
+                None
+            }
+        },
+
+        ty::Slice(elem) => match sizedness {
+            // Never `Sized` or `Thin`
+            SizedTraitKind::Sized | SizedTraitKind::Thin => Some(vec![ty]),
+            // Always `MetaSized` and `MetaAligned`
+            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => None,
+            // Conditionally `Aligned`
+            SizedTraitKind::Aligned => Some(vec![*elem]),
+        },
+
+        ty::Dynamic(_, _) => match sizedness {
+            // Never `Sized`, `Aligned`, or `Thin`
+            SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {
+                Some(vec![ty])
+            }
+            // Always `MetaSized` and `MetaAligned`
+            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => None,
         },
 
         // Maybe `Sized`, `MetaSized`, or `Thin`
@@ -59,8 +79,11 @@ fn sizedness_constraints_for_ty<'tcx>(
         }
 
         ty::Foreign(..) => match sizedness {
-            // Never `Sized` or `MetaSized`
-            SizedTraitKind::Sized | SizedTraitKind::MetaSized => Some(vec![ty]),
+            // Never `Sized`, `Aligned`, `MetaSized`, or `MetaAligned`
+            SizedTraitKind::Sized
+            | SizedTraitKind::Aligned
+            | SizedTraitKind::MetaSized
+            | SizedTraitKind::MetaAligned => Some(vec![ty]),
             // Always `Thin`
             SizedTraitKind::Thin => None,
         },

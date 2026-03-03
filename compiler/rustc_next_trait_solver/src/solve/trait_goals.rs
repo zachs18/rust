@@ -138,14 +138,27 @@ where
             goal_def_id: I::TraitId,
             polarity: PredicatePolarity,
         ) -> bool {
-            clause_def_id == goal_def_id
+            if clause_def_id == goal_def_id {
+                return true;
+            }
+            if polarity != PredicatePolarity::Positive {
+                return false;
+            }
             // PERF(sized-hierarchy): Sizedness supertraits aren't elaborated to improve perf, so
-            // check for a `MetaSized` or `Thin` supertrait being matched against a `Sized` assumption.
+            // check for a sizedness supertraits being matched against sizedness assumption.
             //
             // `PointeeSized` bounds are syntactic sugar for a lack of bounds so don't need this.
-                || (polarity == PredicatePolarity::Positive
-                    && cx.is_trait_lang_item(clause_def_id, SolverTraitLangItem::Sized)
-                    && (cx.is_trait_lang_item(goal_def_id, SolverTraitLangItem::MetaSized) || cx.is_trait_lang_item(goal_def_id, SolverTraitLangItem::ThinPointeeTrait)))
+            let goal_is = |lang_item| cx.is_trait_lang_item(goal_def_id, lang_item);
+            let clause_is = |lang_item| cx.is_trait_lang_item(clause_def_id, lang_item);
+            (clause_is(SolverTraitLangItem::Sized)
+                && (goal_is(SolverTraitLangItem::Aligned)
+                    || goal_is(SolverTraitLangItem::MetaSized)
+                    || goal_is(SolverTraitLangItem::MetaAligned)
+                    || goal_is(SolverTraitLangItem::ThinPointeeTrait)))
+                || (clause_is(SolverTraitLangItem::Aligned)
+                    && goal_is(SolverTraitLangItem::MetaAligned))
+                || (clause_is(SolverTraitLangItem::MetaSized)
+                    && goal_is(SolverTraitLangItem::MetaAligned))
         }
 
         if let Some(trait_clause) = assumption.as_trait_clause()
@@ -175,16 +188,23 @@ where
     ) -> QueryResult<I> {
         let trait_clause = assumption.as_trait_clause().unwrap();
 
+        let goal_is = |lang_item| ecx.cx().is_trait_lang_item(goal.predicate.def_id(), lang_item);
+        let clause_is = |lang_item| ecx.cx().is_trait_lang_item(trait_clause.def_id(), lang_item);
+
         // PERF(sized-hierarchy): Sizedness supertraits aren't elaborated to improve perf, so
         // check for a `Sized` subtrait when looking for `MetaSized` or `Thin`. `PointeeSized` bounds
         // are syntactic sugar for a lack of bounds so don't need this.
         // We don't need to check polarity, `fast_reject_assumption` already rejected non-`Positive`
         // polarity `Sized` assumptions as matching non-`Positive` `MetaSized`/`Thin` goals.
-        if (ecx.cx().is_trait_lang_item(goal.predicate.def_id(), SolverTraitLangItem::MetaSized)
-            || ecx
-                .cx()
-                .is_trait_lang_item(goal.predicate.def_id(), SolverTraitLangItem::ThinPointeeTrait))
-            && ecx.cx().is_trait_lang_item(trait_clause.def_id(), SolverTraitLangItem::Sized)
+        if (clause_is(SolverTraitLangItem::Sized)
+            && (goal_is(SolverTraitLangItem::Aligned)
+                || goal_is(SolverTraitLangItem::MetaSized)
+                || goal_is(SolverTraitLangItem::MetaAligned)
+                || goal_is(SolverTraitLangItem::ThinPointeeTrait)))
+            || (clause_is(SolverTraitLangItem::Aligned)
+                && goal_is(SolverTraitLangItem::MetaAligned))
+            || (clause_is(SolverTraitLangItem::MetaSized)
+                && goal_is(SolverTraitLangItem::MetaAligned))
         {
             let thin_or_meta_sized_clause =
                 trait_predicate_with_def_id(ecx.cx(), trait_clause, goal.predicate.def_id());

@@ -2186,21 +2186,46 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             // Array is Sized/Thin/MetaSized exactly when the element type is.
             ty::Array(elem, ..) => ty::Binder::dummy(vec![*elem]),
 
-            ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
+            ty::Str => match sizedness {
                 SizedTraitKind::Sized => unreachable!("tried to assemble `Sized` for unsized type"),
                 SizedTraitKind::Thin => {
                     unreachable!("tried to assemble `Thin` for a wide-pointee type")
                 }
-                SizedTraitKind::MetaSized => ty::Binder::dummy(vec![]),
+                SizedTraitKind::Aligned
+                | SizedTraitKind::MetaSized
+                | SizedTraitKind::MetaAligned => ty::Binder::dummy(vec![]),
+            },
+
+            ty::Slice(elem) => match sizedness {
+                SizedTraitKind::Sized => unreachable!("tried to assemble `Sized` for unsized type"),
+                SizedTraitKind::Thin => {
+                    unreachable!("tried to assemble `Thin` for a wide-pointee type")
+                }
+                SizedTraitKind::Aligned => ty::Binder::dummy(vec![*elem]),
+                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
+                    ty::Binder::dummy(vec![])
+                }
+            },
+
+            ty::Dynamic(..) => match sizedness {
+                SizedTraitKind::Sized | SizedTraitKind::Aligned => {
+                    unreachable!("tried to assemble `{sizedness:?}` for trait object type")
+                }
+                SizedTraitKind::Thin => {
+                    unreachable!("tried to assemble `Thin` for a wide-pointee type")
+                }
+                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
+                    ty::Binder::dummy(vec![])
+                }
             },
 
             ty::Foreign(..) => match sizedness {
                 SizedTraitKind::Thin => ty::Binder::dummy(vec![]),
-                SizedTraitKind::Sized => {
-                    unreachable!("tried to assemble `Sized` for foreign type")
-                }
-                SizedTraitKind::MetaSized => {
-                    unreachable!("tried to assemble `MetaSized` for foreign type")
+                SizedTraitKind::Sized
+                | SizedTraitKind::Aligned
+                | SizedTraitKind::MetaSized
+                | SizedTraitKind::MetaAligned => {
+                    unreachable!("tried to assemble `{sizedness:?}` for foreign type")
                 }
             },
 
