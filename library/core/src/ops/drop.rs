@@ -204,7 +204,7 @@
 #[lang = "drop"]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_destruct", issue = "133214")]
-pub const trait Drop {
+pub const trait Drop: crate::marker::PointeeSized {
     /// Executes the destructor for this type.
     ///
     /// This method is called implicitly when the value goes out of scope,
