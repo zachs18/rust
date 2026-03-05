@@ -5,6 +5,7 @@ LL |     offset_of!(Alpha, z);
    |     ^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `[u8]`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the size for values of type `(dyn Trait + 'static)` cannot be known at compilation time
@@ -14,6 +15,7 @@ LL |     offset_of!(Beta, z);
    |     ^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `(dyn Trait + 'static)`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the size for values of type `Extern` cannot be known at compilation time
@@ -23,6 +25,7 @@ LL |     offset_of!(Gamma, z);
    |     ^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `Extern`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the size for values of type `dyn Trait` cannot be known at compilation time
@@ -41,6 +44,7 @@ LL |     offset_of!(Delta<Extern>, z);
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `Extern`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the size for values of type `dyn Trait` cannot be known at compilation time
@@ -50,6 +54,7 @@ LL |     offset_of!(Delta<dyn Trait>, z);
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `dyn Trait`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
@@ -64,6 +69,7 @@ note: required because it appears within the type `Alpha`
    |
 LL | struct Alpha {
    |        ^^^^^
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the size for values of type `T` cannot be known at compilation time
@@ -74,6 +80,7 @@ LL | fn generic_with_maybe_sized<T: ?Sized>() -> usize {
 LL |     offset_of!(Delta<T>, z)
    |     ^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider removing the `?Sized` bound to make the type parameter `Sized`
    |
@@ -82,13 +89,13 @@ LL + fn generic_with_maybe_sized<T>() -> usize {
    |
 
 error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
-  --> $DIR/offset-of-dst-field.rs:55:16
+  --> $DIR/offset-of-dst-field.rs:55:5
    |
 LL |     offset_of!(([u8], u8), 1);
-   |                ^^^^^^^^^^ doesn't have a size known at compile-time
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `[u8]`
-   = note: only the last element of a tuple may have a dynamically sized type
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: aborting due to 9 previous errors
 
