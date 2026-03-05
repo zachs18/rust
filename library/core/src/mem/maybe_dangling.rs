@@ -1,6 +1,6 @@
 #![unstable(feature = "maybe_dangling", issue = "118166")]
 
-use crate::marker::StructuralPartialEq;
+use crate::marker::{PointeeSized, StructuralPartialEq};
 use crate::{mem, ptr};
 
 /// Allows wrapped [references] and [boxes] to dangle.
@@ -71,9 +71,9 @@ use crate::{mem, ptr};
 #[rustc_pub_transparent]
 #[derive(Debug, Copy, Clone, Default)]
 #[lang = "maybe_dangling"]
-pub struct MaybeDangling<P: ?Sized>(P);
+pub struct MaybeDangling<P: PointeeSized>(P);
 
-impl<P: ?Sized> MaybeDangling<P> {
+impl<P: PointeeSized> MaybeDangling<P> {
     /// Wraps a value in a `MaybeDangling`, allowing it to dangle.
     pub const fn new(x: P) -> Self
     where

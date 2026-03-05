@@ -274,6 +274,26 @@ pub enum ObligationCauseCode<'tcx> {
         span: Span,
     },
 
+    /// An ADT or tuple field in `offset_of!` must be `Sized` or `Aligned` in most cases:
+    /// * A `#[repr(C)] union` field never has any sizedness restrictions.
+    /// * Any other ADT or tuple field must be `Sized` (or `Aligned` under `feature(offset_of_slice)`).
+    OffsetOfField,
+
+    /// An ADT or tuple field *not* mentioned in `offset_of!` may need to be `Sized` in order for
+    /// a different field to be at a constant offset.
+    /// * Other fields of a `union` do not affect `offset_of!`
+    /// * In `#[repr(C)]` struct, or a `#[repr(C)]` and/or `#[repr(Int)]` enum variant,
+    ///     all fields before the requested field must be `Sized`.
+    /// * In a `#[repr(Rust)]` struct or enum variant:
+    ///     * If the requested field is unsizable, all other fields must be `Sized`.
+    ///     * If the requested field is `Sized` and is not unsizable, no restrictions on other fields apply.
+    ///     * Otherwise if the requested field is not unsizable, all other non-unsizable fields must be `Sized`, and there is no restriction on unsizable fields.
+    /// * In a tuple:
+    ///     * FIXME(more_unsized): if the requested field is the last field, all other fields must be `Sized`.
+    ///     * If the requested field is `Sized`, no restrictions on other fields apply.
+    ///     * Otherwise, all other fields must be `Sized`.
+    OffsetOfOtherFields,
+
     /// Constant expressions must be sized.
     SizedConstOrStatic,
 
