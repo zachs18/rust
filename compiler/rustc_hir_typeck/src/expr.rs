@@ -4232,13 +4232,22 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         } else {
                             // repr(Rust) unions don't yet guarantee that all fields are at offset 0,
                             // so conservatively assume we might need to know the alignment
-                            if self.tcx.features().offset_of_slice() {
+                            if meta_expr.is_some() {
+                                // `offset_for_meta!` only requires we can dynamically compute the alignment
+                                self.require_type_has_dynamic_alignment(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            } else if self.tcx.features().offset_of_slice() {
+                                // `offset_of!` requires we can statically compute the alignment
                                 self.require_type_has_static_alignment(
                                     field_ty,
                                     expr.span,
                                     ObligationCauseCode::OffsetOfField,
                                 );
                             } else {
+                                // `offset_of!` requires we can statically compute the alignment
                                 self.require_type_is_sized(
                                     field_ty,
                                     expr.span,
