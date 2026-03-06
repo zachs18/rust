@@ -4389,6 +4389,63 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     if let Ok(index) = field.as_str().parse::<usize>()
                         && field.name == sym::integer(index)
                     {
+                        // For `offset_of!`:
+                        // * FIXME: if the field is the last one, all others must be `Sized`
+                        // * If the field is `Sized`, there are no other restrictions.
+                        // * If the field is not known to be `Sized`, all other fields must be `Sized`.
+                        // For `offset_for_meta!`:
+                        // * FIXME: if the field is the last one, all others must be `MetaSized`
+                        // * If the field is `MetaSized`, there are no other restrictions.
+                        // * If the field is not known to be `MetaSized`, all other fields must be `MetaSized`.
+                        // These are based on the current tuple layout procedure:
+                        // * FIXME: the last field is laid out last, as though it could be unsized.
+                        // * `Sized` fields are laid out first, followed my `MetaSized` fields, followed by `PointeeSized` fields.
+                        if index + 1 == tys.len() {
+                            // FIXME: due to some assumptions in the compiler, the last field
+                            // of tuples must be laid out last, regardless of fields' sizednesses.
+                            for &field_ty in &tys[..index] {
+                                if meta_expr.is_some() {
+                                    self.require_type_has_dynamic_size(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                } else {
+                                    self.require_type_is_sized(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                }
+                            }
+
+                            let field_ty = tys[index];
+
+                            if meta_expr.is_some() {
+                                self.require_type_has_dynamic_alignment(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            } else if self.tcx.features().offset_of_slice() {
+                                self.require_type_has_static_alignment(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            } else {
+                                self.require_type_is_sized(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            }
+
+                            field_indices.push((current_container, FIRST_VARIANT, index.into()));
+                            current_container = field_ty;
+
+                            continue;
+                        }
                         if let Some(&field_ty) = tys.get(index) {
                             if self.tcx.features().offset_of_slice() {
                                 // Tuples do not support unsizing coercions,

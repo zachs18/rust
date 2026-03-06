@@ -30,6 +30,7 @@ LL |     offset_of!(Tup, 1);
    |     ^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `[i32]`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: aborting due to 3 previous errors
