@@ -4122,7 +4122,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             );
         }
 
-        while let Some(&field) = fields.next() {
+        'next_container: while let Some(&field) = fields.next() {
             let container = self.structurally_resolve_type(expr.span, current_container);
 
             match container.kind() {
@@ -4273,8 +4273,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 ty::Adt(container_def, args) => {
                     assert!(container_def.is_struct(), "enums and unions were already handled");
                     // If this struct has fields in declaration order, then all fields before
-                    // the requested field must be sized
-                    let is_linear = container_def.repr().linear();
+                    // the requested field must have a known size.
+                    let repr = container_def.repr();
+                    let is_linear = repr.inhibit_struct_field_reordering();
 
                     let block = self.tcx.local_def_id_to_hir_id(self.body_id);
                     let (ident, def_scope) =
@@ -4282,11 +4283,67 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
                     let fields = &container_def.non_enum_variant().fields;
 
-                    if is_linear && false {
-                        // FIXMEL implement this
-                        // For linear-layout structs, all fields before the requested field must be `Sized`,
-                        // and the requested field must be `Sized` (or `Aligned` under `feature(offset_of_slice)`).
-                        todo!()
+                    if is_linear {
+                        for (index, field) in fields.iter_enumerated() {
+                            let field_ty = self.field_ty(expr.span, field, args);
+
+                            if field.ident(self.tcx).normalize_to_macros_2_0() == ident {
+                                // This is the field we are looking for; we only need
+                                // its alignment, not its size.
+                                if meta_expr.is_some() {
+                                    self.require_type_has_dynamic_alignment(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                } else if self.tcx.features().offset_of_slice() {
+                                    self.require_type_has_static_alignment(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                } else {
+                                    self.require_type_is_sized(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                }
+
+                                if field.vis.is_accessible_from(def_scope, self.tcx) {
+                                    self.tcx.check_stability(
+                                        field.did,
+                                        Some(expr.hir_id),
+                                        expr.span,
+                                        None,
+                                    );
+                                } else {
+                                    self.private_field_err(ident, container_def.did()).emit();
+                                }
+
+                                // Save the index of all fields regardless of their visibility in case
+                                // of error recovery.
+                                field_indices.push((current_container, FIRST_VARIANT, index));
+                                current_container = field_ty;
+                                continue 'next_container;
+                            } else {
+                                // We need to know the size of all fields before (in memory order)
+                                // the field we are looking for.
+                                if meta_expr.is_some() {
+                                    self.require_type_has_dynamic_size(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                } else {
+                                    self.require_type_is_sized(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                }
+                            }
+                        }
                     } else {
                         if let Some((index, field)) = fields
                             .iter_enumerated()
