@@ -490,6 +490,18 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
+    pub(crate) fn require_type_has_dynamic_alignment(
+        &self,
+        ty: Ty<'tcx>,
+        span: Span,
+        code: traits::ObligationCauseCode<'tcx>,
+    ) {
+        if !ty.references_error() {
+            let lang_item = self.tcx.require_lang_item(LangItem::MetaAligned, span);
+            self.require_type_meets(ty, span, code, lang_item);
+        }
+    }
+
     pub(crate) fn register_bound(
         &self,
         ty: Ty<'tcx>,
