@@ -4410,13 +4410,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                     self.require_type_has_dynamic_size(
                                         field_ty,
                                         expr.span,
-                                        ObligationCauseCode::OffsetOfField,
+                                        ObligationCauseCode::OffsetOfOtherFields,
                                     );
                                 } else {
                                     self.require_type_is_sized(
                                         field_ty,
                                         expr.span,
-                                        ObligationCauseCode::OffsetOfField,
+                                        ObligationCauseCode::OffsetOfOtherFields,
                                     );
                                 }
                             }
@@ -4454,13 +4454,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                 // so if the field is known sized, it is at a static offset.
                                 // FIXME(more_unsized): we also currently check that this is not the last field of the tuple,
                                 // since the last field of tuples is currently laid out as though it could be unsized due to compiler assumptions about ScalarPair layout.
-                                if !self.tcx.erase_and_anonymize_regions(field_ty)
+                                if !self
+                                    .tcx
+                                    .erase_and_anonymize_regions(field_ty)
                                     .is_sized(self.tcx, self.infcx.typing_env(self.param_env))
-                                    && index + 1 != tys.len()
+                                    || index + 1 == tys.len()
                                 {
-                                    // If the field is not Sized, then we can only guarantee
-                                    // that it is at a static offset if it is the only unsized field
-                                    // and it has a statically-known alignment.
+                                    // If the field is not known to be Sized (FIXME: or if it is the last field),
+                                    // then we can only guarantee that it is at a static offset if it is the only
+                                    // unsized field and it has a statically-known alignment.
 
                                     // Require all other fields be `Sized`
                                     for (other_index, other_field_ty) in tys.iter().enumerate() {
@@ -4486,7 +4488,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                 self.require_type_is_sized(
                                     field_ty,
                                     expr.span,
-                                    ObligationCauseCode::Misc,
+                                    ObligationCauseCode::OffsetOfField,
                                 );
                                 // FIXME(more_unsized): if this is the last field of the tuple, we also check that all other fields are `Sized`,
                                 // since the last field of tuples is currently laid out as though it could be unsized due to compiler assumptions about ScalarPair layout, so
@@ -4498,7 +4500,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                         self.require_type_is_sized(
                                             other_field_ty,
                                             expr.span,
-                                            ObligationCauseCode::Misc,
+                                            ObligationCauseCode::OffsetOfOtherFields,
                                         );
                                     }
                                 }

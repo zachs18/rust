@@ -96,7 +96,8 @@ LL |     offset_of!(([u8], u8), 1);
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
    |
    = help: the trait `Sized` is not implemented for `[u8]`
-   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: only fields with a constant offset can be used in `offset_of!`
+   = note: this requires that fields which can be laid out before this field have a constant size
    = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: aborting due to 9 previous errors

@@ -796,15 +796,22 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
             }
 
             ty::Tuple(tys) => {
-                if let Some((last, rest)) = tys.split_last() {
-                    for &elem in rest {
-                        // FIXME(extern_types): FIXME(more_unsized): Do we want to restrict all fields of
-                        // tuples (including the last) to be MetaSized?
-                        if tcx.features().more_unsized() {
-                            self.require_metasized(elem, ObligationCauseCode::TupleElem);
-                        } else {
-                            self.require_sized(elem, ObligationCauseCode::TupleElem);
+                if tcx.features().more_unsized() {
+                    // under `feature(more_unsized)`, any field can be `PointeeSized`, just like structs.
+                    for ty in tys {
+                        if ty.is_scalable_vector() && !self.span.is_dummy() {
+                            self.tcx()
+                                .dcx()
+                                .struct_span_err(
+                                    self.span,
+                                    "scalable vectors cannot be tuple fields",
+                                )
+                                .emit();
                         }
+                    }
+                } else if let Some((last, rest)) = tys.split_last() {
+                    for &elem in rest {
+                        self.require_sized(elem, ObligationCauseCode::TupleElem);
                         if elem.is_scalable_vector() && !self.span.is_dummy() {
                             self.tcx()
                                 .dcx()

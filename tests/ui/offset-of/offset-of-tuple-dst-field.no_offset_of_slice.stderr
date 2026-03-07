@@ -1,0 +1,132 @@
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:18:5
+   |
+LL |     offset_of!(([u8], u8), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `[u8]`
+   = note: only fields with a constant offset can be used in `offset_of!`
+   = note: this requires that fields which can be laid out before this field have a constant size
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `[u16]` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:28:5
+   |
+LL |     offset_of!(([u16], u8, ()), 0);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `[u16]`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `dyn Trait` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:30:5
+   |
+LL |     offset_of!((dyn Trait, u8, ()), 0);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `dyn Trait`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `Extern` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:33:5
+   |
+LL |     offset_of!((Extern, u8, ()), 0);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `Extern`
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:46:5
+   |
+LL | fn generic_aligned_1<T: PointeeSized + Aligned>() {
+   |                      - this type parameter needs to be `Sized`
+LL |     offset_of!((u8, T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:50:5
+   |
+LL | fn generic_aligned_2<T: PointeeSized + Aligned>() {
+   |                      - this type parameter needs to be `Sized`
+LL |     offset_of!(([u8], T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:55:5
+   |
+LL | fn generic_aligned_3<T: PointeeSized + Aligned>() {
+   |                      - this type parameter needs to be `Sized`
+LL |     offset_of!((dyn Trait, T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:60:5
+   |
+LL | fn generic_aligned_4<T: PointeeSized + Aligned>() {
+   |                      - this type parameter needs to be `Sized`
+LL |     offset_of!((Extern, T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:67:5
+   |
+LL | fn generic_metasized_1<T: MetaSized>() {
+   |                        - this type parameter needs to be `Sized`
+LL |     offset_of!((u8, T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:72:5
+   |
+LL | fn generic_metasized_2<T: MetaSized>() {
+   |                        - this type parameter needs to be `Sized`
+LL |     offset_of!(([u8], T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:78:5
+   |
+LL | fn generic_metasized_3<T: MetaSized>() {
+   |                        - this type parameter needs to be `Sized`
+LL |     offset_of!((dyn Trait, T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `T` cannot be known at compilation time
+  --> $DIR/offset-of-tuple-dst-field.rs:84:5
+   |
+LL | fn generic_metasized_4<T: MetaSized>() {
+   |                        - this type parameter needs to be `Sized`
+LL |     offset_of!((Extern, T, ()), 1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: aborting due to 12 previous errors
+
+For more information about this error, try `rustc --explain E0277`.
