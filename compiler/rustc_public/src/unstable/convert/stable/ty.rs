@@ -979,6 +979,7 @@ impl<'tcx> Stable<'tcx> for ty::Instance<'tcx> {
             | ty::InstanceKind::PtrMetadataCmpShim(..)
             | ty::InstanceKind::PtrMetadataDebugShim(..)
             | ty::InstanceKind::PtrMetadataHashShim(..)
+            | ty::InstanceKind::InitShim { .. }
             | ty::InstanceKind::FnPtrShim(..)
             | ty::InstanceKind::FutureDropPollShim(..)
             | ty::InstanceKind::AsyncDropGlue(..)

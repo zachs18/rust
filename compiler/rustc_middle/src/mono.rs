@@ -534,6 +534,7 @@ impl<'tcx> CodegenUnit<'tcx> {
                     | InstanceKind::PtrMetadataCmpShim(..)
                     | InstanceKind::PtrMetadataHashShim(..)
                     | InstanceKind::PtrMetadataDebugShim(..)
+                    | InstanceKind::InitShim { .. }
                     | InstanceKind::ThreadLocalShim(..)
                     | InstanceKind::FnPtrAddrShim(..)
                     | InstanceKind::AsyncDropGlue(..)

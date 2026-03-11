@@ -33,6 +33,7 @@ fn should_recurse<'tcx>(tcx: TyCtxt<'tcx>, callee: ty::Instance<'tcx>) -> bool {
         | InstanceKind::ConstructCoroutineInClosureShim { .. }
         | InstanceKind::ThreadLocalShim { .. }
         | InstanceKind::CloneShim(..)
+        | InstanceKind::InitShim { .. }
         | InstanceKind::PtrMetadataCmpShim(..)
         | InstanceKind::PtrMetadataDebugShim(..)
         | InstanceKind::PtrMetadataHashShim(..) => {}

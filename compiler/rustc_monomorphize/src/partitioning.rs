@@ -641,6 +641,7 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 | ty::InstanceKind::PtrMetadataCmpShim(..)
                 | ty::InstanceKind::PtrMetadataDebugShim(..)
                 | ty::InstanceKind::PtrMetadataHashShim(..)
+                | ty::InstanceKind::InitShim { .. }
                 | ty::InstanceKind::ThreadLocalShim(..)
                 | ty::InstanceKind::FnPtrAddrShim(..)
                 | ty::InstanceKind::FutureDropPollShim(..)
@@ -820,6 +821,7 @@ fn mono_item_visibility<'tcx>(
         | InstanceKind::PtrMetadataCmpShim(..)
         | InstanceKind::PtrMetadataDebugShim(..)
         | InstanceKind::PtrMetadataHashShim(..)
+        | InstanceKind::InitShim { .. }
         | InstanceKind::FnPtrAddrShim(..) => return Visibility::Hidden,
     };
 

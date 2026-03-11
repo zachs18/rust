@@ -386,6 +386,12 @@ macro_rules! make_mir_visitor {
                             self.visit_ty($(& $mutability)? *proxy_ty, TyContext::Location(location));
                             self.visit_ty($(& $mutability)? *impl_ty, TyContext::Location(location));
                         }
+                        ty::InstanceKind::InitShim { method_def: _, method: _, self_ty, dst_ty, error_ty, arg_ty } => {
+                            self.visit_ty($(& $mutability)? *self_ty, TyContext::Location(location));
+                            self.visit_ty($(& $mutability)? *dst_ty, TyContext::Location(location));
+                            self.visit_ty($(& $mutability)? *error_ty, TyContext::Location(location));
+                            self.visit_ty($(& $mutability)? *arg_ty, TyContext::Location(location));
+                        }
                     }
                     self.visit_args(callee_args, location);
                 }
