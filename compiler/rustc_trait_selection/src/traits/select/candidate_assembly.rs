@@ -15,7 +15,7 @@ use rustc_hir::{self as hir, CoroutineDesugaring, CoroutineKind};
 use rustc_infer::traits::{Obligation, PolyTraitObligation, PredicateObligation, SelectionError};
 use rustc_middle::ty::fast_reject::DeepRejectCtxt;
 use rustc_middle::ty::{
-    self, FieldInfo, SizedTraitKind, TraitRef, Ty, TypeVisitableExt, elaborate,
+    self, FieldInfo, InitTraitKind, SizedTraitKind, TraitRef, Ty, TypeVisitableExt, elaborate,
 };
 use rustc_middle::{bug, span_bug};
 use rustc_span::DUMMY_SP;
@@ -217,6 +217,48 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         Some(LangItem::Fn | LangItem::FnMut | LangItem::FnOnce) => {
                             self.assemble_closure_candidates(obligation, &mut candidates);
                             self.assemble_fn_pointer_candidates(obligation, &mut candidates);
+                        }
+                        Some(LangItem::PinInitOnce) => {
+                            self.assemble_builtin_init_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                InitTraitKind::PinInitOnce,
+                            );
+                        }
+                        Some(LangItem::InitOnce) => {
+                            self.assemble_builtin_init_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                InitTraitKind::InitOnce,
+                            );
+                        }
+                        Some(LangItem::PinInitMut) => {
+                            self.assemble_builtin_init_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                InitTraitKind::PinInitMut,
+                            );
+                        }
+                        Some(LangItem::InitMut) => {
+                            self.assemble_builtin_init_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                InitTraitKind::InitMut,
+                            );
+                        }
+                        Some(LangItem::PinInit) => {
+                            self.assemble_builtin_init_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                InitTraitKind::PinInit,
+                            );
+                        }
+                        Some(LangItem::Init) => {
+                            self.assemble_builtin_init_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                InitTraitKind::Init,
+                            );
                         }
                         _ => {}
                     }
@@ -1316,6 +1358,28 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
                 bug!("asked to assemble builtin bounds of unexpected type: {:?}", self_ty);
             }
+        }
+    }
+
+    /// Assembles the `Init` family of traits for buiiltin initializer types.
+    #[instrument(level = "debug", skip(self, candidates))]
+    fn assemble_builtin_init_candidate(
+        &mut self,
+        self_ty: Ty<'tcx>,
+        candidates: &mut SelectionCandidateSet<'tcx>,
+        init_kind: InitTraitKind,
+    ) {
+        match *self_ty.kind() {
+            // Only these have a *builtin* impl
+            ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitStruct(..)
+            | ty::InitTuple(..) => {
+                candidates.vec.push(BuiltinInitCandidate);
+            }
+            // for everything else, check the user impls
+            _ => {}
         }
     }
 

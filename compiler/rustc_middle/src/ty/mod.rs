@@ -64,7 +64,9 @@ pub use rustc_type_ir::fast_reject::DeepRejectCtxt;
 )]
 use rustc_type_ir::inherent;
 pub use rustc_type_ir::relate::VarianceDiagInfo;
-pub use rustc_type_ir::solve::{CandidatePreferenceMode, SizedTraitKind, VisibleForLeakCheck};
+pub use rustc_type_ir::solve::{
+    CandidatePreferenceMode, InitTraitKind, SizedTraitKind, VisibleForLeakCheck,
+};
 pub use rustc_type_ir::*;
 #[allow(hidden_glob_reexports, unused_imports)]
 use rustc_type_ir::{InferCtxtLike, Interner};
@@ -86,7 +88,7 @@ pub use self::context::{
     CtxtInterners, CurrentGcx, FreeRegionInfo, GlobalCtxt, Lift, TyCtxt, TyCtxtFeed, tls,
 };
 pub use self::fold::*;
-pub use self::instance::{Instance, InstanceKind, ReifyReason};
+pub use self::instance::{InitMethod, Instance, InstanceKind, ReifyReason};
 pub(crate) use self::list::RawList;
 pub use self::list::{List, ListWithCachedTypeInfo};
 pub use self::opaque_types::OpaqueTypeKey;
@@ -1754,6 +1756,7 @@ impl<'tcx> TyCtxt<'tcx> {
             | ty::InstanceKind::PtrMetadataCmpShim(..)
             | ty::InstanceKind::PtrMetadataDebugShim(..)
             | ty::InstanceKind::PtrMetadataHashShim(..)
+            | ty::InstanceKind::InitShim { .. }
             | ty::InstanceKind::ThreadLocalShim(..)
             | ty::InstanceKind::FnPtrAddrShim(..)
             | ty::InstanceKind::AsyncDropGlueCtorShim(..)

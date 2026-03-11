@@ -9,7 +9,9 @@ use derive_where::derive_where;
 use rustc_type_ir::inherent::*;
 use rustc_type_ir::lang_items::SolverTraitLangItem;
 use rustc_type_ir::search_graph::CandidateHeadUsages;
-use rustc_type_ir::solve::{AliasBoundKind, MaybeInfo, SizedTraitKind, StalledOnCoroutines};
+use rustc_type_ir::solve::{
+    AliasBoundKind, InitTraitKind, MaybeInfo, SizedTraitKind, StalledOnCoroutines,
+};
 use rustc_type_ir::{
     self as ty, AliasTy, Interner, TypeFlags, TypeFoldable, TypeFolder, TypeSuperFoldable,
     TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypeVisitor, TypingMode, Unnormalized,
@@ -251,6 +253,14 @@ where
     fn consider_builtin_copy_clone_candidate(
         ecx: &mut EvalCtxt<'_, D>,
         goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution>;
+
+    /// The builtin initializer types implement the `Init` family of traits if their
+    /// component initializers are correct.
+    fn consider_builtin_init_candidate(
+        ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+        init_kind: InitTraitKind,
     ) -> Result<Candidate<I>, NoSolution>;
 
     /// `builtin # ptr_metadata(T)` implements `Ord` for all `T`.
@@ -601,6 +611,24 @@ where
                     | SolverTraitLangItem::Clone
                     | SolverTraitLangItem::TrivialClone,
                 ) => G::consider_builtin_copy_clone_candidate(self, goal),
+                Some(SolverTraitLangItem::PinInitOnce) => {
+                    G::consider_builtin_init_candidate(self, goal, InitTraitKind::PinInitOnce)
+                }
+                Some(SolverTraitLangItem::InitOnce) => {
+                    G::consider_builtin_init_candidate(self, goal, InitTraitKind::InitOnce)
+                }
+                Some(SolverTraitLangItem::PinInitMut) => {
+                    G::consider_builtin_init_candidate(self, goal, InitTraitKind::PinInitMut)
+                }
+                Some(SolverTraitLangItem::InitMut) => {
+                    G::consider_builtin_init_candidate(self, goal, InitTraitKind::InitMut)
+                }
+                Some(SolverTraitLangItem::PinInit) => {
+                    G::consider_builtin_init_candidate(self, goal, InitTraitKind::PinInit)
+                }
+                Some(SolverTraitLangItem::Init) => {
+                    G::consider_builtin_init_candidate(self, goal, InitTraitKind::Init)
+                }
                 Some(SolverTraitLangItem::Ord) => G::consider_builtin_ord_candidate(self, goal),
                 Some(SolverTraitLangItem::DebugTrait) => {
                     G::consider_builtin_debug_candidate(self, goal)

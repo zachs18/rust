@@ -16,8 +16,8 @@ use crate::solve::assembly::structural_traits::{self, AsyncCallableRelevantTypes
 use crate::solve::assembly::{self, Candidate};
 use crate::solve::inspect::ProbeKind;
 use crate::solve::{
-    BuiltinImplSource, CandidateSource, Certainty, EvalCtxt, Goal, GoalSource, MaybeInfo,
-    NoSolution, QueryResult, SizedTraitKind,
+    BuiltinImplSource, CandidateSource, Certainty, EvalCtxt, Goal, GoalSource, InitTraitKind,
+    MaybeInfo, NoSolution, QueryResult, SizedTraitKind,
 };
 
 impl<D, I> EvalCtxt<'_, D>
@@ -437,6 +437,14 @@ where
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolution> {
         panic!("`Copy`/`Clone` does not have an associated type: {:?}", goal);
+    }
+
+    fn consider_builtin_init_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+        _init_kind: InitTraitKind,
+    ) -> Result<Candidate<I>, NoSolution> {
+        panic!("the `Init` family of traits do not have an associated type: {:?}", goal);
     }
 
     fn consider_builtin_ord_candidate(

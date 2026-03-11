@@ -183,6 +183,8 @@ pub enum SelectionCandidate<'tcx> {
         array_keep_elem: bool,
     },
 
+    BuiltinInitCandidate,
+
     BikeshedGuaranteedNoDropCandidate,
 }
 

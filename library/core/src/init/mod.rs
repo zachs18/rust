@@ -42,7 +42,7 @@ mod util;
 /// # Safety
 ///
 /// See the documentation for [`metadata`][PinInitOnce::metadata] and [`init_once`][PinInitOnce::init_once].
-#[lang = "pin_init"]
+#[lang = "pin_init_once"]
 pub unsafe trait PinInitOnce<T: MetaSized, Error = !, Arg = ()> {
     /// The pointer metadata for the value that this initializer will create.
     ///
@@ -132,7 +132,7 @@ pub unsafe trait PinInitOnce<T: MetaSized, Error = !, Arg = ()> {
 /// See [`PinInitOnce`].
 ///
 /// [`PinInitOnce::init_once`]'s caller requirements are relaxed to not necessarily treat `*dst` as pinned.
-#[lang = "init"]
+#[lang = "init_once"]
 pub unsafe trait InitOnce<T: MetaSized, Error = !, Arg = ()>:
     PinInitOnce<T, Error, Arg>
 {
@@ -145,6 +145,7 @@ pub unsafe trait InitOnce<T: MetaSized, Error = !, Arg = ()>:
 /// See the documentation for [`metadata`][PinInitOnce::metadata] and [`init_once`][PinInitOnce::init_once].
 ///
 /// Additionally, the return value of `Self::metadata` must not change after a call to `Self::init_mut`.
+#[lang = "pin_init_mut"]
 pub unsafe trait PinInitMut<T: MetaSized, Error = !, Arg = ()>:
     PinInitOnce<T, Error, Arg>
 {
@@ -170,6 +171,7 @@ pub unsafe trait PinInitMut<T: MetaSized, Error = !, Arg = ()>:
 /// See [`PinInitOnce`].
 ///
 /// [`PinInitOnce::init_once`]'s caller requirements are relaxed to not necessarily treat `*dst` as pinned.
+#[lang = "init_mut"]
 pub unsafe trait InitMut<T: MetaSized, Error = !, Arg = ()>:
     InitOnce<T, Error, Arg> + PinInitMut<T, Error, Arg>
 {
@@ -180,6 +182,7 @@ pub unsafe trait InitMut<T: MetaSized, Error = !, Arg = ()>:
 /// # Safety
 ///
 /// See the documentation for [`metadata`][PinInitOnce::metadata] and [`init_once`][PinInitOnce::init_once].
+#[lang = "pin_init"]
 pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>:
     PinInitMut<T, Error, Arg>
 {
@@ -203,6 +206,7 @@ pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>:
 /// See [`PinInitOnce`].
 ///
 /// [`PinInitOnce::init_once`]'s caller requirements are relaxed to not necessarily treat `*dst` as pinned.
+#[lang = "init"]
 pub unsafe trait Init<T: MetaSized, Error = !, Arg = ()>:
     InitMut<T, Error, Arg> + PinInit<T, Error, Arg>
 {
