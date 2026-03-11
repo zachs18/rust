@@ -57,6 +57,43 @@ pub enum ReifyReason {
     Vtable,
 }
 
+/// Which `PinInit*` trait method is being shimmed.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(TyEncodable, TyDecodable, HashStable)]
+pub enum InitMethod {
+    /// `PinInitOnce::metadata(this: &Self) -> Metadata<T>`
+    Metadata,
+    /// `PinInitOnce::should_zero(this: &Self) -> bool`
+    ShouldZero,
+    /// ```rust
+    /// PinInitOnce::init_once(
+    ///     this: Self,
+    ///     dst: &mut MaybeUninit<T>,
+    ///     arg: Arg,
+    ///     pre_zeroed: bool,
+    /// )
+    /// ```
+    InitOnce,
+    /// ```rust
+    /// PinInitMut::init_mut(
+    ///     this: &mut Self,
+    ///     dst: &mut MaybeUninit<T>,
+    ///     arg: Arg,
+    ///     pre_zeroed: bool,
+    /// )
+    /// ```
+    InitMut,
+    /// ```rust
+    /// PinInit::init_ref(
+    ///     this: &Self,
+    ///     dst: &mut MaybeUninit<T>,
+    ///     arg: Arg,
+    ///     pre_zeroed: bool,
+    /// )
+    /// ```
+    InitRef,
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[derive(TyEncodable, TyDecodable, HashStable, TypeFoldable, TypeVisitable, Lift)]
 pub enum InstanceKind<'tcx> {
@@ -202,6 +239,16 @@ pub enum InstanceKind<'tcx> {
     /// async_drop_in_place poll function implementation (for generated coroutine).
     /// `Ty` here is `async_drop_in_place<T>::{closure}` coroutine type, not just `T`
     AsyncDropGlue(DefId, Ty<'tcx>),
+
+    /// Compiler-generated implementation of a method from the `std::init::Init` family of traits.
+    InitShim {
+        method_def: DefId,
+        method: InitMethod,
+        self_ty: Ty<'tcx>,
+        dst_ty: Ty<'tcx>,
+        error_ty: Ty<'tcx>,
+        arg_ty: Ty<'tcx>,
+    },
 }
 
 impl<'tcx> Instance<'tcx> {
@@ -280,6 +327,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::PtrMetadataCmpShim(def_id, _)
             | InstanceKind::PtrMetadataHashShim(def_id, _, _)
             | InstanceKind::PtrMetadataDebugShim(def_id, _)
+            | InstanceKind::InitShim { method_def: def_id, .. }
             | InstanceKind::FnPtrAddrShim(def_id, _)
             | InstanceKind::FutureDropPollShim(def_id, _, _)
             | InstanceKind::AsyncDropGlue(def_id, _)
@@ -308,6 +356,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::PtrMetadataCmpShim(..)
             | InstanceKind::PtrMetadataHashShim(..)
             | InstanceKind::PtrMetadataDebugShim(..)
+            | InstanceKind::InitShim { .. }
             | InstanceKind::FnPtrAddrShim(..) => None,
         }
     }
@@ -356,6 +405,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::PtrMetadataCmpShim(..)
             | InstanceKind::PtrMetadataHashShim(..)
             | InstanceKind::PtrMetadataDebugShim(..)
+            | InstanceKind::InitShim { .. }
             | InstanceKind::ThreadLocalShim(..)
             | InstanceKind::FnPtrAddrShim(..)
             | InstanceKind::FnPtrShim(..)

@@ -167,6 +167,7 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<
         ty::InstanceKind::PtrMetadataCmpShim(..) => build_ptr_metadata_cmp_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataDebugShim(..) => build_ptr_metadata_fmt_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataHashShim(..) => build_ptr_metadata_hash_shim(tcx, instance),
+        ty::InstanceKind::InitShim { .. } => build_init_shim(tcx, instance),
         ty::InstanceKind::FnPtrAddrShim(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::InstanceKind::FutureDropPollShim(def_id, proxy_ty, impl_ty) => {
             let mut body =
@@ -1447,6 +1448,90 @@ impl<'tcx> PtrMetadataHashShimBuilder<'tcx> {
         //  return
 
         self.block(vec![], TerminatorKind::Return, false);
+    }
+}
+
+/// Builds a shim for a method from the `std::init::Init` family of traits
+/// for a builtin initializer type.
+fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<'tcx> {
+    let ty::InstanceKind::InitShim { method_def, method, self_ty, dst_ty, error_ty, arg_ty } =
+        instance
+    else {
+        unreachable!()
+    };
+    debug!("build_init_shim(def_id={:?})", method_def);
+
+    let typing_env = ty::TypingEnv::post_analysis(tcx, method_def);
+    #[allow(unused)]
+    let fields = match dst_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
+        MetadataFields::KnownFields(fields) => fields,
+        fields => bug!(
+            "init shim for destination `{:?}` which is not monomorphic enough ({fields:?})",
+            dst_ty
+        ),
+    };
+
+    let mut builder =
+        InitShimBuilder::new(tcx, instance, method_def, method, self_ty, dst_ty, error_ty, arg_ty);
+
+    let dest = Place::return_place();
+    let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+
+    if true {
+        todo!("{:p} {:p} {:p}", &dest, &this, &mut builder);
+    }
+
+    builder.into_mir()
+}
+
+#[allow(unused)]
+struct InitShimExtra<'tcx> {
+    def_id: DefId,
+    method: ty::InitMethod,
+    self_ty: Ty<'tcx>,
+    dst_ty: Ty<'tcx>,
+    error_ty: Ty<'tcx>,
+    arg_ty: Ty<'tcx>,
+}
+type InitShimBuilder<'tcx> = ShimBuilder<'tcx, InitShimExtra<'tcx>>;
+
+#[cfg(false)]
+#[allow(unused)]
+struct InitShimBuilder<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    local_decls: IndexVec<Local, LocalDecl<'tcx>>,
+    blocks: IndexVec<BasicBlock, BasicBlockData<'tcx>>,
+    span: Span,
+    sig: ty::FnSig<'tcx>,
+    instance: ty::InstanceKind<'tcx>,
+    extra: InitShimExtra<'tcx>,
+}
+
+#[allow(unused)]
+impl<'tcx> InitShimBuilder<'tcx> {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        instance: ty::InstanceKind<'tcx>,
+        def_id: DefId,
+        method: ty::InitMethod,
+        self_ty: Ty<'tcx>,
+        dst_ty: Ty<'tcx>,
+        error_ty: Ty<'tcx>,
+        arg_ty: Ty<'tcx>,
+    ) -> Self {
+        let sig = tcx.fn_sig(def_id).instantiate(tcx, &[]);
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
+        let span = tcx.def_span(def_id);
+
+        InitShimBuilder {
+            tcx,
+            local_decls: local_decls_for_sig(&sig, span),
+            blocks: IndexVec::new(),
+            span,
+            sig,
+            instance,
+            extra: InitShimExtra { def_id, method, self_ty, dst_ty, error_ty, arg_ty },
+        }
     }
 }
 

@@ -401,6 +401,16 @@ impl<'tcx, P: Printer<'tcx> + std::fmt::Write> Print<'tcx, P> for ty::Instance<'
             ty::InstanceKind::PtrMetadataHashShim(_, pointee_ty, hasher_ty) => {
                 cx.write_str(&format!(" - ptr_metadata_hash_shim({pointee_ty}-{hasher_ty})"))?
             }
+            ty::InstanceKind::InitShim {
+                method_def: _,
+                method,
+                self_ty,
+                dst_ty,
+                error_ty,
+                arg_ty,
+            } => cx.write_str(&format!(
+                " - init_shim({method:?}-{self_ty}-{dst_ty}-{error_ty}-{arg_ty})"
+            ))?,
             ty::InstanceKind::FnPtrAddrShim(_, ty) => cx.write_str(&format!(" - shim({ty})"))?,
             ty::InstanceKind::FutureDropPollShim(_, proxy_ty, impl_ty) => {
                 cx.write_str(&format!(" - dropshim({proxy_ty}-{impl_ty})"))?

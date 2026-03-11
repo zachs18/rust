@@ -261,6 +261,7 @@ TrivialTypeTraversalAndLiftImpls! {
     // tidy-alphabetical-start
     crate::mir::RuntimeChecks,
     crate::ty::ParamTy,
+    crate::ty::instance::InitMethod,
     crate::ty::instance::ReifyReason,
     rustc_hir::def_id::DefId,
     // tidy-alphabetical-end

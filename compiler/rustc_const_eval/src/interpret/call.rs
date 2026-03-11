@@ -640,6 +640,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             | ty::InstanceKind::PtrMetadataCmpShim(..)
             | ty::InstanceKind::PtrMetadataDebugShim(..)
             | ty::InstanceKind::PtrMetadataHashShim(..)
+            | ty::InstanceKind::InitShim { .. }
             | ty::InstanceKind::FnPtrAddrShim(..)
             | ty::InstanceKind::ThreadLocalShim(..)
             | ty::InstanceKind::AsyncDropGlueCtorShim(..)
