@@ -1539,6 +1539,8 @@ impl<'a> Parser<'a> {
                 this.parse_expr_yield()
             } else if this.is_do_yeet() {
                 this.parse_expr_yeet()
+            } else if this.is_do_init() {
+                this.parse_expr_do_init()
             } else if this.eat_keyword(exp!(Become)) {
                 this.parse_expr_become()
             } else if this.check_keyword(exp!(Let)) {
@@ -1844,6 +1846,23 @@ impl<'a> Parser<'a> {
     /// Parse an expression if the token can begin one.
     fn parse_expr_opt(&mut self) -> PResult<'a, Option<Box<Expr>>> {
         Ok(if self.token.can_begin_expr() { Some(self.parse_expr()?) } else { None })
+    }
+
+    /// Parse `"do" "init" [tuple|array|slice|struct]`.
+    fn parse_expr_do_init(&mut self) -> PResult<'a, Box<Expr>> {
+        let lo = self.token.span;
+
+        self.bump(); // `do`
+        self.bump(); // `init`
+
+        if self.eat_keyword(exp!(Tuple)) {
+            // `do init tuple (a, b, c)`
+            let elems = self.parse_expr_paren_seq()?;
+            let span = lo.to(self.prev_token.span);
+            Ok(self.mk_expr(span, ExprKind::InitTuple(elems)))
+        } else {
+            todo!()
+        }
     }
 
     /// Parse `"return" expr?`.
@@ -3817,6 +3836,10 @@ impl<'a> Parser<'a> {
 
     fn is_do_yeet(&self) -> bool {
         self.token.is_keyword(kw::Do) && self.is_keyword_ahead(1, &[kw::Yeet])
+    }
+
+    fn is_do_init(&self) -> bool {
+        self.token.is_keyword(kw::Do) && self.is_keyword_ahead(1, &[sym::init])
     }
 
     fn is_try_block(&self) -> bool {
