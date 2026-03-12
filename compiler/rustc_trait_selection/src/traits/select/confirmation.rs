@@ -135,6 +135,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 self.confirm_trait_upcasting_unsize_candidate(obligation, idx)?
             }
 
+            BuiltinInitCandidate => self.confirm_builtin_init_candidate(obligation)?,
+
             BikeshedGuaranteedNoDropCandidate => {
                 self.confirm_bikeshed_guaranteed_no_drop_candidate(obligation)
             }
@@ -1292,6 +1294,55 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             }
 
             _ => bug!("source: {source}, target: {target}"),
+        })
+    }
+
+    fn confirm_builtin_init_candidate(
+        &mut self,
+        obligation: &PolyTraitObligation<'tcx>,
+    ) -> Result<ImplSource<'tcx, PredicateObligation<'tcx>>, SelectionError<'tcx>> {
+        let tcx = self.tcx();
+
+        let self_ty = obligation.self_ty().skip_binder();
+        let dst_ty = obligation.predicate.skip_binder().trait_ref.args.type_at(1);
+        let error_ty = obligation.predicate.skip_binder().trait_ref.args.type_at(2);
+        let arg_ty = obligation.predicate.skip_binder().trait_ref.args.type_at(3);
+        debug!(?self_ty, ?dst_ty, ?error_ty, ?arg_ty, "confirm_builtin_init_candidate");
+
+        Ok(match (self_ty.kind(), dst_ty.kind()) {
+            (ty::InitTuple(init_elems), ty::Tuple(elems)) if init_elems.len() == elems.len() => {
+                // `do init tuple (a, b, c)` implements `Init*<(A, B, C), Error, Arg>` where
+                // each element implements `Init*` for the corresponding element,
+                // and where `Arg: Clone` if length > 1, for any `Init` family trait.
+                let mut nested = PredicateObligations::new();
+                let require_arg_clone = elems.len() > 1;
+                if require_arg_clone {
+                    let arg_clone = obligation.with(
+                        tcx,
+                        obligation.predicate.rebind(ty::TraitRef::new(
+                            tcx,
+                            tcx.require_lang_item(LangItem::Clone, obligation.cause.span),
+                            [arg_ty],
+                        )),
+                    );
+                    nested.push(arg_clone);
+                }
+                for (init_elem, elem) in std::iter::zip(init_elems.iter(), elems.iter()) {
+                    let elem_init = obligation.with(
+                        tcx,
+                        obligation.predicate.rebind(ty::TraitRef::new(
+                            tcx,
+                            obligation.predicate.def_id(),
+                            [init_elem, elem, error_ty, arg_ty],
+                        )),
+                    );
+                    nested.push(elem_init);
+                }
+                ImplSource::Builtin(BuiltinImplSource::Misc, nested)
+            }
+            _ => {
+                bug!("self_ty: {self_ty}, dst_ty: {dst_ty}, error_ty: {error_ty}, arg_ty: {arg_ty}")
+            }
         })
     }
 

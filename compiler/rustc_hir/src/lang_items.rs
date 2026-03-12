@@ -265,6 +265,10 @@ language_item_table! {
     Unpin,                   sym::unpin,               unpin_trait,                Target::Trait,          GenericRequirement::None;
     Pin,                     sym::pin,                 pin_type,                   Target::Struct,         GenericRequirement::None;
 
+    PinInitOnce,             sym::pin_init_once,       pin_init_once_trait,        Target::Trait,          GenericRequirement::None;
+    InitOnce,                sym::init_once,           init_once_trait,            Target::Trait,          GenericRequirement::None;
+    PinInitMut,              sym::pin_init_mut,        pin_init_mut_trait,         Target::Trait,          GenericRequirement::None;
+    InitMut,                 sym::init_mut,            init_mut_trait,             Target::Trait,          GenericRequirement::None;
     PinInit,                 sym::pin_init,            pin_init_trait,             Target::Trait,          GenericRequirement::None;
     Init,                    sym::init,                init_trait,                 Target::Trait,          GenericRequirement::None;
 
