@@ -5,7 +5,7 @@ use rustc_type_ir::fast_reject::DeepRejectCtxt;
 use rustc_type_ir::inherent::*;
 use rustc_type_ir::lang_items::SolverTraitLangItem;
 use rustc_type_ir::solve::inspect::ProbeKind;
-use rustc_type_ir::solve::{AliasBoundKind, SizedTraitKind};
+use rustc_type_ir::solve::{AliasBoundKind, InitTraitKind, SizedTraitKind};
 use rustc_type_ir::{self as ty, Interner, TypingMode, elaborate};
 use tracing::instrument;
 
@@ -263,6 +263,14 @@ where
 
             ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes)
         })
+    }
+
+    fn consider_builtin_init_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        _goal: Goal<I, Self>,
+        _init_kind: InitTraitKind,
+    ) -> Result<Candidate<I>, NoSolution> {
+        todo!("Init traits are not yet const")
     }
 
     fn consider_builtin_ord_candidate(

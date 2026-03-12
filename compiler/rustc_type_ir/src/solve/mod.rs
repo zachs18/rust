@@ -494,3 +494,35 @@ impl SizedTraitKind {
         })
     }
 }
+
+/// Which `Init`-family trait - `PinInitOnce`, `InitOnce`, `PinInitMut`, `InitMut`, `PinInit`, `Init`.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "nightly", derive(HashStable_NoContext))]
+pub enum InitTraitKind {
+    /// `PinInitOnce`
+    PinInitOnce,
+    /// `InitOnce`
+    InitOnce,
+    /// `PinInitMut`
+    PinInitMut,
+    /// `InitMut`
+    InitMut,
+    /// `PinInit`
+    PinInit,
+    /// `Init`
+    Init,
+}
+
+impl InitTraitKind {
+    /// Returns `DefId` of corresponding language item.
+    pub fn require_lang_item<I: Interner>(self, cx: I) -> I::TraitId {
+        cx.require_trait_lang_item(match self {
+            InitTraitKind::PinInitOnce => SolverTraitLangItem::PinInitOnce,
+            InitTraitKind::InitOnce => SolverTraitLangItem::InitOnce,
+            InitTraitKind::PinInitMut => SolverTraitLangItem::PinInitMut,
+            InitTraitKind::InitMut => SolverTraitLangItem::InitMut,
+            InitTraitKind::PinInit => SolverTraitLangItem::PinInit,
+            InitTraitKind::Init => SolverTraitLangItem::Init,
+        })
+    }
+}

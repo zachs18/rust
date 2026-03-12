@@ -5,7 +5,7 @@ use rustc_type_ir::fast_reject::DeepRejectCtxt;
 use rustc_type_ir::inherent::*;
 use rustc_type_ir::lang_items::SolverTraitLangItem;
 use rustc_type_ir::solve::{
-    AliasBoundKind, CandidatePreferenceMode, CanonicalResponse, SizedTraitKind,
+    AliasBoundKind, CandidatePreferenceMode, CanonicalResponse, InitTraitKind, SizedTraitKind,
 };
 use rustc_type_ir::{
     self as ty, FieldInfo, Interner, Movability, PredicatePolarity, TraitPredicate, TraitRef,
@@ -342,6 +342,57 @@ where
             goal,
             structural_traits::instantiate_constituent_tys_for_copy_clone_trait,
         )
+    }
+
+    fn consider_builtin_init_candidate(
+        ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+        _init_kind: InitTraitKind,
+    ) -> Result<Candidate<I>, NoSolution> {
+        if goal.predicate.polarity != ty::PredicatePolarity::Positive {
+            return Err(NoSolution);
+        }
+
+        let cx = ecx.cx();
+        let self_ty = goal.predicate.self_ty();
+
+        // All the `Init` family traits are of the form `Init<Dst, Error, Arg>`.
+        // `type_at(0)` is the self ty
+        let dst_ty = goal.predicate.trait_ref.args.type_at(1);
+        let error_ty = goal.predicate.trait_ref.args.type_at(2);
+        let arg_ty = goal.predicate.trait_ref.args.type_at(3);
+
+        match (self_ty.kind(), dst_ty.kind()) {
+            (ty::InitTuple(init_elems), ty::Tuple(elems)) if init_elems.len() == elems.len() => {
+                // `do init tuple (a, b, c)` implements `Init*<(A, B, C), Error, Arg>` where
+                // each element does (and where `Arg: Clone` if length > 1), for any `Init` family trait
+                let is_arg_cloned = elems.len() > 1;
+                ecx.probe_trait_candidate(CandidateSource::BuiltinImpl(BuiltinImplSource::Misc))
+                    .enter(|ecx| {
+                        if is_arg_cloned {
+                            let arg_is_clone_pred = ty::TraitRef::new(
+                                cx,
+                                cx.require_trait_lang_item(SolverTraitLangItem::Clone),
+                                [arg_ty],
+                            );
+                            ecx.add_goal(GoalSource::Misc, goal.with(cx, arg_is_clone_pred));
+                        }
+                        for (init_elem, elem) in std::iter::zip(init_elems.iter(), elems.iter()) {
+                            let elem_pred = ty::TraitRef::new(
+                                cx,
+                                goal.predicate.def_id(),
+                                [init_elem, elem, error_ty, arg_ty],
+                            );
+                            ecx.add_goal(GoalSource::Misc, goal.with(cx, elem_pred));
+                        }
+                        ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes)
+                    })
+            }
+            _ => {
+                tracing::warn!("FIXME: implement other initializers");
+                Err(NoSolution)
+            }
+        }
     }
 
     fn consider_builtin_ord_candidate(

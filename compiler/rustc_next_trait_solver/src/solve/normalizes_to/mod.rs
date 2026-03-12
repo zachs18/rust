@@ -6,7 +6,7 @@ mod opaque_types;
 use rustc_type_ir::fast_reject::DeepRejectCtxt;
 use rustc_type_ir::inherent::*;
 use rustc_type_ir::lang_items::{SolverAdtLangItem, SolverLangItem, SolverTraitLangItem};
-use rustc_type_ir::solve::SizedTraitKind;
+use rustc_type_ir::solve::{InitTraitKind, SizedTraitKind};
 use rustc_type_ir::{self as ty, FieldInfo, Interner, NormalizesTo, PredicateKind, Upcast as _};
 use tracing::instrument;
 
@@ -430,6 +430,14 @@ where
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolution> {
         panic!("`Copy`/`Clone` does not have an associated type: {:?}", goal);
+    }
+
+    fn consider_builtin_init_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+        _init_kind: InitTraitKind,
+    ) -> Result<Candidate<I>, NoSolution> {
+        panic!("the `Init` family of traits do not have an associated type: {:?}", goal);
     }
 
     fn consider_builtin_ord_candidate(
