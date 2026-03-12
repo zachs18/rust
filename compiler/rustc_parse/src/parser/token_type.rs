@@ -129,6 +129,7 @@ pub enum TokenType {
 
     // Keyword-like symbols.
     // tidy-alphabetical-start
+    SymArray,
     SymAttSyntax,
     SymBikeshed,
     SymClobberAbi,
@@ -148,7 +149,9 @@ pub enum TokenType {
     SymPreservesFlags,
     SymPure,
     SymReadonly,
+    SymSlice,
     SymSym,
+    SymTuple,
     // tidy-alphabetical-end
 }
 
@@ -267,6 +270,7 @@ impl TokenType {
             KwWhile,
             KwYield,
 
+            SymArray,
             SymAttSyntax,
             SymClobberAbi,
             SymInlateout,
@@ -284,7 +288,9 @@ impl TokenType {
             SymPreservesFlags,
             SymPure,
             SymReadonly,
+            SymSlice,
             SymSym,
+            SymTuple,
         };
         token_type
     }
@@ -344,6 +350,7 @@ impl TokenType {
             TokenType::KwWhile => Some(kw::While),
             TokenType::KwYield => Some(kw::Yield),
 
+            TokenType::SymArray => Some(sym::array),
             TokenType::SymAttSyntax => Some(sym::att_syntax),
             TokenType::SymClobberAbi => Some(sym::clobber_abi),
             TokenType::SymInlateout => Some(sym::inlateout),
@@ -361,7 +368,9 @@ impl TokenType {
             TokenType::SymPreservesFlags => Some(sym::preserves_flags),
             TokenType::SymPure => Some(sym::pure),
             TokenType::SymReadonly => Some(sym::readonly),
+            TokenType::SymSlice => Some(sym::slice),
             TokenType::SymSym => Some(sym::sym),
+            TokenType::SymTuple => Some(sym::tuple),
             _ => None,
         }
     }
@@ -560,6 +569,7 @@ macro_rules! exp {
     (While)          => { exp!(@kw, While,      KwWhile) };
     (Yield)          => { exp!(@kw, Yield,      KwYield) };
 
+    (Array)          => { exp!(@sym, array,           SymArray) };
     (AttSyntax)      => { exp!(@sym, att_syntax,      SymAttSyntax) };
     (Bikeshed)       => { exp!(@sym, bikeshed,        SymBikeshed) };
     (ClobberAbi)     => { exp!(@sym, clobber_abi,     SymClobberAbi) };
@@ -579,7 +589,9 @@ macro_rules! exp {
     (PreservesFlags) => { exp!(@sym, preserves_flags, SymPreservesFlags) };
     (Pure)           => { exp!(@sym, pure,            SymPure) };
     (Readonly)       => { exp!(@sym, readonly,        SymReadonly) };
+    (Slice)          => { exp!(@sym, slice,           SymSlice) };
     (Sym)            => { exp!(@sym, sym,             SymSym) };
+    (Tuple)          => { exp!(@sym, tuple,           SymTuple) };
 }
 
 /// A bitset type designed specifically for `Parser::expected_token_types`,
