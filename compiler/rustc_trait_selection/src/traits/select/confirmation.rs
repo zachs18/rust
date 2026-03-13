@@ -1309,12 +1309,36 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let arg_ty = obligation.predicate.skip_binder().trait_ref.args.type_at(3);
         debug!(?self_ty, ?dst_ty, ?error_ty, ?arg_ty, "confirm_builtin_init_candidate");
 
-        Ok(match (self_ty.kind(), dst_ty.kind()) {
-            (ty::InitTuple(init_elems), ty::Tuple(elems)) if init_elems.len() == elems.len() => {
+        Ok(match self_ty.kind() {
+            ty::InitTuple(init_elems) => {
                 // `do init tuple (a, b, c)` implements `Init*<(A, B, C), Error, Arg>` where
                 // each element implements `Init*` for the corresponding element,
                 // and where `Arg: Clone` if length > 1, for any `Init` family trait.
                 let mut nested = PredicateObligations::new();
+
+                let elems = tcx.mk_type_list_from_iter(init_elems.iter().map(|init_elem| {
+                    let elem = self.infcx.next_ty_var(obligation.cause.span);
+                    let init_elem_pred = obligation.with(
+                        tcx,
+                        obligation.predicate.rebind(ty::TraitRef::new(
+                            tcx,
+                            obligation.predicate.skip_binder().trait_ref.def_id,
+                            [init_elem, elem, error_ty, arg_ty],
+                        )),
+                    );
+                    nested.push(init_elem_pred);
+                    elem
+                }));
+
+                // FIXME(in_place_init): does this need to handle binders in any way?
+                nested.extend(
+                    self.infcx
+                        .at(&obligation.cause, obligation.param_env)
+                        .eq(DefineOpaqueTypes::No, dst_ty, Ty::new_tup(tcx, elems))
+                        .map(|InferOk { obligations, .. }| obligations)
+                        .map_err(|_| SelectionError::Unimplemented)?,
+                );
+
                 let require_arg_clone = elems.len() > 1;
                 if require_arg_clone {
                     let arg_clone = obligation.with(
