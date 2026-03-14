@@ -15,9 +15,12 @@ impl SwitchTargets {
     ///
     /// The iterator may be empty, in which case the `SwitchInt` instruction is equivalent to
     /// `goto otherwise;`.
-    pub fn new(targets: impl Iterator<Item = (u128, BasicBlock)>, otherwise: BasicBlock) -> Self {
+    pub fn new(
+        targets: impl IntoIterator<Item = (u128, BasicBlock)>,
+        otherwise: BasicBlock,
+    ) -> Self {
         let (values, mut targets): (SmallVec<_>, SmallVec<_>) =
-            targets.map(|(v, t)| (Pu128(v), t)).unzip();
+            targets.into_iter().map(|(v, t)| (Pu128(v), t)).unzip();
         targets.push(otherwise);
         Self { values, targets }
     }
