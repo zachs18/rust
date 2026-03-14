@@ -1671,7 +1671,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             self.extra;
 
         if init_elem_tys.is_empty() {
-            // If there are no elements, then drop Arg, and return `Ok(())`.
+            // If there are no elements, then just drop Arg and return `Ok(())`.
 
             // Drop Arg
             let target = self.block_index_offset(1);
@@ -1716,48 +1716,102 @@ impl<'tcx> InitShimBuilder<'tcx> {
             return;
         }
 
+        let make_set_bool_stmt = |self_: &Self, place, value| {
+            self_.make_statement(StatementKind::Assign(Box::new((
+                place,
+                Rvalue::Use(Operand::const_from_scalar(
+                    self_.tcx,
+                    self_.tcx.types.bool,
+                    interpret::Scalar::from_bool(value),
+                    self_.span,
+                )),
+            ))))
+        };
+
         // bb0:
-        //  _arg_need_drop = true;
+        //  _arg_needs_drop = true;
+        //  _return_needs_drop_on_unwind = false;
+        //  _init_*_needs_drop = true;
+        //  _elem_*_needs_drop = false;
         //  _dst_MU_ptr = &raw mut *dst_MU_ref;
         //  _dst_ptr = _dst_MU_ptr as *mut DST;
-        //  goto -> bb1;
+        //  goto -> bb3 (first bb that does work);
 
-        // `arg_needs_drop` is (will be) used during cleanup and failure
+        let mut entry_stmts = vec![];
+
+        // We keep one bool for each initializer element, each destination element,
+        // the `Arg`, and the return place to determine if they need to be dropped
+        // on failure or unwind.
+        // These bools are ignored on success.
+        // `return_needs_drop_on_unwind` is only used on an unwind; it is set to `true` after a failure,
+        // but is ignored unless failure cleanup unwinds before finishing.
+
         let arg_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
-        let set_arg_needs_drop_stmt = self.make_statement(StatementKind::Assign(Box::new((
-            arg_needs_drop,
-            Rvalue::Use(Operand::const_from_scalar(
-                self.tcx,
-                self.tcx.types.bool,
-                interpret::Scalar::from_bool(true),
-                self.span,
-            )),
-        ))));
+        entry_stmts.push(make_set_bool_stmt(self, arg_needs_drop, true));
+
+        let return_needs_drop_on_unwind = self.make_place(Mutability::Mut, self.tcx.types.bool);
+        entry_stmts.push(make_set_bool_stmt(self, return_needs_drop_on_unwind, false));
+
+        let init_elems_needs_drop: Vec<_> = init_elem_tys
+            .iter()
+            .map(|_| {
+                let init_elem_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
+                entry_stmts.push(make_set_bool_stmt(self, init_elem_needs_drop, true));
+                init_elem_needs_drop
+            })
+            .collect();
+
+        let elems_needs_drop: Vec<_> = init_elem_tys
+            .iter()
+            .map(|_| {
+                let elem_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
+                entry_stmts.push(make_set_bool_stmt(self, elem_needs_drop, false));
+                elem_needs_drop
+            })
+            .collect();
 
         let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
         let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
         // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
-        let cast_mu_ref_to_mu_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
             dst_mu_ptr,
             Rvalue::RawPtr(
                 RawPtrKind::Mut,
                 dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
             ),
-        ))));
+        )))));
 
         let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
         let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
-        let cast_mu_ptr_to_dst_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
             dst_ptr,
             Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
-        ))));
+        )))));
 
-        let target = self.block_index_offset(1);
+        let entry_target = self.block_index_offset(3);
+        self.block(entry_stmts, TerminatorKind::Goto { target: entry_target }, false);
+
+        // Failure block
+        // bb1:
+        //  return_needs_drop_on_unwind = true;
+        //  goto -> first failure cleanup bb; (patched after loop)
+        let failure_cleanup_target = self.block_index_offset(0);
         self.block(
-            vec![set_arg_needs_drop_stmt, cast_mu_ref_to_mu_ptr_stmt, cast_mu_ptr_to_dst_ptr_stmt],
-            TerminatorKind::Goto { target },
+            vec![make_set_bool_stmt(self, return_needs_drop_on_unwind, true)],
+            TerminatorKind::Goto { target: failure_cleanup_target },
             false,
         );
+
+        // bb2 (cleanup):
+        //  goto -> first unwind cleanup bb; (patched after loop)
+        let unwind_cleanup_target = self.block_index_offset(0);
+        self.block(vec![], TerminatorKind::Goto { target: unwind_cleanup_target }, true);
+
+        // Each element has several blocks:
+        // 1. Clone (or move) `arg` for that element [return -> keep going, unwind -> bb2]
+        // 2. set init_elem_needs_drop=false, then call `init_once` for that element [return -> keep going, unwind -> bb2]
+        // 3. check if `init_once` succeeded [yes -> keep going, no -> bb1]
+        // 4. set elem_needs_drop=true, then keep going
 
         tracing::warn!(
             "FIXME(in_place_init): implement dropping/cleanup on failure, unwind, and on success for arg for empty tuples"
@@ -1783,15 +1837,19 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // // TODO: check for success
         //  next element
 
-        for (field_idx, (&init_elem_ty, &elem_ty)) in
-            std::iter::zip(init_elem_tys, elem_tys).enumerate()
+        for (idx, (&init_elem_ty, &elem_ty)) in std::iter::zip(init_elem_tys, elem_tys).enumerate()
         {
+            let field_idx = FieldIdx::new(idx);
+
             // Get the Arg for the call
             let elem_arg = self.make_place(Mutability::Not, arg_ty);
             let target = self.block_index_offset(1);
-            if field_idx + 1 == init_elem_tys.len() {
+            if idx + 1 == init_elem_tys.len() {
                 // Move out of arg
-                // FIXME: investigate if this can use StorageDead instead of a drop flag.
+                // bb:
+                //  _arg_needs_drop = false;
+                //  _elem_arg = move arg;
+                //  goto -> next;
                 let move_stmt = self.make_statement(StatementKind::Assign(Box::new((
                     elem_arg,
                     Rvalue::Use(Operand::Move(arg)),
@@ -1813,29 +1871,41 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 );
             } else {
                 // Clone arg
-                self.make_clone_call(elem_arg, arg, arg_ty, target);
+                // bb:
+                //  _elem_arg = Arg::clone(&arg) [return -> next, unwind -> unwind_cleanup_target];
+                self.make_clone_call(elem_arg, arg, arg_ty, target, unwind_cleanup_target);
             }
 
-            let field_idx = FieldIdx::new(field_idx);
-
-            // Get the Dst MU reference for the call
+            // Get the Dst MU reference for the call, then
+            // set the initializer as moved and do the call
+            // bb:
+            //  _dst_elem_ptr = &raw mut (*dst_ptr).IDX;
+            //  _dst_mu_elem_ptr = _dst_elem_ptr as *mut MaybeUninit<ELEM>;
+            //  _dst_mu_elem_ref = &mut *_dst_mu_elem_ptr;
+            //  _init_elem_IDX_needs_drop = false;
+            //  _return_place = <INITELEM as PinInitOnce<ELEM, Error, Arg>>::init_once(
+            //    move this.IDX,
+            //    move _dst_mu_elem_ref,
+            //    move elem_arg,
+            //    copy pre_zeroed,
+            //  ) [return -> next, unwind -> unwind_cleanup_target];
             let mu_elem_ty = Ty::new_maybe_uninit(self.tcx, elem_ty);
 
+            //  _dst_elem_ptr = &raw mut (*dst_ptr).IDX;
             let dst_elem_place = dst_ptr.project_deeper(
                 &[PlaceElem::Deref, PlaceElem::Field(field_idx, elem_ty)],
                 self.tcx,
             );
             let dst_elem_ptr_ty = Ty::new_mut_ptr(self.tcx, elem_ty);
             let dst_elem_ptr = self.make_place(Mutability::Not, dst_elem_ptr_ty);
-
             let dst_elem_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
                 dst_elem_ptr,
                 Rvalue::RawPtr(RawPtrKind::Mut, dst_elem_place),
             ))));
 
+            //  _dst_mu_elem_ptr = _dst_elem_ptr as *mut MaybeUninit<ELEM>;
             let dst_mu_elem_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_elem_ty);
             let dst_mu_elem_ptr = self.make_place(Mutability::Not, dst_mu_elem_ptr_ty);
-
             let cast_elem_ptr_to_mu_elem_ptr_stmt =
                 self.make_statement(StatementKind::Assign(Box::new((
                     dst_mu_elem_ptr,
@@ -1846,6 +1916,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                     ),
                 ))));
 
+            //  _dst_mu_elem_ref = &mut *_dst_mu_elem_ptr;
             let dst_mu_elem_ref_ty =
                 Ty::new_mut_ref(self.tcx, self.tcx.lifetimes.re_erased, mu_elem_ty);
             let dst_mu_elem_ref = self.make_place(Mutability::Not, dst_mu_elem_ref_ty);
@@ -1859,7 +1930,24 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 ),
             ))));
 
-            // Do the call
+            //  _init_elem_IDX_needs_drop = false;
+            let set_init_elem_needs_drop_stmt =
+                self.make_statement(StatementKind::Assign(Box::new((
+                    init_elems_needs_drop[idx],
+                    Rvalue::Use(Operand::const_from_scalar(
+                        self.tcx,
+                        self.tcx.types.bool,
+                        interpret::Scalar::from_bool(false),
+                        self.span,
+                    )),
+                ))));
+
+            //  _return_place = <INITELEM as PinInitOnce<ELEM, Error, Arg>>::init_once(
+            //    move this.IDX,
+            //    move _dst_mu_elem_ref,
+            //    move elem_arg,
+            //    copy pre_zeroed,
+            //  ) [return -> next, unwind -> unwind_cleanup_target];
             let target = self.block_index_offset(1);
             let func_ty = Ty::new_fn_def(
                 self.tcx,
@@ -1881,13 +1969,18 @@ impl<'tcx> InitShimBuilder<'tcx> {
             ]
             .map(|arg| Spanned { node: arg, span: self.span });
             self.block(
-                vec![dst_elem_ptr_stmt, cast_elem_ptr_to_mu_elem_ptr_stmt, dst_mu_elem_ref_stmt],
+                vec![
+                    dst_elem_ptr_stmt,
+                    cast_elem_ptr_to_mu_elem_ptr_stmt,
+                    dst_mu_elem_ref_stmt,
+                    set_init_elem_needs_drop_stmt,
+                ],
                 TerminatorKind::Call {
                     func,
                     args: args.into(),
                     destination: return_place,
                     target: Some(target),
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::Abi),
+                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
                     call_source: CallSource::Normal,
                     fn_span: self.span,
                 },
@@ -1895,8 +1988,11 @@ impl<'tcx> InitShimBuilder<'tcx> {
             );
 
             // Check if it succeeded
-            let fail_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
+            // bb:
+            //  _result_discr = discriminant(_return_place);
+            //  // 0 is discriminant of Result::Ok
+            //  switchInt [0 -> next, otherwise -> failure_cleanup_target]
+            let continue_target = self.block_index_offset(1);
             let result_discr = self.make_place(Mutability::Not, self.tcx.types.isize);
             let get_result_discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
                 result_discr,
@@ -1906,37 +2002,316 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 vec![get_result_discr_stmt],
                 TerminatorKind::SwitchInt {
                     discr: Operand::Move(result_discr),
-                    targets: SwitchTargets::static_if(0, continue_target, fail_target),
+                    targets: SwitchTargets::static_if(0, continue_target, failure_cleanup_target),
                 },
                 false,
             );
 
-            // Fail target
-            // FIXME: thread these back through the iterations to drop the already-initialized fields and then return.
+            // Set the element as initialized, then go to the next loop iteration (or the return).
+            // bb:
+            //  _elem_IDX_needs_drop = true;
+            //  goto -> next;
+            let target = self.block_index_offset(1);
             self.block(
-                vec![],
-                TerminatorKind::Assert {
-                    cond: Operand::const_from_scalar(
-                        self.tcx,
-                        self.tcx.types.bool,
-                        interpret::Scalar::from_bool(false),
-                        self.span,
-                    ),
-                    expected: true,
-                    msg: Box::new(AssertKind::NullPointerDereference),
-                    target,
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::Abi),
-                },
+                vec![make_set_bool_stmt(self, elems_needs_drop[idx], true)],
+                TerminatorKind::Goto { target },
                 false,
             );
-
-            // Continue target just goes to the first block produced by the next loop iteration,
-            // or the `return` after the loop.
         }
 
         // All the initializations succeeded and `Arg` was moved, so there's no drops to do.
         // return
         self.block(vec![], TerminatorKind::Return, false);
+
+        // Now we make the two cleanup loops and patch bb1 and bb2 to point at them
+
+        // Cleanup loop for non-panic failure.
+        let real_failure_cleanup_target = self.block_index_offset(0);
+        self.blocks[failure_cleanup_target].terminator = Some(Terminator {
+            source_info: self.source_info(),
+            kind: TerminatorKind::Goto { target: real_failure_cleanup_target },
+        });
+
+        // Cleanup element initializers
+        for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
+            // Check if this element needs to be dropped
+            // bbn:
+            //  switchInt(copy init_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  init_IDX_needs_drop = const false;
+            //  drop(this.IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
+            // bbn+2: (next thing to drop)
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(init_elem_needs_drop),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                false,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, init_elem_needs_drop, false)],
+                TerminatorKind::Drop {
+                    place: this.project_deeper(
+                        &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
+                        self.tcx,
+                    ),
+                    target: continue_target,
+                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                false,
+            );
+        }
+
+        // Cleanup destination elements
+        for (idx, &elem_needs_drop) in elems_needs_drop.iter().enumerate() {
+            // Check if this element needs to be dropped
+            // bbn:
+            //  switchInt(copy elem_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  elem_IDX_needs_drop = const false;
+            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
+            // bbn+2: (next thing to drop)
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(elem_needs_drop),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                false,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, elem_needs_drop, false)],
+                TerminatorKind::Drop {
+                    place: dst_ptr.project_deeper(
+                        &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
+                        self.tcx,
+                    ),
+                    target: continue_target,
+                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                false,
+            );
+        }
+
+        // Cleanup the `Arg`
+        {
+            // Check if the arg needs to be dropped
+            // bbn:
+            //  switchInt(copy arg_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  arg_needs_drop = const false;
+            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
+            // bbn+2:
+            //  return
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(arg_needs_drop),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                false,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, arg_needs_drop, false)],
+                TerminatorKind::Drop {
+                    place: arg,
+                    target: continue_target,
+                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                false,
+            );
+        }
+
+        // Done with failure cleanup, `return_place` contains the `Err` from
+        // the initializer that failed, return.
+        self.block(vec![], TerminatorKind::Return, false);
+
+        // Cleanup loop for unwinds
+        let real_unwind_cleanup_target = self.block_index_offset(0);
+        self.blocks[unwind_cleanup_target].terminator = Some(Terminator {
+            source_info: self.source_info(),
+            kind: TerminatorKind::Goto { target: real_unwind_cleanup_target },
+        });
+
+        // Cleanup element initializers
+        for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
+            // Check if this element needs to be dropped
+            // bbn:
+            //  switchInt(copy init_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  init_IDX_needs_drop = const false;
+            //  drop(this.IDX) [return -> bbn+2, unwind terminate]
+            // bbn+2: (next thing to drop)
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(init_elem_needs_drop),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                true,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, init_elem_needs_drop, false)],
+                TerminatorKind::Drop {
+                    place: this.project_deeper(
+                        &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
+                        self.tcx,
+                    ),
+                    target: continue_target,
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                true,
+            );
+        }
+
+        // Cleanup destination elements
+        for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
+            // Check if this element needs to be dropped
+            // bbn:
+            //  switchInt(copy elem_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  elem_IDX_needs_drop = const false;
+            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
+            // bbn+2: (next thing to drop)
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(init_elem_needs_drop),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                true,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, init_elem_needs_drop, false)],
+                TerminatorKind::Drop {
+                    place: dst_ptr.project_deeper(
+                        &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
+                        self.tcx,
+                    ),
+                    target: continue_target,
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                true,
+            );
+        }
+
+        // Cleanup the `Arg`
+        {
+            // Check if the arg needs to be dropped
+            // bbn:
+            //  switchInt(copy arg_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  arg_needs_drop = const false;
+            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
+            // bbn+2:
+            //  return
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(arg_needs_drop),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                true,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, arg_needs_drop, false)],
+                TerminatorKind::Drop {
+                    place: arg,
+                    target: continue_target,
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                true,
+            );
+        }
+
+        // Cleanup the return place
+        {
+            // Check if the return place needs to be dropped
+            // bbn:
+            //  switchInt(copy return_needs_drop_on_unwind) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  return_needs_drop_on_unwind = const false;
+            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
+            // bbn+2:
+            //  return
+
+            let drop_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+
+            self.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(return_needs_drop_on_unwind),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                true,
+            );
+
+            self.block(
+                vec![make_set_bool_stmt(self, return_needs_drop_on_unwind, false)],
+                TerminatorKind::Drop {
+                    place: arg,
+                    target: continue_target,
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                true,
+            );
+        }
+
+        // Done with unwind cleanup, resume unwinding
+        self.block(vec![], TerminatorKind::UnwindResume, true);
     }
 
     fn make_clone_call(
@@ -1945,7 +2320,6 @@ impl<'tcx> InitShimBuilder<'tcx> {
         src: Place<'tcx>,
         ty: Ty<'tcx>,
         next: BasicBlock,
-        #[cfg(false)] // FIXME: cleanup
         cleanup: BasicBlock,
     ) {
         let tcx = self.tcx;
@@ -1976,8 +2350,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 args: [Spanned { node: Operand::Move(ref_loc), span: DUMMY_SP }].into(),
                 destination: dest,
                 target: Some(next),
-                // FIXME: cleanup
-                unwind: UnwindAction::Terminate(UnwindTerminateReason::Abi),
+                unwind: UnwindAction::Cleanup(cleanup),
                 call_source: CallSource::Normal,
                 fn_span: self.span,
             },
