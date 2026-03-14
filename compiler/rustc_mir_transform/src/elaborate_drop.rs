@@ -1330,6 +1330,11 @@ where
             // See librustc_body/transform/coroutine.rs for more details.
             ty::Coroutine(_, args) => self.open_drop_for_tuple(args.as_coroutine().upvar_tys()),
             ty::Tuple(fields) => self.open_drop_for_tuple(fields),
+            ty::InitArray(fields) => self.open_drop_for_tuple(fields),
+            ty::InitArrayRepeat(elem, _len) => self.open_drop_for_tuple(&[*elem]),
+            ty::InitSliceRepeat(elem) => self.open_drop_for_tuple(&[self.tcx().types.usize, *elem]),
+            ty::InitStruct(..) => todo!(),
+            ty::InitTuple(fields) => self.open_drop_for_tuple(fields),
             ty::Adt(def, args) => self.open_drop_for_adt(*def, args),
             ty::Dynamic(..) => self.complete_drop(self.succ, self.unwind),
             ty::Array(ety, size) => {
