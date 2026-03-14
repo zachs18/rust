@@ -242,7 +242,7 @@ pub enum PathElem<'tcx> {
     CoroutineState(VariantIdx),
     CapturedVar(Symbol),
     ArrayElem(usize),
-    TupleElem(usize),
+    TupleLikeElem(usize),
     Deref,
     EnumTag,
     CoroutineTag,
@@ -333,7 +333,7 @@ fn write_path(out: &mut String, path: &[PathElem<'_>]) {
             CoroutineTag => write!(out, ".<coroutine-tag>"),
             CoroutineState(idx) => write!(out, ".<coroutine-state({})>", idx.index()),
             CapturedVar(name) => write!(out, ".<captured-var({name})>"),
-            TupleElem(idx) => write!(out, ".{idx}"),
+            TupleLikeElem(idx) => write!(out, ".{idx}"),
             ArrayElem(idx) => write!(out, "[{idx}]"),
             // `.<deref>` does not match Rust syntax, but it is more readable for long paths -- and
             // some of the other items here also are not Rust syntax. Actually we can't
@@ -468,8 +468,14 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 }))
             }
 
-            // tuples
-            ty::Tuple(_) => PathElem::TupleElem(field),
+            // tuples and tuple-like initializer types
+            ty::Tuple(_)
+            | ty::InitTuple(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..) => PathElem::TupleLikeElem(field),
+
+            ty::InitStruct(..) => todo!(),
 
             // enums
             ty::Adt(def, ..) if def.is_enum() => {
