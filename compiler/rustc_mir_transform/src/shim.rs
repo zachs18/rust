@@ -1808,34 +1808,10 @@ impl<'tcx> InitShimBuilder<'tcx> {
         self.block(vec![], TerminatorKind::Goto { target: unwind_cleanup_target }, true);
 
         // Each element has several blocks:
-        // 1. Clone (or move) `arg` for that element [return -> keep going, unwind -> bb2]
+        // 1. Clone (or set arg_needs_drop=false and move) `arg` for that element [return -> keep going, unwind -> bb2]
         // 2. set init_elem_needs_drop=false, then call `init_once` for that element [return -> keep going, unwind -> bb2]
         // 3. check if `init_once` succeeded [yes -> keep going, no -> bb1]
         // 4. set elem_needs_drop=true, then keep going
-
-        tracing::warn!(
-            "FIXME(in_place_init): implement dropping/cleanup on failure, unwind, and on success for arg for empty tuples"
-        );
-        // For each element:
-        // bba:
-        //  if not last:
-        //  _elem_arg = <Arg as Clone>::clone(&arg) [return -> bbb, unwind -> prev_cleanup];
-        //  if last
-        //  _elem_arg = move arg;
-        //  goto -> bbb;
-        // bbb:
-        //  _dst_elem_ptr = &raw mut (*dst_ptr).IDX;
-        //  _dst_mu_elem_ptr = _dst_elem_ptr_mut as *mut MaybeUninit<ELEM>;
-        //  _dst_elem_MU_ref_mut = &mut *_dst_elem_MU_ptr_mut;
-        //  return_place = <Self::IDX as PinInitOnce<ELEM, Error, Arg>>::init_once(
-        //      move this.IDX,
-        //      move _dst_elem_MU_ref_mut,
-        //      move _elem_arg,
-        //      copy pre_zeroed,
-        //  ) -> [return -> bbc, unwind TODO]
-        // bbc:
-        // // TODO: check for success
-        //  next element
 
         for (idx, (&init_elem_ty, &elem_ty)) in std::iter::zip(init_elem_tys, elem_tys).enumerate()
         {
@@ -2025,6 +2001,47 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         // Now we make the two cleanup loops and patch bb1 and bb2 to point at them
 
+        let make_cleanup_blocks = |self_: &mut Self,
+                                   needs_drop_flag: Place<'tcx>,
+                                   place: Place<'tcx>,
+                                   is_cleanup: bool| {
+            // bbn:
+            //  switchInt(copy NEEDS_DROP_FLAG) [true -> bbn+1, otherwise -> bbn+2]
+            // bbn+1:
+            //  NEEDS_DROP_FLAG = const false;
+            //  drop(PLACE) [return -> bbn+2, unwind -> [unwind_cleanup_target during failure, terminate during unwind]]
+            // bbn+2: (next thing to drop)
+
+            let drop_target = self_.block_index_offset(1);
+            let continue_target = self_.block_index_offset(2);
+
+            self_.block(
+                vec![],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(needs_drop_flag),
+                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
+                },
+                is_cleanup,
+            );
+
+            self_.block(
+                vec![make_set_bool_stmt(self_, needs_drop_flag, false)],
+                TerminatorKind::Drop {
+                    place,
+                    target: continue_target,
+                    unwind: if is_cleanup {
+                        UnwindAction::Terminate(UnwindTerminateReason::InCleanup)
+                    } else {
+                        UnwindAction::Cleanup(unwind_cleanup_target)
+                    },
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                is_cleanup,
+            );
+        };
+
         // Cleanup loop for non-panic failure.
         let real_failure_cleanup_target = self.block_index_offset(0);
         self.blocks[failure_cleanup_target].terminator = Some(Terminator {
@@ -2034,39 +2051,14 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         // Cleanup element initializers
         for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
-            // Check if this element needs to be dropped
-            // bbn:
-            //  switchInt(copy init_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  init_IDX_needs_drop = const false;
-            //  drop(this.IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
-            // bbn+2: (next thing to drop)
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(init_elem_needs_drop),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                false,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, init_elem_needs_drop, false)],
-                TerminatorKind::Drop {
-                    place: this.project_deeper(
-                        &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
-                        self.tcx,
-                    ),
-                    target: continue_target,
-                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
+            // Check if this element initializer needs to be dropped
+            make_cleanup_blocks(
+                self,
+                init_elem_needs_drop,
+                this.project_deeper(
+                    &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
+                    self.tcx,
+                ),
                 false,
             );
         }
@@ -2074,78 +2066,19 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // Cleanup destination elements
         for (idx, &elem_needs_drop) in elems_needs_drop.iter().enumerate() {
             // Check if this element needs to be dropped
-            // bbn:
-            //  switchInt(copy elem_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  elem_IDX_needs_drop = const false;
-            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
-            // bbn+2: (next thing to drop)
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(elem_needs_drop),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                false,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, elem_needs_drop, false)],
-                TerminatorKind::Drop {
-                    place: dst_ptr.project_deeper(
-                        &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
-                        self.tcx,
-                    ),
-                    target: continue_target,
-                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
+            make_cleanup_blocks(
+                self,
+                elem_needs_drop,
+                dst_ptr.project_deeper(
+                    &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
+                    self.tcx,
+                ),
                 false,
             );
         }
 
         // Cleanup the `Arg`
-        {
-            // Check if the arg needs to be dropped
-            // bbn:
-            //  switchInt(copy arg_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  arg_needs_drop = const false;
-            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
-            // bbn+2:
-            //  return
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(arg_needs_drop),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                false,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, arg_needs_drop, false)],
-                TerminatorKind::Drop {
-                    place: arg,
-                    target: continue_target,
-                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                false,
-            );
-        }
+        make_cleanup_blocks(self, arg_needs_drop, arg, false);
 
         // Done with failure cleanup, `return_place` contains the `Err` from
         // the initializer that failed, return.
@@ -2160,155 +2093,37 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         // Cleanup element initializers
         for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
-            // Check if this element needs to be dropped
-            // bbn:
-            //  switchInt(copy init_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  init_IDX_needs_drop = const false;
-            //  drop(this.IDX) [return -> bbn+2, unwind terminate]
-            // bbn+2: (next thing to drop)
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(init_elem_needs_drop),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                true,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, init_elem_needs_drop, false)],
-                TerminatorKind::Drop {
-                    place: this.project_deeper(
-                        &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
-                        self.tcx,
-                    ),
-                    target: continue_target,
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                true,
+            // Check if this element initializer needs to be dropped
+            make_cleanup_blocks(
+                self,
+                init_elem_needs_drop,
+                this.project_deeper(
+                    &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
+                    self.tcx,
+                ),
+                /* is_cleanup */ true,
             );
         }
 
         // Cleanup destination elements
-        for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
+        for (idx, &elem_needs_drop) in elems_needs_drop.iter().enumerate() {
             // Check if this element needs to be dropped
-            // bbn:
-            //  switchInt(copy elem_IDX_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  elem_IDX_needs_drop = const false;
-            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
-            // bbn+2: (next thing to drop)
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(init_elem_needs_drop),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                true,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, init_elem_needs_drop, false)],
-                TerminatorKind::Drop {
-                    place: dst_ptr.project_deeper(
-                        &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
-                        self.tcx,
-                    ),
-                    target: continue_target,
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                true,
+            make_cleanup_blocks(
+                self,
+                elem_needs_drop,
+                dst_ptr.project_deeper(
+                    &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
+                    self.tcx,
+                ),
+                /* is_cleanup */ true,
             );
         }
 
         // Cleanup the `Arg`
-        {
-            // Check if the arg needs to be dropped
-            // bbn:
-            //  switchInt(copy arg_needs_drop) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  arg_needs_drop = const false;
-            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
-            // bbn+2:
-            //  return
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(arg_needs_drop),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                true,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, arg_needs_drop, false)],
-                TerminatorKind::Drop {
-                    place: arg,
-                    target: continue_target,
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                true,
-            );
-        }
+        make_cleanup_blocks(self, arg_needs_drop, arg, true);
 
         // Cleanup the return place
-        {
-            // Check if the return place needs to be dropped
-            // bbn:
-            //  switchInt(copy return_needs_drop_on_unwind) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  return_needs_drop_on_unwind = const false;
-            //  drop((*dst_ptr).IDX) [return -> bbn+2, unwind -> unwind_cleanup_target]
-            // bbn+2:
-            //  return
-
-            let drop_target = self.block_index_offset(1);
-            let continue_target = self.block_index_offset(2);
-
-            self.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(return_needs_drop_on_unwind),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                true,
-            );
-
-            self.block(
-                vec![make_set_bool_stmt(self, return_needs_drop_on_unwind, false)],
-                TerminatorKind::Drop {
-                    place: arg,
-                    target: continue_target,
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                true,
-            );
-        }
+        make_cleanup_blocks(self, return_needs_drop_on_unwind, return_place, true);
 
         // Done with unwind cleanup, resume unwinding
         self.block(vec![], TerminatorKind::UnwindResume, true);
