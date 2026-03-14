@@ -394,6 +394,7 @@ macro_rules! common_visitor_and_walkers {
             ThinVec<Box<Ty>>,
             ThinVec<TyPat>,
             ThinVec<EiiImpl>,
+            ThinVec<InitFieldArg>,
         );
 
         // This macro generates `impl Visitable` and `impl MutVisitable` that forward to `Walkable`
@@ -434,6 +435,7 @@ macro_rules! common_visitor_and_walkers {
             DelimSpan,
             EnumDef,
             Extern,
+            ExprFieldInitInfo,
             ForLoopKind,
             FormatArgPosition,
             FormatArgsPiece,
@@ -445,6 +447,7 @@ macro_rules! common_visitor_and_walkers {
             Guard,
             Impl,
             ImplPolarity,
+            InitFieldArg,
             Inline,
             InlineAsmOperand,
             InlineAsmRegOrRegClass,

@@ -406,6 +406,7 @@ impl<'a> ExtCtxt<'a> {
             attrs: AttrVec::new(),
             id: ast::DUMMY_NODE_ID,
             is_placeholder: false,
+            init_info: None,
         }
     }
     pub fn expr_struct(

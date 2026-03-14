@@ -14,9 +14,10 @@ use rustc_ast::util::parser::{AssocOp, ExprPrecedence, Fixity, prec_let_scrutine
 use rustc_ast::visit::{Visitor, walk_expr};
 use rustc_ast::{
     self as ast, AnonConst, Arm, AssignOp, AssignOpKind, AttrStyle, AttrVec, BinOp, BinOpKind,
-    BlockCheckMode, CaptureBy, ClosureBinder, DUMMY_NODE_ID, Expr, ExprField, ExprKind, FnDecl,
-    FnRetTy, Guard, Label, MacCall, MetaItemLit, MgcaDisambiguation, Movability, Param,
-    PtrMetadataExpr, RangeLimits, StmtKind, Ty, TyKind, UnOp, UnsafeBinderCastKind, YieldKind,
+    BlockCheckMode, CaptureBy, ClosureBinder, DUMMY_NODE_ID, Expr, ExprField, ExprFieldInitInfo,
+    ExprKind, FnDecl, FnRetTy, Guard, InitFieldArg, Label, MacCall, MetaItemLit,
+    MgcaDisambiguation, Movability, Param, PtrMetadataExpr, RangeLimits, StmtKind, Ty, TyKind,
+    UnOp, UnsafeBinderCastKind, YieldKind,
 };
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_errors::{Applicability, Diag, PResult, StashKey, Subdiagnostic};
@@ -1285,7 +1286,7 @@ impl<'a> Parser<'a> {
         match (self.may_recover(), seq, snapshot) {
             (true, Err(err), Some((mut snapshot, ExprKind::Path(None, path)))) => {
                 snapshot.bump(); // `(`
-                match snapshot.parse_struct_fields(path.clone(), false, exp!(CloseParen)) {
+                match snapshot.parse_struct_fields(path.clone(), false, exp!(CloseParen), false) {
                     Ok((fields, ..)) if snapshot.eat(exp!(CloseParen)) => {
                         // We are certain we have `Enum::Foo(a: 3, b: 4)`, suggest
                         // `Enum::Foo { a: 3, b: 4 }` or `Enum::Foo(3, 4)`.
@@ -1485,7 +1486,7 @@ impl<'a> Parser<'a> {
             } else if this.is_builtin() {
                 this.parse_expr_builtin()
             } else if this.check_path() {
-                this.parse_expr_path_start()
+                this.parse_expr_path_start(false)
             } else if this.check_keyword(exp!(Move))
                 || this.check_keyword(exp!(Use))
                 || this.check_keyword(exp!(Static))
@@ -1648,7 +1649,7 @@ impl<'a> Parser<'a> {
         self.maybe_recover_from_bad_qpath(expr)
     }
 
-    fn parse_expr_path_start(&mut self) -> PResult<'a, Box<Expr>> {
+    fn parse_expr_path_start(&mut self, is_init_struct_expr: bool) -> PResult<'a, Box<Expr>> {
         let maybe_eq_tok = self.prev_token;
         let (qself, path) = if self.eat_lt() {
             let lt_span = self.prev_token.span;
@@ -1677,7 +1678,7 @@ impl<'a> Parser<'a> {
             let mac = Box::new(MacCall { path, args: self.parse_delim_args()? });
             (lo.to(self.prev_token.span), ExprKind::MacCall(mac))
         } else if self.check(exp!(OpenBrace))
-            && let Some(expr) = self.maybe_parse_struct_expr(&qself, &path)
+            && let Some(expr) = self.maybe_parse_struct_expr(&qself, &path, is_init_struct_expr)
         {
             if qself.is_some() {
                 self.psess.gated_spans.gate(sym::more_qualified_paths, path.span);
@@ -1860,6 +1861,26 @@ impl<'a> Parser<'a> {
             let elems = self.parse_expr_paren_seq()?;
             let span = lo.to(self.prev_token.span);
             Ok(self.mk_expr(span, ExprKind::InitTuple(elems)))
+        } else if self.eat_keyword(exp!(Struct)) {
+            // ```
+            // do init struct Name::Variant {
+            //    a,
+            //    b: initializer,
+            //    c (pinned): initializer,
+            //    d (pinned, with arg): initializer,
+            //    e (with (arg, ref d, pin ref c, ptr f)): initializer,
+            //    f,
+            //    ..
+            // }
+            // ```
+            let expr = self.parse_expr_path_start(true)?;
+            match expr.kind {
+                ExprKind::InitStruct(..) => {}
+                ExprKind::Err(..) => {}
+                ExprKind::Path(..) => todo!("handle error"),
+                _ => unreachable!(),
+            }
+            Ok(expr)
         } else {
             todo!()
         }
@@ -2180,11 +2201,12 @@ impl<'a> Parser<'a> {
                         attrs: AttrVec::new(),
                         id: DUMMY_NODE_ID,
                         is_placeholder: false,
+                        init_info: None,
                     }
                 })
             };
 
-            let parsed_field = match self.parse_expr_field() {
+            let parsed_field = match self.parse_expr_field(false) {
                 Ok(f) => Ok(f),
                 Err(mut e) => {
                     e.span_label(lo, "while parsing this pointer metadata construction");
@@ -3904,6 +3926,7 @@ impl<'a> Parser<'a> {
         &mut self,
         qself: &Option<Box<ast::QSelf>>,
         path: &ast::Path,
+        is_init_struct_expr: bool,
     ) -> Option<PResult<'a, Box<Expr>>> {
         let struct_allowed = !self.restrictions.contains(Restrictions::NO_STRUCT_LITERAL);
         match (struct_allowed, self.is_likely_struct_lit()) {
@@ -3918,7 +3941,7 @@ impl<'a> Parser<'a> {
                 if let Err(err) = self.expect(exp!(OpenBrace)) {
                     return Some(Err(err));
                 }
-                Some(self.parse_expr_struct(qself.clone(), path.clone(), true))
+                Some(self.parse_expr_struct(qself.clone(), path.clone(), true, is_init_struct_expr))
             }
             (false, true) => {
                 // We have something like `match foo { bar,` or `match foo { bar:`, which means the
@@ -3928,7 +3951,12 @@ impl<'a> Parser<'a> {
                 if let Err(err) = self.expect(exp!(OpenBrace)) {
                     return Some(Err(err));
                 }
-                match self.parse_expr_struct(qself.clone(), path.clone(), false) {
+                match self.parse_expr_struct(
+                    qself.clone(),
+                    path.clone(),
+                    false,
+                    is_init_struct_expr,
+                ) {
                     Ok(expr) => {
                         // This is a struct literal, but we don't accept them here.
                         self.dcx().emit_err(errors::StructLiteralNotAllowedHere {
@@ -3972,6 +4000,7 @@ impl<'a> Parser<'a> {
                 None,
                 Path::from_ident(Ident::new(kw::Underscore, span)),
                 false,
+                false,
             )?;
 
             let guar = if is_underscore_entry_point {
@@ -3996,6 +4025,7 @@ impl<'a> Parser<'a> {
         pth: ast::Path,
         recover: bool,
         close: ExpTokenPair,
+        is_init_struct_expr: bool,
     ) -> PResult<
         'a,
         (
@@ -4056,11 +4086,12 @@ impl<'a> Parser<'a> {
                         attrs: AttrVec::new(),
                         id: DUMMY_NODE_ID,
                         is_placeholder: false,
+                        init_info: None,
                     }
                 })
             };
 
-            let parsed_field = match self.parse_expr_field() {
+            let parsed_field = match self.parse_expr_field(is_init_struct_expr) {
                 Ok(f) => Ok(f),
                 Err(mut e) => {
                     if pth == kw::Async {
@@ -4179,14 +4210,17 @@ impl<'a> Parser<'a> {
         qself: Option<Box<ast::QSelf>>,
         pth: ast::Path,
         recover: bool,
+        is_init_struct_expr: bool,
     ) -> PResult<'a, Box<Expr>> {
         let lo = pth.span;
         let (fields, base, recovered_async) =
-            self.parse_struct_fields(pth.clone(), recover, exp!(CloseBrace))?;
+            self.parse_struct_fields(pth.clone(), recover, exp!(CloseBrace), is_init_struct_expr)?;
         let span = lo.to(self.token.span);
         self.expect(exp!(CloseBrace))?;
         let expr = if let Some(guar) = recovered_async {
             ExprKind::Err(guar)
+        } else if is_init_struct_expr {
+            ExprKind::InitStruct(Box::new(ast::StructExpr { qself, path: pth, fields, rest: base }))
         } else {
             ExprKind::Struct(Box::new(ast::StructExpr { qself, path: pth, fields, rest: base }))
         };
@@ -4229,15 +4263,27 @@ impl<'a> Parser<'a> {
         Label { ident }
     }
 
-    /// Parses `ident (COLON expr)?`.
-    fn parse_expr_field(&mut self) -> PResult<'a, ExprField> {
+    /// Parses `ident (COLON expr)?` normally, and additionally
+    /// `ident OPENPAREN pinned CLOSEPAREN` and `ident OPENPAREN (pinned, )? with (arg | (ref | pin ref | ptr) ident ),+ CLOSEPAREN`
+    /// when `is_init_struct_expr == true`.
+    fn parse_expr_field(&mut self, is_init_struct_expr: bool) -> PResult<'a, ExprField> {
         let attrs = self.parse_outer_attributes()?;
         self.recover_vcs_conflict_marker();
         self.collect_tokens(None, attrs, ForceCollect::No, |this, attrs| {
             let lo = this.token.span;
 
             // Check if a colon exists one ahead. This means we're parsing a fieldname.
-            let is_shorthand = !this.look_ahead(1, |t| t == &token::Colon || t == &token::Eq);
+            let is_shorthand = !this.look_ahead(1, |t| {
+                t == &token::Colon
+                    || t == &token::Eq
+                    || (is_init_struct_expr && t == &token::OpenParen)
+            });
+            // Check if a `(` exists one ahead. This means we're parsing initializer info.
+            let has_init_info =
+                is_init_struct_expr && this.look_ahead(1, |t| t == &token::OpenParen);
+            // Check if this is a `_` field for `do init struct`.
+            let is_init_underscore =
+                is_init_struct_expr && !is_shorthand && this.token.is_keyword(kw::Underscore);
             // Proactively check whether parsing the field will be incorrect.
             let is_wrong = this.token.is_non_reserved_ident()
                 && !this.look_ahead(1, |t| {
@@ -4246,6 +4292,7 @@ impl<'a> Parser<'a> {
                         || t == &token::Comma
                         || t == &token::CloseBrace
                         || t == &token::CloseParen
+                        || (is_init_struct_expr && t == &token::OpenParen)
                 });
             if is_wrong {
                 return Err(this.dcx().create_err(errors::ExpectedStructField {
@@ -4254,16 +4301,60 @@ impl<'a> Parser<'a> {
                     token: this.look_ahead(1, |t| *t),
                 }));
             }
-            let (ident, expr) = if is_shorthand {
+            let (ident, expr, init_info) = if is_shorthand {
                 // Mimic `x: x` for the `x` field shorthand.
                 let ident = this.parse_ident_common(false)?;
                 let path = ast::Path::from_ident(ident);
-                (ident, this.mk_expr(ident.span, ExprKind::Path(None, path)))
+                (ident, this.mk_expr(ident.span, ExprKind::Path(None, path)), None)
             } else {
-                let ident = this.parse_field_name()?;
+                let ident = if is_init_underscore {
+                    let span = this.token.span;
+                    this.bump();
+                    Ident::new(kw::Underscore, span)
+                } else {
+                    this.parse_field_name()?
+                };
+                let init_info = if has_init_info {
+                    // `(pinned)` or `(with ETC)` or `(pinned, with ETC)`,
+                    // each with optional trailing comma
+                    let mut pinned = false;
+                    let mut args = None;
+
+                    let _ = this.parse_paren_comma_seq(|this| {
+                        if this.eat_keyword(exp!(Pinned)) {
+                            if pinned {
+                                todo!("error on multiple `pinned`")
+                            }
+                            pinned = true;
+                            Ok(())
+                        } else if this.eat_keyword(exp!(With)) {
+                            if args.is_some() {
+                                todo!("error on multiple `with`")
+                            }
+                            if let Some(single_arg) = this.maybe_parse_expr_init_field_arg()? {
+                                args = Some([single_arg].into());
+                            } else {
+                                args = Some(
+                                    this.parse_paren_comma_seq(|this| {
+                                        this.maybe_parse_expr_init_field_arg()?
+                                            .ok_or_else(|| todo!())
+                                    })?
+                                    .0,
+                                );
+                            }
+                            Ok(())
+                        } else {
+                            todo!()
+                        }
+                    })?;
+
+                    Some(ExprFieldInitInfo { pinned, args: args.unwrap_or_default() })
+                } else {
+                    None
+                };
                 this.error_on_eq_field_init(ident);
                 this.bump(); // `:`
-                (ident, this.parse_expr()?)
+                (ident, this.parse_expr()?, init_info)
             };
 
             Ok((
@@ -4275,10 +4366,30 @@ impl<'a> Parser<'a> {
                     attrs,
                     id: DUMMY_NODE_ID,
                     is_placeholder: false,
+                    init_info,
                 },
                 Trailing::from(this.token == token::Comma),
                 UsePreAttrPos::No,
             ))
+        })
+    }
+
+    /// Parse one of `arg`, `ref IDENT`, `pin ref IDENT`, `ptr IDENT`
+    fn maybe_parse_expr_init_field_arg(&mut self) -> PResult<'a, Option<InitFieldArg>> {
+        Ok(if self.eat_keyword(exp!(Arg)) {
+            Some(InitFieldArg::Arg)
+        } else if self.eat_keyword(exp!(Ref)) {
+            let ident = self.parse_ident()?;
+            Some(InitFieldArg::Ref(ident))
+        } else if self.eat_keyword(exp!(Pin)) {
+            self.expect_keyword(exp!(Ref))?;
+            let ident = self.parse_ident()?;
+            Some(InitFieldArg::PinRef(ident))
+        } else if self.eat_keyword(exp!(Ptr)) {
+            let ident = self.parse_ident()?;
+            Some(InitFieldArg::Ptr(ident))
+        } else {
+            None
         })
     }
 

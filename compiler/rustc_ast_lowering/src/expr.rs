@@ -1747,6 +1747,25 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             expr: self.lower_expr(&f.expr),
             span: self.lower_span(f.span),
             is_shorthand: f.is_shorthand,
+            init_info: f
+                .init_info
+                .as_ref()
+                .map(|init_info| self.lower_expr_field_init_info(init_info)),
+        }
+    }
+
+    fn lower_expr_field_init_info(
+        &mut self,
+        init_info: &ExprFieldInitInfo,
+    ) -> hir::ExprFieldInitInfo<'hir> {
+        hir::ExprFieldInitInfo {
+            pinned: init_info.pinned,
+            args: self.arena.alloc_from_iter(init_info.args.iter().map(|arg| match *arg {
+                InitFieldArg::Arg => hir::InitFieldArg::Arg,
+                InitFieldArg::Ref(ident) => hir::InitFieldArg::Ref(self.lower_ident(ident)),
+                InitFieldArg::PinRef(ident) => hir::InitFieldArg::PinRef(self.lower_ident(ident)),
+                InitFieldArg::Ptr(ident) => hir::InitFieldArg::Ptr(self.lower_ident(ident)),
+            })),
         }
     }
 
@@ -2253,6 +2272,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 expr: f,
                 span: f.span,
                 is_shorthand: false,
+                init_info: None,
             }
         }));
         self.expr_struct(span, path, fields)
@@ -2421,6 +2441,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             span: self.lower_span(span),
             expr,
             is_shorthand: false,
+            init_info: None,
         }
     }
 
