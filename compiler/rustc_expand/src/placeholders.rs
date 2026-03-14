@@ -149,6 +149,7 @@ pub(crate) fn placeholder(
             is_shorthand: false,
             span,
             is_placeholder: true,
+            init_info: None,
         }]),
         AstFragmentKind::PatFields => AstFragment::PatFields(smallvec![ast::PatField {
             attrs: Default::default(),

@@ -2142,6 +2142,21 @@ pub struct ExprField<'hir> {
     pub expr: &'hir Expr<'hir>,
     pub span: Span,
     pub is_shorthand: bool,
+    pub init_info: Option<ExprFieldInitInfo<'hir>>,
+}
+
+#[derive(Debug, Clone, Copy, StableHash)]
+pub struct ExprFieldInitInfo<'hir> {
+    pub pinned: bool,
+    pub args: &'hir [InitFieldArg],
+}
+
+#[derive(Debug, Clone, Copy, StableHash)]
+pub enum InitFieldArg {
+    Arg,
+    Ref(Ident),
+    PinRef(Ident),
+    Ptr(Ident),
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, StableHash)]

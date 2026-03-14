@@ -207,7 +207,7 @@ impl<'a> Parser<'a> {
             }
 
             let expr = if this.eat(exp!(OpenBrace)) {
-                this.parse_expr_struct(None, path, true)?
+                this.parse_expr_struct(None, path, true, false)?
             } else {
                 let hi = this.prev_token.span;
                 this.mk_expr(lo.to(hi), ExprKind::Path(None, path))

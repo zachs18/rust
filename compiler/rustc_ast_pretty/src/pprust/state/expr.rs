@@ -6,8 +6,9 @@ use rustc_ast::util::classify;
 use rustc_ast::util::literal::escape_byte_str_symbol;
 use rustc_ast::util::parser::{self, ExprPrecedence, Fixity};
 use rustc_ast::{
-    self as ast, BinOpKind, BlockCheckMode, FormatAlignment, FormatArgPosition, FormatArgsPiece,
-    FormatCount, FormatDebugHex, FormatSign, FormatTrait, YieldKind, token,
+    self as ast, BinOpKind, BlockCheckMode, ExprFieldInitInfo, FormatAlignment, FormatArgPosition,
+    FormatArgsPiece, FormatCount, FormatDebugHex, FormatSign, FormatTrait, InitFieldArg, YieldKind,
+    token,
 };
 
 use crate::pp::Breaks::Inconsistent;
@@ -179,6 +180,10 @@ impl<'a> State<'a> {
             }
             if !field.is_shorthand {
                 self.print_ident(field.ident);
+                if let Some(init_info) = &field.init_info {
+                    self.nbsp();
+                    self.print_expr_field_init_info(init_info);
+                }
                 self.word_nbsp(":");
             }
             self.print_expr(&field.expr, FixupContext::default());
@@ -201,6 +206,34 @@ impl<'a> State<'a> {
         self.offset(-INDENT_UNIT);
         self.end(cb);
         self.word("}");
+    }
+
+    fn print_expr_field_init_info(&mut self, init_info: &ExprFieldInitInfo) {
+        self.word("(");
+        if init_info.pinned {
+            self.word_space("pinned,");
+        }
+        self.word_space("with");
+        self.word("(");
+        for arg in &init_info.args {
+            match *arg {
+                InitFieldArg::Arg => self.word("arg,"),
+                InitFieldArg::Ref(ident) => {
+                    self.word_space("ref");
+                    self.print_ident(ident);
+                }
+                InitFieldArg::PinRef(ident) => {
+                    self.word_space("pin ref");
+                    self.print_ident(ident);
+                }
+                InitFieldArg::Ptr(ident) => {
+                    self.word_space("ptr");
+                    self.print_ident(ident);
+                }
+            }
+        }
+        self.word(")");
+        self.word(")");
     }
 
     fn print_expr_ptr_metadata(

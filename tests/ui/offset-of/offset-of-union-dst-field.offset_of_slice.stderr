@@ -1,0 +1,27 @@
+error[E0277]: the alignment for values of type `dyn Trait` cannot be known at compilation time
+  --> $DIR/offset-of-union-dst-field.rs:42:5
+   |
+LL |     offset_of!(ReprRustUnion<dyn Trait>, val);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a alignment known at compile-time
+   |
+   = help: within `ManuallyDrop<dyn Trait>`, the nightly-only, unstable trait `Aligned` is not implemented for `dyn Trait`
+note: required because it appears within the type `ManuallyDrop<dyn Trait>`
+  --> $SRC_DIR/core/src/mem/manually_drop.rs:LL:COL
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the alignment for values of type `Extern` cannot be known at compilation time
+  --> $DIR/offset-of-union-dst-field.rs:45:5
+   |
+LL |     offset_of!(ReprRustUnion<Extern>, val);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a alignment known at compile-time
+   |
+   = help: within `ManuallyDrop<Extern>`, the nightly-only, unstable trait `Aligned` is not implemented for `Extern`
+note: required because it appears within the type `ManuallyDrop<Extern>`
+  --> $SRC_DIR/core/src/mem/manually_drop.rs:LL:COL
+   = note: only fields with a statically known alignment can be used in `offset_of!`
+   = note: this error originates in the macro `offset_of` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0277`.
