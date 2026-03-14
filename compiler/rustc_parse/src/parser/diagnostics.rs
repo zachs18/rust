@@ -980,7 +980,7 @@ impl<'a> Parser<'a> {
                 span: self.prev_token.span.shrink_to_lo(),
                 tokens: None,
             };
-            let struct_expr = snapshot.parse_expr_struct(None, path, false);
+            let struct_expr = snapshot.parse_expr_struct(None, path, false, false);
             let block_tail = self.parse_block_tail(lo, s, AttemptLocalParseRecovery::No);
             return Some(match (struct_expr, block_tail) {
                 (Ok(expr), Err(err)) => {

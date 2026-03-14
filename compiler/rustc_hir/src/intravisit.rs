@@ -396,6 +396,9 @@ pub trait Visitor<'v>: Sized {
     fn visit_expr_field(&mut self, field: &'v ExprField<'v>) -> Self::Result {
         walk_expr_field(self, field)
     }
+    fn visit_expr_field_init_info(&mut self, init_info: &'v ExprFieldInitInfo<'v>) -> Self::Result {
+        walk_expr_field_init_info(self, init_info)
+    }
     fn visit_const_arg_expr_field(&mut self, field: &'v ConstArgExprField<'v>) -> Self::Result {
         walk_const_arg_expr_field(self, field)
     }
@@ -983,10 +986,27 @@ pub fn walk_expr<'v, V: Visitor<'v>>(visitor: &mut V, expression: &'v Expr<'v>) 
 }
 
 pub fn walk_expr_field<'v, V: Visitor<'v>>(visitor: &mut V, field: &'v ExprField<'v>) -> V::Result {
-    let ExprField { hir_id, ident, expr, span: _, is_shorthand: _ } = field;
+    let ExprField { hir_id, ident, expr, span: _, is_shorthand: _, init_info } = field;
     try_visit!(visitor.visit_id(*hir_id));
     try_visit!(visitor.visit_ident(*ident));
+    visit_opt!(visitor, visit_expr_field_init_info, init_info);
     visitor.visit_expr(*expr)
+}
+
+pub fn walk_expr_field_init_info<'v, V: Visitor<'v>>(
+    visitor: &mut V,
+    init_info: &'v ExprFieldInitInfo<'v>,
+) -> V::Result {
+    let ExprFieldInitInfo { pinned: _, args } = *init_info;
+    for arg in args {
+        match arg {
+            InitFieldArg::Arg => {}
+            InitFieldArg::Ref(ident) | InitFieldArg::PinRef(ident) | InitFieldArg::Ptr(ident) => {
+                try_visit!(visitor.visit_ident(*ident))
+            }
+        }
+    }
+    V::Result::output()
 }
 
 pub fn walk_const_arg_expr_field<'v, V: Visitor<'v>>(

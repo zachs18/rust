@@ -129,6 +129,7 @@ pub enum TokenType {
 
     // Keyword-like symbols.
     // tidy-alphabetical-start
+    SymArg,
     SymArray,
     SymAttSyntax,
     SymBikeshed,
@@ -146,12 +147,15 @@ pub enum TokenType {
     SymOptions,
     SymOut,
     SymPin,
+    SymPinned,
     SymPreservesFlags,
+    SymPtr,
     SymPure,
     SymReadonly,
     SymSlice,
     SymSym,
     SymTuple,
+    SymWith,
     // tidy-alphabetical-end
 }
 
@@ -569,6 +573,7 @@ macro_rules! exp {
     (While)          => { exp!(@kw, While,      KwWhile) };
     (Yield)          => { exp!(@kw, Yield,      KwYield) };
 
+    (Arg)            => { exp!(@sym, arg,             SymArg) };
     (Array)          => { exp!(@sym, array,           SymArray) };
     (AttSyntax)      => { exp!(@sym, att_syntax,      SymAttSyntax) };
     (Bikeshed)       => { exp!(@sym, bikeshed,        SymBikeshed) };
@@ -586,12 +591,15 @@ macro_rules! exp {
     (Options)        => { exp!(@sym, options,         SymOptions) };
     (Out)            => { exp!(@sym, out,             SymOut) };
     (Pin)            => { exp!(@sym, pin,             SymPin) };
+    (Pinned)         => { exp!(@sym, pinned,          SymPinned) };
+    (Ptr)            => { exp!(@sym, ptr,             SymPtr) };
     (PreservesFlags) => { exp!(@sym, preserves_flags, SymPreservesFlags) };
     (Pure)           => { exp!(@sym, pure,            SymPure) };
     (Readonly)       => { exp!(@sym, readonly,        SymReadonly) };
     (Slice)          => { exp!(@sym, slice,           SymSlice) };
     (Sym)            => { exp!(@sym, sym,             SymSym) };
     (Tuple)          => { exp!(@sym, tuple,           SymTuple) };
+    (With)           => { exp!(@sym, with,            SymWith) };
 }
 
 /// A bitset type designed specifically for `Parser::expected_token_types`,

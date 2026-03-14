@@ -1355,7 +1355,9 @@ pub struct Arm {
     pub is_placeholder: bool,
 }
 
-/// A single field in a struct expression, e.g. `x: value` and `y` in `Foo { x: value, y }`.
+/// A single field in a struct or `do init struct` expression, e.g. `x: value` and `y` in `Foo { x: value, y }`,
+/// or `x: value` and `y (pinned, with arg, ref x): initializer` in
+/// `do init struct Foo { x: value, y (pinned, with arg, ref x): initializer }`.
 #[derive(Clone, Encodable, Decodable, Debug, Walkable)]
 pub struct ExprField {
     pub attrs: AttrVec,
@@ -1365,6 +1367,22 @@ pub struct ExprField {
     pub expr: Box<Expr>,
     pub is_shorthand: bool,
     pub is_placeholder: bool,
+    pub init_info: Option<ExprFieldInitInfo>,
+}
+
+/// A single field in a `do init struct` expression
+#[derive(Clone, Encodable, Decodable, Debug, Walkable)]
+pub struct ExprFieldInitInfo {
+    pub pinned: bool,
+    pub args: ThinVec<InitFieldArg>,
+}
+
+#[derive(Clone, PartialEq, Encodable, Decodable, Debug, Hash, HashStable_Generic, Walkable)]
+pub enum InitFieldArg {
+    Arg,
+    Ref(Ident),
+    PinRef(Ident),
+    Ptr(Ident),
 }
 
 #[derive(Clone, PartialEq, Encodable, Decodable, Debug, Copy, Walkable)]
@@ -1615,7 +1633,7 @@ impl Expr {
             | ExprKind::InitArray(_)
             | ExprKind::InitArrayRepeat(..)
             | ExprKind::InitSliceRepeat(..)
-            | ExprKind::InitStruct(_)
+            | ExprKind::InitStruct(..)
             | ExprKind::InitTuple(..)
             | ExprKind::InlineAsm(..)
             | ExprKind::Lit(_)
@@ -1927,7 +1945,7 @@ pub enum ExprKind {
 
     /// A `do init struct` expression.
     ///
-    /// E.g., `do init Foo {x: 1, y: 2}`.
+    /// E.g., `do init Foo {x: 1, _: unit_init, y (pinned, with arg): init}`.
     InitStruct(Box<StructExpr>),
 
     /// A `do init tuple` expression.
