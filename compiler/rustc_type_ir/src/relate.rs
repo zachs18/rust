@@ -568,7 +568,7 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             Ok(Ty::new_init_slice_repeat(cx, elem))
         }
 
-        (ty::InitStruct(..), ty::InitStruct(..)) => {
+        (ty::InitAdt(..), ty::InitAdt(..)) => {
             todo!()
         }
 

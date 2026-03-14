@@ -1443,7 +1443,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Bound(..) => {
                 obligations.push(obligation.with(

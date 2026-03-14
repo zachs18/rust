@@ -878,7 +878,7 @@ where
                 | ty::InitArray(..)
                 | ty::InitArrayRepeat(..)
                 | ty::InitSliceRepeat(..)
-                | ty::InitStruct(..)
+                | ty::InitAdt(..)
                 | ty::InitTuple(..)
                 | ty::UnsafeBinder(_)
                 | ty::CoroutineWitness(..) => {
@@ -1538,7 +1538,7 @@ where
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)

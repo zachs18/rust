@@ -185,6 +185,7 @@ where
             ty::Adt(ty::AdtDef(Interned(&ty::AdtDefData { did: def_id, .. }, _)), ..)
             | ty::Foreign(def_id)
             | ty::FnDef(def_id, ..)
+            | ty::InitAdt(def_id, ..)
             | ty::Closure(def_id, ..)
             | ty::CoroutineClosure(def_id, ..)
             | ty::Coroutine(def_id, ..) => {
@@ -281,13 +282,6 @@ where
                     // and are visited by shallow visitors.
                     try_visit!(self.visit_clauses(tcx.explicit_item_bounds(def_id).skip_binder()));
                 }
-            }
-            ty::InitStruct(adt, vidx, fields) => {
-                // This doesn't *currently* have its own def-id (but may have subcomponents
-                // with def-ids that should be visited recursively).
-                let _: Ty<'_> = adt;
-                let _: u32 = vidx;
-                let _: &[Ty<'_>] = fields.as_slice();
             }
             // These types don't have their own def-ids (but may have subcomponents
             // with def-ids that should be visited recursively).

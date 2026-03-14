@@ -212,7 +212,7 @@ impl<'tcx> InherentCollect<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Alias(ty::AliasTy { kind: ty::Free { .. }, .. })
             | ty::Bound(..)

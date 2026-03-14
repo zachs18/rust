@@ -564,7 +564,7 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..) => todo!(),
+            | ty::InitAdt(..) => todo!(),
 
             // We may still encounter projections here due to the printing
             // logic sometimes passing identity-substituted impl headers.

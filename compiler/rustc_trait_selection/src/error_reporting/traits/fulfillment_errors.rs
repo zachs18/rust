@@ -1884,7 +1884,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 ty::UntypedPtr { .. } => Some(24),
                 ty::PtrMetadata(..) => Some(25),
                 ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) => Some(26),
-                ty::InitStruct(..) => Some(27),
+                ty::InitAdt(..) => Some(27),
                 ty::InitTuple(..) => Some(28),
                 ty::Placeholder(..) | ty::Bound(..) | ty::Infer(..) | ty::Error(_) => None,
             }

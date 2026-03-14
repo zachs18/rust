@@ -214,7 +214,7 @@ pub trait Ty<I: Interner<Ty = Self>>:
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)
@@ -461,6 +461,7 @@ pub trait GenericArgs<I: Interner<GenericArgs = Self>>:
     fn split_closure_args(self) -> ty::ClosureArgsParts<I>;
     fn split_coroutine_closure_args(self) -> ty::CoroutineClosureArgsParts<I>;
     fn split_coroutine_args(self) -> ty::CoroutineArgsParts<I>;
+    fn split_init_adt_args(self) -> ty::InitAdtArgsParts<I>;
 
     fn as_closure(self) -> ty::ClosureArgs<I> {
         ty::ClosureArgs { args: self }
@@ -470,6 +471,10 @@ pub trait GenericArgs<I: Interner<GenericArgs = Self>>:
     }
     fn as_coroutine(self) -> ty::CoroutineArgs<I> {
         ty::CoroutineArgs { args: self }
+    }
+
+    fn as_init_adt(self) -> ty::InitAdtArgs<I> {
+        ty::InitAdtArgs { args: self }
     }
 }
 
@@ -635,6 +640,10 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn is_fundamental(self) -> bool;
 
     fn destructor(self, interner: I) -> Option<AdtDestructorKind>;
+}
+
+pub trait InitAdtDef<I: Interner>: Copy + Debug + Hash + Eq {
+    fn def_id(self) -> I::AdtId;
 }
 
 pub trait ParamEnv<I: Interner>: Copy + Debug + Hash + Eq + TypeFoldable<I> {

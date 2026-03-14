@@ -2325,7 +2325,7 @@ pub(crate) fn clean_middle_ty<'tcx>(
         ty::InitArray(..) => panic!("InitArray"),
         ty::InitArrayRepeat(..) => panic!("InitArrayRepeat"),
         ty::InitSliceRepeat(..) => panic!("InitSliceRepeat"),
-        ty::InitStruct(..) => panic!("InitStruct"),
+        ty::InitAdt(..) => panic!("InitAdt"),
         ty::InitTuple(..) => panic!("InitTuple"),
 
         ty::Error(_) => FatalError.raise(),

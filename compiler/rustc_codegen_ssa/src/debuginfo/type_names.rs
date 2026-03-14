@@ -226,7 +226,7 @@ fn push_debuginfo_type_name<'tcx>(
                 output.push(']');
             }
         }
-        ty::InitStruct(..) => todo!(),
+        ty::InitAdt(..) => todo!(),
         ty::RawPtr(inner_type, mutbl) => {
             if cpp_like_debuginfo {
                 match mutbl {

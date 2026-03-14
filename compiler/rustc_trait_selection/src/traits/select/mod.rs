@@ -2248,7 +2248,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..) => ty::Binder::dummy(vec![]),
 
             ty::Alias(..)
@@ -2304,9 +2304,8 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 ty::Binder::dummy(vec![elem])
             }
 
-            ty::InitStruct(_adt, _vidx, fields) => {
-                // (*) binder moved here
-                ty::Binder::dummy(fields.iter().collect())
+            ty::InitAdt(_, args) => {
+                ty::Binder::dummy(args.as_init_adt().field_initializer_tys().to_vec())
             }
 
             ty::Coroutine(def_id, args) => match self.tcx().coroutine_movability(def_id) {
@@ -2441,10 +2440,11 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 ty::Binder::dummy(AutoImplConstituents { types: vec![elem], assumptions: vec![] })
             }
 
-            ty::InitStruct(_adt, _vidx, fields) => ty::Binder::dummy(AutoImplConstituents {
-                types: fields.iter().collect(),
-                assumptions: vec![],
-            }),
+            ty::InitAdt(_, args) => {
+                let ty =
+                    self.infcx.shallow_resolve(args.as_init_adt().tupled_field_initializers_ty());
+                ty::Binder::dummy(AutoImplConstituents { types: vec![ty], assumptions: vec![] })
+            }
 
             ty::Tuple(tys) => {
                 // (T1, ..., Tn) -- meets any bound that all of T1...Tn meet

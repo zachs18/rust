@@ -144,6 +144,7 @@ fn push_inner<I: Interner>(stack: &mut TypeWalkerStack<I>, parent: I::GenericArg
             | ty::CoroutineClosure(_, args)
             | ty::Coroutine(_, args)
             | ty::CoroutineWitness(_, args)
+            | ty::InitAdt(_, args)
             | ty::FnDef(_, args) => {
                 stack.extend(args.iter().rev());
             }
@@ -154,10 +155,6 @@ fn push_inner<I: Interner>(stack: &mut TypeWalkerStack<I>, parent: I::GenericArg
                 stack.push(ty.into());
             }
             ty::InitSliceRepeat(t) => stack.push(t.into()),
-            ty::InitStruct(adt_ty, _vidx, fs) => {
-                stack.extend(fs.iter().rev().map(|ty| ty.into()));
-                stack.push(adt_ty.into());
-            }
             ty::InitTuple(ts) => stack.extend(ts.iter().rev().map(|ty| ty.into())),
             ty::FnPtr(sig_tys, _hdr) => {
                 stack.extend(

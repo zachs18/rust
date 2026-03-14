@@ -547,7 +547,7 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..) => build_tuple_like_type_di_node(cx, unique_type_id),
         ty::Pat(base, _) => return type_di_node(cx, base),
         ty::UnsafeBinder(_) => build_unsafe_binder_type_di_node(cx, t, unique_type_id),
@@ -1347,7 +1347,7 @@ fn build_tuple_like_type_di_node<'ll, 'tcx>(
         ty::InitArrayRepeat(elem_ty, _len) => &[elem_ty],
         // FIXME(in_place_init): check field order
         ty::InitSliceRepeat(elem_ty) => &[cx.tcx.types.usize, elem_ty],
-        ty::InitStruct(..) => todo!(),
+        ty::InitAdt(..) => todo!(),
         _ => bug!("build_tuple_type_di_node() called with non-tuple-type: {:?}", tuple_like_type),
     };
 

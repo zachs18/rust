@@ -264,11 +264,10 @@ pub enum TyKind<I: Interner> {
     /// The `Ty` is of the element initializer; the length is always a `usize`.
     InitSliceRepeat(I::Ty),
 
-    /// The anonymous type of a `do init` or `try do init` struct-like expression.
+    /// The type of a `do init struct` expression for an algebraic data type (ADT).
     ///
-    /// The `Ty` is of the ADT being initialized, the `usize` is the variant index,
-    /// and the `Tys` is the TODO: handle out-of-order fields and passing in args.
-    InitStruct(I::Ty, u32, I::Tys),
+    /// Despite the `struct` in the syntax, this is used for `enum`s and `union`s as well.
+    InitAdt(I::InitAdtId, I::GenericArgs),
 
     /// The anonymous type of a `do init tuple (a, b, c, d)` tuple-like expression.
     ///
@@ -390,7 +389,7 @@ impl<I: Interner> TyKind<I> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_) => true,
@@ -452,9 +451,7 @@ impl<I: Interner> fmt::Debug for TyKind<I> {
             InitArray(s) => f.debug_tuple("InitArray").field(&s).finish(),
             InitArrayRepeat(s, c) => f.debug_tuple("InitArrayRepeat").field(&s).field(&c).finish(),
             InitSliceRepeat(s) => f.debug_tuple("InitSliceRepeat").field(&s).finish(),
-            InitStruct(d, vidx, s) => {
-                f.debug_tuple("InitStruct").field(d).field(&vidx).field(&s).finish()
-            }
+            InitAdt(d, s) => f.debug_tuple("InitAdt").field(d).field(&s).finish(),
             InitTuple(s) => f.debug_tuple("InitTuple").field(&s).finish(),
             Never => write!(f, "!"),
             Tuple(t) => {
@@ -989,6 +986,52 @@ where
             bound_vars,
         ))
     }
+}
+
+pub enum StructFieldInitializerArgument {
+    /// Pass (possibly a clone of) the `Arg` passed in to the whole initializer.
+    PassThrough,
+    /// Pass a non-pinned mutable reference to another field,
+    /// which must have been listed in the initializer before this one,
+    /// and must implement the corresponding `Init*` trait, not just `PinInit*`.
+    Ref,
+    /// Pass a pinned mutable reference to another field,
+    /// which must have been listed in the initializer before this one,
+    /// and must have been marked `pinned`.
+    PinRef,
+    /// Pass a pointer to another field.
+    Ptr,
+}
+
+pub struct StructFieldInitializer<I: Interner> {
+    /// `FieldIdx` of the intiailizee that this initializer initializes.
+    pub dst_field: usize,
+
+    /// Initializer type
+    pub ty: I::Ty,
+
+    /// Args that will be provided to the initializer.
+    /// If there is exactly one, it will be passed as itself,
+    /// otherwise they will be passed as a tuple.
+    pub args: Box<[StructFieldInitializerArgument]>,
+
+    /// This field should be treated as pinned after initialization,
+    /// so the whole `do init` will implement only `PinInit*`, not `Init*`.
+    pub pinned: bool,
+}
+
+pub struct InitStructInner<I: Interner> {
+    /// The type being initialized.
+    /// Must be an ADT.
+    pub initializee: I::Ty,
+    pub variant_idx: usize,
+
+    /// Initializers listed in *initialization* order.
+    pub field_initializers: Vec<StructFieldInitializer<I>>,
+
+    /// At least one field should be treated as pinned after initialization,
+    /// so the whole `do init` will implement only `PinInit*`, not `Init*`.
+    pub pinned: bool,
 }
 
 #[derive_where(Debug, Clone, PartialEq, Hash; I: Interner)]

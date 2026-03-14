@@ -3445,7 +3445,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..) => Ty::new_error(
                 tcx,
                 dcx.span_err(ty_span, format!("type `{ty}` is not yet supported in `field_of!`")),

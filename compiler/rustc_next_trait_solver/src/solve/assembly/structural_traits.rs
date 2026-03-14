@@ -94,7 +94,7 @@ where
         ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..) => unimplemented!(),
 
         ty::UnsafeBinder(bound_ty) => Ok(bound_ty.map_bound(|ty| vec![ty])),
@@ -152,7 +152,7 @@ where
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..)
         | ty::Never
         | ty::Error(_) => Ok(ty::Binder::dummy(vec![])),
@@ -288,11 +288,15 @@ where
             Ok(ty::Binder::dummy(vec![args.as_coroutine_closure().tupled_upvars_ty()]))
         }
 
+        // impl Copy/Clone for InitAdt where Self::TupledFieldInitializers: Copy/Clone
+        ty::InitAdt(_, args) => {
+            Ok(ty::Binder::dummy(vec![args.as_init_adt().tupled_field_initializers_ty()]))
+        }
+
         // impl Copy/Clone for typeof(do init *) where ...Self::Fields: Copy/Clone
         ty::InitArray(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
         ty::InitArrayRepeat(elem, _len) => Ok(ty::Binder::dummy(vec![elem])),
         ty::InitSliceRepeat(elem) => Ok(ty::Binder::dummy(vec![elem])),
-        ty::InitStruct(_for_adt, _vidx, fields) => Ok(ty::Binder::dummy(fields.to_vec())),
         ty::InitTuple(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
 
         // only when `coroutine_clone` is enabled and the coroutine is movable
@@ -448,7 +452,7 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<I: Intern
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..)
         | ty::Never
         | ty::Tuple(_)
@@ -629,7 +633,7 @@ pub(in crate::solve) fn extract_tupled_inputs_and_output_from_async_callable<I: 
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..)
         | ty::Never
         | ty::UnsafeBinder(_)
@@ -797,7 +801,7 @@ pub(in crate::solve) fn extract_fn_def_from_const_callable<I: Interner>(
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..)
         | ty::Never
         | ty::Tuple(_)
@@ -897,7 +901,7 @@ pub(in crate::solve) fn const_conditions_for_destruct<I: Interner>(
         ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..) => Err(NoSolution),
 
         ty::Dynamic(..) | ty::Param(_) | ty::Alias(..) | ty::Placeholder(_) | ty::Foreign(_) => {
