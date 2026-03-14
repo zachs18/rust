@@ -692,12 +692,15 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 };
 
                 match kind {
-                    ty::Tuple(fields) => {
+                    ty::Tuple(fields) | ty::InitTuple(fields) | ty::InitArray(fields) => {
                         let Some(f_ty) = fields.get(f.as_usize()) else {
                             fail_out_of_bounds(self, location);
                             return;
                         };
                         check_equal(self, location, *f_ty);
+                    }
+                    ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) => {
+                        todo!()
                     }
                     // Debug info is allowed to project into pattern types
                     ty::Pat(base, _) => check_equal(self, location, *base),

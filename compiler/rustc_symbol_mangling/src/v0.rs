@@ -551,13 +551,20 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
                 self.print_def_path(def_id, args)?;
             }
 
+            ty::InitTuple(tys) => {
+                self.push("IC10init_tuple");
+                for ty in tys.iter() {
+                    ty.print(self)?;
+                }
+                self.push("E");
+            }
+
             // TODO: implement these with a DefId instead(?)
             // actually, for the non-struct ones, could probably just mangle like tuples/arrays/etc do
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
-            | ty::InitTuple(..) => todo!(),
+            | ty::InitStruct(..) => todo!(),
 
             // We may still encounter projections here due to the printing
             // logic sometimes passing identity-substituted impl headers.
