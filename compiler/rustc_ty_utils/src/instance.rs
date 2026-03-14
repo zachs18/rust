@@ -6,7 +6,8 @@ use rustc_middle::bug;
 use rustc_middle::query::Providers;
 use rustc_middle::traits::{BuiltinImplSource, CodegenObligationError};
 use rustc_middle::ty::{
-    self, ClosureKind, GenericArgsRef, Instance, PseudoCanonicalInput, TyCtxt, TypeVisitableExt,
+    self, ClosureKind, GenericArgsRef, InitMethod, Instance, PseudoCanonicalInput, TyCtxt,
+    TypeVisitableExt,
 };
 use rustc_span::sym;
 use rustc_trait_selection::traits;
@@ -455,6 +456,40 @@ fn resolve_associated_item<'tcx>(
                     ),
                     args,
                 })
+            } else if tcx.is_lang_item(trait_ref.def_id, LangItem::PinInitOnce)
+                || tcx.is_lang_item(trait_ref.def_id, LangItem::PinInitMut)
+                || tcx.is_lang_item(trait_ref.def_id, LangItem::PinInit)
+            {
+                let name = tcx.item_name(trait_item_id);
+                let method = match name.as_str() {
+                    "metadata" => InitMethod::Metadata,
+                    "should_zero" => InitMethod::ShouldZero,
+                    "init_once" => InitMethod::InitOnce,
+                    "init_mut" => InitMethod::InitMut,
+                    "init_ref" => InitMethod::InitRef,
+                    name => bug!("{name:?} is not a known associated fn in a `PinInit*` trait"),
+                };
+                let args = tcx.erase_and_anonymize_regions(rcvr_args);
+                let self_ty = trait_ref.self_ty();
+                let dst_ty = args.type_at(1);
+                let error_ty = args.type_at(2);
+                let arg_ty = args.type_at(3);
+                Some(ty::Instance {
+                    def: ty::InstanceKind::InitShim {
+                        method_def: trait_item_id,
+                        method,
+                        self_ty,
+                        dst_ty,
+                        error_ty,
+                        arg_ty,
+                    },
+                    args,
+                })
+            } else if tcx.is_lang_item(trait_ref.def_id, LangItem::InitOnce)
+                || tcx.is_lang_item(trait_ref.def_id, LangItem::InitMut)
+                || tcx.is_lang_item(trait_ref.def_id, LangItem::Init)
+            {
+                bug!("InitOnce, InitMut, Init should have no associated items")
             } else {
                 Instance::try_resolve_item_for_coroutine(tcx, trait_item_id, trait_id, rcvr_args)
             }

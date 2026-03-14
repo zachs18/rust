@@ -1473,12 +1473,66 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
 
     let mut builder =
         InitShimBuilder::new(tcx, instance, method_def, method, self_ty, dst_ty, error_ty, arg_ty);
+    _ = &mut builder;
 
     let dest = Place::return_place();
-    let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
 
-    if true {
-        todo!("{:p} {:p} {:p}", &dest, &this, &mut builder);
+    match method {
+        ty::InitMethod::Metadata => {
+            let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+            match (self_ty.kind(), dst_ty.kind()) {
+                (&ty::InitTuple(init_elem_tys), &ty::Tuple(elem_tys)) => {
+                    builder.tuple_metadata(dest, this, init_elem_tys, elem_tys);
+                }
+                pair => bug!("unsupported {pair:?}"),
+            }
+        }
+        ty::InitMethod::ShouldZero => {
+            let _this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+            // FIXME(in_place_init): query the component initializers
+
+            let false_const = Operand::const_from_scalar(
+                tcx,
+                tcx.types.bool,
+                interpret::Scalar::from_i8(0),
+                builder.span,
+            );
+            let assign_false_to_return_place = builder
+                .make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(false_const)))));
+            builder.block(vec![assign_false_to_return_place], TerminatorKind::Return, false);
+        }
+        ty::InitMethod::InitOnce => {
+            let this = Place::from(Local::new(1 + 0));
+            let dst_mut_ref = Place::from(Local::new(2 + 0));
+            let arg = Place::from(Local::new(3 + 0));
+            let pre_zeroed = Place::from(Local::new(4 + 0));
+            match (self_ty.kind(), dst_ty.kind()) {
+                (&ty::InitTuple(init_elem_tys), &ty::Tuple(elem_tys)) => {
+                    builder.tuple_init_once(
+                        dest,
+                        this,
+                        dst_mut_ref,
+                        arg,
+                        pre_zeroed,
+                        init_elem_tys,
+                        elem_tys,
+                    );
+                }
+                pair => bug!("unsupported {pair:?}"),
+            }
+        }
+        ty::InitMethod::InitMut => {
+            let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+            if true {
+                todo!("{:?}", (&dest, &this));
+            }
+        }
+        ty::InitMethod::InitRef => {
+            let this = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+            if true {
+                todo!("{:?}", (&dest, &this));
+            }
+        }
     }
 
     builder.into_mir()
@@ -1486,7 +1540,7 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
 
 #[allow(unused)]
 struct InitShimExtra<'tcx> {
-    def_id: DefId,
+    init_method_def_id: DefId,
     method: ty::InitMethod,
     self_ty: Ty<'tcx>,
     dst_ty: Ty<'tcx>,
@@ -1512,16 +1566,18 @@ impl<'tcx> InitShimBuilder<'tcx> {
     fn new(
         tcx: TyCtxt<'tcx>,
         instance: ty::InstanceKind<'tcx>,
-        def_id: DefId,
+        init_method_def_id: DefId,
         method: ty::InitMethod,
         self_ty: Ty<'tcx>,
         dst_ty: Ty<'tcx>,
         error_ty: Ty<'tcx>,
         arg_ty: Ty<'tcx>,
     ) -> Self {
-        let sig = tcx.fn_sig(def_id).instantiate(tcx, &[]);
+        let sig = tcx
+            .fn_sig(init_method_def_id)
+            .instantiate(tcx, &[self_ty.into(), dst_ty.into(), error_ty.into(), arg_ty.into()]); // TODO
         let sig = tcx.instantiate_bound_regions_with_erased(sig);
-        let span = tcx.def_span(def_id);
+        let span = tcx.def_span(init_method_def_id);
 
         InitShimBuilder {
             tcx,
@@ -1530,8 +1586,328 @@ impl<'tcx> InitShimBuilder<'tcx> {
             span,
             sig,
             instance,
-            extra: InitShimExtra { def_id, method, self_ty, dst_ty, error_ty, arg_ty },
+            extra: InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty },
         }
+    }
+
+    fn tuple_metadata(
+        &mut self,
+        dest: Place<'tcx>,
+        this: Place<'tcx>,
+        init_elem_tys: &[Ty<'tcx>],
+        elem_tys: &[Ty<'tcx>],
+    ) {
+        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
+            self.extra;
+
+        if dst_ty.is_thin(self.tcx, ty::TypingEnv::post_analysis(self.tcx, init_method_def_id)) {
+            // if `dst_ty` is `Thin`, then its metadata is zero-sized, so we can just `return`
+            self.block(vec![], TerminatorKind::Return, false);
+            return;
+        }
+        // For each element, write its metadata to the corresponding field of the `Metadata<DST>` return place,
+        // then return. Metadata never has drop glue, so we never need any cleanup blocks.
+        // bbn:
+        //  _elem_init_ref = &(*this).IDX;
+        //  _0.IDX = <Self::IDX as PinInitOnce<DST::IDX, Error, Arg>>::metadata(_elem_init_ref) [return -> bbn+1, unwind continue];
+
+        for (field_idx, (&init_elem_ty, &elem_ty)) in
+            std::iter::zip(init_elem_tys, elem_tys).enumerate()
+        {
+            let field_idx = FieldIdx::new(field_idx);
+            let elem_init_ref_place = self.make_place(
+                Mutability::Not,
+                Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, init_elem_ty),
+            );
+
+            let elem_init_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                elem_init_ref_place,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    this.project_deeper(&[PlaceElem::Field(field_idx, init_elem_ty)], self.tcx),
+                ),
+            ))));
+
+            let elem_metadata_dest = dest.project_deeper(
+                &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(self.tcx, elem_ty))],
+                self.tcx,
+            );
+
+            let args = [Spanned { node: Operand::Move(elem_init_ref_place), span: DUMMY_SP }];
+            let target = self.block_index_offset(1);
+            let terminator = TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    self.tcx.require_lang_item(LangItem::InitMetadataFn, self.span),
+                    [init_elem_ty.into(), elem_ty.into(), error_ty.into(), arg_ty.into()],
+                    self.span,
+                ),
+                args: Box::new(args),
+                destination: elem_metadata_dest,
+                target: Some(target),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: self.span,
+            };
+
+            self.block(vec![elem_init_ref_stmt], terminator, false);
+        }
+
+        self.block(vec![], TerminatorKind::Return, false);
+    }
+
+    fn tuple_init_once(
+        &mut self,
+        return_place: Place<'tcx>,
+        this: Place<'tcx>,
+        dst_mu_ref: Place<'tcx>,
+        arg: Place<'tcx>,
+        pre_zeroed: Place<'tcx>,
+        init_elem_tys: &[Ty<'tcx>],
+        elem_tys: &[Ty<'tcx>],
+    ) {
+        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
+            self.extra;
+
+        // bb0:
+        // _0 = Ok(())
+        // _dst_MU_ptr = &raw mut *dst_MU_ref;
+        // _dst_ptr = _dst_MU_ptr as *mut DST;
+
+        let result_ty = return_place.ty(&self.local_decls, self.tcx).ty;
+        let ty::Adt(result_def, result_args) = result_ty.kind() else { unreachable!() };
+
+        let ok_unit = Rvalue::Aggregate(
+            Box::new(AggregateKind::Adt(
+                result_def.did(),
+                VariantIdx::ZERO,
+                result_args,
+                None,
+                None,
+            )),
+            [Operand::Constant(Box::new(ConstOperand {
+                span: self.span,
+                user_ty: None,
+                const_: Const::Val(ConstValue::ZeroSized, self.tcx.types.unit),
+            }))]
+            .into(),
+        );
+
+        let write_ok_unit_stmt =
+            self.make_statement(StatementKind::Assign(Box::new((return_place, ok_unit))));
+
+        let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
+        let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
+        let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
+        let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
+
+        // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
+        let cast_mu_ref_to_mu_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            dst_mu_ptr,
+            Rvalue::RawPtr(
+                RawPtrKind::Mut,
+                dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
+            ),
+        ))));
+        let cast_mu_ptr_to_dst_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            dst_ptr,
+            Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
+        ))));
+
+        let target = self.block_index_offset(1);
+        self.block(
+            vec![write_ok_unit_stmt, cast_mu_ref_to_mu_ptr_stmt, cast_mu_ptr_to_dst_ptr_stmt],
+            TerminatorKind::Goto { target },
+            false,
+        );
+
+        tracing::warn!(
+            "FIXME(in_place_init): implement dropping/cleanup on failure, unwind, and on success for arg for empty tuples"
+        );
+        // For each element:
+        // bba:
+        //  if not last:
+        //  _elem_arg = <Arg as Clone>::clone(&arg) [return -> bbb, unwind -> prev_cleanup];
+        //  if last
+        //  _elem_arg = move arg;
+        //  goto -> bbb;
+        // bbb:
+        //  _dst_elem_ptr = &raw mut (*dst_ptr).IDX;
+        //  _dst_mu_elem_ptr = _dst_elem_ptr_mut as *mut MaybeUninit<ELEM>;
+        //  _dst_elem_MU_ref_mut = &mut *_dst_elem_MU_ptr_mut;
+        //  return_place = <Self::IDX as PinInitOnce<ELEM, Error, Arg>>::init_once(
+        //      move this.IDX,
+        //      move _dst_elem_MU_ref_mut,
+        //      move _elem_arg,
+        //      copy pre_zeroed,
+        //  ) -> [return -> bbc, unwind TODO]
+        // bbc:
+        // // TODO: check for success
+        //  next element
+
+        for (field_idx, (&init_elem_ty, &elem_ty)) in
+            std::iter::zip(init_elem_tys, elem_tys).enumerate()
+        {
+            // Get the Arg for the call
+            let elem_arg = self.make_place(Mutability::Not, arg_ty);
+            let target = self.block_index_offset(1);
+            if field_idx + 1 == init_elem_tys.len() {
+                // Move out of arg
+                let move_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                    elem_arg,
+                    Rvalue::Use(Operand::Move(arg)),
+                ))));
+                self.block(vec![move_stmt], TerminatorKind::Goto { target }, false);
+            } else {
+                // Clone arg
+                self.make_clone_call(elem_arg, arg, arg_ty, target);
+            }
+
+            let field_idx = FieldIdx::new(field_idx);
+
+            // Get the Dst MU reference for the call
+            let mu_elem_ty = Ty::new_maybe_uninit(self.tcx, elem_ty);
+
+            let dst_elem_place = dst_ptr.project_deeper(
+                &[PlaceElem::Deref, PlaceElem::Field(field_idx, elem_ty)],
+                self.tcx,
+            );
+            let dst_elem_ptr_ty = Ty::new_mut_ptr(self.tcx, elem_ty);
+            let dst_elem_ptr = self.make_place(Mutability::Not, dst_elem_ptr_ty);
+
+            let dst_elem_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                dst_elem_ptr,
+                Rvalue::RawPtr(RawPtrKind::Mut, dst_elem_place),
+            ))));
+
+            let dst_mu_elem_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_elem_ty);
+            let dst_mu_elem_ptr = self.make_place(Mutability::Not, dst_mu_elem_ptr_ty);
+
+            let cast_elem_ptr_to_mu_elem_ptr_stmt =
+                self.make_statement(StatementKind::Assign(Box::new((
+                    dst_mu_elem_ptr,
+                    Rvalue::Cast(
+                        CastKind::PtrToPtr,
+                        Operand::Move(dst_elem_ptr),
+                        dst_mu_elem_ptr_ty,
+                    ),
+                ))));
+
+            let dst_mu_elem_ref_ty =
+                Ty::new_mut_ref(self.tcx, self.tcx.lifetimes.re_erased, mu_elem_ty);
+            let dst_mu_elem_ref = self.make_place(Mutability::Not, dst_mu_elem_ref_ty);
+
+            let dst_mu_elem_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                dst_mu_elem_ref,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Mut { kind: MutBorrowKind::Default },
+                    dst_mu_elem_ptr.project_deeper(&[PlaceElem::Deref], self.tcx),
+                ),
+            ))));
+
+            // Do the call
+            let target = self.block_index_offset(1);
+            let func_ty = Ty::new_fn_def(
+                self.tcx,
+                init_method_def_id,
+                [init_elem_ty, elem_ty, error_ty, arg_ty],
+            );
+            let func = Operand::Constant(Box::new(ConstOperand {
+                span: self.span,
+                user_ty: None,
+                const_: Const::zero_sized(func_ty),
+            }));
+            let args = [
+                Operand::Move(
+                    this.project_deeper(&[PlaceElem::Field(field_idx, init_elem_ty)], self.tcx),
+                ),
+                Operand::Move(dst_mu_elem_ref),
+                Operand::Move(elem_arg),
+                Operand::Copy(pre_zeroed),
+            ]
+            .map(|arg| Spanned { node: arg, span: self.span });
+            self.block(
+                vec![dst_elem_ptr_stmt, cast_elem_ptr_to_mu_elem_ptr_stmt, dst_mu_elem_ref_stmt],
+                TerminatorKind::Call {
+                    func,
+                    args: args.into(),
+                    destination: return_place,
+                    target: Some(target),
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::Abi),
+                    call_source: CallSource::Normal,
+                    fn_span: self.span,
+                },
+                false,
+            );
+        }
+
+        if init_elem_tys.is_empty() {
+            // If there were no elements, drop Arg before returning.
+            let target = self.block_index_offset(1);
+            self.block(
+                vec![],
+                TerminatorKind::Drop {
+                    place: arg,
+                    target,
+                    // If there are no elements, then there's nothing to clean up if this unwinds
+                    unwind: UnwindAction::Continue,
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                false,
+            );
+        }
+
+        self.block(vec![], TerminatorKind::Return, false);
+    }
+
+    fn make_clone_call(
+        &mut self,
+        dest: Place<'tcx>,
+        src: Place<'tcx>,
+        ty: Ty<'tcx>,
+        next: BasicBlock,
+        #[cfg(false)] // FIXME: cleanup
+        cleanup: BasicBlock,
+    ) {
+        let tcx = self.tcx;
+
+        let clone_def_id = self.tcx.require_lang_item(LangItem::CloneFn, self.span);
+        // `func == Clone::clone(&ty) -> ty`
+        let func_ty = Ty::new_fn_def(tcx, clone_def_id, [ty]);
+        let func = Operand::Constant(Box::new(ConstOperand {
+            span: self.span,
+            user_ty: None,
+            const_: Const::zero_sized(func_ty),
+        }));
+
+        let ref_loc =
+            self.make_place(Mutability::Not, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
+
+        // `let ref_loc: &ty = &src;`
+        let statement = self.make_statement(StatementKind::Assign(Box::new((
+            ref_loc,
+            Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src),
+        ))));
+
+        // `let loc = Clone::clone(ref_loc);`
+        self.block(
+            vec![statement],
+            TerminatorKind::Call {
+                func,
+                args: [Spanned { node: Operand::Move(ref_loc), span: DUMMY_SP }].into(),
+                destination: dest,
+                target: Some(next),
+                // FIXME: cleanup
+                unwind: UnwindAction::Terminate(UnwindTerminateReason::Abi),
+                call_source: CallSource::Normal,
+                fn_span: self.span,
+            },
+            false,
+        );
     }
 }
 

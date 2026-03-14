@@ -69,6 +69,7 @@ pub unsafe trait PinInitOnce<T: MetaSized, Error = !, Arg = ()> {
     /// * If `Self` implements `Clone` (or `Copy`), then any clones (or copies) must return the same value.
     /// * If `T: Thin`, this function must not diverge or have any observable side-effects.
     /// * If `T: Thin`, callers are not required to call this function.
+    #[lang = "init_metadata_fn"]
     fn metadata(this: &Self) -> Metadata<T>;
 
     /// Whether this initializer requests that the destination be pre-initialized with all zero bytes before calling [`PinInitOnce::init_once`].
@@ -86,6 +87,7 @@ pub unsafe trait PinInitOnce<T: MetaSized, Error = !, Arg = ()> {
     ///
     /// This function must not diverge.
     #[inline]
+    #[lang = "init_should_zero_fn"]
     fn should_zero(_this: &Self) -> bool {
         false
     }
@@ -117,6 +119,7 @@ pub unsafe trait PinInitOnce<T: MetaSized, Error = !, Arg = ()> {
     ///
     /// If this function panics or returns `Err(_)`, then it should drop any partially-initialized parts of the destination.
     /// This is not a safety requirement, but failing to do so may cause resource leaks.
+    #[lang = "init_once_fn"]
     unsafe fn init_once(
         this: Self,
         dst: &mut MaybeUninit<T>,
@@ -156,6 +159,7 @@ pub unsafe trait PinInitMut<T: MetaSized, Error = !, Arg = ()>:
     /// See [`PinInitOnce::init_once`] for safety requirements.
     ///
     /// Additionally, for implementors: calling `Self::init_mut` may not cause `Self::metadata`'s result to change.
+    #[lang = "init_mut_fn"]
     unsafe fn init_mut(
         this: &mut Self,
         dst: &mut MaybeUninit<T>,
@@ -191,6 +195,7 @@ pub unsafe trait PinInit<T: MetaSized, Error = !, Arg = ()>:
     /// # Safety
     ///
     /// See [`PinInitOnce::init_once`] for safety requirements.
+    #[lang = "init_ref_fn"]
     unsafe fn init_ref(
         this: &Self,
         dst: &mut MaybeUninit<T>,

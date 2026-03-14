@@ -272,6 +272,12 @@ language_item_table! {
     PinInit,                 sym::pin_init,            pin_init_trait,             Target::Trait,          GenericRequirement::None;
     Init,                    sym::init,                init_trait,                 Target::Trait,          GenericRequirement::None;
 
+    InitMetadataFn,          sym::init_metadata_fn,    init_metadata_fn,           Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    InitShouldZeroFn,        sym::init_should_zero_fn, init_should_zero_fn,        Target::Method(MethodKind::Trait { body: true }), GenericRequirement::None;
+    InitOncefn,              sym::init_once_fn,        init_once_fn,               Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    InitMutfn,               sym::init_mut_fn,         init_mut_fn,                Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    InitReffn,               sym::init_ref_fn,         init_ref_fn,                Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+
     OrderingEnum,            sym::Ordering,            ordering_enum,              Target::Enum,           GenericRequirement::Exact(0);
     PartialEq,               sym::eq,                  eq_trait,                   Target::Trait,          GenericRequirement::Exact(1);
     PartialOrd,              sym::partial_ord,         partial_ord_trait,          Target::Trait,          GenericRequirement::Exact(1);
