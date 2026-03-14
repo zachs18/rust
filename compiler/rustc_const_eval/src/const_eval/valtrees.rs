@@ -138,7 +138,7 @@ fn const_to_valtree_inner<'tcx>(
             todo!()
         }
 
-        ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..) => {
+        ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitAdt(..) | ty::InitTuple(..) => {
             // FIXME(in_place_init): Implement this
             todo!()
         }
@@ -332,7 +332,7 @@ pub fn valtree_to_const_value<'tcx>(
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..) => {
             let layout = tcx.layout_of(typing_env.as_query_input(cv.ty)).unwrap();
             if layout.is_zst() {

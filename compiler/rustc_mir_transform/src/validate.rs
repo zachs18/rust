@@ -700,7 +700,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                         };
                         check_equal(self, location, *f_ty);
                     }
-                    ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) => {
+                    ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitAdt(..) => {
                         todo!()
                     }
                     // Debug info is allowed to project into pattern types

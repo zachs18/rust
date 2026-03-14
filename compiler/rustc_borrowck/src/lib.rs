@@ -1906,7 +1906,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::InitArray(..)
                     | ty::InitArrayRepeat(..)
                     | ty::InitSliceRepeat(..)
-                    | ty::InitStruct(..)
+                    | ty::InitAdt(..)
                     | ty::InitTuple(..)
                     | ty::Never
                     | ty::Tuple(_)
@@ -1938,7 +1938,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | ty::InitArray(..)
                     | ty::InitArrayRepeat(..)
                     | ty::InitSliceRepeat(..)
-                    | ty::InitStruct(..)
+                    | ty::InitAdt(..)
                     | ty::InitTuple(..)
                     | ty::Tuple(_) => (),
                     ty::Bool

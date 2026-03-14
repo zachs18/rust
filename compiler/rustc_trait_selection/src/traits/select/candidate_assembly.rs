@@ -802,7 +802,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | ty::InitArray(..)
                 | ty::InitArrayRepeat(..)
                 | ty::InitSliceRepeat(..)
-                | ty::InitStruct(..)
+                | ty::InitAdt(..)
                 | ty::InitTuple(..)
                 | ty::UnsafeBinder(_)
                 | ty::Never
@@ -987,7 +987,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 | ty::InitArray(..)
                 | ty::InitArrayRepeat(..)
                 | ty::InitSliceRepeat(..)
-                | ty::InitStruct(..)
+                | ty::InitAdt(..)
                 | ty::InitTuple(..)
                 | ty::Never
                 | ty::Tuple(_)
@@ -1267,7 +1267,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
             | ty::InitTuple(..) => {
                 candidates.vec.push(BuiltinCandidate);
             }
@@ -1330,6 +1329,17 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 }
             }
 
+            ty::InitAdt(_, args) => {
+                let resolved_field_initializers =
+                    self.infcx.shallow_resolve(args.as_init_adt().tupled_field_initializers_ty());
+                if resolved_field_initializers.is_ty_var() {
+                    // Not yet resolved.
+                    candidates.ambiguous = true;
+                } else {
+                    candidates.vec.push(BuiltinCandidate);
+                }
+            }
+
             ty::CoroutineClosure(_, args) => {
                 let resolved_upvars =
                     self.infcx.shallow_resolve(args.as_coroutine_closure().tupled_upvars_ty());
@@ -1374,7 +1384,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..) => {
                 candidates.vec.push(BuiltinInitCandidate);
             }
@@ -1411,7 +1421,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Error(_) => {
@@ -1570,7 +1580,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Alias(..)
@@ -1616,7 +1626,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::UnsafeBinder(_)
             | ty::Never
@@ -1676,7 +1686,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Bound(..) => {
                 candidates.vec.push(BikeshedGuaranteedNoDropCandidate);

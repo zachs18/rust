@@ -520,7 +520,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 | ty::InitArray(..)
                 | ty::InitArrayRepeat(..)
                 | ty::InitSliceRepeat(..)
-                | ty::InitStruct(..)
+                | ty::InitAdt(..)
                 | ty::InitTuple(..)
                 | ty::Never
                 | ty::Error(_) => true,

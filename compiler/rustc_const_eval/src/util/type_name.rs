@@ -46,7 +46,6 @@ impl<'tcx> Printer<'tcx> for TypeNamePrinter<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
             | ty::InitTuple(..)
             | ty::Dynamic(_, _)
             | ty::UnsafeBinder(_) => self.pretty_print_type(ty),
@@ -67,7 +66,8 @@ impl<'tcx> Printer<'tcx> for TypeNamePrinter<'tcx> {
             })
             | ty::Closure(def_id, args)
             | ty::CoroutineClosure(def_id, args)
-            | ty::Coroutine(def_id, args) => self.print_def_path(def_id, args),
+            | ty::Coroutine(def_id, args)
+            | ty::InitAdt(def_id, args) => self.print_def_path(def_id, args),
             ty::Foreign(def_id) => self.print_def_path(def_id, &[]),
 
             ty::Alias(ty::AliasTy { kind: ty::Free { .. }, .. }) => {

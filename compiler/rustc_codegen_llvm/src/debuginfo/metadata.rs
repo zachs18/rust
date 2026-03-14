@@ -555,7 +555,7 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
         ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..) => unimplemented!(),
         ty::Alias(..)
         | ty::Param(_)

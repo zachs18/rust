@@ -175,6 +175,7 @@ impl Visitable for RigidTy {
             | RigidTy::Coroutine(_, args)
             | RigidTy::CoroutineWitness(_, args)
             | RigidTy::CoroutineClosure(_, args)
+            | RigidTy::InitAdt(_, args)
             | RigidTy::FnDef(_, args) => args.visit(visitor),
             RigidTy::FnPtr(sig) => sig.visit(visitor),
             RigidTy::Dynamic(pred, r) => {
@@ -188,10 +189,6 @@ impl Visitable for RigidTy {
                 len.visit(visitor)
             }
             RigidTy::InitSliceRepeat(elem) => elem.visit(visitor),
-            RigidTy::InitStruct(ty, _, fields) => {
-                ty.visit(visitor)?;
-                fields.visit(visitor)
-            }
             RigidTy::InitTuple(fields) => fields.visit(visitor),
         }
     }

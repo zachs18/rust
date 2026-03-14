@@ -244,7 +244,7 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..) => {
                 bug!("FIXME(in_place_init): variance computation: {ty}");
             }

@@ -37,6 +37,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     type CoroutineClosureId = DefId;
     type CoroutineId = DefId;
     type AdtId = DefId;
+    type InitAdtId = DefId;
     type ImplId = DefId;
     type UnevaluatedConstId = DefId;
     type Span = Span;
@@ -538,7 +539,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)

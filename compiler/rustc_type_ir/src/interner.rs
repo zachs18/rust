@@ -52,6 +52,7 @@ pub trait Interner:
     type CoroutineClosureId: SpecificDefId<Self>;
     type CoroutineId: SpecificDefId<Self>;
     type AdtId: SpecificDefId<Self>;
+    type InitAdtId: SpecificDefId<Self>;
     type ImplId: SpecificDefId<Self>;
     type UnevaluatedConstId: SpecificDefId<Self>;
     type Span: Span<Self>;
