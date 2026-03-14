@@ -384,7 +384,10 @@ fn evaluate_host_effect_for_copy_clone_goal<'tcx>(
         ty::InitArrayRepeat(elem, _) | ty::InitSliceRepeat(elem) => {
             Ok(ty::Binder::dummy(vec![elem]))
         }
-        ty::InitStruct(_adt, _vidx, fields) => Ok(ty::Binder::dummy(fields.to_vec())),
+        // impl Copy/Clone for Closure where Self::TupledFieldInitializers: Copy/Clone
+        ty::InitAdt(_, args) => {
+            Ok(ty::Binder::dummy(vec![args.as_init_adt().tupled_field_initializers_ty()]))
+        }
 
         // impl Copy/Clone for Closure where Self::TupledUpvars: Copy/Clone
         ty::Closure(_, args) => Ok(ty::Binder::dummy(vec![args.as_closure().tupled_upvars_ty()])),
@@ -517,7 +520,7 @@ fn evaluate_host_effect_for_destruct_goal<'tcx>(
         ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..) => return Err(EvaluationFailure::NoSolution),
 
         ty::Dynamic(..) | ty::Param(_) | ty::Alias(..) | ty::Placeholder(_) | ty::Foreign(_) => {

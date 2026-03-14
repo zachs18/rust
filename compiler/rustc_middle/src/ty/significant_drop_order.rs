@@ -145,7 +145,6 @@ pub fn ty_dtor_span<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Span> {
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
         | ty::InitTuple(..)
         | ty::UnsafeBinder(_) => None,
 
@@ -160,6 +159,7 @@ pub fn ty_dtor_span<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Span> {
         | ty::CoroutineWitness(did, _)
         | ty::CoroutineClosure(did, _)
         | ty::Closure(did, _)
+        | ty::InitAdt(did, _)
         | ty::FnDef(did, _)
         | ty::Foreign(did) => Some(tcx.def_span(did)),
         ty::Param(_) => None,

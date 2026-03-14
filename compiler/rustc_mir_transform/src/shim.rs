@@ -1461,19 +1461,8 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
     };
     debug!("build_init_shim(def_id={:?})", method_def);
 
-    let typing_env = ty::TypingEnv::post_analysis(tcx, method_def);
-    #[allow(unused)]
-    let fields = match dst_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
-        MetadataFields::KnownFields(fields) => fields,
-        fields => bug!(
-            "init shim for destination `{:?}` which is not monomorphic enough ({fields:?})",
-            dst_ty
-        ),
-    };
-
     let mut builder =
         InitShimBuilder::new(tcx, instance, method_def, method, self_ty, dst_ty, error_ty, arg_ty);
-    _ = &mut builder;
 
     let dest = Place::return_place();
 

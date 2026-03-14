@@ -480,7 +480,7 @@ impl<'tcx> Stable<'tcx> for ty::TyKind<'tcx> {
             ty::InitSliceRepeat(elem) => {
                 TyKind::RigidTy(RigidTy::InitSliceRepeat(elem.stable(tables, cx)))
             }
-            ty::InitStruct(..) => todo!(),
+            ty::InitAdt(..) => todo!(),
             ty::InitTuple(elems) => TyKind::RigidTy(RigidTy::InitTuple(
                 elems.iter().map(|ty| ty.stable(tables, cx)).collect(),
             )),

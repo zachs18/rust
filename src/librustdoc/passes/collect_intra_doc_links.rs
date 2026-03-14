@@ -552,7 +552,7 @@ fn ty_to_res<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Res> {
         | ty::InitArray(..)
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
+        | ty::InitAdt(..)
         | ty::InitTuple(..)
         | ty::Param(_)
         | ty::Bound(..)

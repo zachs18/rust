@@ -596,7 +596,7 @@ pub enum RigidTy {
     InitArray(Vec<Ty>),
     InitArrayRepeat(Ty, TyConst),
     InitSliceRepeat(Ty),
-    InitStruct(Ty, usize, Vec<Ty>),
+    InitAdt(InitAdtDef, GenericArgs),
     InitTuple(Vec<Ty>),
 }
 
@@ -807,6 +807,11 @@ impl CoroutineDef {
 crate_def! {
     #[derive(Serialize)]
     pub CoroutineClosureDef;
+}
+
+crate_def! {
+    #[derive(Serialize)]
+    pub InitAdtDef;
 }
 
 crate_def! {

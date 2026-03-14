@@ -485,7 +485,7 @@ pub(crate) fn encode_ty<'tcx>(
             typeid.push_str(&s);
         }
 
-        ty::InitStruct(..) => todo!(),
+        ty::InitAdt(..) => todo!(),
 
         // User-defined types
         ty::Adt(adt_def, args) => {

@@ -10,8 +10,8 @@ use rustc_errors::{DiagArgValue, IntoDiagArg};
 use rustc_hir::def_id::DefId;
 use rustc_macros::{HashStable, TyDecodable, TyEncodable, extension};
 use rustc_serialize::{Decodable, Encodable};
-use rustc_type_ir::WithCachedTypeInfo;
 use rustc_type_ir::walk::TypeWalker;
+use rustc_type_ir::{InitAdtArgs, WithCachedTypeInfo};
 use smallvec::SmallVec;
 
 use crate::ty::codec::{TyDecoder, TyEncoder};
@@ -123,6 +123,21 @@ impl<'tcx> rustc_type_ir::inherent::GenericArgs<TyCtxt<'tcx>> for ty::GenericArg
                 }
             }
             _ => bug!("coroutine args missing synthetics"),
+        }
+    }
+
+    fn split_init_adt_args(self) -> ty::InitAdtArgsParts<TyCtxt<'tcx>> {
+        match self[..] {
+            [dst_ty, dst_vidx, pinned, field_initializer_args, tupled_field_initializers_ty] => {
+                ty::InitAdtArgsParts {
+                    dst_ty: dst_ty.expect_ty(),
+                    dst_vidx: dst_vidx.expect_const(),
+                    pinned: pinned.expect_const(),
+                    field_initializer_args: field_initializer_args.expect_ty(),
+                    tupled_field_initializers_ty: tupled_field_initializers_ty.expect_ty(),
+                }
+            }
+            _ => bug!("InitAdt args missing synthetics"),
         }
     }
 }
@@ -412,6 +427,14 @@ impl<'tcx> GenericArgs<'tcx> {
     /// see `ty::CoroutineArgs` struct for more comments.
     pub fn as_coroutine(&'tcx self) -> CoroutineArgs<TyCtxt<'tcx>> {
         CoroutineArgs { args: self }
+    }
+
+    /// Interpret these generic args as the args of a `do init struct` type.
+    /// InitAdt args have a particular structure controlled by the
+    /// compiler that encodes information like the field initialization order
+    /// and arguments; see `ty::InitAdtArgs` struct for more comments.
+    pub fn as_init_adt(&'tcx self) -> InitAdtArgs<TyCtxt<'tcx>> {
+        InitAdtArgs { args: self }
     }
 
     /// Interpret these generic args as the args of an inline const.

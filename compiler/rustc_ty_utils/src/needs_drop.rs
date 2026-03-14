@@ -242,6 +242,12 @@ where
                         }
                     }
 
+                    ty::InitAdt(_, args) => {
+                        for upvar in args.as_init_adt().field_initializer_tys() {
+                            queue_type(self, upvar);
+                        }
+                    }
+
                     // Check for a `Drop` impl and whether this is a union or
                     // `ManuallyDrop`. If it's a struct or enum without a `Drop`
                     // impl then check whether the field types need `Drop`.
@@ -296,7 +302,6 @@ where
                     | ty::InitArray(..)
                     | ty::InitArrayRepeat(..)
                     | ty::InitSliceRepeat(..)
-                    | ty::InitStruct(..)
                     | ty::InitTuple(..)
                     | ty::Bound(..)
                     | ty::Never

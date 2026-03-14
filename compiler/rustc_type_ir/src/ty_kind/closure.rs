@@ -103,22 +103,6 @@ use crate::{self as ty, Interner};
 ///   `yield` inside the coroutine.
 /// * `GR`: The "return type", which is the type of value returned upon
 ///   completion of the coroutine.
-///
-/// ## `do init` Expressions
-///
-/// InitExpressions are handled similarly in `InitExpressionArgs`.
-/// TODO: docs
-/// The set of
-/// type parameters is similar, but `CK` and `CS` are replaced by the
-/// following type parameters:
-///
-/// * `GS`: The coroutine's "resume type", which is the type of the
-///   argument passed to `resume`, and the type of `yield` expressions
-///   inside the coroutine.
-/// * `GY`: The "yield type", which is the type of values passed to
-///   `yield` inside the coroutine.
-/// * `GR`: The "return type", which is the type of value returned upon
-///   completion of the coroutine.
 #[derive_where(Clone, Copy, PartialEq, Hash, Debug; I: Interner)]
 #[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
 pub struct ClosureArgs<I: Interner> {
@@ -343,6 +327,98 @@ impl<I: Interner> CoroutineClosureArgs<I> {
             ty::Error(_) => true,
             _ => panic!(),
         }
+    }
+}
+
+/// A `do init struct` type can be modeled as a struct that looks like:
+/// ```ignore (illustrative)
+/// struct InitAdt<DST, const DST_VIDX: usize, const PINNED: bool, A, U>(...U);
+/// ```
+/// where:
+///
+/// - `DST` is the type being initialized
+/// - `DST_VIDX` is the index of the variant being initialized
+/// - `PINNED` is `true` if the initializer has any explicitly pinned fields.
+/// - `A` is a type parameter representing the field initialization order and arguments
+/// - `U` is a type parameter representing the types of its field initializers, tupled up.
+///
+/// So, for example, given this initializer:
+/// ```ignore (illustrative)
+/// do init struct Option::Some { 0: 42u32 }
+/// ```
+/// the type of the closure would be something like:
+/// ```ignore (illustrative)
+/// struct InitAdt<Option<u32>, 1, ((),), (u32,)>(...U);
+/// ```
+/// * `DST`: the type of the initializee.
+/// * `DST_VIDX`: a `usize` constant that is the index of the variant being initialized.
+/// * `P`: Is the initializer declared as pinned?  This
+///   is rather hackily encoded via a scalar type. See
+///   `Ty::to_opt_init_adt_pinnedness` for details.
+/// * `A`: The
+#[derive_where(Clone, Copy, PartialEq, Hash, Debug; I: Interner)]
+#[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
+pub struct InitAdtArgs<I: Interner> {
+    pub args: I::GenericArgs,
+}
+
+impl<I: Interner> Eq for InitAdtArgs<I> {}
+
+/// See docs for explanation of how each argument is used.
+///
+/// See [`InitAdtSignature`] for how these arguments are put together
+/// to make a callable [`ty::FnSig`] suitable for typeck and borrowck.
+pub struct InitAdtArgsParts<I: Interner> {
+    /// The initializee type.
+    pub dst_ty: I::Ty,
+    /// The initializee variant index.
+    pub dst_vidx: I::Const,
+    /// The pinnedness.
+    pub pinned: I::Const,
+    /// Represents the field initialization order and argument types.
+    ///
+    /// Use `coroutine_closure_sig` to break up this type rather than using it
+    /// yourself.
+    pub field_initializer_args: I::Ty,
+    /// The field initializer types, tupled up.
+    pub tupled_field_initializers_ty: I::Ty,
+}
+
+impl<I: Interner> InitAdtArgs<I> {
+    pub fn new(cx: I, parts: InitAdtArgsParts<I>) -> InitAdtArgs<I> {
+        InitAdtArgs {
+            args: cx.mk_args_from_iter(
+                [
+                    I::GenericArg::from(parts.dst_ty),
+                    parts.dst_vidx.into(),
+                    parts.pinned.into(),
+                    parts.field_initializer_args.into(),
+                    parts.tupled_field_initializers_ty.into(),
+                ]
+                .into_iter(),
+            ),
+        }
+    }
+
+    pub fn split(self) -> InitAdtArgsParts<I> {
+        self.args.split_init_adt_args()
+    }
+
+    #[inline]
+    pub fn field_initializer_tys(self) -> I::Tys {
+        match self.tupled_field_initializers_ty().kind() {
+            ty::Error(_) => Default::default(),
+            ty::Tuple(..) => self.tupled_field_initializers_ty().tuple_fields(),
+            ty::Infer(_) => panic!("tupled_field_initializers_ty called before types are inferred"),
+            ty => {
+                panic!("Unexpected representation of tupled_field_initializers_ty tuple {:?}", ty)
+            }
+        }
+    }
+
+    #[inline]
+    pub fn tupled_field_initializers_ty(self) -> I::Ty {
+        self.split().tupled_field_initializers_ty
     }
 }
 

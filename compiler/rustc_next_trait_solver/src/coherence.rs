@@ -441,7 +441,7 @@ where
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
-            | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..) => {
+            | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitAdt(..) | ty::InitTuple(..) => {
                 unreachable!("unnameable type in coherence: {ty:?}");
             }
         };

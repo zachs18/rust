@@ -1809,7 +1809,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(_)
@@ -1852,7 +1852,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Array(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
-            | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitStruct(..) | ty::InitTuple(..)
+            | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitAdt(..) | ty::InitTuple(..)
             | ty::Never
             | ty::Error(_)
             // Extern types have metadata = ().
@@ -1935,7 +1935,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never => ty::List::empty(),
 
@@ -2141,7 +2141,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
@@ -2245,7 +2245,7 @@ impl<'tcx> Ty<'tcx> {
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..) => false,
 
             ty::UnsafeBinder(_) => false,
@@ -2309,7 +2309,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Alias(..)
             | ty::Error(_) => false,

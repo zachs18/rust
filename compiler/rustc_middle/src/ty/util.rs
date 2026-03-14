@@ -425,7 +425,7 @@ impl<'tcx> TyCtxt<'tcx> {
                 | ty::InitArray(..)
                 | ty::InitArrayRepeat(..)
                 | ty::InitSliceRepeat(..)
-                | ty::InitStruct(..)
+                | ty::InitAdt(..)
                 | ty::InitTuple(..)
                 | ty::Closure(..)
                 | ty::Coroutine(..)
@@ -1404,7 +1404,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::UnsafeBinder(_)
             | ty::Infer(_)
@@ -1461,7 +1461,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::UnsafeBinder(_)
             | ty::Infer(_)
@@ -1523,7 +1523,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Infer(_)
             | ty::Alias(..)
@@ -1707,7 +1707,7 @@ impl<'tcx> Ty<'tcx> {
             ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..) => false,
 
             ty::Foreign(_) | ty::CoroutineWitness(..) | ty::Error(_) | ty::UnsafeBinder(_) => false,
@@ -1819,12 +1819,6 @@ pub fn needs_drop_components_with_async<'tcx>(
         }),
         ty::InitArrayRepeat(elem, _size) => needs_drop_components_with_async(tcx, elem, asyncness),
         ty::InitSliceRepeat(elem) => needs_drop_components_with_async(tcx, elem, asyncness),
-        ty::InitStruct(_for_adt, _vidx, fields) => {
-            fields.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
-                acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
-                Ok(acc)
-            })
-        }
         ty::InitTuple(elems) => elems.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
             acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
             Ok(acc)
@@ -1841,6 +1835,7 @@ pub fn needs_drop_components_with_async<'tcx>(
         | ty::CoroutineClosure(..)
         | ty::Coroutine(..)
         | ty::CoroutineWitness(..)
+        | ty::InitAdt(..)
         | ty::UnsafeBinder(_) => Ok(smallvec![ty]),
     }
 }

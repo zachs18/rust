@@ -475,7 +475,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..) => PathElem::TupleLikeElem(field),
 
-            ty::InitStruct(..) => todo!(),
+            ty::InitAdt(..) => todo!(),
 
             // enums
             ty::Adt(def, ..) if def.is_enum() => {
@@ -1095,7 +1095,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..) => interp_ok(false),

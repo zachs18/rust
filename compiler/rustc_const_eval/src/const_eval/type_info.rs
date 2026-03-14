@@ -213,7 +213,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         | ty::InitArray(..)
                         | ty::InitArrayRepeat(..)
                         | ty::InitSliceRepeat(..)
-                        | ty::InitStruct(..)
+                        | ty::InitAdt(..)
                         | ty::InitTuple(..)
                         | ty::Never
                         | ty::Alias(..)

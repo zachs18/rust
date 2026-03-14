@@ -894,7 +894,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::Tuple(..) => {

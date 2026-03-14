@@ -200,11 +200,9 @@ impl RustcInternal for RigidTy {
             RigidTy::InitSliceRepeat(elem) => {
                 rustc_ty::TyKind::InitSliceRepeat(elem.internal(tables, tcx))
             }
-            RigidTy::InitStruct(adt, vidx, fields) => rustc_ty::TyKind::InitStruct(
-                adt.internal(tables, tcx),
-                *vidx as u32,
-                tcx.mk_type_list(&fields.internal(tables, tcx)),
-            ),
+            RigidTy::InitAdt(def, args) => {
+                rustc_ty::TyKind::InitAdt(def.0.internal(tables, tcx), args.internal(tables, tcx))
+            }
             RigidTy::InitTuple(elems) => {
                 rustc_ty::TyKind::InitTuple(tcx.mk_type_list(&elems.internal(tables, tcx)))
             }

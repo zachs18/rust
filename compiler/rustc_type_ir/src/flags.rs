@@ -253,7 +253,8 @@ impl<I: Interner> FlagComputation<I> {
 
             ty::Closure(_, args)
             | ty::CoroutineClosure(_, args)
-            | ty::CoroutineWitness(_, args) => {
+            | ty::CoroutineWitness(_, args)
+            | ty::InitAdt(_, args) => {
                 self.add_args(args.as_slice());
             }
 
@@ -362,11 +363,6 @@ impl<I: Interner> FlagComputation<I> {
 
             ty::InitSliceRepeat(ty) => {
                 self.add_ty(ty);
-            }
-
-            ty::InitStruct(adt_ty, _variant_idx, field_tys) => {
-                self.add_ty(adt_ty);
-                self.add_tys(field_tys);
             }
 
             ty::InitTuple(types) => {

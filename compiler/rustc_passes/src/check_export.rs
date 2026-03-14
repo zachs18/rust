@@ -311,7 +311,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for ExportableItemsChecker<'tcx, 'a> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Never
             | ty::UnsafeBinder(_)

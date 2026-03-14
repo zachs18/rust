@@ -232,7 +232,7 @@ pub(crate) fn orphan_check_impl(
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitStruct(..)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::Bound(..)
             | ty::Placeholder(..)

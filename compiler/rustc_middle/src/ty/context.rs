@@ -1925,7 +1925,7 @@ impl<'tcx> TyCtxt<'tcx> {
                 InitArray,
                 InitArrayRepeat,
                 InitSliceRepeat,
-                InitStruct,
+                InitAdt,
                 InitTuple
             )?;
 
