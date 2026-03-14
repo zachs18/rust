@@ -1670,38 +1670,72 @@ impl<'tcx> InitShimBuilder<'tcx> {
         let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
             self.extra;
 
+        if init_elem_tys.is_empty() {
+            // If there are no elements, then drop Arg, and return `Ok(())`.
+
+            // Drop Arg
+            let target = self.block_index_offset(1);
+            self.block(
+                vec![],
+                TerminatorKind::Drop {
+                    place: arg,
+                    target,
+                    // If there are no elements, then there's nothing to clean up if this unwinds
+                    unwind: UnwindAction::Continue,
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                false,
+            );
+
+            // Return `Ok(())`
+            let result_ty = return_place.ty(&self.local_decls, self.tcx).ty;
+            let ty::Adt(result_def, result_args) = result_ty.kind() else { unreachable!() };
+
+            let ok_unit = Rvalue::Aggregate(
+                Box::new(AggregateKind::Adt(
+                    result_def.did(),
+                    VariantIdx::ZERO,
+                    result_args,
+                    None,
+                    None,
+                )),
+                [Operand::Constant(Box::new(ConstOperand {
+                    span: self.span,
+                    user_ty: None,
+                    const_: Const::Val(ConstValue::ZeroSized, self.tcx.types.unit),
+                }))]
+                .into(),
+            );
+
+            let write_ok_unit_stmt =
+                self.make_statement(StatementKind::Assign(Box::new((return_place, ok_unit))));
+
+            self.block(vec![write_ok_unit_stmt], TerminatorKind::Return, false);
+            return;
+        }
+
         // bb0:
-        // _0 = Ok(())
-        // _dst_MU_ptr = &raw mut *dst_MU_ref;
-        // _dst_ptr = _dst_MU_ptr as *mut DST;
+        //  _arg_need_drop = true;
+        //  _dst_MU_ptr = &raw mut *dst_MU_ref;
+        //  _dst_ptr = _dst_MU_ptr as *mut DST;
+        //  goto -> bb1;
 
-        let result_ty = return_place.ty(&self.local_decls, self.tcx).ty;
-        let ty::Adt(result_def, result_args) = result_ty.kind() else { unreachable!() };
-
-        let ok_unit = Rvalue::Aggregate(
-            Box::new(AggregateKind::Adt(
-                result_def.did(),
-                VariantIdx::ZERO,
-                result_args,
-                None,
-                None,
+        // `arg_needs_drop` is (will be) used during cleanup and failure
+        let arg_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
+        let set_arg_needs_drop_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            arg_needs_drop,
+            Rvalue::Use(Operand::const_from_scalar(
+                self.tcx,
+                self.tcx.types.bool,
+                interpret::Scalar::from_bool(true),
+                self.span,
             )),
-            [Operand::Constant(Box::new(ConstOperand {
-                span: self.span,
-                user_ty: None,
-                const_: Const::Val(ConstValue::ZeroSized, self.tcx.types.unit),
-            }))]
-            .into(),
-        );
-
-        let write_ok_unit_stmt =
-            self.make_statement(StatementKind::Assign(Box::new((return_place, ok_unit))));
+        ))));
 
         let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
         let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
-        let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
-        let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
-
         // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
         let cast_mu_ref_to_mu_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
             dst_mu_ptr,
@@ -1710,6 +1744,9 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
             ),
         ))));
+
+        let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
+        let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
         let cast_mu_ptr_to_dst_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
             dst_ptr,
             Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
@@ -1717,7 +1754,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         let target = self.block_index_offset(1);
         self.block(
-            vec![write_ok_unit_stmt, cast_mu_ref_to_mu_ptr_stmt, cast_mu_ptr_to_dst_ptr_stmt],
+            vec![set_arg_needs_drop_stmt, cast_mu_ref_to_mu_ptr_stmt, cast_mu_ptr_to_dst_ptr_stmt],
             TerminatorKind::Goto { target },
             false,
         );
@@ -1754,11 +1791,26 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let target = self.block_index_offset(1);
             if field_idx + 1 == init_elem_tys.len() {
                 // Move out of arg
+                // FIXME: investigate if this can use StorageDead instead of a drop flag.
                 let move_stmt = self.make_statement(StatementKind::Assign(Box::new((
                     elem_arg,
                     Rvalue::Use(Operand::Move(arg)),
                 ))));
-                self.block(vec![move_stmt], TerminatorKind::Goto { target }, false);
+                let set_arg_needs_drop_stmt =
+                    self.make_statement(StatementKind::Assign(Box::new((
+                        arg_needs_drop,
+                        Rvalue::Use(Operand::const_from_scalar(
+                            self.tcx,
+                            self.tcx.types.bool,
+                            interpret::Scalar::from_bool(false),
+                            self.span,
+                        )),
+                    ))));
+                self.block(
+                    vec![move_stmt, set_arg_needs_drop_stmt],
+                    TerminatorKind::Goto { target },
+                    false,
+                );
             } else {
                 // Clone arg
                 self.make_clone_call(elem_arg, arg, arg_ty, target);
@@ -1841,26 +1893,49 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 },
                 false,
             );
-        }
 
-        if init_elem_tys.is_empty() {
-            // If there were no elements, drop Arg before returning.
-            let target = self.block_index_offset(1);
+            // Check if it succeeded
+            let fail_target = self.block_index_offset(1);
+            let continue_target = self.block_index_offset(2);
+            let result_discr = self.make_place(Mutability::Not, self.tcx.types.isize);
+            let get_result_discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                result_discr,
+                Rvalue::Discriminant(return_place),
+            ))));
             self.block(
-                vec![],
-                TerminatorKind::Drop {
-                    place: arg,
-                    target,
-                    // If there are no elements, then there's nothing to clean up if this unwinds
-                    unwind: UnwindAction::Continue,
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
+                vec![get_result_discr_stmt],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Move(result_discr),
+                    targets: SwitchTargets::static_if(0, continue_target, fail_target),
                 },
                 false,
             );
+
+            // Fail target
+            // FIXME: thread these back through the iterations to drop the already-initialized fields and then return.
+            self.block(
+                vec![],
+                TerminatorKind::Assert {
+                    cond: Operand::const_from_scalar(
+                        self.tcx,
+                        self.tcx.types.bool,
+                        interpret::Scalar::from_bool(false),
+                        self.span,
+                    ),
+                    expected: true,
+                    msg: Box::new(AssertKind::NullPointerDereference),
+                    target,
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::Abi),
+                },
+                false,
+            );
+
+            // Continue target just goes to the first block produced by the next loop iteration,
+            // or the `return` after the loop.
         }
 
+        // All the initializations succeeded and `Arg` was moved, so there's no drops to do.
+        // return
         self.block(vec![], TerminatorKind::Return, false);
     }
 
