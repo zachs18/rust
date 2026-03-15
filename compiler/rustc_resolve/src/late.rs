@@ -5124,7 +5124,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 visit::walk_expr(self, expr);
             }
 
-            ExprKind::Struct(ref se) => {
+            ExprKind::Struct(ref se) | ExprKind::InitStruct(ref se) => {
                 self.smart_resolve_path(expr.id, &se.qself, &se.path, PathSource::Struct(parent));
                 // This is the same as `visit::walk_expr(self, expr);`, but we want to pass the
                 // parent in for accurate suggestions when encountering `Foo { bar }` that should

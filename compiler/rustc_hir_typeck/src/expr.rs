@@ -45,9 +45,9 @@ use crate::coercion::CoerceMany;
 use crate::errors::{
     AddressOfTemporaryTaken, BaseExpressionDoubleDot, BaseExpressionDoubleDotAddExpr,
     BaseExpressionDoubleDotRemove, CantDereference, FieldMultiplySpecifiedInInitializer,
-    FunctionalRecordUpdateOnNonStruct, HelpUseLatestEdition, NakedAsmOutsideNakedFn,
-    NoFieldOnVariant, ReturnLikeStatementKind, ReturnStmtOutsideOfFnBody, StructExprNonExhaustive,
-    TypeMismatchFruTypo, YieldExprOutsideOfCoroutine,
+    FunctionalRecordUpdateOnNonStruct, HelpUseLatestEdition, InitStructExprNonExhaustive,
+    NakedAsmOutsideNakedFn, NoFieldOnVariant, ReturnLikeStatementKind, ReturnStmtOutsideOfFnBody,
+    StructExprNonExhaustive, TypeMismatchFruTypo, YieldExprOutsideOfCoroutine,
 };
 use crate::op::contains_let_in_chain;
 use crate::{
@@ -2749,9 +2749,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         fields: &'tcx [hir::ExprField<'tcx>],
         base_expr: &'tcx hir::StructTailExpr<'tcx>,
     ) -> Ty<'tcx> {
-        if true {
-            todo!()
-        }
         // Find the relevant variant
         let (variant, adt_ty) = match self.check_struct_path(qpath, expr.hir_id) {
             Ok(data) => data,
@@ -2764,8 +2761,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         // Prohibit `do init struct` expressions when non-exhaustive flag is set.
         let adt = adt_ty.ty_adt_def().expect("`check_struct_path` returned non-ADT type");
         if variant.field_list_has_applicable_non_exhaustive() {
-            self.dcx()
-                .emit_err(StructExprNonExhaustive { span: expr.span, what: adt.variant_descr() });
+            self.dcx().emit_err(InitStructExprNonExhaustive {
+                span: expr.span,
+                what: adt.variant_descr(),
+            });
         }
 
         let init_adt_ty = self.check_expr_init_struct_fields(
