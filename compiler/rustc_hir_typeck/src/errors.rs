@@ -123,6 +123,14 @@ pub(crate) struct StructExprNonExhaustive {
 }
 
 #[derive(Diagnostic)]
+#[diag("cannot initialize non-exhaustive {$what} using `do init struct` expression", code = E0639)]
+pub(crate) struct InitStructExprNonExhaustive {
+    #[primary_span]
+    pub span: Span,
+    pub what: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag("functional record update syntax requires a struct", code = E0436)]
 pub(crate) struct FunctionalRecordUpdateOnNonStruct {
     #[primary_span]
