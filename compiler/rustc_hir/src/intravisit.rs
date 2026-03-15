@@ -847,6 +847,16 @@ pub fn walk_expr<'v, V: Visitor<'v>>(visitor: &mut V, expression: &'v Expr<'v>) 
                 | StructTailExpr::DefaultFields(_) => {}
             }
         }
+        ExprKind::InitStruct(ref qpath, fields, ref optional_base) => {
+            try_visit!(visitor.visit_qpath(qpath, *hir_id, *span));
+            walk_list!(visitor, visit_expr_field, fields);
+            match optional_base {
+                StructTailExpr::Base(base) => try_visit!(visitor.visit_expr(base)),
+                StructTailExpr::None
+                | StructTailExpr::NoneWithError(_)
+                | StructTailExpr::DefaultFields(_) => {}
+            }
+        }
         ExprKind::Tup(subexpressions) => {
             walk_list!(visitor, visit_expr, subexpressions);
         }
@@ -971,10 +981,6 @@ pub fn walk_expr<'v, V: Visitor<'v>>(visitor: &mut V, expression: &'v Expr<'v>) 
         ExprKind::InitSliceRepeat(ref element, ref count) => {
             try_visit!(visitor.visit_expr(element));
             try_visit!(visitor.visit_expr(count));
-        }
-        ExprKind::InitStruct(qpath, fields) => {
-            try_visit!(visitor.visit_qpath(qpath, *hir_id, *span));
-            walk_list!(visitor, visit_expr_field, fields);
         }
     }
     V::Result::output()

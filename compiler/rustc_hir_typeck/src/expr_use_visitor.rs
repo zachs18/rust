@@ -439,8 +439,9 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                 self.walk_struct_expr(fields, opt_with)?;
             }
 
-            hir::ExprKind::InitStruct(_, fields) => {
-                self.walk_struct_expr(fields, &hir::StructTailExpr::None)?;
+            hir::ExprKind::InitStruct(_, fields, ref opt_with) => {
+                tracing::warn!("FIXME(in_place_init): does this need to do something different?");
+                self.walk_struct_expr(fields, opt_with)?;
             }
 
             hir::ExprKind::PtrMetadata(_, fields, ref opt_with) => {
