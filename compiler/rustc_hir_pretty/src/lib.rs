@@ -1622,10 +1622,10 @@ impl<'a> State<'a> {
             hir::ExprKind::Struct(qpath, fields, wth) => {
                 self.print_expr_struct(qpath, fields, wth);
             }
-            hir::ExprKind::InitStruct(qpath, fields) => {
+            hir::ExprKind::InitStruct(qpath, fields, wth) => {
                 self.word("do init struct");
                 self.space();
-                self.print_expr_struct(qpath, fields, rustc_hir::StructTailExpr::None);
+                self.print_expr_struct(qpath, fields, wth);
             }
             hir::ExprKind::PtrMetadata(pointee_ty, fields, wth) => {
                 self.print_expr_ptr_metadata(pointee_ty, fields, wth);
