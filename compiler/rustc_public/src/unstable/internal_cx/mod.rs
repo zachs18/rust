@@ -93,4 +93,22 @@ impl<'tcx> InternalCx<'tcx> for TyCtxt<'tcx> {
     fn adt_def(self, def_id: rustc_hir::def_id::DefId) -> ty::AdtDef<'tcx> {
         self.adt_def(def_id)
     }
+
+    fn mk_init_adt_info(self, v: ty::InitAdtInfoData<'tcx>) -> ty::InitAdtInfo<'tcx> {
+        self.mk_init_adt_info(v)
+    }
+
+    fn mk_init_adt_component_info_list(
+        self,
+        v: &[ty::InitAdtComponentInfo<'tcx>],
+    ) -> &'tcx List<ty::InitAdtComponentInfo<'tcx>> {
+        self.mk_init_adt_component_info_list(v)
+    }
+
+    fn mk_init_adt_component_arg_list(
+        self,
+        v: &[ty::InitAdtComponentArg],
+    ) -> &'tcx List<ty::InitAdtComponentArg> {
+        self.mk_init_adt_component_arg_list(v)
+    }
 }

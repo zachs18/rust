@@ -1267,7 +1267,8 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
-            | ty::InitTuple(..) => {
+            | ty::InitTuple(..)
+            | ty::InitAdt(..) => {
                 candidates.vec.push(BuiltinCandidate);
             }
 
@@ -1322,17 +1323,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 let resolved_upvars =
                     self.infcx.shallow_resolve(args.as_closure().tupled_upvars_ty());
                 if resolved_upvars.is_ty_var() {
-                    // Not yet resolved.
-                    candidates.ambiguous = true;
-                } else {
-                    candidates.vec.push(BuiltinCandidate);
-                }
-            }
-
-            ty::InitAdt(_, args) => {
-                let resolved_field_initializers =
-                    self.infcx.shallow_resolve(args.as_init_adt().tupled_field_initializers_ty());
-                if resolved_field_initializers.is_ty_var() {
                     // Not yet resolved.
                     candidates.ambiguous = true;
                 } else {

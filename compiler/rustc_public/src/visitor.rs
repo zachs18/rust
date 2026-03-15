@@ -5,7 +5,7 @@ use super::ty::{
     MirConst, Promoted, Region, RigidTy, TermKind, Ty, UnevaluatedConst,
 };
 use crate::Opaque;
-use crate::ty::TyConst;
+use crate::ty::{InitAdtInfo, TyConst};
 
 pub trait Visitor: Sized {
     type Break;
@@ -175,7 +175,6 @@ impl Visitable for RigidTy {
             | RigidTy::Coroutine(_, args)
             | RigidTy::CoroutineWitness(_, args)
             | RigidTy::CoroutineClosure(_, args)
-            | RigidTy::InitAdt(_, args)
             | RigidTy::FnDef(_, args) => args.visit(visitor),
             RigidTy::FnPtr(sig) => sig.visit(visitor),
             RigidTy::Dynamic(pred, r) => {
@@ -183,6 +182,7 @@ impl Visitable for RigidTy {
                 r.visit(visitor)
             }
             RigidTy::Tuple(fields) => fields.visit(visitor),
+            RigidTy::InitAdt(info) => info.visit(visitor),
             RigidTy::InitArray(fields) => fields.visit(visitor),
             RigidTy::InitArrayRepeat(elem, len) => {
                 elem.visit(visitor)?;
@@ -234,5 +234,17 @@ impl Visitable for TermKind {
 impl Visitable for FnSig {
     fn super_visit<V: Visitor>(&self, visitor: &mut V) -> ControlFlow<V::Break> {
         self.inputs_and_output.visit(visitor)
+    }
+}
+
+impl Visitable for InitAdtInfo {
+    fn super_visit<V: Visitor>(&self, visitor: &mut V) -> ControlFlow<V::Break> {
+        let Self { adt_ty, variant: _, component_tys, component_infos: _, pinned: _ } = self;
+        adt_ty.visit(visitor)?;
+        // `variant` is `VariantIdx` and contains no `Ty`/`Const`/`Region`s to visit.
+        component_tys.visit(visitor)?;
+        // `component_infos` is `InitAdtComponentInfo` and contains no `Ty`/`Const`/`Region`s, only `FieldIdx`s.
+        // `pinned` is `bool` and contains nothing to visit.
+        ControlFlow::Continue(())
     }
 }

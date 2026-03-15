@@ -16,8 +16,9 @@ use crate::mir::{BinOp, Mutability, Place, ProjectionElem, RawPtrKind, Safety, U
 use crate::ty::{
     Abi, AdtDef, Binder, BoundRegionKind, BoundTyKind, BoundVariableKind, ClosureKind,
     ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FloatTy, FnSig,
-    GenericArgKind, GenericArgs, IntTy, MirConst, Movability, Pattern, Region, RigidTy, Span,
-    TermKind, TraitRef, Ty, TyConst, UintTy, VariantDef, VariantIdx,
+    GenericArgKind, GenericArgs, InitAdtComponentArg, InitAdtComponentInfo, InitAdtInfo, IntTy,
+    MirConst, Movability, Pattern, Region, RigidTy, Span, TermKind, TraitRef, Ty, TyConst, UintTy,
+    VariantDef, VariantIdx,
 };
 use crate::unstable::{InternalCx, RustcInternal};
 use crate::{CrateItem, CrateNum, DefId, IndexedVal};
@@ -200,9 +201,7 @@ impl RustcInternal for RigidTy {
             RigidTy::InitSliceRepeat(elem) => {
                 rustc_ty::TyKind::InitSliceRepeat(elem.internal(tables, tcx))
             }
-            RigidTy::InitAdt(def, args) => {
-                rustc_ty::TyKind::InitAdt(def.0.internal(tables, tcx), args.internal(tables, tcx))
-            }
+            RigidTy::InitAdt(info) => rustc_ty::TyKind::InitAdt(info.internal(tables, tcx)),
             RigidTy::InitTuple(elems) => {
                 rustc_ty::TyKind::InitTuple(tcx.mk_type_list(&elems.internal(tables, tcx)))
             }
@@ -595,6 +594,62 @@ impl RustcInternal for AdtDef {
         tcx: impl InternalCx<'tcx>,
     ) -> Self::T<'tcx> {
         InternalCx::adt_def(tcx, self.0.internal(tables, tcx))
+    }
+}
+
+impl RustcInternal for InitAdtInfo {
+    type T<'tcx> = rustc_ty::InitAdtInfo<'tcx>;
+    fn internal<'tcx>(
+        &self,
+        tables: &mut Tables<'_, BridgeTys>,
+        tcx: impl InternalCx<'tcx>,
+    ) -> Self::T<'tcx> {
+        let Self { adt_ty, variant, component_tys, component_infos, pinned } = self;
+        tcx.mk_init_adt_info(rustc_ty::InitAdtInfoData {
+            adt_ty: adt_ty.internal(tables, tcx),
+            variant: variant.internal(tables, tcx),
+            component_tys: tcx.mk_type_list(&component_tys.internal(tables, tcx)),
+            component_infos: tcx
+                .mk_init_adt_component_info_list(&component_infos.internal(tables, tcx)),
+            pinned: *pinned,
+        })
+    }
+}
+
+impl RustcInternal for InitAdtComponentInfo {
+    type T<'tcx> = rustc_ty::InitAdtComponentInfo<'tcx>;
+    fn internal<'tcx>(
+        &self,
+        tables: &mut Tables<'_, BridgeTys>,
+        tcx: impl InternalCx<'tcx>,
+    ) -> Self::T<'tcx> {
+        let Self { field, args } = self;
+        rustc_ty::InitAdtComponentInfo {
+            field: field.map(rustc_abi::FieldIdx::from_usize),
+            args: tcx.mk_init_adt_component_arg_list(&args.internal(tables, tcx)),
+        }
+    }
+}
+
+impl RustcInternal for InitAdtComponentArg {
+    type T<'tcx> = rustc_ty::InitAdtComponentArg;
+    fn internal<'tcx>(
+        &self,
+        _tables: &mut Tables<'_, BridgeTys>,
+        _tcx: impl InternalCx<'tcx>,
+    ) -> Self::T<'tcx> {
+        match *self {
+            InitAdtComponentArg::Arg => rustc_ty::InitAdtComponentArg::Arg,
+            InitAdtComponentArg::Ref(idx) => {
+                rustc_ty::InitAdtComponentArg::Ref(rustc_abi::FieldIdx::from_usize(idx))
+            }
+            InitAdtComponentArg::PinRef(idx) => {
+                rustc_ty::InitAdtComponentArg::PinRef(rustc_abi::FieldIdx::from_usize(idx))
+            }
+            InitAdtComponentArg::Ptr(idx) => {
+                rustc_ty::InitAdtComponentArg::Ptr(rustc_abi::FieldIdx::from_usize(idx))
+            }
+        }
     }
 }
 

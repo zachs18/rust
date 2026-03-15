@@ -243,6 +243,12 @@ pub trait Abi<I: Interner<Abi = Self>>: Copy + Debug + Hash + Eq {
     fn is_rust(self) -> bool;
 }
 
+pub trait InitAdtInfo<I: Interner<InitAdtInfo = Self>>: Copy + Debug + Hash + Eq {
+    fn adt_ty(self) -> I::Ty;
+
+    fn component_tys(self) -> I::Tys;
+}
+
 pub trait Safety<I: Interner<Safety = Self>>: Copy + Debug + Hash + Eq {
     fn safe() -> Self;
 
@@ -461,7 +467,6 @@ pub trait GenericArgs<I: Interner<GenericArgs = Self>>:
     fn split_closure_args(self) -> ty::ClosureArgsParts<I>;
     fn split_coroutine_closure_args(self) -> ty::CoroutineClosureArgsParts<I>;
     fn split_coroutine_args(self) -> ty::CoroutineArgsParts<I>;
-    fn split_init_adt_args(self) -> ty::InitAdtArgsParts<I>;
 
     fn as_closure(self) -> ty::ClosureArgs<I> {
         ty::ClosureArgs { args: self }
@@ -471,10 +476,6 @@ pub trait GenericArgs<I: Interner<GenericArgs = Self>>:
     }
     fn as_coroutine(self) -> ty::CoroutineArgs<I> {
         ty::CoroutineArgs { args: self }
-    }
-
-    fn as_init_adt(self) -> ty::InitAdtArgs<I> {
-        ty::InitAdtArgs { args: self }
     }
 }
 

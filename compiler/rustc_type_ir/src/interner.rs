@@ -52,7 +52,6 @@ pub trait Interner:
     type CoroutineClosureId: SpecificDefId<Self>;
     type CoroutineId: SpecificDefId<Self>;
     type AdtId: SpecificDefId<Self>;
-    type InitAdtId: SpecificDefId<Self>;
     type ImplId: SpecificDefId<Self>;
     type UnevaluatedConstId: SpecificDefId<Self>;
     type Span: Span<Self>;
@@ -148,6 +147,8 @@ pub trait Interner:
         + SliceLike<Item = Self::Pat>;
     type Safety: Safety<Self>;
     type Abi: Abi<Self>;
+    type InitAdtInfo: InitAdtInfo<Self>;
+    type InitAdtInfoData;
 
     // Kinds of consts
     type Const: Const<Self>;
@@ -242,6 +243,8 @@ pub trait Interner:
     where
         I: Iterator<Item = T>,
         T: CollectAndApply<Self::Ty, Self::Tys>;
+
+    fn mk_init_adt_info(self, data: Self::InitAdtInfoData) -> Self::InitAdtInfo;
 
     fn parent(self, def_id: Self::DefId) -> Self::DefId;
 

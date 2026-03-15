@@ -242,10 +242,8 @@ where
                         }
                     }
 
-                    ty::InitAdt(_, args) => {
-                        for upvar in args.as_init_adt().field_initializer_tys() {
-                            queue_type(self, upvar);
-                        }
+                    ty::InitAdt(_info) => {
+                        todo!()
                     }
 
                     // Check for a `Drop` impl and whether this is a union or

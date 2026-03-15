@@ -2304,8 +2304,8 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 ty::Binder::dummy(vec![elem])
             }
 
-            ty::InitAdt(_, args) => {
-                ty::Binder::dummy(args.as_init_adt().field_initializer_tys().to_vec())
+            ty::InitAdt(_info) => {
+                todo!()
             }
 
             ty::Coroutine(def_id, args) => match self.tcx().coroutine_movability(def_id) {
@@ -2440,10 +2440,8 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 ty::Binder::dummy(AutoImplConstituents { types: vec![elem], assumptions: vec![] })
             }
 
-            ty::InitAdt(_, args) => {
-                let ty =
-                    self.infcx.shallow_resolve(args.as_init_adt().tupled_field_initializers_ty());
-                ty::Binder::dummy(AutoImplConstituents { types: vec![ty], assumptions: vec![] })
+            ty::InitAdt(_info) => {
+                todo!()
             }
 
             ty::Tuple(tys) => {

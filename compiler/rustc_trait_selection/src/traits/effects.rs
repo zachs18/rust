@@ -385,8 +385,8 @@ fn evaluate_host_effect_for_copy_clone_goal<'tcx>(
             Ok(ty::Binder::dummy(vec![elem]))
         }
         // impl Copy/Clone for Closure where Self::TupledFieldInitializers: Copy/Clone
-        ty::InitAdt(_, args) => {
-            Ok(ty::Binder::dummy(vec![args.as_init_adt().tupled_field_initializers_ty()]))
+        ty::InitAdt(_info) => {
+            todo!()
         }
 
         // impl Copy/Clone for Closure where Self::TupledUpvars: Copy/Clone

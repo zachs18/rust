@@ -2292,6 +2292,64 @@ pub struct DestructuredAdtConst<'tcx> {
     pub fields: &'tcx [ty::Const<'tcx>],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, HashStable)]
+#[derive(TypeFoldable, TypeVisitable)]
+pub enum InitAdtComponentArg {
+    Arg,
+    Ref(FieldIdx),
+    PinRef(FieldIdx),
+    Ptr(FieldIdx),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, HashStable)]
+#[derive(TypeFoldable, TypeVisitable)]
+pub struct InitAdtComponentInfo<'tcx> {
+    pub field: Option<FieldIdx>,
+    pub args: &'tcx List<InitAdtComponentArg>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, HashStable)]
+#[derive(TypeFoldable, TypeVisitable)]
+pub struct InitAdtInfoData<'tcx> {
+    pub adt_ty: Ty<'tcx>,
+    pub variant: VariantIdx,
+    pub component_tys: &'tcx List<Ty<'tcx>>,
+    pub component_infos: &'tcx List<InitAdtComponentInfo<'tcx>>,
+    pub pinned: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, HashStable)]
+#[rustc_pass_by_value]
+pub struct InitAdtInfo<'tcx>(pub Interned<'tcx, InitAdtInfoData<'tcx>>);
+
+impl<'tcx> std::ops::Deref for InitAdtInfo<'tcx> {
+    type Target = InitAdtInfoData<'tcx>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'tcx> TypeVisitable<TyCtxt<'tcx>> for InitAdtInfo<'tcx> {
+    fn visit_with<V: TypeVisitor<TyCtxt<'tcx>>>(&self, visitor: &mut V) -> V::Result {
+        self.0.visit_with(visitor)
+    }
+}
+
+impl<'tcx> TypeFoldable<TyCtxt<'tcx>> for InitAdtInfo<'tcx> {
+    fn try_fold_with<F: FallibleTypeFolder<TyCtxt<'tcx>>>(
+        self,
+        folder: &mut F,
+    ) -> Result<Self, F::Error> {
+        let cx = folder.cx();
+        Ok(cx.mk_init_adt_info(self.0.try_fold_with(folder)?))
+    }
+
+    fn fold_with<F: TypeFolder<TyCtxt<'tcx>>>(self, folder: &mut F) -> Self {
+        let cx = folder.cx();
+        cx.mk_init_adt_info(self.0.fold_with(folder))
+    }
+}
+
 /// Generate TypeTree information for autodiff.
 /// This function creates TypeTree metadata that describes the memory layout
 /// of function parameters and return types for Enzyme autodiff.

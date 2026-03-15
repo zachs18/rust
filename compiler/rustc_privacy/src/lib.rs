@@ -185,7 +185,6 @@ where
             ty::Adt(ty::AdtDef(Interned(&ty::AdtDefData { did: def_id, .. }, _)), ..)
             | ty::Foreign(def_id)
             | ty::FnDef(def_id, ..)
-            | ty::InitAdt(def_id, ..)
             | ty::Closure(def_id, ..)
             | ty::CoroutineClosure(def_id, ..)
             | ty::Coroutine(def_id, ..) => {
@@ -299,6 +298,7 @@ where
             | ty::Ref(..)
             | ty::UntypedPtr { .. }
             | ty::PtrMetadata(..)
+            | ty::InitAdt(..)
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
