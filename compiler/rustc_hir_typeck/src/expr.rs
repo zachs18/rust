@@ -429,7 +429,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             ExprKind::InitSliceRepeat(element, count) => {
                 self.check_expr_init_slice_repeat(element, count, expected, expr)
             }
-            ExprKind::InitStruct(..) => todo!(),
+            ExprKind::InitStruct(qpath, fields, ref base_expr) => {
+                self.check_expr_init_struct(expr, expected, qpath, fields, base_expr)
+            }
             ExprKind::InitTuple(elts) => self.check_expr_init_tuple(elts, expected, expr),
             ExprKind::Err(guar) => Ty::new_error(tcx, guar),
         }
@@ -2737,6 +2739,447 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 }
             }
         }
+    }
+
+    fn check_expr_init_struct(
+        &self,
+        expr: &hir::Expr<'tcx>,
+        expected: Expectation<'tcx>,
+        qpath: &'tcx QPath<'tcx>,
+        fields: &'tcx [hir::ExprField<'tcx>],
+        base_expr: &'tcx hir::StructTailExpr<'tcx>,
+    ) -> Ty<'tcx> {
+        if true {
+            todo!()
+        }
+        // Find the relevant variant
+        let (variant, adt_ty) = match self.check_struct_path(qpath, expr.hir_id) {
+            Ok(data) => data,
+            Err(guar) => {
+                self.check_struct_fields_on_error(fields, base_expr);
+                return Ty::new_error(self.tcx, guar);
+            }
+        };
+
+        // Prohibit `do init struct` expressions when non-exhaustive flag is set.
+        let adt = adt_ty.ty_adt_def().expect("`check_struct_path` returned non-ADT type");
+        if variant.field_list_has_applicable_non_exhaustive() {
+            self.dcx()
+                .emit_err(StructExprNonExhaustive { span: expr.span, what: adt.variant_descr() });
+        }
+
+        let init_adt_ty = self.check_expr_init_struct_fields(
+            adt_ty,
+            expected,
+            expr,
+            qpath.span(),
+            variant,
+            fields,
+            base_expr,
+        );
+
+        self.require_type_is_sized(init_adt_ty, expr.span, ObligationCauseCode::InitElem);
+        adt_ty
+    }
+
+    fn check_expr_init_struct_fields(
+        &self,
+        adt_ty: Ty<'tcx>,
+        expected: Expectation<'tcx>,
+        expr: &hir::Expr<'_>,
+        path_span: Span,
+        variant: &'tcx ty::VariantDef,
+        hir_fields: &'tcx [hir::ExprField<'tcx>],
+        base_expr: &'tcx hir::StructTailExpr<'tcx>,
+    ) -> Ty<'tcx> {
+        let tcx = self.tcx;
+
+        let adt_ty = self.try_structurally_resolve_type(path_span, adt_ty);
+        let adt_ty_hint = expected.only_has_type(self).and_then(|expected| {
+            self.fudge_inference_if_ok(|| {
+                let ocx = ObligationCtxt::new(self);
+                ocx.sup(&self.misc(path_span), self.param_env, expected, adt_ty)?;
+                if !ocx.try_evaluate_obligations().is_empty() {
+                    return Err(TypeError::Mismatch);
+                }
+                Ok(self.resolve_vars_if_possible(adt_ty))
+            })
+            .ok()
+        });
+        if let Some(adt_ty_hint) = adt_ty_hint {
+            // re-link the variables that the fudging above can create.
+            self.demand_eqtype(path_span, adt_ty_hint, adt_ty);
+        }
+
+        let ty::Adt(adt, args) = adt_ty.kind() else {
+            span_bug!(path_span, "non-ADT passed to check_expr_struct_fields");
+        };
+        let adt_kind = adt.adt_kind();
+
+        let mut remaining_fields = variant
+            .fields
+            .iter_enumerated()
+            .map(|(i, field)| (field.ident(tcx).normalize_to_macros_2_0(), (i, field)))
+            .collect::<UnordMap<_, _>>();
+
+        let mut seen_fields = FxHashMap::default();
+
+        let mut error_happened = None;
+
+        if variant.fields.len() != remaining_fields.len() {
+            // Some field is defined more than once. Make sure we don't try to
+            // instantiate this struct in static/const context.
+            let guar =
+                self.dcx().span_delayed_bug(expr.span, "struct fields have non-unique names");
+            self.set_tainted_by_errors(guar);
+            error_happened = Some(guar);
+        }
+
+        // Type-check each field.
+        for (idx, field) in hir_fields.iter().enumerate() {
+            let ident = tcx.adjust_ident(field.ident, variant.def_id);
+            let field_type = if let Some((i, v_field)) = remaining_fields.remove(&ident) {
+                seen_fields.insert(ident, field.span);
+                self.write_field_index(field.hir_id, i);
+
+                // We don't look at stability attributes on
+                // struct-like enums (yet...), but it's definitely not
+                // a bug to have constructed one.
+                if adt_kind != AdtKind::Enum {
+                    tcx.check_stability(v_field.did, Some(field.hir_id), field.span, None);
+                }
+
+                self.field_ty(field.span, v_field, args)
+            } else {
+                let guar = if let Some(prev_span) = seen_fields.get(&ident) {
+                    self.dcx().emit_err(FieldMultiplySpecifiedInInitializer {
+                        span: field.ident.span,
+                        prev_span: *prev_span,
+                        ident,
+                    })
+                } else {
+                    self.report_unknown_field(
+                        adt_ty,
+                        variant,
+                        expr,
+                        field,
+                        hir_fields,
+                        adt.variant_descr(),
+                    )
+                };
+                error_happened = Some(guar);
+
+                Ty::new_error(tcx, guar)
+            };
+
+            // Check that the expected field type is WF. Otherwise, we emit no use-site error
+            // in the case of coercions for non-WF fields, which leads to incorrect error
+            // tainting. See issue #126272.
+            self.register_wf_obligation(
+                field_type.into(),
+                field.expr.span,
+                ObligationCauseCode::WellFormed(None),
+            );
+
+            // Make sure to give a type to the field even if there's
+            // an error, so we can continue type-checking.
+            let ty = self.check_expr_with_hint(field.expr, field_type);
+            let diag = self.demand_coerce_diag(field.expr, ty, field_type, None, AllowTwoPhase::No);
+
+            if let Err(diag) = diag {
+                if idx == hir_fields.len() - 1 {
+                    if remaining_fields.is_empty() {
+                        self.suggest_fru_from_range_and_emit(field, variant, args, diag);
+                    } else {
+                        diag.stash(field.span, StashKey::MaybeFruTypo);
+                    }
+                } else {
+                    diag.emit();
+                }
+            }
+        }
+
+        // Make sure the programmer specified correct number of fields.
+        if adt_kind == AdtKind::Union && hir_fields.len() != 1 {
+            struct_span_code_err!(
+                self.dcx(),
+                path_span,
+                E0784,
+                "union expressions should have exactly one field",
+            )
+            .emit();
+        }
+
+        // If check_expr_struct_fields hit an error, do not attempt to populate
+        // the fields with the base_expr. This could cause us to hit errors later
+        // when certain fields are assumed to exist that in fact do not.
+        if let Some(guar) = error_happened {
+            if let hir::StructTailExpr::Base(base_expr) = base_expr {
+                self.check_expr(base_expr);
+            }
+            return Ty::new_error(tcx, guar);
+        }
+
+        match *base_expr {
+            hir::StructTailExpr::DefaultFields(span) => {
+                let mut missing_mandatory_fields = Vec::new();
+                let mut missing_optional_fields = Vec::new();
+                for f in &variant.fields {
+                    let ident = self.tcx.adjust_ident(f.ident(self.tcx), variant.def_id);
+                    if let Some(_) = remaining_fields.remove(&ident) {
+                        if f.value.is_none() {
+                            missing_mandatory_fields.push(ident);
+                        } else {
+                            missing_optional_fields.push(ident);
+                        }
+                    }
+                }
+                if !self.tcx.features().default_field_values() {
+                    let sugg = self.tcx.crate_level_attribute_injection_span();
+                    let guar = self.dcx().emit_err(BaseExpressionDoubleDot {
+                        span: span.shrink_to_hi(),
+                        // We only mention enabling the feature if this is a nightly rustc *and* the
+                        // expression would make sense with the feature enabled.
+                        default_field_values_suggestion: if self.tcx.sess.is_nightly_build()
+                            && missing_mandatory_fields.is_empty()
+                            && !missing_optional_fields.is_empty()
+                        {
+                            Some(sugg)
+                        } else {
+                            None
+                        },
+                        add_expr: if !missing_mandatory_fields.is_empty()
+                            || !missing_optional_fields.is_empty()
+                        {
+                            Some(BaseExpressionDoubleDotAddExpr { span: span.shrink_to_hi() })
+                        } else {
+                            None
+                        },
+                        remove_dots: if missing_mandatory_fields.is_empty()
+                            && missing_optional_fields.is_empty()
+                        {
+                            Some(BaseExpressionDoubleDotRemove { span })
+                        } else {
+                            None
+                        },
+                    });
+                    return Ty::new_error(tcx, guar);
+                }
+                if variant.fields.is_empty() {
+                    let mut err = self.dcx().struct_span_err(
+                        span,
+                        format!(
+                            "`{adt_ty}` has no fields, `..` needs at least one default field in \
+                            the struct definition",
+                        ),
+                    );
+                    err.span_label(path_span, "this type has no fields");
+                    err.emit();
+                }
+                if !missing_mandatory_fields.is_empty() {
+                    let s = pluralize!(missing_mandatory_fields.len());
+                    let fields = listify(&missing_mandatory_fields, |f| format!("`{f}`")).unwrap();
+                    let guar = self
+                        .dcx()
+                        .struct_span_err(
+                            span.shrink_to_lo(),
+                            format!("missing field{s} {fields} in initializer"),
+                        )
+                        .with_span_label(
+                            span.shrink_to_lo(),
+                            "fields that do not have a defaulted value must be provided explicitly",
+                        )
+                        .emit();
+                    return Ty::new_error(tcx, guar);
+                }
+                let fru_tys = match adt_ty.kind() {
+                    ty::Adt(adt, args) if adt.is_struct() => variant
+                        .fields
+                        .iter()
+                        .map(|f| self.normalize(span, f.ty(self.tcx, args)))
+                        .collect(),
+                    ty::Adt(adt, args) if adt.is_enum() => variant
+                        .fields
+                        .iter()
+                        .map(|f| self.normalize(span, f.ty(self.tcx, args)))
+                        .collect(),
+                    _ => {
+                        let guar = self.dcx().emit_err(FunctionalRecordUpdateOnNonStruct { span });
+                        return Ty::new_error(tcx, guar);
+                    }
+                };
+                self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
+            }
+            hir::StructTailExpr::Base(base_expr) => {
+                // FIXME: We are currently creating two branches here in order to maintain
+                // consistency. But they should be merged as much as possible.
+                let fru_tys = if self.tcx.features().type_changing_struct_update() {
+                    if adt.is_struct() {
+                        // Make some fresh generic parameters for our ADT type.
+                        let fresh_args = self.fresh_args_for_item(base_expr.span, adt.did());
+                        // We do subtyping on the FRU fields first, so we can
+                        // learn exactly what types we expect the base expr
+                        // needs constrained to be compatible with the struct
+                        // type we expect from the expectation value.
+                        let fru_tys = variant
+                            .fields
+                            .iter()
+                            .map(|f| {
+                                let fru_ty = self.normalize(
+                                    expr.span,
+                                    self.field_ty(base_expr.span, f, fresh_args),
+                                );
+                                let ident =
+                                    self.tcx.adjust_ident(f.ident(self.tcx), variant.def_id);
+                                if let Some(_) = remaining_fields.remove(&ident) {
+                                    let target_ty = self.field_ty(base_expr.span, f, args);
+                                    let cause = self.misc(base_expr.span);
+                                    match self.at(&cause, self.param_env).sup(
+                                        // We're already using inference variables for any params,
+                                        // and don't allow converting between different structs,
+                                        // so there is no way this ever actually defines an opaque
+                                        // type. Thus choosing `Yes` is fine.
+                                        DefineOpaqueTypes::Yes,
+                                        target_ty,
+                                        fru_ty,
+                                    ) {
+                                        Ok(InferOk { obligations, value: () }) => {
+                                            self.register_predicates(obligations)
+                                        }
+                                        Err(_) => {
+                                            span_bug!(
+                                                cause.span,
+                                                "subtyping remaining fields of type changing FRU \
+                                                failed: {target_ty} != {fru_ty}: {}::{}",
+                                                variant.name,
+                                                ident.name,
+                                            );
+                                        }
+                                    }
+                                }
+                                self.resolve_vars_if_possible(fru_ty)
+                            })
+                            .collect();
+                        // The use of fresh args that we have subtyped against
+                        // our base ADT type's fields allows us to guide inference
+                        // along so that, e.g.
+                        // ```
+                        // MyStruct<'a, F1, F2, const C: usize> {
+                        //     f: F1,
+                        //     // Other fields that reference `'a`, `F2`, and `C`
+                        // }
+                        //
+                        // let x = MyStruct {
+                        //    f: 1usize,
+                        //    ..other_struct
+                        // };
+                        // ```
+                        // will have the `other_struct` expression constrained to
+                        // `MyStruct<'a, _, F2, C>`, as opposed to just `_`...
+                        // This is important to allow coercions to happen in
+                        // `other_struct` itself. See `coerce-in-base-expr.rs`.
+                        let fresh_base_ty = Ty::new_adt(self.tcx, *adt, fresh_args);
+                        self.check_expr_has_type_or_error(
+                            base_expr,
+                            self.resolve_vars_if_possible(fresh_base_ty),
+                            |_| {},
+                        );
+                        fru_tys
+                    } else {
+                        // Check the base_expr, regardless of a bad expected adt_ty, so we can get
+                        // type errors on that expression, too.
+                        self.check_expr(base_expr);
+                        let guar = self
+                            .dcx()
+                            .emit_err(FunctionalRecordUpdateOnNonStruct { span: base_expr.span });
+                        return Ty::new_error(tcx, guar);
+                    }
+                } else {
+                    self.check_expr_has_type_or_error(base_expr, adt_ty, |_| {
+                        let base_ty = self.typeck_results.borrow().expr_ty(base_expr);
+                        let same_adt = matches!((adt_ty.kind(), base_ty.kind()),
+                            (ty::Adt(adt, _), ty::Adt(base_adt, _)) if adt == base_adt);
+                        if self.tcx.sess.is_nightly_build() && same_adt {
+                            feature_err(
+                                &self.tcx.sess,
+                                sym::type_changing_struct_update,
+                                base_expr.span,
+                                "type changing struct updating is experimental",
+                            )
+                            .emit();
+                        }
+                    });
+                    match adt_ty.kind() {
+                        ty::Adt(adt, args) if adt.is_struct() => variant
+                            .fields
+                            .iter()
+                            .map(|f| self.normalize(expr.span, f.ty(self.tcx, args)))
+                            .collect(),
+                        _ => {
+                            let guar = self.dcx().emit_err(FunctionalRecordUpdateOnNonStruct {
+                                span: base_expr.span,
+                            });
+                            return Ty::new_error(tcx, guar);
+                        }
+                    }
+                };
+                self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
+            }
+            rustc_hir::StructTailExpr::NoneWithError(guaranteed) => {
+                // If parsing the struct recovered from a syntax error, do not report missing
+                // fields. This prevents spurious errors when a field is intended to be present
+                // but a preceding syntax error caused it not to be parsed. For example, if a
+                // struct type `StructName` has fields `foo` and `bar`, then
+                //     StructName { foo(), bar: 2 }
+                // will not successfully parse a field `foo`, but we will not mention that,
+                // since the syntax error has already been reported.
+
+                // Signal that type checking has failed, even though we haven’t emitted a diagnostic
+                // about it ourselves.
+                self.infcx.set_tainted_by_errors(guaranteed);
+            }
+            rustc_hir::StructTailExpr::None => {
+                if adt_kind != AdtKind::Union
+                    && !remaining_fields.is_empty()
+                    //~ non_exhaustive already reported, which will only happen for extern modules
+                    && !variant.field_list_has_applicable_non_exhaustive()
+                {
+                    debug!(?remaining_fields);
+
+                    // Report missing fields.
+
+                    let private_fields: Vec<&ty::FieldDef> = variant
+                        .fields
+                        .iter()
+                        .filter(|field| {
+                            !field.vis.is_accessible_from(tcx.parent_module(expr.hir_id), tcx)
+                        })
+                        .collect();
+
+                    if !private_fields.is_empty() {
+                        self.report_private_fields(
+                            adt_ty,
+                            path_span,
+                            expr.span,
+                            private_fields,
+                            hir_fields,
+                        );
+                    } else {
+                        self.report_missing_fields(
+                            adt_ty,
+                            path_span,
+                            expr.span,
+                            remaining_fields,
+                            variant,
+                            hir_fields,
+                            args,
+                        );
+                    }
+                }
+            }
+        };
+
+        todo!()
     }
 
     fn check_struct_fields_on_error(

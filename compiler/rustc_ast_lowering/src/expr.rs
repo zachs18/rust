@@ -376,18 +376,30 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         rest,
                     )
                 }
-                ExprKind::InitStruct(se) => hir::ExprKind::InitStruct(
-                    self.arena.alloc(self.lower_qpath(
-                        e.id,
-                        &se.qself,
-                        &se.path,
-                        ParamMode::Optional,
-                        AllowReturnTypeNotation::No,
-                        ImplTraitContext::Disallowed(ImplTraitPosition::Path),
-                        None,
-                    )),
-                    self.arena.alloc_from_iter(se.fields.iter().map(|x| self.lower_expr_field(x))),
-                ),
+                ExprKind::InitStruct(se) => {
+                    let rest = match se.rest {
+                        StructRest::Base(ref e) => hir::StructTailExpr::Base(self.lower_expr(e)),
+                        StructRest::Rest(sp) => {
+                            hir::StructTailExpr::DefaultFields(self.lower_span(sp))
+                        }
+                        StructRest::None => hir::StructTailExpr::None,
+                        StructRest::NoneWithError(guar) => hir::StructTailExpr::NoneWithError(guar),
+                    };
+                    hir::ExprKind::InitStruct(
+                        self.arena.alloc(self.lower_qpath(
+                            e.id,
+                            &se.qself,
+                            &se.path,
+                            ParamMode::Optional,
+                            AllowReturnTypeNotation::No,
+                            ImplTraitContext::Disallowed(ImplTraitPosition::Path),
+                            None,
+                        )),
+                        self.arena
+                            .alloc_from_iter(se.fields.iter().map(|x| self.lower_expr_field(x))),
+                        rest,
+                    )
+                }
                 ExprKind::PtrMetadata(pme) => {
                     let rest = match &pme.rest {
                         StructRest::Base(e) => hir::StructTailExpr::Base(self.lower_expr(e)),

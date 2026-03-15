@@ -2667,7 +2667,9 @@ impl Expr<'_> {
                 // them being used only for its side-effects.
                 lhs.can_have_side_effects() || rhs.can_have_side_effects()
             }
-            ExprKind::Struct(_, fields, init) | ExprKind::PtrMetadata(_, fields, init) => {
+            ExprKind::Struct(_, fields, init)
+            | ExprKind::PtrMetadata(_, fields, init)
+            | ExprKind::InitStruct(_, fields, init) => {
                 let init_side_effects = match init {
                     StructTailExpr::Base(init) => init.can_have_side_effects(),
                     StructTailExpr::DefaultFields(_)
@@ -2680,9 +2682,6 @@ impl Expr<'_> {
 
             ExprKind::InitSliceRepeat(elem, len) => {
                 elem.can_have_side_effects() || len.can_have_side_effects()
-            }
-            ExprKind::InitStruct(_, fields) => {
-                fields.iter().map(|field| field.expr).any(|e| e.can_have_side_effects())
             }
 
             ExprKind::Array(args)
@@ -2978,7 +2977,7 @@ pub enum ExprKind<'hir> {
     ///
     /// E.g. `do init struct Foo { x: 1, y: 2 }`
     /// FIXME(in_place_init): maybe allow `..` and fill in from field default exprs at initialization time?
-    InitStruct(&'hir QPath<'hir>, &'hir [ExprField<'hir>]),
+    InitStruct(&'hir QPath<'hir>, &'hir [ExprField<'hir>], StructTailExpr<'hir>),
 
     /// A tuple-like initializer expression.
     ///
