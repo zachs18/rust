@@ -101,4 +101,22 @@ impl<'tcx> InternalCx<'tcx> for TyCtxt<'tcx> {
     {
         TyCtxt::mk_patterns_from_iter(self, iter)
     }
+
+    fn mk_init_adt_info(self, v: ty::InitAdtInfoData<'tcx>) -> ty::InitAdtInfo<'tcx> {
+        self.mk_init_adt_info(v)
+    }
+
+    fn mk_init_adt_component_info_list(
+        self,
+        v: &[ty::InitAdtComponentInfo<'tcx>],
+    ) -> &'tcx List<ty::InitAdtComponentInfo<'tcx>> {
+        self.mk_init_adt_component_info_list(v)
+    }
+
+    fn mk_init_adt_component_arg_list(
+        self,
+        v: &[ty::InitAdtComponentArg],
+    ) -> &'tcx List<ty::InitAdtComponentArg> {
+        self.mk_init_adt_component_arg_list(v)
+    }
 }

@@ -329,7 +329,6 @@ fn characteristic_def_id_of_type_cached<'a>(
         | ty::CoroutineClosure(def_id, _)
         | ty::Coroutine(def_id, _)
         | ty::CoroutineWitness(def_id, _)
-        | ty::InitAdt(def_id, _)
         | ty::Foreign(def_id) => Some(def_id),
 
         ty::Bool
@@ -344,6 +343,7 @@ fn characteristic_def_id_of_type_cached<'a>(
         | ty::InitArrayRepeat(..)
         | ty::InitSliceRepeat(..)
         | ty::InitTuple(..)
+        | ty::InitAdt(..)
         | ty::Alias(..)
         | ty::Placeholder(..)
         | ty::Param(_)

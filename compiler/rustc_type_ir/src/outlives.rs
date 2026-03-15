@@ -130,8 +130,8 @@ impl<I: Interner> TypeVisitor<I> for OutlivesCollector<'_, I> {
             // higher-ranked outlives components currently.
             ty::CoroutineWitness(..) => {}
 
-            ty::InitAdt(_, args) => {
-                args.as_init_adt().tupled_field_initializers_ty().visit_with(self);
+            ty::InitAdt(_info) => {
+                todo!()
             }
 
             // OutlivesTypeParameterEnv -- the actual checking that `X:'a`

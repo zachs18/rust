@@ -21,7 +21,10 @@ use crate::arena::ArenaAllocatable;
 use crate::infer::canonical::{CanonicalVarKind, CanonicalVarKinds};
 use crate::mir::interpret::{AllocId, ConstAllocation, CtfeProvenance};
 use crate::mono::MonoItem;
-use crate::ty::{self, AdtDef, GenericArgsRef, Ty, TyCtxt};
+use crate::ty::{
+    self, AdtDef, GenericArgsRef, InitAdtComponentArg, InitAdtComponentInfo, InitAdtInfo, Ty,
+    TyCtxt,
+};
 use crate::{mir, traits};
 
 /// The shorthand encoding uses an enum's variant index `usize`
@@ -194,6 +197,12 @@ impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for AdtDef<'tcx> {
     }
 }
 
+impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for InitAdtInfo<'tcx> {
+    fn encode(&self, e: &mut E) {
+        self.0.0.encode(e)
+    }
+}
+
 impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for AllocId {
     fn encode(&self, e: &mut E) {
         e.encode_alloc_id(self)
@@ -357,6 +366,24 @@ impl<'tcx, D: TyDecoder<'tcx>> RefDecodable<'tcx, D> for ty::List<Ty<'tcx>> {
     }
 }
 
+impl<'tcx, D: TyDecoder<'tcx>> RefDecodable<'tcx, D> for ty::List<InitAdtComponentArg> {
+    fn decode(decoder: &mut D) -> &'tcx Self {
+        let len = decoder.read_usize();
+        decoder.interner().mk_init_adt_component_arg_list_from_iter(
+            (0..len).map::<InitAdtComponentArg, _>(|_| Decodable::decode(decoder)),
+        )
+    }
+}
+
+impl<'tcx, D: TyDecoder<'tcx>> RefDecodable<'tcx, D> for ty::List<InitAdtComponentInfo<'tcx>> {
+    fn decode(decoder: &mut D) -> &'tcx Self {
+        let len = decoder.read_usize();
+        decoder.interner().mk_init_adt_component_info_list_from_iter(
+            (0..len).map::<InitAdtComponentInfo<'tcx>, _>(|_| Decodable::decode(decoder)),
+        )
+    }
+}
+
 impl<'tcx, D: TyDecoder<'tcx>> RefDecodable<'tcx, D>
     for ty::List<ty::PolyExistentialPredicate<'tcx>>
 {
@@ -396,6 +423,12 @@ impl<'tcx, D: TyDecoder<'tcx>> Decodable<D> for ConstAllocation<'tcx> {
 impl<'tcx, D: TyDecoder<'tcx>> Decodable<D> for AdtDef<'tcx> {
     fn decode(decoder: &mut D) -> Self {
         decoder.interner().mk_adt_def_from_data(Decodable::decode(decoder))
+    }
+}
+
+impl<'tcx, D: TyDecoder<'tcx>> Decodable<D> for InitAdtInfo<'tcx> {
+    fn decode(decoder: &mut D) -> Self {
+        decoder.interner().mk_init_adt_info(Decodable::decode(decoder))
     }
 }
 
