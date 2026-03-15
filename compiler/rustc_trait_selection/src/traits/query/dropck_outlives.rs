@@ -67,8 +67,8 @@ pub fn trivial_dropck_outlives<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
         }
 
         // FIXME(in_place_init): does dst_ty need to be live?
-        ty::InitAdt(_, args) => {
-            trivial_dropck_outlives(tcx, args.as_init_adt().tupled_field_initializers_ty())
+        ty::InitAdt(_info) => {
+            todo!()
         }
 
         ty::Closure(_, args) => trivial_dropck_outlives(tcx, args.as_closure().tupled_upvars_ty()),
@@ -324,11 +324,7 @@ pub fn dtorck_constraint_for_ty_inner<'tcx>(
             })
         }
 
-        ty::InitAdt(_, args) => rustc_data_structures::stack::ensure_sufficient_stack(|| {
-            for ty in args.as_init_adt().field_initializer_tys() {
-                dtorck_constraint_for_ty_inner(tcx, typing_env, span, depth + 1, ty, constraints);
-            }
-        }),
+        ty::InitAdt(_info) => rustc_data_structures::stack::ensure_sufficient_stack(|| todo!()),
 
         ty::Closure(_, args) => rustc_data_structures::stack::ensure_sufficient_stack(|| {
             for ty in args.as_closure().upvar_tys() {

@@ -68,9 +68,10 @@ use crate::traits::solve::{ExternalConstraints, ExternalConstraintsData, Predefi
 use crate::ty::predicate::ExistentialPredicateStableCmpExt as _;
 use crate::ty::{
     self, AdtDef, AdtDefData, AdtKind, Binder, Clause, Clauses, Const, GenericArg, GenericArgs,
-    GenericArgsRef, GenericParamDefKind, List, ListWithCachedTypeInfo, ParamConst, Pattern,
-    PatternKind, PolyExistentialPredicate, PolyFnSig, Predicate, PredicateKind, PredicatePolarity,
-    Region, RegionKind, ReprOptions, TraitObjectVisitor, Ty, TyKind, TyVid, ValTree, ValTreeKind,
+    GenericArgsRef, GenericParamDefKind, InitAdtComponentArg, InitAdtComponentInfo, InitAdtInfo,
+    InitAdtInfoData, List, ListWithCachedTypeInfo, ParamConst, Pattern, PatternKind,
+    PolyExistentialPredicate, PolyFnSig, Predicate, PredicateKind, PredicatePolarity, Region,
+    RegionKind, ReprOptions, TraitObjectVisitor, Ty, TyKind, TyVid, ValTree, ValTreeKind,
     Visibility,
 };
 
@@ -91,6 +92,16 @@ impl<'tcx> rustc_type_ir::inherent::Abi<TyCtxt<'tcx>> for ExternAbi {
 
     fn is_rust(self) -> bool {
         matches!(self, ExternAbi::Rust)
+    }
+}
+
+impl<'tcx> rustc_type_ir::inherent::InitAdtInfo<TyCtxt<'tcx>> for InitAdtInfo<'tcx> {
+    fn adt_ty(self) -> Ty<'tcx> {
+        self.0.adt_ty
+    }
+
+    fn component_tys(self) -> &'tcx List<Ty<'tcx>> {
+        self.0.component_tys
     }
 }
 
@@ -147,6 +158,9 @@ pub struct CtxtInterners<'tcx> {
         'tcx,
         List<(rustc_span::Symbol, Option<rustc_span::Span>, ty::Visibility<DefId>, Ty<'tcx>)>,
     >,
+    init_adt_component_args: InternedSet<'tcx, List<InitAdtComponentArg>>,
+    init_adt_component_infos: InternedSet<'tcx, List<InitAdtComponentInfo<'tcx>>>,
+    init_adt_infos: InternedSet<'tcx, InitAdtInfoData<'tcx>>,
     canonical_var_kinds: InternedSet<'tcx, List<CanonicalVarKind<'tcx>>>,
     region: InternedSet<'tcx, RegionKind<'tcx>>,
     poly_existential_predicates: InternedSet<'tcx, List<PolyExistentialPredicate<'tcx>>>,
@@ -206,6 +220,9 @@ impl<'tcx> CtxtInterners<'tcx> {
             valtree: InternedSet::with_capacity(N),
             patterns: InternedSet::with_capacity(N),
             outlives: InternedSet::with_capacity(N),
+            init_adt_component_args: InternedSet::with_capacity(N),
+            init_adt_component_infos: InternedSet::with_capacity(N),
+            init_adt_infos: InternedSet::with_capacity(N),
         }
     }
 
@@ -2075,6 +2092,7 @@ direct_interners! {
     const_allocation: pub mk_const_alloc(Allocation): ConstAllocation -> ConstAllocation<'tcx>,
     layout: pub mk_layout(LayoutData<FieldIdx, VariantIdx>): Layout -> Layout<'tcx>,
     adt_def: pub mk_adt_def_from_data(AdtDefData): AdtDef -> AdtDef<'tcx>,
+    init_adt_infos: pub mk_init_adt_info(InitAdtInfoData<'tcx>): InitAdtInfo -> InitAdtInfo<'tcx>,
     external_constraints: pub mk_external_constraints(ExternalConstraintsData<TyCtxt<'tcx>>):
         ExternalConstraints -> ExternalConstraints<'tcx>,
 }
@@ -2103,6 +2121,8 @@ slice_interners!(
     args: pub mk_args(GenericArg<'tcx>),
     type_lists: pub mk_type_list(Ty<'tcx>),
     metadata_field_lists: pub mk_metadata_field_list((rustc_span::Symbol, Option<rustc_span::Span>, ty::Visibility<DefId>, Ty<'tcx>)),
+    init_adt_component_infos: pub mk_init_adt_component_info_list(InitAdtComponentInfo<'tcx>),
+    init_adt_component_args: pub mk_init_adt_component_arg_list(InitAdtComponentArg),
     canonical_var_kinds: pub mk_canonical_var_kinds(CanonicalVarKind<'tcx>),
     poly_existential_predicates: intern_poly_existential_predicates(PolyExistentialPredicate<'tcx>),
     projs: pub mk_projs(ProjectionKind),
@@ -2498,6 +2518,22 @@ impl<'tcx> TyCtxt<'tcx> {
         T: CollectAndApply<Ty<'tcx>, &'tcx List<Ty<'tcx>>>,
     {
         T::collect_and_apply(iter, |xs| self.mk_type_list(xs))
+    }
+
+    pub fn mk_init_adt_component_arg_list_from_iter<I, T>(self, iter: I) -> T::Output
+    where
+        I: Iterator<Item = T>,
+        T: CollectAndApply<InitAdtComponentArg, &'tcx List<InitAdtComponentArg>>,
+    {
+        T::collect_and_apply(iter, |xs| self.mk_init_adt_component_arg_list(xs))
+    }
+
+    pub fn mk_init_adt_component_info_list_from_iter<I, T>(self, iter: I) -> T::Output
+    where
+        I: Iterator<Item = T>,
+        T: CollectAndApply<InitAdtComponentInfo<'tcx>, &'tcx List<InitAdtComponentInfo<'tcx>>>,
+    {
+        T::collect_and_apply(iter, |xs| self.mk_init_adt_component_info_list(xs))
     }
 
     pub fn mk_args_from_iter<I, T>(self, iter: I) -> T::Output

@@ -593,12 +593,13 @@ pub enum RigidTy {
     Never,
     Tuple(Vec<Ty>),
     CoroutineWitness(CoroutineWitnessDef, GenericArgs),
+    InitAdt(InitAdtInfo),
     InitArray(Vec<Ty>),
     InitArrayRepeat(Ty, TyConst),
     InitSliceRepeat(Ty),
-    InitAdt(InitAdtDef, GenericArgs),
     InitTuple(Vec<Ty>),
 }
+const _: [u8; 176] = [0; size_of::<RigidTy>()];
 
 impl RigidTy {
     /// Get the discriminant type for this type.
@@ -967,6 +968,29 @@ impl AdtKind {
     pub fn is_union(&self) -> bool {
         matches!(self, AdtKind::Union)
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct InitAdtInfo {
+    pub adt_ty: Ty,
+    pub variant: VariantIdx,
+    pub component_tys: Vec<Ty>,
+    pub component_infos: Vec<InitAdtComponentInfo>,
+    pub pinned: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct InitAdtComponentInfo {
+    pub field: Option<usize>,
+    pub args: Vec<InitAdtComponentArg>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub enum InitAdtComponentArg {
+    Arg,
+    Ref(usize),
+    PinRef(usize),
+    Ptr(usize),
 }
 
 crate_def! {

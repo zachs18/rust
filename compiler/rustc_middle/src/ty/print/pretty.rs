@@ -1093,57 +1093,8 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
                 elem_ty.print(self)?;
                 write!(self, "}}")?;
             }
-            ty::InitAdt(did, args) => {
-                write!(self, "{{")?;
-                if !self.should_print_verbose() {
-                    write!(self, "InitAdt")?;
-                    if self.should_truncate() {
-                        write!(self, "@...}}")?;
-                        return Ok(());
-                    } else {
-                        if let Some(did) = did.as_local() {
-                            if self.tcx().sess.opts.unstable_opts.span_free_formats {
-                                write!(self, "@")?;
-                                self.print_def_path(did.to_def_id(), args)?;
-                            } else {
-                                let span = self.tcx().def_span(did);
-                                let loc = if with_forced_trimmed_paths() {
-                                    self.tcx().sess.source_map().span_to_short_string(
-                                        span,
-                                        RemapPathScopeComponents::DIAGNOSTICS,
-                                    )
-                                } else {
-                                    self.tcx().sess.source_map().span_to_diagnostic_string(span)
-                                };
-                                write!(
-                                    self,
-                                    "@{}",
-                                    // This may end up in stderr diagnostics but it may also be
-                                    // emitted into MIR. Hence we use the remapped path if
-                                    // available
-                                    loc
-                                )?;
-                            }
-                        } else {
-                            write!(self, "@")?;
-                            self.print_def_path(did, args)?;
-                        }
-                    }
-                } else {
-                    self.print_def_path(did, args)?;
-                    let parts = args.as_init_adt().split();
-                    write!(self, " dst_ty=")?;
-                    parts.dst_ty.print(self)?;
-                    write!(self, " dst_vidx=")?;
-                    parts.dst_vidx.print(self)?;
-                    write!(self, " pinned=")?;
-                    parts.pinned.print(self)?;
-                    write!(self, " field_initializer_args=")?;
-                    parts.field_initializer_args.print(self)?;
-                    write!(self, " tupled_field_initializers_ty=")?;
-                    parts.tupled_field_initializers_ty.print(self)?;
-                }
-                write!(self, "}}")?;
+            ty::InitAdt(_info) => {
+                todo!()
             }
             ty::InitTuple(elem_tys) => {
                 write!(self, "{{InitTuple with (")?;

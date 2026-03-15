@@ -19,8 +19,8 @@ use crate::traits::solve::{
     self, CanonicalInput, ExternalConstraints, ExternalConstraintsData, QueryResult, inspect,
 };
 use crate::ty::{
-    self, Clause, Const, List, ParamTy, Pattern, PolyExistentialPredicate, Predicate, Region, Ty,
-    TyCtxt,
+    self, Clause, Const, InitAdtInfo, InitAdtInfoData, List, ParamTy, Pattern,
+    PolyExistentialPredicate, Predicate, Region, Ty, TyCtxt,
 };
 
 #[allow(rustc::usage_of_ty_tykind)]
@@ -38,7 +38,6 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     type CoroutineClosureId = DefId;
     type CoroutineId = DefId;
     type AdtId = DefId;
-    type InitAdtId = DefId;
     type ImplId = DefId;
     type UnevaluatedConstId = DefId;
     type Span = Span;
@@ -87,6 +86,8 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
 
     type ErrorGuaranteed = ErrorGuaranteed;
     type BoundExistentialPredicates = &'tcx List<PolyExistentialPredicate<'tcx>>;
+    type InitAdtInfo = InitAdtInfo<'tcx>;
+    type InitAdtInfoData = InitAdtInfoData<'tcx>;
 
     type AllocId = crate::mir::interpret::AllocId;
     type Pat = Pattern<'tcx>;
@@ -289,6 +290,10 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
         T: CollectAndApply<Ty<'tcx>, &'tcx List<Ty<'tcx>>>,
     {
         self.mk_type_list_from_iter(args)
+    }
+
+    fn mk_init_adt_info(self, data: InitAdtInfoData<'tcx>) -> InitAdtInfo<'tcx> {
+        self.mk_init_adt_info(data)
     }
 
     fn parent(self, def_id: DefId) -> DefId {

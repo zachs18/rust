@@ -289,8 +289,8 @@ where
         }
 
         // impl Copy/Clone for InitAdt where Self::TupledFieldInitializers: Copy/Clone
-        ty::InitAdt(_, args) => {
-            Ok(ty::Binder::dummy(vec![args.as_init_adt().tupled_field_initializers_ty()]))
+        ty::InitAdt(_info) => {
+            todo!()
         }
 
         // impl Copy/Clone for typeof(do init *) where ...Self::Fields: Copy/Clone

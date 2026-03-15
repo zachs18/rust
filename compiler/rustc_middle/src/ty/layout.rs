@@ -961,11 +961,7 @@ where
                         TyMaybeWithLayout::Ty(elem_ty)
                     }
                 }
-                ty::InitAdt(_, args) => field_ty_or_layout(
-                    TyAndLayout { ty: args.as_init_adt().tupled_field_initializers_ty(), ..this },
-                    cx,
-                    i,
-                ),
+                ty::InitAdt(_info) => todo!(),
                 ty::InitTuple(elem_tys) => TyMaybeWithLayout::Ty(elem_tys[i]),
 
                 // ADTs.

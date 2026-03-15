@@ -267,7 +267,7 @@ pub enum TyKind<I: Interner> {
     /// The type of a `do init struct` expression for an algebraic data type (ADT).
     ///
     /// Despite the `struct` in the syntax, this is used for `enum`s and `union`s as well.
-    InitAdt(I::InitAdtId, I::GenericArgs),
+    InitAdt(I::InitAdtInfo),
 
     /// The anonymous type of a `do init tuple (a, b, c, d)` tuple-like expression.
     ///
@@ -451,7 +451,7 @@ impl<I: Interner> fmt::Debug for TyKind<I> {
             InitArray(s) => f.debug_tuple("InitArray").field(&s).finish(),
             InitArrayRepeat(s, c) => f.debug_tuple("InitArrayRepeat").field(&s).field(&c).finish(),
             InitSliceRepeat(s) => f.debug_tuple("InitSliceRepeat").field(&s).finish(),
-            InitAdt(d, s) => f.debug_tuple("InitAdt").field(d).field(&s).finish(),
+            InitAdt(info) => f.debug_tuple("InitAdt").field(info).finish(),
             InitTuple(s) => f.debug_tuple("InitTuple").field(&s).finish(),
             Never => write!(f, "!"),
             Tuple(t) => {

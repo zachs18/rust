@@ -2779,7 +2779,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         );
 
         self.require_type_is_sized(init_adt_ty, expr.span, ObligationCauseCode::InitElem);
-        adt_ty
+        init_adt_ty
     }
 
     fn check_expr_init_struct_fields(
@@ -2795,20 +2795,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let tcx = self.tcx;
 
         let adt_ty = self.try_structurally_resolve_type(path_span, adt_ty);
-        let adt_ty_hint = expected.only_has_type(self).and_then(|expected| {
-            self.fudge_inference_if_ok(|| {
-                let ocx = ObligationCtxt::new(self);
-                ocx.sup(&self.misc(path_span), self.param_env, expected, adt_ty)?;
-                if !ocx.try_evaluate_obligations().is_empty() {
-                    return Err(TypeError::Mismatch);
-                }
-                Ok(self.resolve_vars_if_possible(adt_ty))
-            })
-            .ok()
+        let expected_info = expected.only_has_type(self).and_then(|ty| {
+            match self.try_structurally_resolve_type(expr.span, ty).kind() {
+                &ty::InitAdt(info) => Some(info),
+                _ => None,
+            }
         });
-        if let Some(adt_ty_hint) = adt_ty_hint {
+        if let Some(info) = expected_info {
             // re-link the variables that the fudging above can create.
-            self.demand_eqtype(path_span, adt_ty_hint, adt_ty);
+            self.demand_eqtype(path_span, info.adt_ty, adt_ty);
         }
 
         let ty::Adt(adt, args) = adt_ty.kind() else {

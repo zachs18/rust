@@ -35,6 +35,18 @@ pub trait InternalCx<'tcx>: Copy + Clone {
 
     fn mk_pat(self, v: ty::PatternKind<'tcx>) -> ty::Pattern<'tcx>;
 
+    fn mk_init_adt_info(self, v: ty::InitAdtInfoData<'tcx>) -> ty::InitAdtInfo<'tcx>;
+
+    fn mk_init_adt_component_info_list(
+        self,
+        v: &[ty::InitAdtComponentInfo<'tcx>],
+    ) -> &'tcx List<ty::InitAdtComponentInfo<'tcx>>;
+
+    fn mk_init_adt_component_arg_list(
+        self,
+        v: &[ty::InitAdtComponentArg],
+    ) -> &'tcx List<ty::InitAdtComponentArg>;
+
     fn mk_poly_existential_predicates(
         self,
         eps: &[ty::PolyExistentialPredicate<'tcx>],

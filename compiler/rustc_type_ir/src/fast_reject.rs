@@ -513,9 +513,9 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
                 matches!(rhs.kind(), ty::InitSliceRepeat(rhs_ty) if self.types_may_unify_inner(lhs_ty, rhs_ty, depth))
             }
 
-            ty::InitAdt(lhs_def_id, lhs_args) => match rhs.kind() {
-                ty::InitAdt(rhs_def_id, rhs_args) => {
-                    lhs_def_id == rhs_def_id && self.args_may_unify_inner(lhs_args, rhs_args, depth)
+            ty::InitAdt(_lhs_info) => match rhs.kind() {
+                ty::InitAdt(_rhs_info) => {
+                    todo!()
                 }
                 _ => false,
             },

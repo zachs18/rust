@@ -382,7 +382,7 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
                 ty::InitArrayRepeat(elem_ty.try_fold_with(folder)?, sz.try_fold_with(folder)?)
             }
             ty::InitSliceRepeat(elem_ty) => ty::InitSliceRepeat(elem_ty.try_fold_with(folder)?),
-            ty::InitAdt(did, args) => ty::InitAdt(did, args.try_fold_with(folder)?),
+            ty::InitAdt(info) => ty::InitAdt(info.try_fold_with(folder)?),
             ty::InitTuple(elem_tys) => ty::InitTuple(elem_tys.try_fold_with(folder)?),
 
             ty::Bool
@@ -436,8 +436,8 @@ impl<'tcx> TypeSuperFoldable<TyCtxt<'tcx>> for Ty<'tcx> {
                 ty::InitArrayRepeat(typ.fold_with(folder), sz.fold_with(folder))
             }
             ty::InitSliceRepeat(elem_ty) => ty::InitSliceRepeat(elem_ty.fold_with(folder)),
-            ty::InitAdt(did, args) => ty::InitAdt(did, args.fold_with(folder)),
             ty::InitTuple(elem_tys) => ty::InitTuple(elem_tys.fold_with(folder)),
+            ty::InitAdt(info) => ty::InitAdt(info.fold_with(folder)),
 
             ty::Bool
             | ty::Char
@@ -498,7 +498,7 @@ impl<'tcx> TypeSuperVisitable<TyCtxt<'tcx>> for Ty<'tcx> {
                 sz.visit_with(visitor)
             }
             ty::InitSliceRepeat(elem_ty) => elem_ty.visit_with(visitor),
-            ty::InitAdt(_did, args) => args.visit_with(visitor),
+            ty::InitAdt(info) => info.visit_with(visitor),
             ty::InitTuple(elem_tys) => elem_tys.visit_with(visitor),
 
             ty::Error(guar) => guar.visit_with(visitor),
@@ -840,4 +840,6 @@ list_fold! {
     &'tcx ty::List<ty::Pattern<'tcx>> : mk_patterns,
     &'tcx ty::List<ty::ArgOutlivesPredicate<'tcx>> : mk_outlives,
     &'tcx ty::List<ty::Const<'tcx>> : mk_const_list,
+    &'tcx ty::List<ty::InitAdtComponentArg> : mk_init_adt_component_arg_list,
+    &'tcx ty::List<ty::InitAdtComponentInfo<'tcx>> : mk_init_adt_component_info_list,
 }
