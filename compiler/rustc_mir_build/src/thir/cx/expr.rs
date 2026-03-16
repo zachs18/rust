@@ -713,7 +713,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 let ty::InitAdt(info) = *expr_ty.kind() else {
                     span_bug!(
                         expr.span,
-                        "unexpected type for `do init struct` intializer: {expr_ty:?}"
+                        "unexpected type for `do init struct` initializer: {expr_ty:?}"
                     );
                 };
                 // The fields of a `do init struct` are always in order *for the initializer type itself*.

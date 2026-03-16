@@ -2803,9 +2803,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 _ => None,
             }
         });
-        if let Some(info) = expected_info {
-            self.demand_eqtype(path_span, info.adt_ty, adt_ty);
-        }
 
         let ty::Adt(adt, args) = adt_ty.kind() else {
             span_bug!(path_span, "non-ADT passed to check_expr_struct_fields");
@@ -2834,7 +2831,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
 
         // Type-check each field and collect the initializer info.
-        // If any component is pinned, the whole initailizer must be pinned.
+        // If any component is pinned, the whole initializer must be pinned.
         let mut pinned = false;
         // If a field is referenced unpinned in another component, it must not be pinned.
         let mut referenced_unpinned = vec![false; variant.fields.len()];
@@ -2857,7 +2854,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let ident = tcx.adjust_ident(field.ident, variant.def_id);
 
                 let dst_field_idx = if ident.name == kw::Underscore {
-                    // This is a `_` initailizer with DST = () that runs (and can signal failure),
+                    // This is a `_` initializer with DST = () that runs (and can signal failure),
                     // but doesn't initialize any field.
                     None
                 } else if let Some((i, v_field)) = remaining_fields.remove(&ident) {
@@ -3130,6 +3127,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             component_infos: tcx.mk_init_adt_component_info_list(&component_infos),
             pinned,
         };
+
+        if let Some(expected_info) = expected_info {
+            self.demand_eqtype(path_span, expected_info.adt_ty, info.adt_ty);
+            for (expected_component_ty, component_ty) in
+                std::iter::zip(expected_info.component_tys, info.component_tys)
+            {
+                self.demand_eqtype(path_span, expected_component_ty, component_ty);
+            }
+        }
+
         let info = tcx.mk_init_adt_info(info);
         Ty::new_init_adt(tcx, info)
     }

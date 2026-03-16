@@ -855,7 +855,12 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
             ty::InitSliceRepeat(elem) => {
                 self.require_sized(elem, ObligationCauseCode::InitElem);
             }
-            ty::InitAdt(..) => todo!(),
+            ty::InitAdt(info) => {
+                for component_ty in info.component_tys {
+                    self.require_sized(component_ty, ObligationCauseCode::InitElem);
+                }
+                // FIXME(in_place_init): maybe put checks about `Ref` etc here?
+            }
 
             ty::RawPtr(_, _) | ty::PtrMetadata(_) => {
                 // Simple cases that are WF if their type args are WF.
