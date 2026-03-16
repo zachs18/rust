@@ -204,6 +204,7 @@ impl<'tcx> Stable<'tcx> for ty::InitAdtComponentInfo<'tcx> {
         InitAdtComponentInfo {
             field: self.field.map(|f| f.stable(tables, cx)),
             args: self.args.iter().map(|arg| arg.stable(tables, cx)).collect(),
+            referenced_unpinned: self.referenced_unpinned,
         }
     }
 }

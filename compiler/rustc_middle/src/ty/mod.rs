@@ -2314,6 +2314,9 @@ pub enum InitAdtComponentArg {
 pub struct InitAdtComponentInfo<'tcx> {
     pub field: Option<FieldIdx>,
     pub args: &'tcx List<InitAdtComponentArg>,
+    /// If this field is referenced using `with (ref x)` in another component,
+    /// it must not be pinned.
+    pub referenced_unpinned: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, HashStable)]
