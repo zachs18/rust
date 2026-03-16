@@ -1535,6 +1535,8 @@ pub enum AggregateKind<'tcx> {
     Array(Ty<'tcx>),
     Tuple,
 
+    /// The annotation is of the adt_ty
+    InitAdt(ty::InitAdtInfo<'tcx>, Option<UserTypeAnnotationIndex>),
     InitArray,
     // The type is of the element initializer, the const is the length
     InitArrayRepeat(Ty<'tcx>, ty::Const<'tcx>),

@@ -313,6 +313,34 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     [count_operand, value_operand].into(),
                 ))
             }
+            ExprKind::InitAdt(box InitAdtExpr { ref fields, info, ref user_ty, .. }) => {
+                // see (*) above
+                // first process the set of fields
+                let fields: IndexVec<FieldIdx, _> = fields
+                    .iter()
+                    .map(|f| {
+                        unpack!(
+                            block = this.as_operand(
+                                block,
+                                scope,
+                                f.expr,
+                                LocalInfo::Boring,
+                                NeedsTemporary::Maybe
+                            )
+                        )
+                    })
+                    .collect();
+                let user_ty = user_ty.as_ref().map(|user_ty| {
+                    this.canonical_user_type_annotations.push(ty::CanonicalUserTypeAnnotation {
+                        span: source_info.span,
+                        user_ty: user_ty.clone(),
+                        inferred_ty: info.adt_ty,
+                    })
+                });
+
+                block
+                    .and(Rvalue::Aggregate(Box::new(AggregateKind::InitAdt(info, user_ty)), fields))
+            }
             ExprKind::Closure(box ClosureExpr {
                 closure_id,
                 args,
@@ -458,7 +486,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::RawBorrow { .. }
             | ExprKind::Adt { .. }
             | ExprKind::PtrMetadata { .. }
-            | ExprKind::InitStruct(..)
             | ExprKind::Loop { .. }
             | ExprKind::LoopMatch { .. }
             | ExprKind::LogicalOp { .. }

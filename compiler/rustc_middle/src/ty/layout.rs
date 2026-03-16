@@ -967,7 +967,7 @@ where
                         TyMaybeWithLayout::Ty(elem_ty)
                     }
                 }
-                ty::InitAdt(_info) => todo!(),
+                ty::InitAdt(info) => TyMaybeWithLayout::Ty(info.component_tys[i]),
                 ty::InitTuple(elem_tys) => TyMaybeWithLayout::Ty(elem_tys[i]),
 
                 // ADTs.

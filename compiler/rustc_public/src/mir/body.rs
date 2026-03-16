@@ -5,8 +5,8 @@ use serde::Serialize;
 use crate::compiler_interface::with;
 use crate::mir::pretty::function_body;
 use crate::ty::{
-    AdtDef, ClosureDef, CoroutineClosureDef, CoroutineDef, GenericArgs, MirConst, Movability,
-    Region, RigidTy, Ty, TyConst, TyKind, VariantIdx,
+    AdtDef, ClosureDef, CoroutineClosureDef, CoroutineDef, GenericArgs, InitAdtInfo, MirConst,
+    Movability, Region, RigidTy, Ty, TyConst, TyKind, VariantIdx,
 };
 use crate::{Error, Opaque, Span, Symbol};
 
@@ -645,6 +645,7 @@ impl Rvalue {
                     Ok(Ty::new_init_array_repeat(elem, len.clone()))
                 }
                 AggregateKind::InitSliceRepeat(elem) => Ok(Ty::new_init_slice_repeat(elem)),
+                AggregateKind::InitAdt(ref info, _) => Ok(Ty::new_init_adt(info.clone())),
                 AggregateKind::Adt(def, _, ref args, _, _) => Ok(def.ty_with_args(args)),
                 AggregateKind::Closure(def, ref args) => Ok(Ty::new_closure(def, args.clone())),
                 AggregateKind::Coroutine(def, ref args) => Ok(Ty::new_coroutine(def, args.clone())),
@@ -667,6 +668,7 @@ pub enum AggregateKind {
     InitArrayRepeat(Ty, TyConst),
     InitSliceRepeat(Ty),
     InitTuple,
+    InitAdt(InitAdtInfo, Option<UserTypeAnnotationIndex>),
     Adt(AdtDef, VariantIdx, GenericArgs, Option<UserTypeAnnotationIndex>, Option<FieldIdx>),
     PtrMetadata(Ty, Option<UserTypeAnnotationIndex>),
     Closure(ClosureDef, GenericArgs),

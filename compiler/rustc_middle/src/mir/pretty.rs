@@ -1182,6 +1182,14 @@ impl<'tcx> Debug for Rvalue<'tcx> {
                             fmt_tuple(fmt, "do init tuple ")
                         }
                     }
+                    AggregateKind::InitAdt(_info, _user_ty) => {
+                        // FIXME(in_place_init): print more info
+                        if places.is_empty() {
+                            write!(fmt, "do init struct ()")
+                        } else {
+                            fmt_tuple(fmt, "do init struct ")
+                        }
+                    }
 
                     AggregateKind::Adt(adt_did, variant, args, _user_ty, _) => {
                         ty::tls::with(|tcx| {

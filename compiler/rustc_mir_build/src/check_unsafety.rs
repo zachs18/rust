@@ -412,7 +412,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             | ExprKind::InitArray { .. }
             | ExprKind::InitArrayRepeat { .. }
             | ExprKind::InitSliceRepeat { .. }
-            | ExprKind::InitStruct(..)
+            | ExprKind::InitAdt(..)
             | ExprKind::InitTuple { .. }
             | ExprKind::Array { .. }
             | ExprKind::Binary { .. }
