@@ -26,8 +26,8 @@ use crate::infer::canonical::Canonical;
 use crate::traits::ObligationCause;
 use crate::ty::InferTy::*;
 use crate::ty::{
-    self, AdtDef, Const, Discr, GenericArg, GenericArgs, GenericArgsRef, List, ParamEnv, Region,
-    Ty, TyCtxt, TypeSuperVisitable, TypeVisitable, TypeVisitor, UintTy, ValTree,
+    self, AdtDef, Const, Discr, GenericArg, GenericArgs, GenericArgsRef, InitAdtInfo, List,
+    ParamEnv, Region, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable, TypeVisitor, UintTy, ValTree,
 };
 
 // Re-export and re-parameterize some `I = TyCtxt<'tcx>` types here
@@ -758,6 +758,11 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_init_adt(tcx: TyCtxt<'tcx>, info: InitAdtInfo<'tcx>) -> Ty<'tcx> {
+        Ty::new(tcx, InitAdt(info))
+    }
+
+    #[inline]
     pub fn new_fn_def(
         tcx: TyCtxt<'tcx>,
         def_id: DefId,
@@ -1150,6 +1155,10 @@ impl<'tcx> rustc_type_ir::inherent::Ty<TyCtxt<'tcx>> for Ty<'tcx> {
 
     fn new_init_slice_repeat(interner: TyCtxt<'tcx>, elem: Ty<'tcx>) -> Self {
         Ty::new_init_slice_repeat(interner, elem)
+    }
+
+    fn new_init_adt(interner: TyCtxt<'tcx>, info: InitAdtInfo<'tcx>) -> Self {
+        Ty::new_init_adt(interner, info)
     }
 
     fn tuple_fields(self) -> &'tcx ty::List<Ty<'tcx>> {
