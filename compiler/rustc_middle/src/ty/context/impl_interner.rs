@@ -19,8 +19,8 @@ use crate::traits::solve::{
     self, CanonicalInput, ExternalConstraints, ExternalConstraintsData, QueryResult, inspect,
 };
 use crate::ty::{
-    self, Clause, Const, InitAdtInfo, InitAdtInfoData, List, ParamTy, Pattern,
-    PolyExistentialPredicate, Predicate, Region, Ty, TyCtxt,
+    self, Clause, Const, InitAdtComponentInfo, InitAdtInfo, InitAdtInfoData, List, ParamTy,
+    Pattern, PolyExistentialPredicate, Predicate, Region, Ty, TyCtxt,
 };
 
 #[allow(rustc::usage_of_ty_tykind)]
@@ -86,8 +86,10 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
 
     type ErrorGuaranteed = ErrorGuaranteed;
     type BoundExistentialPredicates = &'tcx List<PolyExistentialPredicate<'tcx>>;
-    type InitAdtInfo = InitAdtInfo<'tcx>;
     type InitAdtInfoData = InitAdtInfoData<'tcx>;
+    type InitAdtInfo = InitAdtInfo<'tcx>;
+    type InitAdtComponentInfo = InitAdtComponentInfo<'tcx>;
+    type InitAdtComponentInfos = &'tcx List<InitAdtComponentInfo<'tcx>>;
 
     type AllocId = crate::mir::interpret::AllocId;
     type Pat = Pattern<'tcx>;

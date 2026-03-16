@@ -6,7 +6,7 @@
 //! See [`rustc_hir_analysis::check`] for more context on type checking in general.
 
 use itertools::Either;
-use rustc_abi::{FIRST_VARIANT, FieldIdx};
+use rustc_abi::{FIRST_VARIANT, FieldIdx, VariantIdx};
 use rustc_ast as ast;
 use rustc_ast::util::parser::ExprPrecedence;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
@@ -2766,6 +2766,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 what: adt.variant_descr(),
             });
         }
+        let variant_idx = adt.variant_index_with_id(variant.def_id);
 
         let init_adt_ty = self.check_expr_init_struct_fields(
             adt_ty,
@@ -2773,6 +2774,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             expr,
             qpath.span(),
             variant,
+            variant_idx,
             fields,
             base_expr,
         );
@@ -2788,6 +2790,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         expr: &hir::Expr<'_>,
         path_span: Span,
         variant: &'tcx ty::VariantDef,
+        variant_idx: VariantIdx,
         hir_fields: &'tcx [hir::ExprField<'tcx>],
         base_expr: &'tcx hir::StructTailExpr<'tcx>,
     ) -> Ty<'tcx> {
@@ -2801,7 +2804,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         });
         if let Some(info) = expected_info {
-            // re-link the variables that the fudging above can create.
             self.demand_eqtype(path_span, info.adt_ty, adt_ty);
         }
 
@@ -2810,11 +2812,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         };
         let adt_kind = adt.adt_kind();
 
-        let mut remaining_fields = variant
+        let adt_fields_by_name = variant
             .fields
             .iter_enumerated()
             .map(|(i, field)| (field.ident(tcx).normalize_to_macros_2_0(), (i, field)))
             .collect::<UnordMap<_, _>>();
+
+        let mut remaining_fields = adt_fields_by_name.clone();
 
         let mut seen_fields = FxHashMap::default();
 
@@ -2829,82 +2833,117 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             error_happened = Some(guar);
         }
 
-        // Type-check each field.
-        for (idx, field) in hir_fields.iter().enumerate() {
-            let ident = tcx.adjust_ident(field.ident, variant.def_id);
-            let field_type = if let Some((i, v_field)) = remaining_fields.remove(&ident) {
-                seen_fields.insert(ident, field.span);
-                self.write_field_index(field.hir_id, i);
+        // Type-check each field and collect the initializer info.
+        let mut pinned = false;
+        let (component_tys, component_infos): (Vec<_>, Vec<_>) = hir_fields
+            .iter()
+            .map(|field| {
+                let ident = tcx.adjust_ident(field.ident, variant.def_id);
 
-                // We don't look at stability attributes on
-                // struct-like enums (yet...), but it's definitely not
-                // a bug to have constructed one.
-                if adt_kind != AdtKind::Enum {
-                    tcx.check_stability(v_field.did, Some(field.hir_id), field.span, None);
-                }
+                let dst_field_idx = if ident.name == kw::Underscore {
+                    // This is a `_` initailizer with DST = () that runs (and can signal failure),
+                    // but doesn't initialize any field.
+                    None
+                } else if let Some((i, v_field)) = remaining_fields.remove(&ident) {
+                    seen_fields.insert(ident, field.span);
+                    self.write_field_index(field.hir_id, i);
 
-                self.field_ty(field.span, v_field, args)
-            } else {
-                let guar = if let Some(prev_span) = seen_fields.get(&ident) {
-                    self.dcx().emit_err(FieldMultiplySpecifiedInInitializer {
-                        span: field.ident.span,
-                        prev_span: *prev_span,
-                        ident,
-                    })
-                } else {
-                    self.report_unknown_field(
-                        adt_ty,
-                        variant,
-                        expr,
-                        field,
-                        hir_fields,
-                        adt.variant_descr(),
-                    )
-                };
-                error_happened = Some(guar);
-
-                Ty::new_error(tcx, guar)
-            };
-
-            // Check that the expected field type is WF. Otherwise, we emit no use-site error
-            // in the case of coercions for non-WF fields, which leads to incorrect error
-            // tainting. See issue #126272.
-            self.register_wf_obligation(
-                field_type.into(),
-                field.expr.span,
-                ObligationCauseCode::WellFormed(None),
-            );
-
-            // Make sure to give a type to the field even if there's
-            // an error, so we can continue type-checking.
-            let ty = self.check_expr_with_hint(field.expr, field_type);
-            let diag = self.demand_coerce_diag(field.expr, ty, field_type, None, AllowTwoPhase::No);
-
-            if let Err(diag) = diag {
-                if idx == hir_fields.len() - 1 {
-                    if remaining_fields.is_empty() {
-                        self.suggest_fru_from_range_and_emit(field, variant, args, diag);
-                    } else {
-                        diag.stash(field.span, StashKey::MaybeFruTypo);
+                    // We don't look at stability attributes on
+                    // struct-like enums (yet...), but it's definitely not
+                    // a bug to have constructed one.
+                    if adt_kind != AdtKind::Enum {
+                        tcx.check_stability(v_field.did, Some(field.hir_id), field.span, None);
                     }
+
+                    // Check that the initializee field type is WF.
+                    self.register_wf_obligation(
+                        self.field_ty(field.span, v_field, args).into(),
+                        field.expr.span,
+                        ObligationCauseCode::WellFormed(None),
+                    );
+
+                    Some(i)
                 } else {
-                    diag.emit();
-                }
-            }
-        }
+                    let guar = if let Some(prev_span) = seen_fields.get(&ident) {
+                        self.dcx().emit_err(FieldMultiplySpecifiedInInitializer {
+                            span: field.ident.span,
+                            prev_span: *prev_span,
+                            ident,
+                        })
+                    } else {
+                        self.report_unknown_field(
+                            adt_ty,
+                            variant,
+                            expr,
+                            field,
+                            hir_fields,
+                            adt.variant_descr(),
+                        )
+                    };
+                    error_happened = Some(guar);
+
+                    None
+                };
+
+                let args = if let Some(init_info) = field.init_info {
+                    if init_info.pinned {
+                        pinned = true;
+                    }
+                    init_info
+                        .args
+                        .iter()
+                        .map(|arg| {
+                            let (cb, ident) = match *arg {
+                                rustc_hir::InitFieldArg::Arg => {
+                                    return ty::InitAdtComponentArg::Arg;
+                                }
+                                rustc_hir::InitFieldArg::Ref(_ident)
+                                | rustc_hir::InitFieldArg::PinRef(_ident) => todo!(
+                                    "handle pinnedness and make sure we don't pass two \
+                                    refs (or a ref and a ptr) to the same field,\
+                                    and make sure that for unions, `ref` or `ref mut` \
+                                    are unsafe or disallowed"
+                                ),
+                                rustc_hir::InitFieldArg::Ptr(ident) => {
+                                    (ty::InitAdtComponentArg::Ptr, ident)
+                                }
+                            };
+                            let ident = tcx.adjust_ident(ident, variant.def_id);
+
+                            if let Some(&(refd_field, _)) = adt_fields_by_name.get(&ident) {
+                                cb(refd_field)
+                            } else {
+                                todo!("report unknown field");
+                            }
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                };
+
+                let component_info = ty::InitAdtComponentInfo {
+                    field: dst_field_idx,
+                    args: tcx.mk_init_adt_component_arg_list(&args),
+                };
+
+                let component_ty = self.check_expr(field.expr);
+
+                (component_ty, component_info)
+            })
+            .unzip();
 
         // Make sure the programmer specified correct number of fields.
-        if adt_kind == AdtKind::Union && hir_fields.len() != 1 {
+        if adt_kind == AdtKind::Union && seen_fields.len() != 1 {
             struct_span_code_err!(
                 self.dcx(),
                 path_span,
                 E0784,
-                "union expressions should have exactly one field",
+                "union initializer expressions should have exactly one field",
             )
             .emit();
         }
 
-        // If check_expr_struct_fields hit an error, do not attempt to populate
+        // If check_expr_init_struct_fields hit an error, do not attempt to populate
         // the fields with the base_expr. This could cause us to hit errors later
         // when certain fields are assumed to exist that in fact do not.
         if let Some(guar) = error_happened {
@@ -3004,127 +3043,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 };
                 self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
             }
-            hir::StructTailExpr::Base(base_expr) => {
-                // FIXME: We are currently creating two branches here in order to maintain
-                // consistency. But they should be merged as much as possible.
-                let fru_tys = if self.tcx.features().type_changing_struct_update() {
-                    if adt.is_struct() {
-                        // Make some fresh generic parameters for our ADT type.
-                        let fresh_args = self.fresh_args_for_item(base_expr.span, adt.did());
-                        // We do subtyping on the FRU fields first, so we can
-                        // learn exactly what types we expect the base expr
-                        // needs constrained to be compatible with the struct
-                        // type we expect from the expectation value.
-                        let fru_tys = variant
-                            .fields
-                            .iter()
-                            .map(|f| {
-                                let fru_ty = self.normalize(
-                                    expr.span,
-                                    self.field_ty(base_expr.span, f, fresh_args),
-                                );
-                                let ident =
-                                    self.tcx.adjust_ident(f.ident(self.tcx), variant.def_id);
-                                if let Some(_) = remaining_fields.remove(&ident) {
-                                    let target_ty = self.field_ty(base_expr.span, f, args);
-                                    let cause = self.misc(base_expr.span);
-                                    match self.at(&cause, self.param_env).sup(
-                                        // We're already using inference variables for any params,
-                                        // and don't allow converting between different structs,
-                                        // so there is no way this ever actually defines an opaque
-                                        // type. Thus choosing `Yes` is fine.
-                                        DefineOpaqueTypes::Yes,
-                                        target_ty,
-                                        fru_ty,
-                                    ) {
-                                        Ok(InferOk { obligations, value: () }) => {
-                                            self.register_predicates(obligations)
-                                        }
-                                        Err(_) => {
-                                            span_bug!(
-                                                cause.span,
-                                                "subtyping remaining fields of type changing FRU \
-                                                failed: {target_ty} != {fru_ty}: {}::{}",
-                                                variant.name,
-                                                ident.name,
-                                            );
-                                        }
-                                    }
-                                }
-                                self.resolve_vars_if_possible(fru_ty)
-                            })
-                            .collect();
-                        // The use of fresh args that we have subtyped against
-                        // our base ADT type's fields allows us to guide inference
-                        // along so that, e.g.
-                        // ```
-                        // MyStruct<'a, F1, F2, const C: usize> {
-                        //     f: F1,
-                        //     // Other fields that reference `'a`, `F2`, and `C`
-                        // }
-                        //
-                        // let x = MyStruct {
-                        //    f: 1usize,
-                        //    ..other_struct
-                        // };
-                        // ```
-                        // will have the `other_struct` expression constrained to
-                        // `MyStruct<'a, _, F2, C>`, as opposed to just `_`...
-                        // This is important to allow coercions to happen in
-                        // `other_struct` itself. See `coerce-in-base-expr.rs`.
-                        let fresh_base_ty = Ty::new_adt(self.tcx, *adt, fresh_args);
-                        self.check_expr_has_type_or_error(
-                            base_expr,
-                            self.resolve_vars_if_possible(fresh_base_ty),
-                            |_| {},
-                        );
-                        fru_tys
-                    } else {
-                        // Check the base_expr, regardless of a bad expected adt_ty, so we can get
-                        // type errors on that expression, too.
-                        self.check_expr(base_expr);
-                        let guar = self
-                            .dcx()
-                            .emit_err(FunctionalRecordUpdateOnNonStruct { span: base_expr.span });
-                        return Ty::new_error(tcx, guar);
-                    }
-                } else {
-                    self.check_expr_has_type_or_error(base_expr, adt_ty, |_| {
-                        let base_ty = self.typeck_results.borrow().expr_ty(base_expr);
-                        let same_adt = matches!((adt_ty.kind(), base_ty.kind()),
-                            (ty::Adt(adt, _), ty::Adt(base_adt, _)) if adt == base_adt);
-                        if self.tcx.sess.is_nightly_build() && same_adt {
-                            feature_err(
-                                &self.tcx.sess,
-                                sym::type_changing_struct_update,
-                                base_expr.span,
-                                "type changing struct updating is experimental",
-                            )
-                            .emit();
-                        }
-                    });
-                    match adt_ty.kind() {
-                        ty::Adt(adt, args) if adt.is_struct() => variant
-                            .fields
-                            .iter()
-                            .map(|f| self.normalize(expr.span, f.ty(self.tcx, args)))
-                            .collect(),
-                        _ => {
-                            let guar = self.dcx().emit_err(FunctionalRecordUpdateOnNonStruct {
-                                span: base_expr.span,
-                            });
-                            return Ty::new_error(tcx, guar);
-                        }
-                    }
-                };
-                self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
+            hir::StructTailExpr::Base(_base_expr) => {
+                todo!("decide if this should be allowed")
             }
             rustc_hir::StructTailExpr::NoneWithError(guaranteed) => {
-                // If parsing the struct recovered from a syntax error, do not report missing
+                // If parsing the initializer recovered from a syntax error, do not report missing
                 // fields. This prevents spurious errors when a field is intended to be present
                 // but a preceding syntax error caused it not to be parsed. For example, if a
                 // struct type `StructName` has fields `foo` and `bar`, then
-                //     StructName { foo(), bar: 2 }
+                //     do init struct StructName { foo(), bar: 2 }
                 // will not successfully parse a field `foo`, but we will not mention that,
                 // since the syntax error has already been reported.
 
@@ -3173,7 +3100,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         };
 
-        todo!()
+        let info = ty::InitAdtInfoData {
+            adt_ty,
+            variant: variant_idx,
+            component_tys: tcx.mk_type_list(&component_tys),
+            component_infos: tcx.mk_init_adt_component_info_list(&component_infos),
+            pinned,
+        };
+        let info = tcx.mk_init_adt_info(info);
+        Ty::new_init_adt(tcx, info)
     }
 
     fn check_struct_fields_on_error(

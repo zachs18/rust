@@ -368,7 +368,10 @@ impl<I: Interner> FlagComputation<I> {
                 self.add_tys(types);
             }
 
-            ty::InitAdt(_info) => todo!(),
+            ty::InitAdt(info) => {
+                self.add_ty(info.adt_ty());
+                self.add_tys(info.component_tys());
+            }
 
             ty::FnDef(_, args) => {
                 self.add_args(args.as_slice());

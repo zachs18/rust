@@ -568,8 +568,34 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             Ok(Ty::new_init_slice_repeat(cx, elem))
         }
 
-        (ty::InitAdt(..), ty::InitAdt(..)) => {
-            todo!()
+        (ty::InitAdt(a_info), ty::InitAdt(b_info)) => {
+            if a_info.variant_idx() != b_info.variant_idx()
+                || a_info.component_infos() != b_info.component_infos()
+                || a_info.pinned() != b_info.pinned()
+            {
+                return Err(TypeError::Mismatch);
+            }
+            let a_components = a_info.component_tys();
+            let b_components = b_info.component_tys();
+            if a_components.len() != b_components.len() {
+                return Err(TypeError::Mismatch);
+            }
+            let adt_ty = relation.relate(a_info.adt_ty(), b_info.adt_ty())?;
+            let component_tys = cx.mk_type_list_from_iter(
+                std::iter::zip(a_components.iter(), b_components.iter())
+                    .map(|(a_component, b_component)| relation.relate(a_component, b_component)),
+            )?;
+
+            let info = I::InitAdtInfo::new(
+                cx,
+                adt_ty,
+                a_info.variant_idx(),
+                component_tys,
+                a_info.component_infos(),
+                a_info.pinned(),
+            );
+
+            Ok(Ty::new_init_adt(cx, info))
         }
 
         _ => Err(TypeError::Sorts(ExpectedFound::new(a, b))),

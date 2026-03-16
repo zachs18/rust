@@ -103,6 +103,44 @@ impl<'tcx> rustc_type_ir::inherent::InitAdtInfo<TyCtxt<'tcx>> for InitAdtInfo<'t
     fn component_tys(self) -> &'tcx List<Ty<'tcx>> {
         self.0.component_tys
     }
+
+    fn variant_idx(self) -> VariantIdx {
+        self.0.variant
+    }
+
+    fn component_infos(self) -> <TyCtxt<'tcx> as rustc_type_ir::Interner>::InitAdtComponentInfos {
+        self.0.component_infos
+    }
+
+    fn pinned(self) -> bool {
+        self.0.pinned
+    }
+
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        adt_ty: Ty<'tcx>,
+        variant_idx: VariantIdx,
+        component_tys: &'tcx List<Ty<'tcx>>,
+        component_infos: &'tcx List<InitAdtComponentInfo<'tcx>>,
+        pinned: bool,
+    ) -> Self {
+        let data = InitAdtInfoData {
+            adt_ty,
+            variant: variant_idx,
+            component_tys,
+            component_infos,
+            pinned,
+        };
+        tcx.mk_init_adt_info(data)
+    }
+}
+
+impl<'tcx> rustc_type_ir::inherent::InitAdtComponentInfo<TyCtxt<'tcx>>
+    for InitAdtComponentInfo<'tcx>
+{
+    fn field_idx(self) -> Option<FieldIdx> {
+        self.field
+    }
 }
 
 impl<'tcx> rustc_type_ir::inherent::Safety<TyCtxt<'tcx>> for hir::Safety {
