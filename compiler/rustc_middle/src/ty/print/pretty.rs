@@ -1093,8 +1093,34 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
                 elem_ty.print(self)?;
                 write!(self, "}}")?;
             }
-            ty::InitAdt(_info) => {
-                todo!()
+            ty::InitAdt(info) => {
+                write!(self, "{{InitAdt for ")?;
+                info.adt_ty.print(self)?;
+                write!(self, " variant {:?} with (", info.variant)?;
+                for (ty, info) in std::iter::zip(info.component_tys, info.component_infos) {
+                    ty.print(self)?;
+                    if let Some(adt_field) = info.field {
+                        write!(self, " for {adt_field:?} with (")?;
+                    } else {
+                        write!(self, " for no field with (")?;
+                    }
+                    for arg in info.args {
+                        match arg {
+                            ty::InitAdtComponentArg::Arg => write!(self, "arg, ")?,
+                            ty::InitAdtComponentArg::Ref(field_idx) => {
+                                write!(self, "ref {field_idx:?}, ")?
+                            }
+                            ty::InitAdtComponentArg::PinRef(field_idx) => {
+                                write!(self, "pin ref {field_idx:?}, ")?
+                            }
+                            ty::InitAdtComponentArg::Ptr(field_idx) => {
+                                write!(self, "ptr {field_idx:?}, ")?
+                            }
+                        }
+                    }
+                    write!(self, "), ")?;
+                }
+                write!(self, ")}}")?;
             }
             ty::InitTuple(elem_tys) => {
                 write!(self, "{{InitTuple with (")?;

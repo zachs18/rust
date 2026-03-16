@@ -582,9 +582,7 @@ fn layout_of_uncached<'tcx>(
             // univariant_no_unsize(tys, None::<StructPrefix>)?
         }
 
-        ty::InitAdt(_info) => {
-            todo!()
-        }
+        ty::InitAdt(info) => univariant_no_unsize(info.component_tys, None::<StructPrefix>)?,
 
         ty::InitArray(tys) | ty::InitTuple(tys) => univariant_no_unsize(tys, None::<StructPrefix>)?,
 

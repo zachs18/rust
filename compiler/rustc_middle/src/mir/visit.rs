@@ -803,6 +803,12 @@ macro_rules! make_mir_visitor {
                             AggregateKind::InitSliceRepeat(ty) => {
                                 self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
                             }
+                            AggregateKind::InitAdt(info, _user_args) => {
+                                static ONCE: std::sync::Once = std::sync::Once::new();
+                                ONCE.call_once(|| {
+                                    tracing::warn!("FIXME(in_place_init): mir visitor for AggregateKind::InitAdt({info:?})");
+                                });
+                            }
                             AggregateKind::Adt(
                                 _adt_def,
                                 _variant_index,

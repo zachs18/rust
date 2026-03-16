@@ -1,8 +1,8 @@
 use super::{
-    AdtExpr, AdtExprBase, Arm, Block, ClosureExpr, Expr, ExprKind, InitAdtExpr, InlineAsmExpr,
-    InlineAsmOperand, Pat, PatKind, PtrMetadataExpr, PtrMetadataExprBase, Stmt, StmtKind, Thir,
+    AdtExpr, AdtExprBase, Arm, Block, ClosureExpr, Expr, ExprKind, InitAdtExpr, InitAdtExprBase,
+    InlineAsmExpr, InlineAsmOperand, LoopMatchMatchData, Pat, PatKind, PtrMetadataExpr,
+    PtrMetadataExprBase, Stmt, StmtKind, Thir,
 };
-use crate::thir::LoopMatchMatchData;
 
 /// Every `walk_*` method uses deconstruction to access fields of structs and
 /// enums. This will result in a compile error if a field is added, which makes
@@ -145,16 +145,19 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
                 visitor.visit_expr(&visitor.thir()[base.base]);
             }
         }
-        InitStruct(box InitAdtExpr {
+        InitAdt(box InitAdtExpr {
             ref fields,
+            ref base,
             adt_def: _,
             variant_index: _,
             args: _,
             user_ty: _,
+            info: _,
         }) => {
             for field in &**fields {
                 visitor.visit_expr(&visitor.thir()[field.expr]);
             }
+            let (InitAdtExprBase::DefaultFields(..) | InitAdtExprBase::None) = base;
         }
         PtrMetadata(box PtrMetadataExpr { ref fields, ref base, user_ty: _ }) => {
             for field in &**fields {

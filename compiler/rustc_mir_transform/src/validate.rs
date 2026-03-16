@@ -1090,6 +1090,21 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                         self.fail(location, "InitSliceRepeat has wrong number of fields");
                     }
                 }
+                AggregateKind::InitAdt(info, _) => {
+                    if fields.len() != info.component_tys.len() {
+                        self.fail(location, "InitAdt has wrong number of fields");
+                    } else {
+                        for (component, component_ty) in std::iter::zip(fields, info.component_tys)
+                        {
+                            if !self.mir_assign_valid_types(
+                                component.ty(self.body, self.tcx),
+                                component_ty,
+                            ) {
+                                self.fail(location, "InitAdt initializer field has the wrong type");
+                            }
+                        }
+                    }
+                }
                 AggregateKind::Array(dest) => {
                     for src in fields {
                         if !self.mir_assign_valid_types(src.ty(self.body, self.tcx), dest) {

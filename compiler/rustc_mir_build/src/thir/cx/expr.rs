@@ -709,6 +709,118 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }))
             }
 
+            hir::ExprKind::InitStruct(qpath, fields, ref base) => {
+                let ty::InitAdt(info) = *expr_ty.kind() else {
+                    span_bug!(
+                        expr.span,
+                        "unexpected type for `do init struct` intializer: {expr_ty:?}"
+                    );
+                };
+                // The fields of a `do init struct` are always in order *for the initializer type itself*.
+                let fields: Box<[_]> = fields
+                    .iter()
+                    .enumerate()
+                    .map(|(name, field)| FieldExpr {
+                        name: FieldIdx::from_usize(name),
+                        expr: self.mirror_expr(field.expr),
+                    })
+                    .collect();
+
+                match info.adt_ty.kind() {
+                    ty::Adt(adt, args) => match adt.adt_kind() {
+                        AdtKind::Struct | AdtKind::Union => {
+                            let user_provided_types = self.typeck_results.user_provided_types();
+                            let user_ty =
+                                user_provided_types.get(expr.hir_id).copied().map(Box::new);
+                            debug!(
+                                "make_mirror_unadjusted: do init (struct/union) user_ty={:?}",
+                                user_ty
+                            );
+                            ExprKind::InitAdt(Box::new(InitAdtExpr {
+                                info,
+                                adt_def: *adt,
+                                variant_index: FIRST_VARIANT,
+                                args,
+                                user_ty,
+                                fields,
+                                base: match base {
+                                    hir::StructTailExpr::Base(..) => {
+                                        todo!("do init struct Foo {{..base}}")
+                                    }
+                                    hir::StructTailExpr::None
+                                    | hir::StructTailExpr::NoneWithError(..) => {
+                                        InitAdtExprBase::None
+                                    }
+                                    hir::StructTailExpr::DefaultFields(_) => {
+                                        InitAdtExprBase::DefaultFields(
+                                            self.typeck_results.fru_field_types()[expr.hir_id]
+                                                .iter()
+                                                .copied()
+                                                .collect(),
+                                        )
+                                    }
+                                },
+                            }))
+                        }
+                        AdtKind::Enum => {
+                            let res = self.typeck_results.qpath_res(qpath, expr.hir_id);
+                            match res {
+                                Res::Def(DefKind::Variant, variant_id) => {
+                                    assert!(matches!(
+                                        base,
+                                        hir::StructTailExpr::None
+                                            | hir::StructTailExpr::DefaultFields(_)
+                                            | hir::StructTailExpr::NoneWithError(_)
+                                    ));
+
+                                    let index = adt.variant_index_with_id(variant_id);
+                                    let user_provided_types =
+                                        self.typeck_results.user_provided_types();
+                                    let user_ty =
+                                        user_provided_types.get(expr.hir_id).copied().map(Box::new);
+                                    debug!(
+                                        "make_mirror_unadjusted: (variant) user_ty={:?}",
+                                        user_ty
+                                    );
+                                    ExprKind::InitAdt(Box::new(InitAdtExpr {
+                                        info,
+                                        adt_def: *adt,
+                                        variant_index: index,
+                                        args,
+                                        user_ty,
+                                        fields,
+                                        base: match base {
+                                            hir::StructTailExpr::DefaultFields(_) => {
+                                                InitAdtExprBase::DefaultFields(
+                                                    self.typeck_results.fru_field_types()
+                                                        [expr.hir_id]
+                                                        .iter()
+                                                        .copied()
+                                                        .collect(),
+                                                )
+                                            }
+                                            hir::StructTailExpr::Base(base) => {
+                                                span_bug!(base.span, "unexpected res: {:?}", res);
+                                            }
+                                            hir::StructTailExpr::None
+                                            | hir::StructTailExpr::NoneWithError(_) => {
+                                                InitAdtExprBase::None
+                                            }
+                                        },
+                                    }))
+                                }
+                                _ => {
+                                    span_bug!(expr.span, "unexpected res: {:?}", res);
+                                }
+                            }
+                        }
+                    },
+                    _ => {
+                        span_bug!(expr.span, "unexpected type for struct literal: {:?}", expr_ty);
+                    }
+                }
+            }
+
             hir::ExprKind::Closure(hir::Closure { .. }) => {
                 let closure_ty = self.typeck_results.expr_ty(expr);
                 let (def_id, args, movability) = match *closure_ty.kind() {
@@ -1145,7 +1257,6 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 value: self.mirror_expr(value),
                 count: self.mirror_expr(count),
             },
-            hir::ExprKind::InitStruct(..) => todo!(),
             hir::ExprKind::InitTuple(fields) => {
                 ExprKind::InitTuple { fields: self.mirror_exprs(fields) }
             }

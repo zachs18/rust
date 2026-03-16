@@ -32,8 +32,8 @@ use crate::thir::visit::for_each_immediate_subpat;
 use crate::ty::adjustment::PointerCoercion;
 use crate::ty::layout::IntegerExt;
 use crate::ty::{
-    self, AdtDef, CanonicalUserType, CanonicalUserTypeAnnotation, FnSig, GenericArgsRef, Ty,
-    TyCtxt, UpvarArgs,
+    self, AdtDef, CanonicalUserType, CanonicalUserTypeAnnotation, FnSig, GenericArgsRef,
+    InitAdtInfo, Ty, TyCtxt, UpvarArgs,
 };
 
 pub mod visit;
@@ -192,6 +192,7 @@ pub enum PtrMetadataExprBase<'tcx> {
 
 #[derive(Clone, Debug, HashStable)]
 pub struct InitAdtExpr<'tcx> {
+    pub info: InitAdtInfo<'tcx>,
     /// The ADT we're constructing.
     pub adt_def: AdtDef<'tcx>,
     /// The variant of the ADT.
@@ -199,10 +200,23 @@ pub struct InitAdtExpr<'tcx> {
     pub args: GenericArgsRef<'tcx>,
 
     /// Optional user-given args: for something like `let x =
-    /// Bar::<T> { ... }`.
+    /// do init struct Bar::<T> { ... }`.
     pub user_ty: UserTy<'tcx>,
 
     pub fields: Box<[FieldExpr]>,
+    /// The base, e.g. `do init struct Foo {x: 1, ..}`.
+    pub base: InitAdtExprBase<'tcx>,
+}
+
+#[derive(Clone, Debug, HashStable)]
+pub enum InitAdtExprBase<'tcx> {
+    /// A struct initializer expression where all the fields are explicitly enumerated:
+    /// `do init struct Foo { a, b }`.
+    None,
+    /// A struct initializer expression with a `..` tail but no "base" expression.
+    /// The values from the struct fields' default values will be used to populate
+    /// any fields not explicitly mentioned: `do init struct Foo { .. }`.
+    DefaultFields(Box<[Ty<'tcx>]>),
 }
 
 #[derive(Clone, Debug, HashStable)]
@@ -532,7 +546,7 @@ pub enum ExprKind<'tcx> {
         count: ExprId,
     },
     /// An ADT initializer, e.g. `do init struct Foo {x: 1, y: 2}`
-    InitStruct(Box<InitAdtExpr<'tcx>>),
+    InitAdt(Box<InitAdtExpr<'tcx>>),
     /// A tuple initializer, e.g. `do init tuple (a, b, c, d)`
     InitTuple {
         fields: Box<[ExprId]>,
