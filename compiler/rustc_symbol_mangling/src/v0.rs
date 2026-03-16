@@ -559,12 +559,44 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
                 self.push("E");
             }
 
+            ty::InitAdt(info) => {
+                self.push("IC8init_adt");
+                info.adt_ty.print(self)?;
+                // FIXME(in_place_init): encode this properly?
+                // currently trying to encode it as a const u64
+                self.push(&format!("Ky{:x}_", info.variant.as_usize()));
+                for (ty, info) in std::iter::zip(info.component_tys, info.component_infos) {
+                    self.push("IC9component");
+                    ty.print(self)?;
+                    let encoded_field = info.field.map_or(0, |idx| idx.as_usize() + 1);
+                    // FIXME(in_place_init): encode this properly?
+                    // currently trying to encode it as a const u64
+                    self.push(&format!("Ky{:x}_", encoded_field));
+                    for arg in info.args {
+                        self.push("IC3arg");
+                        let (a, b) = match arg {
+                            ty::InitAdtComponentArg::Arg => (0, 0),
+                            ty::InitAdtComponentArg::Ref(field_idx) => (1, field_idx.as_usize()),
+                            ty::InitAdtComponentArg::PinRef(field_idx) => (2, field_idx.as_usize()),
+                            ty::InitAdtComponentArg::Ptr(field_idx) => (3, field_idx.as_usize()),
+                        };
+                        // FIXME(in_place_init): encode thes properly?
+                        // currently trying to encode it as a const u64
+                        self.push(&format!("Ky{:x}_", a));
+                        self.push(&format!("Ky{:x}_", b));
+                        self.push("E");
+                    }
+                    self.push("E");
+                }
+                // FIXME(in_place_init): encode this properly?
+                // currently trying to encode it as a const bool
+                self.push(&format!("Kb{}_", info.pinned as u8));
+                self.push("E");
+            }
+
             // TODO: implement these with a DefId instead(?)
             // actually, for the non-struct ones, could probably just mangle like tuples/arrays/etc do
-            ty::InitArray(..)
-            | ty::InitArrayRepeat(..)
-            | ty::InitSliceRepeat(..)
-            | ty::InitAdt(..) => todo!(),
+            ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) => todo!(),
 
             // We may still encounter projections here due to the printing
             // logic sometimes passing identity-substituted impl headers.

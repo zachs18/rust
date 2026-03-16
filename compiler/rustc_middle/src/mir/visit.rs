@@ -806,7 +806,7 @@ macro_rules! make_mir_visitor {
                             AggregateKind::InitAdt(info, _user_args) => {
                                 static ONCE: std::sync::Once = std::sync::Once::new();
                                 ONCE.call_once(|| {
-                                    tracing::warn!("FIXME(in_place_init): mir visitor for AggregateKind::InitAdt({info:?})");
+                                    tracing::warn!("FIXME(in_place_init): mir visitor for AggregateKind::InitAdt({info:?}) for {}", std::any::type_name::<Self>());
                                 });
                             }
                             AggregateKind::Adt(

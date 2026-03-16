@@ -699,7 +699,14 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                         };
                         check_equal(self, location, *f_ty);
                     }
-                    ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitAdt(..) => {
+                    ty::InitAdt(info) => {
+                        let Some(f_ty) = info.component_tys.get(f.as_usize()) else {
+                            fail_out_of_bounds(self, location);
+                            return;
+                        };
+                        check_equal(self, location, *f_ty);
+                    }
+                    ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) => {
                         todo!()
                     }
                     // Debug info is allowed to project into pattern types
