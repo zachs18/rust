@@ -2295,11 +2295,20 @@ pub struct DestructuredAdtConst<'tcx> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, HashStable)]
 #[derive(TypeFoldable, TypeVisitable)]
 pub enum InitAdtComponentArg {
+    /// Pass (possibly a clone of) the `Arg` passed in to the whole initializer.
     Arg,
+    /// Pass a non-pinned mutable reference to another field,
+    /// which must have been listed in the initializer before this one,
+    /// and must implement the corresponding `Init*` trait, not just `PinInit*`.
     Ref(FieldIdx),
+    /// Pass a pinned mutable reference to another field,
+    /// which must have been listed in the initializer before this one,
+    /// and must have been marked `pinned`.
     PinRef(FieldIdx),
+    /// Pass a pointer to another field.
     Ptr(FieldIdx),
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, HashStable)]
 #[derive(TypeFoldable, TypeVisitable)]
 pub struct InitAdtComponentInfo<'tcx> {

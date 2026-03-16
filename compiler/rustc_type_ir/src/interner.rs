@@ -147,8 +147,15 @@ pub trait Interner:
         + SliceLike<Item = Self::Pat>;
     type Safety: Safety<Self>;
     type Abi: Abi<Self>;
-    type InitAdtInfo: InitAdtInfo<Self>;
     type InitAdtInfoData;
+    type InitAdtInfo: InitAdtInfo<Self>;
+    type InitAdtComponentInfo: InitAdtComponentInfo<Self>;
+    type InitAdtComponentInfos: Copy
+        + Debug
+        + Hash
+        + Eq
+        + SliceLike<Item = Self::InitAdtComponentInfo>
+        + TypeVisitable<Self>;
 
     // Kinds of consts
     type Const: Const<Self>;

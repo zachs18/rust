@@ -6,6 +6,7 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_ast_ir::Mutability;
 
 use crate::elaborate::Elaboratable;
@@ -135,6 +136,8 @@ pub trait Ty<I: Interner<Ty = Self>>:
 
     fn new_init_slice_repeat(interner: I, elem: I::Ty) -> Self;
 
+    fn new_init_adt(interner: I, info: I::InitAdtInfo) -> Self;
+
     fn new_fn_def(interner: I, def_id: I::FunctionId, args: I::GenericArgs) -> Self;
 
     fn new_fn_ptr(interner: I, sig: ty::Binder<I, ty::FnSig<I>>) -> Self;
@@ -246,7 +249,28 @@ pub trait Abi<I: Interner<Abi = Self>>: Copy + Debug + Hash + Eq {
 pub trait InitAdtInfo<I: Interner<InitAdtInfo = Self>>: Copy + Debug + Hash + Eq {
     fn adt_ty(self) -> I::Ty;
 
+    fn variant_idx(self) -> VariantIdx;
+
     fn component_tys(self) -> I::Tys;
+
+    fn component_infos(self) -> I::InitAdtComponentInfos;
+
+    fn pinned(self) -> bool;
+
+    fn new(
+        interner: I,
+        adt_ty: I::Ty,
+        variant_idx: VariantIdx,
+        component_tys: I::Tys,
+        component_infos: I::InitAdtComponentInfos,
+        pinned: bool,
+    ) -> Self;
+}
+
+pub trait InitAdtComponentInfo<I: Interner<InitAdtComponentInfo = Self>>:
+    Copy + Debug + Hash + Eq
+{
+    fn field_idx(self) -> Option<FieldIdx>;
 }
 
 pub trait Safety<I: Interner<Safety = Self>>: Copy + Debug + Hash + Eq {
