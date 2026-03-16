@@ -2834,7 +2834,23 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
 
         // Type-check each field and collect the initializer info.
+        // If any component is pinned, the whole initailizer must be pinned.
         let mut pinned = false;
+        // If a field is referenced unpinned in another component, it must not be pinned.
+        let mut referenced_unpinned = vec![false; variant.fields.len()];
+        for field in hir_fields {
+            let Some(init_info) = field.init_info else {
+                continue;
+            };
+            for arg in init_info.args {
+                if let hir::InitFieldArg::Ref(referenced_unpinned_field) = arg
+                    && let Some(&(idx, _)) = adt_fields_by_name.get(referenced_unpinned_field)
+                {
+                    referenced_unpinned[idx.as_usize()] = true;
+                }
+            }
+        }
+
         let (component_tys, component_infos): (Vec<_>, Vec<_>) = hir_fields
             .iter()
             .map(|field| {
@@ -2887,6 +2903,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
                 let args = if let Some(init_info) = field.init_info {
                     if init_info.pinned {
+                        if let Some(dst_field_idx) = dst_field_idx
+                            && referenced_unpinned[dst_field_idx.as_usize()]
+                        {
+                            todo!("error message for pinned field referenced as unpinned")
+                        }
                         pinned = true;
                     }
                     init_info
@@ -2924,6 +2945,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let component_info = ty::InitAdtComponentInfo {
                     field: dst_field_idx,
                     args: tcx.mk_init_adt_component_arg_list(&args),
+                    referenced_unpinned: dst_field_idx
+                        .is_some_and(|dst_field_idx| referenced_unpinned[dst_field_idx.as_usize()]),
                 };
 
                 let component_ty = self.check_expr(field.expr);
