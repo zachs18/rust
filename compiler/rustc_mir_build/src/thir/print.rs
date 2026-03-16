@@ -540,7 +540,7 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 print_indented!(self, "]", depth_lvl + 1);
                 print_indented!(self, "}", depth_lvl);
             }
-            InitStruct(init_adt_expr) => {
+            InitAdt(init_adt_expr) => {
                 print_indented!(self, "InitStruct {", depth_lvl);
                 self.print_init_adt_expr(&**init_adt_expr, depth_lvl + 1);
                 print_indented!(self, "}", depth_lvl);

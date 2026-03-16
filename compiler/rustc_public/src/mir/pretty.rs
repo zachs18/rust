@@ -423,6 +423,15 @@ fn pretty_aggregate<W: Write>(
             write!(writer, "do init slice repeat from (")?;
             ")"
         }
+        AggregateKind::InitAdt(info, _) => {
+            // FIXME(in_place_init): print component infos
+            write!(
+                writer,
+                "do init struct(for {} variant {:?}) from (",
+                info.adt_ty, info.variant
+            )?;
+            ")"
+        }
         AggregateKind::PtrMetadata(pointee_ty, _) => {
             write!(writer, "builtin # ptr_metadata(for {pointee_ty}) from (")?;
             ")"

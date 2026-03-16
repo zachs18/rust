@@ -2304,8 +2304,9 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 ty::Binder::dummy(vec![elem])
             }
 
-            ty::InitAdt(_info) => {
-                todo!()
+            ty::InitAdt(info) => {
+                // (*) binder moved here
+                ty::Binder::dummy(info.component_tys.to_vec())
             }
 
             ty::Coroutine(def_id, args) => match self.tcx().coroutine_movability(def_id) {

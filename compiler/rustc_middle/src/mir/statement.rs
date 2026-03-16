@@ -858,6 +858,7 @@ impl<'tcx> Rvalue<'tcx> {
                     Ty::new_init_array_repeat(tcx, elem, len)
                 }
                 AggregateKind::InitSliceRepeat(elem) => Ty::new_init_slice_repeat(tcx, elem),
+                AggregateKind::InitAdt(info, _) => Ty::new_init_adt(tcx, info),
                 AggregateKind::Adt(did, _, args, _, _) => tcx.type_of(did).instantiate(tcx, args),
                 AggregateKind::Closure(did, args) => Ty::new_closure(tcx, did, args),
                 AggregateKind::Coroutine(did, args) => Ty::new_coroutine(tcx, did, args),

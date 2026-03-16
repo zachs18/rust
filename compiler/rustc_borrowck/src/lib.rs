@@ -1594,6 +1594,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
                     | AggregateKind::Array(..)
                     | AggregateKind::PtrMetadata(..)
                     | AggregateKind::Tuple { .. }
+                    | AggregateKind::InitAdt(..)
                     | AggregateKind::InitArray
                     | AggregateKind::InitArrayRepeat(..)
                     | AggregateKind::InitSliceRepeat(..)

@@ -8,7 +8,8 @@ use rustc_public_bridge::context::CompilerCtxt;
 use crate::alloc;
 use crate::compiler_interface::BridgeTys;
 use crate::ty::{
-    AdtKind, FloatTy, GenericArgs, GenericParamDef, IntTy, Region, RigidTy, TyKind, UintTy,
+    AdtKind, FloatTy, GenericArgs, GenericParamDef, InitAdtComponentArg, InitAdtComponentInfo,
+    InitAdtInfo, IntTy, Region, RigidTy, TyKind, UintTy,
 };
 use crate::unstable::Stable;
 
@@ -162,6 +163,70 @@ impl<'tcx> Stable<'tcx> for ty::AdtKind {
             ty::AdtKind::Struct => AdtKind::Struct,
             ty::AdtKind::Union => AdtKind::Union,
             ty::AdtKind::Enum => AdtKind::Enum,
+        }
+    }
+}
+
+impl<'tcx> Stable<'tcx> for ty::InitAdtInfo<'tcx> {
+    type T = InitAdtInfo;
+
+    fn stable<'cx>(
+        &self,
+        tables: &mut Tables<'cx, BridgeTys>,
+        cx: &CompilerCtxt<'cx, BridgeTys>,
+    ) -> Self::T {
+        let ty::InitAdtInfoData { adt_ty, variant, component_tys, component_infos, pinned } =
+            *self.0;
+        InitAdtInfo {
+            adt_ty: adt_ty.stable(tables, cx),
+            variant: variant.stable(tables, cx),
+            component_tys: component_tys
+                .iter()
+                .map(|component_ty| component_ty.stable(tables, cx))
+                .collect(),
+            component_infos: component_infos
+                .iter()
+                .map(|component_info| component_info.stable(tables, cx))
+                .collect(),
+            pinned,
+        }
+    }
+}
+
+impl<'tcx> Stable<'tcx> for ty::InitAdtComponentInfo<'tcx> {
+    type T = InitAdtComponentInfo;
+
+    fn stable<'cx>(
+        &self,
+        tables: &mut Tables<'cx, BridgeTys>,
+        cx: &CompilerCtxt<'cx, BridgeTys>,
+    ) -> Self::T {
+        InitAdtComponentInfo {
+            field: self.field.map(|f| f.stable(tables, cx)),
+            args: self.args.iter().map(|arg| arg.stable(tables, cx)).collect(),
+        }
+    }
+}
+
+impl<'tcx> Stable<'tcx> for ty::InitAdtComponentArg {
+    type T = InitAdtComponentArg;
+
+    fn stable<'cx>(
+        &self,
+        tables: &mut Tables<'cx, BridgeTys>,
+        cx: &CompilerCtxt<'cx, BridgeTys>,
+    ) -> Self::T {
+        match self {
+            ty::InitAdtComponentArg::Arg => InitAdtComponentArg::Arg,
+            ty::InitAdtComponentArg::Ref(field_idx) => {
+                InitAdtComponentArg::Ref(field_idx.stable(tables, cx))
+            }
+            ty::InitAdtComponentArg::PinRef(field_idx) => {
+                InitAdtComponentArg::PinRef(field_idx.stable(tables, cx))
+            }
+            ty::InitAdtComponentArg::Ptr(field_idx) => {
+                InitAdtComponentArg::Ptr(field_idx.stable(tables, cx))
+            }
         }
     }
 }

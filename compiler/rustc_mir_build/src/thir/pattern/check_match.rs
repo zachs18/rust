@@ -342,7 +342,7 @@ impl<'p, 'tcx> MatchVisitor<'p, 'tcx> {
             | InitArray { .. }
             | InitArrayRepeat { .. }
             | InitSliceRepeat { .. }
-            | InitStruct(..)
+            | InitAdt(..)
             | InitTuple { .. }
             | Array { .. }
             | Binary { .. }

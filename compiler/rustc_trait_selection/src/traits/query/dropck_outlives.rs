@@ -66,10 +66,9 @@ pub fn trivial_dropck_outlives<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
             tys.iter().all(|t| trivial_dropck_outlives(tcx, t))
         }
 
-        // FIXME(in_place_init): does dst_ty need to be live?
-        ty::InitAdt(_info) => {
-            todo!()
-        }
+        // FIXME(in_place_init): does dst_ty need to be live? I don't think so, this is like `FnPtr` `fn() -> DST`
+        // in that regard.
+        ty::InitAdt(info) => info.component_tys.iter().all(|t| trivial_dropck_outlives(tcx, t)),
 
         ty::Closure(_, args) => trivial_dropck_outlives(tcx, args.as_closure().tupled_upvars_ty()),
         ty::CoroutineClosure(_, args) => {

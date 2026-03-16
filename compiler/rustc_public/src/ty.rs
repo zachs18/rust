@@ -79,6 +79,11 @@ impl Ty {
         Ty::from_rigid_kind(RigidTy::InitSliceRepeat(elem))
     }
 
+    /// Create a new slice-repeat initializer type.
+    pub fn new_init_adt(info: InitAdtInfo) -> Ty {
+        Ty::from_rigid_kind(RigidTy::InitAdt(info))
+    }
+
     /// Create a new closure type.
     pub fn new_closure(def: ClosureDef, args: GenericArgs) -> Ty {
         Ty::from_rigid_kind(RigidTy::Closure(def, args))
@@ -970,7 +975,7 @@ impl AdtKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct InitAdtInfo {
     pub adt_ty: Ty,
     pub variant: VariantIdx,
@@ -979,13 +984,13 @@ pub struct InitAdtInfo {
     pub pinned: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct InitAdtComponentInfo {
     pub field: Option<usize>,
     pub args: Vec<InitAdtComponentArg>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub enum InitAdtComponentArg {
     Arg,
     Ref(usize),

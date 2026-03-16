@@ -1361,6 +1361,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             let is_zst = match *kind {
                 AggregateKind::Array(..)
                 | AggregateKind::Tuple
+                | AggregateKind::InitAdt(..)
                 | AggregateKind::InitArray
                 | AggregateKind::InitTuple
                 | AggregateKind::PtrMetadata(..)
@@ -1393,6 +1394,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             AggregateKind::Array(..)
             | AggregateKind::Tuple
             | AggregateKind::PtrMetadata(..)
+            | AggregateKind::InitAdt(..)
             | AggregateKind::InitArray
             | AggregateKind::InitArrayRepeat(..)
             | AggregateKind::InitSliceRepeat(..)
