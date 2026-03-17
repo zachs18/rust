@@ -37,6 +37,13 @@ mod adapters;
 mod dyn_init;
 mod util;
 
+/// Avoids rust-analyzer and tidy errors on unstable syntax.
+#[doc(hidden)]
+#[unstable(feature = "in_place_init_syntax", issue = "none")]
+pub macro do_init($($tts:tt)*) {
+    do init $($tts)*
+}
+
 /// A trait for pinned in-place initializers.
 ///
 /// # Safety
