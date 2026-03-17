@@ -1820,6 +1820,12 @@ pub fn needs_drop_components_with_async<'tcx>(
             acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
             Ok(acc)
         }),
+        ty::InitAdt(info) => {
+            info.component_tys.iter().try_fold(SmallVec::new(), move |mut acc, elem| {
+                acc.extend(needs_drop_components_with_async(tcx, elem, asyncness)?);
+                Ok(acc)
+            })
+        }
 
         // These require checking for `Copy` bounds or `Adt` destructors.
         ty::Adt(..)
@@ -1832,7 +1838,6 @@ pub fn needs_drop_components_with_async<'tcx>(
         | ty::CoroutineClosure(..)
         | ty::Coroutine(..)
         | ty::CoroutineWitness(..)
-        | ty::InitAdt(..)
         | ty::UnsafeBinder(_) => Ok(smallvec![ty]),
     }
 }
