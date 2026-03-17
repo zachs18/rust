@@ -1383,10 +1383,6 @@ impl<'tcx> PtrMetadataHashShimBuilder<'tcx> {
         pointee_ty: Ty<'tcx>,
         hasher_ty: Ty<'tcx>,
     ) -> Self {
-        // we must instantiate the pointee_ty because it's
-        // otherwise going to be TySelf and we can't index
-        // or access fields of a Place of type TySelf.
-        // FIXME(ptr_metadata_v2): is the above comment still accuate?
         let sig = tcx
             .fn_sig(def_id)
             .instantiate(tcx, &[Ty::new_ptr_metadata(tcx, pointee_ty).into(), hasher_ty.into()]);
@@ -1591,7 +1587,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
     ) -> Self {
         let sig = tcx
             .fn_sig(init_method_def_id)
-            .instantiate(tcx, &[self_ty.into(), dst_ty.into(), error_ty.into(), arg_ty.into()]); // TODO
+            .instantiate(tcx, &[self_ty.into(), dst_ty.into(), error_ty.into(), arg_ty.into()]);
         let sig = tcx.instantiate_bound_regions_with_erased(sig);
         let span = tcx.def_span(init_method_def_id);
 
