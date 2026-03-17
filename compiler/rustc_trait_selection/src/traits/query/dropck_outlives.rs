@@ -323,7 +323,21 @@ pub fn dtorck_constraint_for_ty_inner<'tcx>(
             })
         }
 
-        ty::InitAdt(_info) => rustc_data_structures::stack::ensure_sufficient_stack(|| todo!()),
+        ty::InitAdt(info) => {
+            let tys = info.component_tys;
+            rustc_data_structures::stack::ensure_sufficient_stack(|| {
+                for ty in tys.iter() {
+                    dtorck_constraint_for_ty_inner(
+                        tcx,
+                        typing_env,
+                        span,
+                        depth + 1,
+                        ty,
+                        constraints,
+                    );
+                }
+            })
+        }
 
         ty::Closure(_, args) => rustc_data_structures::stack::ensure_sufficient_stack(|| {
             for ty in args.as_closure().upvar_tys() {
