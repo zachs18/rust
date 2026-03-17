@@ -494,7 +494,7 @@ impl<T> Rc<T> {
     where
         F: FnOnce(&Weak<T>) -> T,
     {
-        Self::new_cyclic_in(data_fn, Global)
+        Self::build_cyclic_in(core::init::from_fn_with_arg(data_fn), Global)
     }
 
     /// Constructs a new `Rc` with uninitialized contents.
@@ -877,47 +877,7 @@ impl<T, A: Allocator> Rc<T, A> {
     where
         F: FnOnce(&Weak<T, A>) -> T,
     {
-        // Construct the inner in the "uninitialized" state with a single
-        // weak reference.
-        let (uninit_raw_ptr, alloc) = Box::into_raw_with_allocator(Box::new_in(
-            RcInner {
-                strong: Cell::new(0),
-                weak: Cell::new(1),
-                value: mem::MaybeUninit::<T>::uninit(),
-            },
-            alloc,
-        ));
-        let uninit_ptr: NonNull<_> = (unsafe { &mut *uninit_raw_ptr }).into();
-        let init_ptr: NonNull<RcInner<T>> = uninit_ptr.cast();
-
-        let weak = Weak { ptr: init_ptr, alloc };
-
-        // It's important we don't give up ownership of the weak pointer, or
-        // else the memory might be freed by the time `data_fn` returns. If
-        // we really wanted to pass ownership, we could create an additional
-        // weak pointer for ourselves, but this would result in additional
-        // updates to the weak reference count which might not be necessary
-        // otherwise.
-        let data = data_fn(&weak);
-
-        let strong = unsafe {
-            let inner = init_ptr.as_ptr();
-            ptr::write(&raw mut (*inner).value, data);
-
-            let prev_value = (*inner).strong.get();
-            debug_assert_eq!(prev_value, 0, "No prior strong references should exist");
-            (*inner).strong.set(1);
-
-            // Strong references should collectively own a shared weak reference,
-            // so don't run the destructor for our old weak reference.
-            // Calling into_raw_with_allocator has the double effect of giving us back the allocator,
-            // and forgetting the weak reference.
-            let alloc = weak.into_raw_with_allocator().1;
-
-            Rc::from_inner_in(init_ptr, alloc)
-        };
-
-        strong
+        Self::build_cyclic_in(core::init::from_fn_with_arg(data_fn), alloc)
     }
 
     /// Constructs a new `Rc<T>` in the provided allocator, returning an error if the allocation
@@ -1126,6 +1086,85 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Rc<T, A> {
         UniqueRc::into_rc(UniqueRc::build_in(init, alloc))
     }
+
+    /// Constructs a new `Rc<T, A>` in the given allocator while giving you a `Weak<T, A>` to the allocation,
+    /// to allow you to construct a `T` which holds a weak pointer to itself.
+    ///
+    /// Generally, a structure circularly referencing itself, either directly or
+    /// indirectly, should not hold a strong reference to itself to prevent a memory leak.
+    /// Using this function, you get access to the weak pointer during the
+    /// initialization of `T`, before the `Rc<T, A>` is created, such that you can
+    /// clone and store it inside the `T`.
+    ///
+    /// `new_cyclic_in` first allocates the managed allocation for the `Rc<T, A>`,
+    /// then calls your closure, giving it a `Weak<T, A>` to this allocation,
+    /// and only afterwards completes the construction of the `Rc<T, A>` by placing
+    /// the `T` returned from your closure into the allocation.
+    ///
+    /// Since the new `Rc<T, A>` is not fully-constructed until `Rc<T, A>::new_cyclic_in`
+    /// returns, calling [`upgrade`] on the weak reference inside your closure will
+    /// fail and result in a `None` value.
+    ///
+    /// # Panics
+    ///
+    /// If the initializer panics, the panic is propagated to the caller, and the
+    /// temporary [`Weak<T, A>`] is dropped normally.
+    ///
+    /// # Examples
+    ///
+    /// See [`build_cyclic`].
+    ///
+    /// [`build_cyclic`]: Rc::build_cyclic
+    /// [`upgrade`]: Weak::upgrade
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "allocator_api", issue = "32838")]
+    //#[unstable(feature = "in_place_init", issue = "none")]
+    pub fn build_cyclic_in<I>(init: I, alloc: A) -> Rc<T, A>
+    where
+        I: for<'a> InitOnce<T, !, &'a Weak<T, A>>,
+    {
+        // Construct the inner in the "uninitialized" state with a single
+        // weak reference.
+        let (uninit_raw_ptr, alloc) =
+            Box::into_raw_with_allocator(Box::<RcInner<MaybeUninit<T>>, A>::build_in(
+                core::init::do_init!(struct RcInner {
+                    strong: Cell::new(0),
+                    weak: Cell::new(1),
+                    value: core::init::uninit_with_metadata::<T>(I::metadata(&init)),
+                }),
+                alloc,
+            ));
+        let uninit_ptr: NonNull<_> = (unsafe { &mut *uninit_raw_ptr }).into();
+        let init_ptr: NonNull<RcInner<T>> = NonNull::new(uninit_ptr.as_ptr() as _).unwrap();
+
+        let weak = Weak { ptr: init_ptr, alloc };
+
+        // It's important we don't give up ownership of the weak pointer, or
+        // else the memory might be freed by the time `init_once` returns. If
+        // we really wanted to pass ownership, we could create an additional
+        // weak pointer for ourselves, but this would result in additional
+        // updates to the weak reference count which might not be necessary
+        // otherwise.
+        let Ok(()) = unsafe { I::init_once(init, &mut (*uninit_ptr.as_ptr()).value, &weak, false) };
+
+        let strong = unsafe {
+            let inner = init_ptr.as_ptr();
+
+            let prev_value = (*inner).strong.get();
+            debug_assert_eq!(prev_value, 0, "No prior strong references should exist");
+            (*inner).strong.set(1);
+
+            // Strong references should collectively own a shared weak reference,
+            // so don't run the destructor for our old weak reference.
+            // Calling into_raw_with_allocator has the double effect of giving us back the allocator,
+            // and forgetting the weak reference.
+            let alloc = weak.into_raw_with_allocator().1;
+
+            Rc::from_inner_in(init_ptr, alloc)
+        };
+
+        strong
+    }
 }
 
 impl<T: ?Sized> Rc<T> {
@@ -1134,6 +1173,68 @@ impl<T: ?Sized> Rc<T> {
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> Rc<T> {
         UniqueRc::into_rc(UniqueRc::build(init))
+    }
+
+    /// Constructs a new `Rc<T>` while giving you a `Weak<T>` to the allocation,
+    /// to allow you to construct a `T` which holds a weak pointer to itself.
+    ///
+    /// Generally, a structure circularly referencing itself, either directly or
+    /// indirectly, should not hold a strong reference to itself to prevent a memory leak.
+    /// Using this function, you get access to the weak pointer during the
+    /// initialization of `T`, before the `Rc<T>` is created, such that you can
+    /// clone and store it inside the `T`.
+    ///
+    /// `new_cyclic` first allocates the managed allocation for the `Rc<T>`,
+    /// then calls your closure, giving it a `Weak<T>` to this allocation,
+    /// and only afterwards completes the construction of the `Rc<T>` by placing
+    /// the `T` returned from your closure into the allocation.
+    ///
+    /// Since the new `Rc<T>` is not fully-constructed until `Rc<T>::new_cyclic`
+    /// returns, calling [`upgrade`] on the weak reference inside your closure will
+    /// fail and result in a `None` value.
+    ///
+    /// # Panics
+    ///
+    /// If `data_fn` panics, the panic is propagated to the caller, and the
+    /// temporary [`Weak<T>`] is dropped normally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #![allow(dead_code)]
+    /// #![feature(in_place_init)]
+    /// use std::rc::{Rc, Weak};
+    ///
+    /// struct Gadget {
+    ///     me: Weak<Gadget>,
+    ///     name: str,
+    /// }
+    ///
+    /// impl Gadget {
+    ///     /// Constructs a reference counted Gadget.
+    ///     fn new() -> Rc<Self> {
+    ///         // `me` is a `Weak<Gadget>` pointing at the new allocation of the
+    ///         // `Rc` we're constructing.
+    ///         Rc::build_cyclic(do init struct Gadget {
+    ///             me (with arg): std::init::from_fn_with_arg(|me: &Weak<Gadget>| me.clone()),
+    ///             name: "A Gadget",
+    ///         })
+    ///     }
+    ///
+    ///     /// Returns a reference counted pointer to Self.
+    ///     fn me(&self) -> Rc<Self> {
+    ///         self.me.upgrade().unwrap()
+    ///     }
+    /// }
+    /// ```
+    /// [`upgrade`]: Weak::upgrade
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn build_cyclic<I>(init: I) -> Rc<T>
+    where
+        I: for<'a> InitOnce<T, !, &'a Weak<T>>,
+    {
+        Self::build_cyclic_in(init, Global)
     }
 }
 

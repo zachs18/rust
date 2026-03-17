@@ -128,6 +128,7 @@
 #![feature(generic_atomic)]
 #![feature(hasher_prefixfree_extras)]
 #![feature(in_place_init)]
+#![feature(in_place_init_syntax)]
 #![feature(inplace_iteration)]
 #![feature(iter_advance_by)]
 #![feature(iter_next_chunk)]
