@@ -32,8 +32,8 @@ use crate::thir::visit::for_each_immediate_subpat;
 use crate::ty::adjustment::PointerCoercion;
 use crate::ty::layout::IntegerExt;
 use crate::ty::{
-    self, AdtDef, CanonicalUserType, CanonicalUserTypeAnnotation, FnSig, GenericArgsRef,
-    InitAdtInfo, Ty, TyCtxt, UpvarArgs,
+    self, AdtDef, CanonicalUserType, CanonicalUserTypeAnnotation, FnSig, GenericArgsRef, Ty,
+    TyCtxt, UpvarArgs,
 };
 
 pub mod visit;
@@ -192,12 +192,15 @@ pub enum PtrMetadataExprBase<'tcx> {
 
 #[derive(Clone, Debug, HashStable)]
 pub struct InitAdtExpr<'tcx> {
-    pub info: InitAdtInfo<'tcx>,
     /// The ADT we're constructing.
     pub adt_def: AdtDef<'tcx>,
+    pub args: GenericArgsRef<'tcx>,
     /// The variant of the ADT.
     pub variant_index: VariantIdx,
-    pub args: GenericArgsRef<'tcx>,
+    /// The infos for the component initializers.
+    pub component_infos: &'tcx ty::List<ty::InitAdtComponentInfo<'tcx>>,
+    /// Is the initializer pinned.
+    pub pinned: bool,
 
     /// Optional user-given args: for something like `let x =
     /// do init struct Bar::<T> { ... }`.

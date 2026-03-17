@@ -1347,7 +1347,7 @@ fn build_tuple_like_type_di_node<'ll, 'tcx>(
         ty::InitArrayRepeat(elem_ty, _len) => &[elem_ty],
         // FIXME(in_place_init): check field order
         ty::InitSliceRepeat(elem_ty) => &[cx.tcx.types.usize, elem_ty],
-        ty::InitAdt(_) => todo!(),
+        ty::InitAdt(info) => &info.component_tys,
         _ => bug!("build_tuple_type_di_node() called with non-tuple-type: {:?}", tuple_like_type),
     };
 
