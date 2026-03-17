@@ -251,6 +251,7 @@
 
 use crate::cmp::Ordering;
 use crate::fmt::{self, Debug, Display};
+use crate::init::InitOnce;
 use crate::marker::{Destruct, PhantomData, Unsize};
 use crate::mem::{self, ManuallyDrop};
 use crate::ops::{self, CoerceUnsized, Deref, DerefMut, DerefPure, DispatchFromDyn};
@@ -581,6 +582,27 @@ impl<T: Copy> Cell<T> {
 }
 
 impl<T: ?Sized> Cell<T> {
+    /// Creates an initializer for a `Cell` which will wrap the
+    /// value initialized by the specified initializer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(in_place_init)]
+    /// use std::cell::Cell;
+    ///
+    /// let c_init = Cell::build([1, 2, 3, 4]);
+    /// let box_c: Box<Cell<[u8]>> = Box::build(c_init);
+    /// ```
+    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[inline]
+    pub const fn build<E, A: Clone>(value: impl InitOnce<T, E, A>) -> impl InitOnce<Cell<T>, E, A> {
+        core::init::do_init!(struct Cell {
+            value (with arg): UnsafeCell::build(value),
+        })
+    }
+
     /// Returns a raw pointer to the underlying data in this cell.
     ///
     /// # Examples
@@ -1082,6 +1104,32 @@ impl<T> RefCell<T> {
 }
 
 impl<T: ?Sized> RefCell<T> {
+    /// Creates an initializer for a `RefCell` which will wrap the
+    /// value initialized by the specified initializer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(in_place_init)]
+    /// use std::cell::RefCell;
+    ///
+    /// let c_init = RefCell::build("hello");
+    /// let box_c: Box<RefCell<str>> = Box::build(c_init);
+    /// ```
+    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[inline]
+    pub const fn build<E, A: Clone>(
+        value: impl InitOnce<T, E, A>,
+    ) -> impl InitOnce<RefCell<T>, E, A> {
+        core::init::do_init!(struct RefCell {
+            value (with arg): UnsafeCell::build(value),
+            borrow: Cell::new(UNUSED),
+            #[cfg(feature = "debug_refcell")]
+            borrowed_at: Cell::new(None),
+        })
+    }
+
     /// Immutably borrows the wrapped value.
     ///
     /// The borrow lasts until the returned `Ref` exits scope. Multiple
@@ -2398,6 +2446,29 @@ impl<T> UnsafeCell<T> {
 }
 
 impl<T: ?Sized> UnsafeCell<T> {
+    /// Creates an initializer for a new instance of `UnsafeCell` which will wrap the
+    /// value initialized by the specified initializer.
+    ///
+    /// All access to the inner value through `&UnsafeCell<T>` requires `unsafe` code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(in_place_init)]
+    /// use std::cell::UnsafeCell;
+    ///
+    /// let uc_init = UnsafeCell::build("hello");
+    /// let box_uc: Box<UnsafeCell<str>> = Box::build(uc_init);
+    /// ```
+    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[inline(always)]
+    pub const fn build<E, A: Clone>(
+        value: impl InitOnce<T, E, A>,
+    ) -> impl InitOnce<UnsafeCell<T>, E, A> {
+        core::init::do_init!(struct UnsafeCell { value (with arg): value })
+    }
+
     /// Converts from `&mut T` to `&mut UnsafeCell<T>`.
     ///
     /// # Examples
