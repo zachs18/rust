@@ -347,6 +347,7 @@
 #![feature(hashmap_internals)]
 #![feature(hint_must_use)]
 #![feature(in_place_init)]
+#![feature(in_place_init_syntax)]
 #![feature(int_from_ascii)]
 #![feature(ip)]
 #![feature(iter_advance_by)]

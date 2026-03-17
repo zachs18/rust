@@ -1,3 +1,5 @@
+use core::init::InitOnce;
+
 use crate::cell::UnsafeCell;
 use crate::fmt;
 use crate::marker::PhantomData;
@@ -449,6 +451,24 @@ impl<T> Mutex<T> {
 }
 
 impl<T: ?Sized> Mutex<T> {
+    /// Creates an initializer which creates a new mutex in an unlocked state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(in_place_init)]
+    /// use std::sync::Mutex;
+    ///
+    /// let mutex_init = Mutex::build("hello");
+    /// let box_mutex: Box<Mutex<str>> = Box::build(mutex_init);
+    /// ```
+    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
+    #[unstable(feature = "in_place_init", issue = "none")]
+    #[inline]
+    pub const fn build<E, A: Clone>(t: impl InitOnce<T, E, A>) -> impl InitOnce<Mutex<T>, E, A> {
+        core::init::do_init!(struct Mutex { inner: sys::Mutex::new(), poison: poison::Flag::new(), data (with arg): UnsafeCell::build(t) })
+    }
+
     /// Acquires a mutex, blocking the current thread until it is able to do so.
     ///
     /// This function will block the local thread until it is available to acquire
