@@ -2256,12 +2256,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 AggregateKind::PtrMetadata(_, user_ty) => user_ty,
                 AggregateKind::Array(_) => None,
                 AggregateKind::Tuple => None,
-                AggregateKind::InitAdt { .. } => {
-                    tracing::warn!(
-                        "FIXME(in_place_init): does AggregateKind::InitAdt have a UserTypeAnnotationIndex?"
-                    );
-                    None
-                }
+                AggregateKind::InitAdt { .. } => None,
                 AggregateKind::InitArray => None,
                 AggregateKind::InitArrayRepeat(..) => None,
                 AggregateKind::InitSliceRepeat(..) => None,

@@ -315,7 +315,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
             ExprKind::InitAdt(box InitAdtExpr {
                 ref fields,
-                ref user_ty,
                 adt_def,
                 args,
                 variant_index,
@@ -340,21 +339,11 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     })
                     .collect();
 
-                let adt_ty = Ty::new_adt(this.tcx, adt_def, args);
-                let user_ty = user_ty.as_ref().map(|user_ty| {
-                    this.canonical_user_type_annotations.push(ty::CanonicalUserTypeAnnotation {
-                        span: source_info.span,
-                        user_ty: user_ty.clone(),
-                        inferred_ty: adt_ty,
-                    })
-                });
-
                 block.and(Rvalue::Aggregate(
                     Box::new(AggregateKind::InitAdt {
                         variant_idx: variant_index,
                         component_infos,
                         pinned,
-                        user_ty,
                         adt_def: adt_def.did(),
                         adt_args: args,
                     }),

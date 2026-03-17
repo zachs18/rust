@@ -1103,7 +1103,6 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                     variant_idx: _,
                     component_infos,
                     pinned: _,
-                    user_ty: _,
                 } => {
                     if fields.len() != component_infos.len() {
                         self.fail(location, "InitAdt has wrong number of fields");
