@@ -640,10 +640,24 @@ impl<'tcx> Stable<'tcx> for mir::AggregateKind<'tcx> {
             mir::AggregateKind::InitSliceRepeat(ty) => {
                 crate::mir::AggregateKind::InitSliceRepeat(ty.stable(tables, cx))
             }
-            mir::AggregateKind::InitAdt(info, user_ty_index) => crate::mir::AggregateKind::InitAdt(
-                info.stable(tables, cx),
-                user_ty_index.map(|idx| idx.index()),
-            ),
+            mir::AggregateKind::InitAdt {
+                adt_def,
+                adt_args,
+                variant_idx,
+                component_infos,
+                pinned,
+                user_ty,
+            } => crate::mir::AggregateKind::InitAdt {
+                adt_def: tables.adt_def(*adt_def),
+                variant_idx: variant_idx.stable(tables, cx),
+                adt_args: adt_args.stable(tables, cx),
+                component_infos: component_infos
+                    .iter()
+                    .map(|component_info| component_info.stable(tables, cx))
+                    .collect(),
+                pinned: *pinned,
+                user_ty: user_ty.map(|idx| idx.index()),
+            },
             mir::AggregateKind::Adt(def_id, var_idx, generic_arg, user_ty_index, field_idx) => {
                 crate::mir::AggregateKind::Adt(
                     tables.adt_def(*def_id),

@@ -737,10 +737,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                 user_ty
                             );
                             ExprKind::InitAdt(Box::new(InitAdtExpr {
-                                info,
                                 adt_def: *adt,
                                 variant_index: FIRST_VARIANT,
                                 args,
+                                component_infos: info.component_infos,
+                                pinned: info.pinned,
                                 user_ty,
                                 fields,
                                 base: match base {
@@ -783,10 +784,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                         user_ty
                                     );
                                     ExprKind::InitAdt(Box::new(InitAdtExpr {
-                                        info,
                                         adt_def: *adt,
                                         variant_index: index,
                                         args,
+                                        component_infos: info.component_infos,
+                                        pinned: info.pinned,
                                         user_ty,
                                         fields,
                                         base: match base {

@@ -592,7 +592,7 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
                     | AggregateKind::Tuple
                     | AggregateKind::RawPtr(_, _)
                     | AggregateKind::PtrMetadata(..)
-                    | AggregateKind::InitAdt(..)
+                    | AggregateKind::InitAdt { .. }
                     | AggregateKind::InitArray
                     | AggregateKind::InitArrayRepeat(..)
                     | AggregateKind::InitSliceRepeat(..)

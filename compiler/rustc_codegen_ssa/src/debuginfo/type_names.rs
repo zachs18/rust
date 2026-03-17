@@ -226,7 +226,10 @@ fn push_debuginfo_type_name<'tcx>(
                 output.push(']');
             }
         }
-        ty::InitAdt(..) => todo!(),
+        ty::InitAdt(info) => {
+            tracing::warn!("FIXME(in_place_init): InitAdt debuginfo_type_name {info:?}");
+            output.push_str("init_adt");
+        }
         ty::RawPtr(inner_type, mutbl) => {
             if cpp_like_debuginfo {
                 match mutbl {
