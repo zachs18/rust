@@ -864,7 +864,6 @@ impl<'tcx> Rvalue<'tcx> {
                     variant_idx,
                     component_infos,
                     pinned,
-                    user_ty: _,
                 } => {
                     let adt_ty = tcx.type_of(adt_def).instantiate(tcx, adt_args);
                     let info = tcx.mk_init_adt_info(ty::InitAdtInfoData {

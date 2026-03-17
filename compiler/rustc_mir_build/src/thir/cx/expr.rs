@@ -742,7 +742,6 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                 args,
                                 component_infos: info.component_infos,
                                 pinned: info.pinned,
-                                user_ty,
                                 fields,
                                 base: match base {
                                     hir::StructTailExpr::Base(..) => {
@@ -789,7 +788,6 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                         args,
                                         component_infos: info.component_infos,
                                         pinned: info.pinned,
-                                        user_ty,
                                         fields,
                                         base: match base {
                                             hir::StructTailExpr::DefaultFields(_) => {

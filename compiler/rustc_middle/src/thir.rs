@@ -202,10 +202,6 @@ pub struct InitAdtExpr<'tcx> {
     /// Is the initializer pinned.
     pub pinned: bool,
 
-    /// Optional user-given args: for something like `let x =
-    /// do init struct Bar::<T> { ... }`.
-    pub user_ty: UserTy<'tcx>,
-
     pub fields: Box<[FieldExpr]>,
     /// The base, e.g. `do init struct Foo {x: 1, ..}`.
     pub base: InitAdtExprBase<'tcx>,
