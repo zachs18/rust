@@ -151,7 +151,6 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
             adt_def: _,
             variant_index: _,
             args: _,
-            user_ty: _,
             component_infos: _,
             pinned: _,
         }) => {

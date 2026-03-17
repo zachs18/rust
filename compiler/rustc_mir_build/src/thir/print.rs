@@ -706,7 +706,6 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
             depth_lvl + 1
         );
         print_indented!(self, format!("args: {:?}", init_adt_expr.args), depth_lvl + 1);
-        print_indented!(self, format!("user_ty: {:?}", init_adt_expr.user_ty), depth_lvl + 1);
 
         for field_expr in init_adt_expr.fields.iter() {
             print_indented!(self, format!("field {}:", field_expr.name.as_u32()), depth_lvl + 1);

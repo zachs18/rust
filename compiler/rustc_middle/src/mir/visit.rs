@@ -803,7 +803,7 @@ macro_rules! make_mir_visitor {
                             AggregateKind::InitSliceRepeat(ty) => {
                                 self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
                             }
-                            AggregateKind::InitAdt {adt_def: _, adt_args, variant_idx: _, component_infos: _, pinned: _,user_ty: _} => {
+                            AggregateKind::InitAdt { adt_def: _, adt_args, variant_idx: _, component_infos: _, pinned: _ } => {
                                 self.visit_args(adt_args, location);
                             }
                             AggregateKind::Adt(

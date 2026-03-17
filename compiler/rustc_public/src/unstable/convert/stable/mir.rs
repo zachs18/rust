@@ -646,7 +646,6 @@ impl<'tcx> Stable<'tcx> for mir::AggregateKind<'tcx> {
                 variant_idx,
                 component_infos,
                 pinned,
-                user_ty,
             } => crate::mir::AggregateKind::InitAdt {
                 adt_def: tables.adt_def(*adt_def),
                 variant_idx: variant_idx.stable(tables, cx),
@@ -656,7 +655,6 @@ impl<'tcx> Stable<'tcx> for mir::AggregateKind<'tcx> {
                     .map(|component_info| component_info.stable(tables, cx))
                     .collect(),
                 pinned: *pinned,
-                user_ty: user_ty.map(|idx| idx.index()),
             },
             mir::AggregateKind::Adt(def_id, var_idx, generic_arg, user_ty_index, field_idx) => {
                 crate::mir::AggregateKind::Adt(
