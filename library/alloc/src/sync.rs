@@ -597,6 +597,7 @@ impl<T> Arc<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
     ///
@@ -634,6 +635,7 @@ impl<T> Arc<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
     ///
@@ -999,6 +1001,7 @@ impl<T, A: Allocator> Arc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(get_mut_unchecked)]
     /// #![feature(in_place_init)]
@@ -1044,6 +1047,7 @@ impl<T, A: Allocator> Arc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
     ///
@@ -1487,6 +1491,7 @@ impl<T: ?Sized + CloneToUninit> Arc<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(clone_from_ref)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
@@ -1509,6 +1514,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Arc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(clone_from_ref)]
     /// #![feature(allocator_api)]
     /// use std::sync::Arc;
@@ -1539,6 +1545,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Arc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(clone_from_ref)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
