@@ -227,8 +227,67 @@ fn push_debuginfo_type_name<'tcx>(
             }
         }
         ty::InitAdt(info) => {
-            tracing::warn!("FIXME(in_place_init): InitAdt debuginfo_type_name {info:?}");
-            output.push_str("init_adt");
+            // FIXME(in_place_init): maybe make this more like actual syntax
+            if cpp_like_debuginfo {
+                output.push_str("init_struct$<");
+            } else {
+                output.push_str("do init struct(");
+            }
+
+            push_debuginfo_type_name(tcx, info.adt_ty, true, output, visited);
+            push_arg_separator(cpp_like_debuginfo, output);
+            push_debuginfo_const_name(tcx, ty::Const::from_bool(tcx, info.pinned), output);
+
+            for (component_ty, component_info) in
+                std::iter::zip(info.component_tys, info.component_infos)
+            {
+                push_arg_separator(cpp_like_debuginfo, output);
+                push_debuginfo_type_name(tcx, component_ty, true, output, visited);
+
+                push_arg_separator(cpp_like_debuginfo, output);
+                let ty::InitAdtComponentInfo { field, args, referenced_unpinned: _ } =
+                    component_info;
+                push_debuginfo_const_name(
+                    tcx,
+                    ty::Const::from_target_usize(tcx, field.map_or(0, |f| 1 + f.as_u32() as u64)),
+                    output,
+                );
+                push_arg_separator(cpp_like_debuginfo, output);
+                if cpp_like_debuginfo {
+                    output.push_str("init_arg$<");
+                } else {
+                    output.push_str("with (");
+                }
+                for arg in args {
+                    let cs = match arg {
+                        ty::InitAdtComponentArg::Arg => (0, 0),
+                        ty::InitAdtComponentArg::Ref(field_idx) => (1, field_idx.as_u32()),
+                        ty::InitAdtComponentArg::PinRef(field_idx) => (2, field_idx.as_u32()),
+                        ty::InitAdtComponentArg::Ptr(field_idx) => (3, field_idx.as_u32()),
+                    };
+                    push_debuginfo_const_name(
+                        tcx,
+                        ty::Const::from_target_usize(tcx, cs.0 as u64),
+                        output,
+                    );
+                    push_arg_separator(cpp_like_debuginfo, output);
+                    push_debuginfo_const_name(
+                        tcx,
+                        ty::Const::from_target_usize(tcx, cs.1 as u64),
+                        output,
+                    );
+                    push_arg_separator(cpp_like_debuginfo, output);
+                }
+                if !args.is_empty() {
+                    pop_arg_separator(output);
+                }
+
+                if cpp_like_debuginfo {
+                    push_close_angle_bracket(cpp_like_debuginfo, output);
+                } else {
+                    output.push(')');
+                }
+            }
         }
         ty::RawPtr(inner_type, mutbl) => {
             if cpp_like_debuginfo {
