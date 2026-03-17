@@ -236,6 +236,12 @@ fn push_debuginfo_type_name<'tcx>(
 
             push_debuginfo_type_name(tcx, info.adt_ty, true, output, visited);
             push_arg_separator(cpp_like_debuginfo, output);
+            push_debuginfo_const_name(
+                tcx,
+                ty::Const::from_target_usize(tcx, info.variant.as_u32() as u64),
+                output,
+            );
+            push_arg_separator(cpp_like_debuginfo, output);
             push_debuginfo_const_name(tcx, ty::Const::from_bool(tcx, info.pinned), output);
 
             for (component_ty, component_info) in
