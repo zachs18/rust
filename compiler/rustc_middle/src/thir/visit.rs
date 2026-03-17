@@ -152,7 +152,8 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
             variant_index: _,
             args: _,
             user_ty: _,
-            info: _,
+            component_infos: _,
+            pinned: _,
         }) => {
             for field in &**fields {
                 visitor.visit_expr(&visitor.thir()[field.expr]);

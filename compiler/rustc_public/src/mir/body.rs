@@ -5,8 +5,8 @@ use serde::Serialize;
 use crate::compiler_interface::with;
 use crate::mir::pretty::function_body;
 use crate::ty::{
-    AdtDef, ClosureDef, CoroutineClosureDef, CoroutineDef, GenericArgs, InitAdtInfo, MirConst,
-    Movability, Region, RigidTy, Ty, TyConst, TyKind, VariantIdx,
+    AdtDef, ClosureDef, CoroutineClosureDef, CoroutineDef, GenericArgs, InitAdtComponentInfo,
+    InitAdtInfo, MirConst, Movability, Region, RigidTy, Ty, TyConst, TyKind, VariantIdx,
 };
 use crate::{Error, Opaque, Span, Symbol};
 
@@ -645,7 +645,27 @@ impl Rvalue {
                     Ok(Ty::new_init_array_repeat(elem, len.clone()))
                 }
                 AggregateKind::InitSliceRepeat(elem) => Ok(Ty::new_init_slice_repeat(elem)),
-                AggregateKind::InitAdt(ref info, _) => Ok(Ty::new_init_adt(info.clone())),
+                AggregateKind::InitAdt {
+                    adt_def,
+                    variant_idx,
+                    ref adt_args,
+                    ref component_infos,
+                    pinned,
+                    user_ty: _,
+                } => Ok({
+                    let adt_ty = Ty::from_rigid_kind(RigidTy::Adt(adt_def, adt_args.clone()));
+                    let info = InitAdtInfo {
+                        adt_ty,
+                        variant: variant_idx,
+                        component_tys: ops
+                            .iter()
+                            .map(|op| op.ty(locals))
+                            .collect::<Result<Vec<_>, _>>()?,
+                        component_infos: component_infos.clone(),
+                        pinned,
+                    };
+                    Ty::new_init_adt(info)
+                }),
                 AggregateKind::Adt(def, _, ref args, _, _) => Ok(def.ty_with_args(args)),
                 AggregateKind::Closure(def, ref args) => Ok(Ty::new_closure(def, args.clone())),
                 AggregateKind::Coroutine(def, ref args) => Ok(Ty::new_coroutine(def, args.clone())),
@@ -668,7 +688,14 @@ pub enum AggregateKind {
     InitArrayRepeat(Ty, TyConst),
     InitSliceRepeat(Ty),
     InitTuple,
-    InitAdt(InitAdtInfo, Option<UserTypeAnnotationIndex>),
+    InitAdt {
+        adt_def: AdtDef,
+        variant_idx: VariantIdx,
+        adt_args: GenericArgs,
+        component_infos: Vec<InitAdtComponentInfo>,
+        pinned: bool,
+        user_ty: Option<UserTypeAnnotationIndex>,
+    },
     Adt(AdtDef, VariantIdx, GenericArgs, Option<UserTypeAnnotationIndex>, Option<FieldIdx>),
     PtrMetadata(Ty, Option<UserTypeAnnotationIndex>),
     Closure(ClosureDef, GenericArgs),

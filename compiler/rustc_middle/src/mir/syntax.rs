@@ -1536,7 +1536,14 @@ pub enum AggregateKind<'tcx> {
     Tuple,
 
     /// The annotation is of the adt_ty
-    InitAdt(ty::InitAdtInfo<'tcx>, Option<UserTypeAnnotationIndex>),
+    InitAdt {
+        adt_def: DefId,
+        adt_args: GenericArgsRef<'tcx>,
+        variant_idx: VariantIdx,
+        component_infos: &'tcx ty::List<ty::InitAdtComponentInfo<'tcx>>,
+        pinned: bool,
+        user_ty: Option<UserTypeAnnotationIndex>,
+    },
     InitArray,
     // The type is of the element initializer, the const is the length
     InitArrayRepeat(Ty<'tcx>, ty::Const<'tcx>),
@@ -1741,7 +1748,7 @@ mod size_asserts {
 
     use super::*;
     // tidy-alphabetical-start
-    static_assert_size!(AggregateKind<'_>, 32);
+    static_assert_size!(AggregateKind<'_>, 40);
     static_assert_size!(Operand<'_>, 24);
     static_assert_size!(Place<'_>, 16);
     static_assert_size!(PlaceElem<'_>, 24);

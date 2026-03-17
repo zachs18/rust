@@ -551,7 +551,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::InitArray { .. }
             | ExprKind::InitArrayRepeat { .. }
             | ExprKind::InitSliceRepeat { .. }
-            | ExprKind::InitAdt(..)
+            | ExprKind::InitAdt { .. }
             | ExprKind::InitTuple { .. }
             | ExprKind::Closure { .. }
             | ExprKind::Unary { .. }

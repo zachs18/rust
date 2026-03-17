@@ -2226,14 +2226,9 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 }
             }
             AggregateKind::Array(ty) => Ok(ty),
-            AggregateKind::Tuple | AggregateKind::RawPtr(..) => {
+            AggregateKind::Tuple | AggregateKind::RawPtr(..) | AggregateKind::InitAdt { .. } => {
                 unreachable!("This should have been covered in check_rvalues");
             }
-            AggregateKind::InitAdt(info, _) => match info.component_tys.get(field_index.as_usize())
-            {
-                Some(ty) => Ok(*ty),
-                None => Err(FieldAccessError::OutOfRange { field_count: info.component_tys.len() }),
-            },
             AggregateKind::InitArray
             | AggregateKind::InitArrayRepeat(..)
             | AggregateKind::InitSliceRepeat(..)
@@ -2263,7 +2258,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 AggregateKind::PtrMetadata(_, user_ty) => user_ty,
                 AggregateKind::Array(_) => None,
                 AggregateKind::Tuple => None,
-                AggregateKind::InitAdt(..) => {
+                AggregateKind::InitAdt { .. } => {
                     tracing::warn!(
                         "FIXME(in_place_init): does AggregateKind::InitAdt have a UserTypeAnnotationIndex?"
                     );
@@ -2295,7 +2290,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         if matches!(
             aggregate_kind,
             AggregateKind::Tuple
-                | AggregateKind::InitAdt(..)
+                | AggregateKind::InitAdt { .. }
                 | AggregateKind::InitTuple
                 | AggregateKind::InitArray
                 | AggregateKind::InitSliceRepeat(..)
@@ -2520,7 +2515,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
             | AggregateKind::Tuple
             | AggregateKind::RawPtr(..)
             | AggregateKind::PtrMetadata(..)
-            | AggregateKind::InitAdt(..)
+            | AggregateKind::InitAdt { .. }
             | AggregateKind::InitArray
             | AggregateKind::InitArrayRepeat(..)
             | AggregateKind::InitSliceRepeat(..)

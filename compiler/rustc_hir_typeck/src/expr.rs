@@ -2850,7 +2850,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let (component_tys, component_infos): (Vec<_>, Vec<_>) = hir_fields
             .iter()
-            .map(|field| {
+            .enumerate()
+            .map(|(hir_field_idx, field)| {
                 let ident = tcx.adjust_ident(field.ident, variant.def_id);
 
                 let dst_field_idx = if ident.name == kw::Underscore {
@@ -2946,7 +2947,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         .is_some_and(|dst_field_idx| referenced_unpinned[dst_field_idx.as_usize()]),
                 };
 
-                let component_ty = self.check_expr(field.expr);
+                let expected_component_ty = if let Some(expected_info) = expected_info {
+                    expected_info.component_tys[hir_field_idx]
+                } else {
+                    self.next_ty_var(field.span)
+                };
+
+                let component_ty =
+                    self.check_expr_coercible_to_type(field.expr, expected_component_ty, None);
 
                 (component_ty, component_info)
             })
