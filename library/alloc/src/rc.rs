@@ -587,6 +587,7 @@ impl<T> Rc<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
     ///
@@ -624,6 +625,7 @@ impl<T> Rc<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
     ///
@@ -951,6 +953,7 @@ impl<T, A: Allocator> Rc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(get_mut_unchecked)]
     /// #![feature(in_place_init)]
@@ -996,6 +999,7 @@ impl<T, A: Allocator> Rc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
     ///
@@ -1348,6 +1352,7 @@ impl<T: ?Sized + CloneToUninit> Rc<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(clone_from_ref)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
@@ -1370,6 +1375,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(clone_from_ref)]
     /// #![feature(allocator_api)]
     /// use std::rc::Rc;
@@ -1400,6 +1406,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(clone_from_ref)]
     /// #![feature(allocator_api)]
     /// #![feature(in_place_init)]
@@ -4748,6 +4755,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(unique_rc_arc)]
     /// #![feature(allocator_api)]
     /// use std::rc::UniqueRc;
@@ -4885,6 +4893,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     /// Convert a slice back into its original array:
     ///
     /// ```
+    /// # #![allow(unused_features)]
     /// #![feature(unique_rc_arc)]
     /// #![feature(allocator_api)]
     ///
