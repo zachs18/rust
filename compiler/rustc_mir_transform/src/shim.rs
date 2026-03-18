@@ -2230,7 +2230,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             // 1. drop Arg
             // 2. get a pointer to the destination to use for 3/4
             // 3. fill all fields with their default values,
-            // 4. set the discriminant
+            // 4. set the discriminant (if enum)
             // 5. return `Ok(())`.
 
             // Drop Arg
@@ -2274,6 +2274,14 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 dst_ptr,
                 Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
             )))));
+            let dst_place = if adt_def.is_enum() {
+                dst_ptr.project_deeper(
+                    &[PlaceElem::Deref, PlaceElem::Downcast(None, init_info.variant)],
+                    self.tcx,
+                )
+            } else {
+                dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)
+            };
 
             // Fill all fields with their default
             for (field_idx, field) in adt_variant.fields.iter_enumerated() {
@@ -2288,14 +2296,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 }));
 
                 // (*_dst_ptr).IDX = const CONST;
-                let field_dst_place = dst_ptr.project_deeper(
-                    &[
-                        PlaceElem::Deref,
-                        PlaceElem::Downcast(None, init_info.variant),
-                        PlaceElem::Field(field_idx, field_ty),
-                    ],
-                    self.tcx,
-                );
+                let field_dst_place =
+                    dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx);
 
                 stmts.push(self.make_statement(StatementKind::Assign(Box::new((
                     field_dst_place,
@@ -2303,11 +2305,13 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 )))));
             }
 
-            // Set the discriminant
-            stmts.push(self.make_statement(StatementKind::SetDiscriminant {
-                place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
-                variant_index: init_info.variant,
-            }));
+            // Set the discriminant if this is an enum
+            if adt_def.is_enum() {
+                stmts.push(self.make_statement(StatementKind::SetDiscriminant {
+                    place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
+                    variant_index: init_info.variant,
+                }));
+            }
 
             // Return `Ok(())`
             let result_ty = return_place.ty(&self.local_decls, self.tcx).ty;
@@ -2398,6 +2402,14 @@ impl<'tcx> InitShimBuilder<'tcx> {
             dst_ptr,
             Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
         )))));
+        let dst_place = if adt_def.is_enum() {
+            dst_ptr.project_deeper(
+                &[PlaceElem::Deref, PlaceElem::Downcast(None, init_info.variant)],
+                self.tcx,
+            )
+        } else {
+            dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)
+        };
 
         let entry_target = self.block_index_offset(3);
         self.block(entry_stmts, TerminatorKind::Goto { target: entry_target }, false);
@@ -2440,10 +2452,9 @@ impl<'tcx> InitShimBuilder<'tcx> {
             // Make the arg for the call
 
             let (component_arg, component_arg_ty) = self.make_adt_arg_blocks(
-                init_info,
                 adt_variant,
                 adt_args,
-                dst_ptr,
+                dst_place,
                 &mut remaining_arg_uses,
                 &component_info,
                 arg_needs_drop,
@@ -2454,7 +2465,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             // Get the Dst MU reference for the call, then
             // set the initializer as moved and do the call
             // component has a field:
-            //  _adt_field_ptr = &raw mut (*dst_ptr).VARIANT.IDX;
+            //  _adt_field_ptr = &raw mut DST_PLACE.IDX;
             //  _dst_ptr = _adt_field_ptr as *mut MaybeUninit<ELEM>;
             // component has no field:
             //  _dst_ptr = 1 as *mut MaybeUninit<()>;
@@ -2474,15 +2485,9 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
                     let mu_adt_field_ty = Ty::new_maybe_uninit(self.tcx, adt_field_ty);
 
-                    //  _adt_field_ptr = &raw mut (*dst_ptr).VARIANT.IDX;
-                    let adt_field_place = dst_ptr.project_deeper(
-                        &[
-                            PlaceElem::Deref,
-                            PlaceElem::Downcast(None, init_info.variant),
-                            PlaceElem::Field(adt_field_idx, adt_field_ty),
-                        ],
-                        self.tcx,
-                    );
+                    //  _adt_field_ptr = &raw mut DST_PLACE.IDX;
+                    let adt_field_place = dst_place
+                        .project_deeper(&[PlaceElem::Field(adt_field_idx, adt_field_ty)], self.tcx);
                     let adt_field_ptr_ty = Ty::new_mut_ptr(self.tcx, adt_field_ty);
                     let adt_field_ptr = self.make_place(Mutability::Not, adt_field_ptr_ty);
                     stmts.push(self.make_statement(StatementKind::Assign(Box::new((
@@ -2630,12 +2635,16 @@ impl<'tcx> InitShimBuilder<'tcx> {
         }
 
         // All the initializations succeeded and `Arg` was moved, so there's no drops to do.
-        // Set discriminant and return
-        let set_discrim_stmt = self.make_statement(StatementKind::SetDiscriminant {
-            place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
-            variant_index: init_info.variant,
-        });
-        self.block(vec![set_discrim_stmt], TerminatorKind::Return, false);
+        // Set discriminant (if enum) and return
+        let set_discrim_if_enum = if adt_def.is_enum() {
+            vec![self.make_statement(StatementKind::SetDiscriminant {
+                place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
+                variant_index: init_info.variant,
+            })]
+        } else {
+            vec![]
+        };
+        self.block(set_discrim_if_enum, TerminatorKind::Return, false);
 
         // Now we make the two cleanup loops and patch bb1 and bb2 to point at them
 
@@ -2666,14 +2675,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let field_ty = adt_variant.fields[FieldIdx::from_usize(idx)].ty(self.tcx, adt_args);
             self.make_cleanup_blocks(
                 adt_field_needs_drop,
-                dst_ptr.project_deeper(
-                    &[
-                        PlaceElem::Deref,
-                        PlaceElem::Downcast(None, init_info.variant),
-                        PlaceElem::Field(FieldIdx::new(idx), field_ty),
-                    ],
-                    self.tcx,
-                ),
+                dst_place
+                    .project_deeper(&[PlaceElem::Field(FieldIdx::new(idx), field_ty)], self.tcx),
                 unwind_cleanup_target,
                 false,
             );
@@ -2713,14 +2716,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let field_ty = adt_variant.fields[FieldIdx::from_usize(idx)].ty(self.tcx, adt_args);
             self.make_cleanup_blocks(
                 adt_field_needs_drop,
-                dst_ptr.project_deeper(
-                    &[
-                        PlaceElem::Deref,
-                        PlaceElem::Downcast(None, init_info.variant),
-                        PlaceElem::Field(FieldIdx::new(idx), field_ty),
-                    ],
-                    self.tcx,
-                ),
+                dst_place
+                    .project_deeper(&[PlaceElem::Field(FieldIdx::new(idx), field_ty)], self.tcx),
                 unwind_cleanup_target,
                 /* is_cleanup */ true,
             );
@@ -2745,10 +2742,9 @@ impl<'tcx> InitShimBuilder<'tcx> {
     /// On unwind, cleans up any partial parts of the `ElemArg` then jumps to `cleanup`.
     fn make_adt_arg_blocks(
         &mut self,
-        init_info: ty::InitAdtInfo<'tcx>,
         adt_variant: &ty::VariantDef,
         adt_args: ty::GenericArgsRef<'tcx>,
-        dst_ptr: Place<'tcx>,
+        dst_place: Place<'tcx>,
         remaining_arg_uses: &mut usize,
         component_info: &InitAdtComponentInfo<'tcx>,
         arg_needs_drop: Place<'tcx>,
@@ -2806,14 +2802,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 component_arg,
                 Rvalue::RawPtr(
                     RawPtrKind::Mut,
-                    dst_ptr.project_deeper(
-                        &[
-                            PlaceElem::Deref,
-                            PlaceElem::Downcast(None, init_info.variant),
-                            PlaceElem::Field(field_idx, field_ty),
-                        ],
-                        self_.tcx,
-                    ),
+                    dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self_.tcx),
                 ),
             ))));
             (Some(stmt), component_arg, component_arg_ty)
