@@ -1470,7 +1470,7 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
     debug!("build_init_shim(def_id={:?})", method_def);
 
     let mut builder =
-        InitShimBuilder::new(tcx, instance, method_def, method, self_ty, dst_ty, error_ty, arg_ty);
+        InitShimBuilder::new(tcx, instance, method_def, self_ty, dst_ty, error_ty, arg_ty);
 
     let dest = Place::return_place();
 
@@ -1550,36 +1550,19 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
     builder.into_mir()
 }
 
-#[allow(unused)]
 struct InitShimExtra<'tcx> {
     init_method_def_id: DefId,
-    method: ty::InitMethod,
-    self_ty: Ty<'tcx>,
     dst_ty: Ty<'tcx>,
     error_ty: Ty<'tcx>,
     arg_ty: Ty<'tcx>,
 }
 type InitShimBuilder<'tcx> = ShimBuilder<'tcx, InitShimExtra<'tcx>>;
 
-#[cfg(false)]
-#[allow(unused)]
-struct InitShimBuilder<'tcx> {
-    tcx: TyCtxt<'tcx>,
-    local_decls: IndexVec<Local, LocalDecl<'tcx>>,
-    blocks: IndexVec<BasicBlock, BasicBlockData<'tcx>>,
-    span: Span,
-    sig: ty::FnSig<'tcx>,
-    instance: ty::InstanceKind<'tcx>,
-    extra: InitShimExtra<'tcx>,
-}
-
-#[allow(unused)]
 impl<'tcx> InitShimBuilder<'tcx> {
     fn new(
         tcx: TyCtxt<'tcx>,
         instance: ty::InstanceKind<'tcx>,
         init_method_def_id: DefId,
-        method: ty::InitMethod,
         self_ty: Ty<'tcx>,
         dst_ty: Ty<'tcx>,
         error_ty: Ty<'tcx>,
@@ -1598,7 +1581,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             span,
             sig,
             instance,
-            extra: InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty },
+            extra: InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty },
         }
     }
 
@@ -1609,8 +1592,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         init_elem_tys: &[Ty<'tcx>],
         elem_tys: &[Ty<'tcx>],
     ) {
-        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
-            self.extra;
+        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty } = self.extra;
 
         if dst_ty.is_thin(self.tcx, ty::TypingEnv::post_analysis(self.tcx, init_method_def_id)) {
             // if `dst_ty` is `Thin`, then its metadata is zero-sized, so we can just `return`
@@ -1679,8 +1661,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         init_elem_tys: &[Ty<'tcx>],
         elem_tys: &[Ty<'tcx>],
     ) {
-        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
-            self.extra;
+        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty } = self.extra;
 
         if init_elem_tys.is_empty() {
             // If there are no elements, then just drop Arg and return `Ok(())`.
@@ -2101,8 +2082,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         adt_def: ty::AdtDef<'tcx>,
         adt_args: ty::GenericArgsRef<'tcx>,
     ) {
-        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
-            self.extra;
+        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty } = self.extra;
         let typing_env = ty::TypingEnv::post_analysis(self.tcx, init_method_def_id);
 
         if dst_ty.is_thin(self.tcx, typing_env) {
@@ -2120,7 +2100,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             .iter()
             .map(|field| {
                 let adt_field_ty = field.ty(self.tcx, adt_args);
-                (adt_field_ty)
+                adt_field_ty
             })
             .collect();
 
@@ -2136,7 +2116,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         let mut remaining_adt_fields: IndexVec<FieldIdx, FieldMetadataHandled> = adt_fields
             .iter()
-            .map(|(adt_field_ty)| {
+            .map(|adt_field_ty| {
                 if adt_field_ty.is_thin(self.tcx, typing_env) {
                     FieldMetadataHandled::Unnecessary
                 } else {
@@ -2237,8 +2217,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         adt_def: ty::AdtDef<'tcx>,
         adt_args: ty::GenericArgsRef<'tcx>,
     ) {
-        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
-            self.extra;
+        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty } = self.extra;
         let adt_variant = adt_def.variant(init_info.variant);
 
         if adt_def.is_union() {
@@ -2438,8 +2417,6 @@ impl<'tcx> InitShimBuilder<'tcx> {
         let unwind_cleanup_target = self.block_index_offset(0);
         self.block(vec![], TerminatorKind::Goto { target: unwind_cleanup_target }, true);
 
-        let clone_arg_to = |self_: &mut Self, dst: Place<'tcx>| {};
-
         // Each component has several blocks:
         // 1. Get the arg for that component (including cloning or moving the `Arg`, which is the only part that could fail).
         // 2. set component_needs_drop=false, then call `init_once` for that component [return -> keep going, unwind -> bb2]
@@ -2493,7 +2470,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                         component_arg
                     }
                 },
-                args => {
+                _args => {
                     todo!("multiple args with cleanup")
                 }
             };
