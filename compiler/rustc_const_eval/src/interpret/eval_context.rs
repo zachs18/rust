@@ -1,10 +1,7 @@
 use std::debug_assert_matches;
 
 use either::{Left, Right};
-use rustc_abi::{
-    Align, FieldIdx, FieldOffset, FieldsShape, HasDataLayout, OffsetAccuracy, Size,
-    TargetDataLayout,
-};
+use rustc_abi::{Align, FieldIdx, FieldsShape, HasDataLayout, Size, TargetDataLayout};
 use rustc_hir::def_id::DefId;
 use rustc_hir::limit::Limit;
 use rustc_middle::mir::interpret::{ErrorHandled, InvalidMetaKind, ReportedErrorInfo};
@@ -513,8 +510,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 return interp_ok(Some((layout.size, layout.align.abi)));
             }
             LayoutComputeGoal::FieldOffset(field_idx)
-                if let FieldOffset { offset: field_offset, accuracy: OffsetAccuracy::Exact } =
-                    layout.layout.fields.offset(field_idx.as_usize()) =>
+                if let Some(field_offset) =
+                    layout.layout.fields.try_exact_offset(field_idx.as_usize()) =>
             {
                 let field_layout = layout.field(self, field_idx.as_usize());
                 let field_ty_align = field_layout.layout.align.abi;
