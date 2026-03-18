@@ -1,7 +1,10 @@
 use std::debug_assert_matches;
 
 use either::{Left, Right};
-use rustc_abi::{Align, FieldIdx, FieldsShape, HasDataLayout, Size, TargetDataLayout};
+use rustc_abi::{
+    Align, FieldIdx, FieldOffset, FieldsShape, HasDataLayout, OffsetAccuracy, Size,
+    TargetDataLayout,
+};
 use rustc_hir::def_id::DefId;
 use rustc_hir::limit::Limit;
 use rustc_middle::mir::interpret::{ErrorHandled, InvalidMetaKind, ReportedErrorInfo};
@@ -24,6 +27,7 @@ use super::{
     MPlaceTy, Machine, Memory, OpTy, Place, PlaceTy, PointerArithmetic, Projectable, Provenance,
     err_inval, interp_ok, throw_inval, throw_ub, throw_ub_format,
 };
+use crate::interpret::MemPlaceMetadata;
 use crate::{enter_trace_span, util};
 
 pub struct InterpCx<'tcx, M: Machine<'tcx>> {
@@ -234,7 +238,7 @@ pub fn format_interp_error<'tcx>(e: InterpErrorInfo<'tcx>) -> String {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum SizeAndAlignExternTypeSemantics {
+pub enum LayoutComputeExternTypeSemantics {
     /// Encountering an `extern type` is normal, and just results in returning `None`.
     Normal,
     /// Encountering an `extern type` is unsupported, and will be reported via [`throw_unsup`].
@@ -244,49 +248,58 @@ pub enum SizeAndAlignExternTypeSemantics {
     Unreachable,
 }
 #[derive(Debug, Clone, Copy)]
-pub struct SizeAndAlignSemantics {
+pub struct LayoutComputeSemantics {
     /// If `true`, an overflow during computation will be reported as UB,
     /// otherwise `None` will be returned.
     pub overflow_is_ub: bool,
     /// What happens when layout computation encounters an `extern type`.
-    pub extern_type_semantics: SizeAndAlignExternTypeSemantics,
+    pub extern_type_semantics: LayoutComputeExternTypeSemantics,
 }
 
-impl SizeAndAlignSemantics {
+impl LayoutComputeSemantics {
     /// Overflow is not UB and `extern type` are not immediately reported; both
     /// cause calculation to return `None`.
     pub const RELAXED: Self = Self {
         overflow_is_ub: false,
-        extern_type_semantics: SizeAndAlignExternTypeSemantics::Normal,
+        extern_type_semantics: LayoutComputeExternTypeSemantics::Normal,
     };
 
     /// Not just for retag, but also for other uses in consteval that ignore `extern type`,
     /// but still want UB on overflow.
     pub const FOR_RETAG: Self = Self {
         overflow_is_ub: true,
-        extern_type_semantics: SizeAndAlignExternTypeSemantics::Normal,
+        extern_type_semantics: LayoutComputeExternTypeSemantics::Normal,
     };
 
     /// For computing field offsets, we don't want `extern type` to immediately be an error,
     /// since it can be fine if it's at offset 0, but overflow is still UB.
     pub const FOR_FIELD_OFFSET: Self = Self {
         overflow_is_ub: true,
-        extern_type_semantics: SizeAndAlignExternTypeSemantics::Normal,
+        extern_type_semantics: LayoutComputeExternTypeSemantics::Normal,
     };
 
     /// For `unchecked_(size|align)_*` intrinsics, which are bounded `T: MetaSized`
     /// so should never encounter `extern type`, and for which overflow is UB.
     pub const UNCHECKED_METASIZED_LAYOUT: Self = Self {
         overflow_is_ub: true,
-        extern_type_semantics: SizeAndAlignExternTypeSemantics::Unreachable,
+        extern_type_semantics: LayoutComputeExternTypeSemantics::Unreachable,
     };
 
     /// For `checked_(size|align)_*` intrinsics, which are bounded `T: MetaSized`
     /// so should never encounter `extern type`, and for which overflow is not UB.
     pub const CHECKED_METASIZED_LAYOUT: Self = Self {
         overflow_is_ub: false,
-        extern_type_semantics: SizeAndAlignExternTypeSemantics::Unreachable,
+        extern_type_semantics: LayoutComputeExternTypeSemantics::Unreachable,
     };
+}
+
+/// What we are computing
+#[derive(Debug, Clone, Copy)]
+pub enum LayoutComputeGoal {
+    /// We are computing the overall size and alignment of the value.
+    OverallLayout,
+    /// We are computing the offset and effective alignment of a field.
+    FieldOffset(FieldIdx),
 }
 
 impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
@@ -484,21 +497,46 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         span_bug!(self.cur_span(), "no non-`#[track_caller]` frame found")
     }
 
-    /// Returns the actual dynamic size and alignment of the place at the given type.
-    /// Only the "meta" (metadata) part of the place matters.
-    ///
-    /// See [`SizeAndAlignSemantics`] for when this returns `None`.
-    pub(super) fn size_and_align_from_meta(
+    pub(super) fn layout_compute_from_meta(
         &self,
         metadata: &AnyMemPlaceMeta<'tcx, M::Provenance>,
         layout: &TyAndLayout<'tcx>,
-        semantics: SizeAndAlignSemantics,
+        semantics: LayoutComputeSemantics,
+        goal: LayoutComputeGoal,
     ) -> InterpResult<'tcx, Option<(Size, Align)>> {
-        if layout.is_sized() {
-            return interp_ok(Some((layout.size, layout.align.abi)));
+        // FIXME(more_unsized): make this able to return just `Align` for a `PointeeSized + (Meta)Aligned` type.
+
+        // First, handle the easy cases: known-size when we're looking for size,
+        // and known-offset when we're looking for offset.
+        match goal {
+            LayoutComputeGoal::OverallLayout if layout.is_sized() => {
+                return interp_ok(Some((layout.size, layout.align.abi)));
+            }
+            LayoutComputeGoal::FieldOffset(field_idx)
+                if let FieldOffset { offset: field_offset, accuracy: OffsetAccuracy::Exact } =
+                    layout.layout.fields.offset(field_idx.as_usize()) =>
+            {
+                let field_layout = layout.field(self, field_idx.as_usize());
+                let field_ty_align = field_layout.layout.align.abi;
+                let mut field_align = field_ty_align;
+                if let Some(adt_def) = layout.ty.ty_adt_def()
+                    && let Some(pack) = adt_def.repr().pack
+                {
+                    field_align = Align::min(field_align, pack);
+                }
+                return interp_ok(Some((field_offset, field_align)));
+            }
+            _ => {}
         }
+
+        // Now, handle unsized cases
         match layout.ty.kind() {
             ty::Adt(adt_def, ..) if adt_def.is_union() => {
+                debug_assert_matches!(
+                    goal,
+                    LayoutComputeGoal::OverallLayout,
+                    "unions should have all fields at known offset 0"
+                );
                 let FieldsShape::Union(field_count) = layout.fields else {
                     span_bug!(
                         self.cur_span(),
@@ -508,7 +546,6 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     );
                 };
 
-                // FIXME(more_unsized): optimize this
                 let mut adt_size = Size::ZERO;
                 let mut adt_align = Align::ONE;
 
@@ -524,6 +561,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 for field_idx in 0..field_count.get() {
                     let field_ty = layout.field(self, field_idx);
+                    if field_ty.is_sized() {
+                        adt_size = Size::max(adt_size, field_ty.size);
+                        adt_align = Align::max(adt_align, field_ty.align.abi);
+                        continue;
+                    }
                     let field_meta = field_meta(field_idx)?;
                     match self.size_and_align_from_meta(&field_meta, &field_ty, semantics)? {
                         None => return interp_ok(None),
@@ -537,6 +579,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // For packed types, we need to cap the alignment
                 if let Some(packed) = adt_def.repr().pack {
                     adt_align = Align::min(adt_align, packed);
+                }
+
+                // For `repr(align)` types, we need to increase the alignment
+                if let Some(overaligned) = adt_def.repr().align {
+                    adt_align = Align::max(adt_align, overaligned);
                 }
 
                 // Round up full size to alignment
@@ -568,7 +615,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     )
                 };
 
-                // For packed types, we need to cap the alignment.
+                // For packed types, we need to cap the alignment *of each field*
                 let clamp_field_align = |field_align| {
                     if let ty::Adt(def, _) = layout.ty.kind()
                         && let Some(packed) = def.repr().pack
@@ -579,7 +626,6 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     }
                 };
 
-                // FIXME(more_unsized): optimize this
                 let mut adt_size = Size::ZERO;
                 let mut adt_align = Align::ONE;
 
@@ -593,26 +639,57 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     )))
                 };
 
-                for field_idx in in_memory_order {
+                for &field_idx in in_memory_order {
                     let field_ty = layout.field(self, field_idx.as_usize());
                     let field_meta = field_meta(field_idx.as_usize())?;
-                    match self.size_and_align_from_meta(&field_meta, &field_ty, semantics)? {
-                        None => return interp_ok(None),
-                        Some((field_size, field_align)) => {
-                            let field_align = clamp_field_align(field_align);
-                            adt_align = Align::max(adt_align, field_align);
-                            adt_size += field_size;
+                    let field_layout = if field_ty.is_sized() {
+                        Some((field_ty.size, field_ty.align.abi))
+                    } else {
+                        self.size_and_align_from_meta(&field_meta, &field_ty, semantics)?
+                    };
+                    let Some((field_size, field_align)) = field_layout else {
+                        return interp_ok(None);
+                    };
 
-                            // Check if this brought us over the size limit.
-                            if adt_size > self.max_size_of_val() {
-                                if semantics.overflow_is_ub {
-                                    throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
-                                } else {
-                                    return interp_ok(None);
-                                }
-                            }
+                    let field_align = clamp_field_align(field_align);
+                    adt_align = Align::max(adt_align, field_align);
+
+                    // Make sure this field is at an offset that is a multiple of its effective alignment.
+                    adt_size = adt_size.align_to(field_align);
+                    // Check if this brought us over the size limit.
+                    if adt_size > self.max_size_of_val() {
+                        if semantics.overflow_is_ub {
+                            throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
+                        } else {
+                            return interp_ok(None);
                         }
                     }
+
+                    // If this is the field we are looking for, return it's offset and effective alignment.
+                    if let LayoutComputeGoal::FieldOffset(goal_field_idx) = goal
+                        && field_idx == goal_field_idx
+                    {
+                        return interp_ok(Some((adt_size, field_align)));
+                    }
+                    // Otherwise, keep going.
+                    adt_size += field_size;
+                    // Check if this brought us over the size limit.
+                    if adt_size > self.max_size_of_val() {
+                        if semantics.overflow_is_ub {
+                            throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
+                        } else {
+                            return interp_ok(None);
+                        }
+                    }
+                }
+
+                debug_assert_matches!(goal, LayoutComputeGoal::OverallLayout, "too many fields?");
+
+                // For `repr(align)` types, we need to increase the alignment
+                if let Some(adt_def) = layout.ty.ty_adt_def()
+                    && let Some(overaligned) = adt_def.repr().align
+                {
+                    adt_align = Align::max(adt_align, overaligned);
                 }
 
                 // Round up full size to alignment
@@ -630,6 +707,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 }
             }
             ty::Dynamic(expected_trait, _) => {
+                debug_assert_matches!(
+                    goal,
+                    LayoutComputeGoal::OverallLayout,
+                    "ty::Dynamic has no fields"
+                );
                 let metadata =
                     metadata.0.expect("non-Thin value should have metadata").change_sizedness();
                 let vtable = self.read_scalar(&metadata)?.to_pointer(self)?;
@@ -639,6 +721,14 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
             ty::Array(elem_ty, len) => {
                 let len = len.try_to_target_usize(*self.tcx).expect("expected monomorphic const");
+                let multiplier = match goal {
+                    LayoutComputeGoal::OverallLayout => len,
+                    LayoutComputeGoal::FieldOffset(field_idx) => {
+                        let idx = field_idx.as_usize().try_into().expect("field idx out of range");
+                        debug_assert!(idx < len, "field idx out of range for array");
+                        idx
+                    }
+                };
                 let elem_layout = self.layout_of(*elem_ty)?;
                 debug_assert!(
                     !elem_layout.is_sized(),
@@ -661,23 +751,27 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     return interp_ok(None);
                 };
 
-                let size = elem_size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
-                let size = Size::from_bytes(size);
-                if size > self.max_size_of_val() {
+                let size_or_offset = elem_size.bytes().saturating_mul(multiplier); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
+                let size_or_offset = Size::from_bytes(size_or_offset);
+                if size_or_offset > self.max_size_of_val() {
                     if semantics.overflow_is_ub {
                         throw_ub!(InvalidMeta(InvalidMetaKind::SliceTooBig))
                     } else {
                         interp_ok(None)
                     }
                 } else {
-                    interp_ok(Some((size, elem_align)))
+                    interp_ok(Some((size_or_offset, elem_align)))
                 }
             }
 
             ty::Str => {
-                let metadata =
-                    metadata.0.expect("non-Thin value should have metadata").change_sizedness();
-                let len = self.read_scalar(&metadata)?.to_target_usize(self)?;
+                debug_assert_matches!(
+                    goal,
+                    LayoutComputeGoal::OverallLayout,
+                    "ty::Str has no fields"
+                );
+                let metadata = metadata.scalar(self)?;
+                let len = metadata.to_target_usize(self)?;
                 let size = Size::from_bytes(len);
                 if size > self.max_size_of_val() {
                     if semantics.overflow_is_ub {
@@ -695,6 +789,15 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     metadata.0.expect("non-Thin value should have metadata").change_sizedness();
                 let len = self.project_field(&metadata, FieldIdx::ZERO)?;
                 let len = self.read_scalar(&len)?.to_target_usize(self)?;
+                let multiplier = match goal {
+                    LayoutComputeGoal::OverallLayout => len,
+                    LayoutComputeGoal::FieldOffset(field_idx) => {
+                        // FIXME(more_usized): Is this ever actually used? Slices us Index, not Field projections.
+                        let idx = field_idx.as_usize().try_into().expect("field idx out of range");
+                        debug_assert!(idx < len, "field idx out of range for slice");
+                        idx
+                    }
+                };
 
                 let elem_layout = self.layout_of(*elem_ty)?;
                 let elem_meta = AnyMemPlaceMeta(if elem_layout.is_sized() {
@@ -710,23 +813,23 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     return interp_ok(None);
                 };
 
-                let size = elem_size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
-                let size = Size::from_bytes(size);
-                if size > self.max_size_of_val() {
+                let size_or_offset = elem_size.bytes().saturating_mul(multiplier); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
+                let size_or_offset = Size::from_bytes(size_or_offset);
+                if size_or_offset > self.max_size_of_val() {
                     if semantics.overflow_is_ub {
                         throw_ub!(InvalidMeta(InvalidMetaKind::SliceTooBig))
                     } else {
                         interp_ok(None)
                     }
                 } else {
-                    interp_ok(Some((size, elem_align)))
+                    interp_ok(Some((size_or_offset, elem_align)))
                 }
             }
 
             ty::Foreign(_) => match semantics.extern_type_semantics {
-                SizeAndAlignExternTypeSemantics::Normal => interp_ok(None),
-                SizeAndAlignExternTypeSemantics::Unsupported => throw_unsup!(ExternTypeField),
-                SizeAndAlignExternTypeSemantics::Unreachable => {
+                LayoutComputeExternTypeSemantics::Normal => interp_ok(None),
+                LayoutComputeExternTypeSemantics::Unsupported => throw_unsup!(ExternTypeField),
+                LayoutComputeExternTypeSemantics::Unreachable => {
                     span_bug!(self.cur_span(), "size_and_align_of::<{}> not supported", layout.ty)
                 }
             },
@@ -735,12 +838,25 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         }
     }
 
-    /// See [`SizeAndAlignSemantics`] for when this returns `None`.
+    /// Returns the actual dynamic size and alignment of the place at the given type.
+    /// Only the "meta" (metadata) part of the place matters.
+    ///
+    /// See [`LayoutComputeSemantics`] for when this returns `None`.
+    pub(super) fn size_and_align_from_meta(
+        &self,
+        metadata: &AnyMemPlaceMeta<'tcx, M::Provenance>,
+        layout: &TyAndLayout<'tcx>,
+        semantics: LayoutComputeSemantics,
+    ) -> InterpResult<'tcx, Option<(Size, Align)>> {
+        self.layout_compute_from_meta(metadata, layout, semantics, LayoutComputeGoal::OverallLayout)
+    }
+
+    /// See [`LayoutComputeSemantics`] for when this returns `None`.
     #[inline]
     pub fn size_and_align_of_val(
         &self,
         val: &impl Projectable<'tcx, M::Provenance>,
-        semantics: SizeAndAlignSemantics,
+        semantics: LayoutComputeSemantics,
     ) -> InterpResult<'tcx, Option<(Size, Align)>> {
         self.size_and_align_from_meta(&val.meta(), &val.layout(), semantics)
     }

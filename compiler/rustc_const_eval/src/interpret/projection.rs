@@ -10,7 +10,7 @@
 use std::marker::PhantomData;
 use std::ops::Range;
 
-use rustc_abi::{self as abi, Align, FieldIdx, OffsetAccuracy, Size, VariantIdx};
+use rustc_abi::{self as abi, FieldIdx, OffsetAccuracy, Size, VariantIdx};
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::{bug, mir, span_bug, ty};
@@ -20,9 +20,9 @@ use super::{
     InterpCx, InterpResult, MPlaceTy, Machine, OpTy, Provenance, Scalar, err_ub, interp_ok,
     throw_ub, throw_unsup,
 };
-use crate::interpret::eval_context::SizeAndAlignSemantics;
+use crate::interpret::ImmTy;
+use crate::interpret::eval_context::LayoutComputeSemantics;
 use crate::interpret::place::{AnyMemPlaceMeta, MemPlaceMetadata};
-use crate::interpret::{ImmTy, InvalidMetaKind, PointerArithmetic};
 
 /// Describes the constraints placed on offset-projections.
 #[derive(Copy, Clone, Debug)]
@@ -210,107 +210,15 @@ where
             );
         }
 
-        let packed =
-            if let ty::Adt(def, _) = base.layout().ty.kind() { def.repr().pack } else { None };
-
-        let offset = if matches!(offset.accuracy, OffsetAccuracy::RoundedUp) {
-            // We *only* need to adjust for the dynamic alignment.
-            // We already handled the case where the unaligned offset is 0 above,
-            // so if we cannot compute the alignment, then we cannot compute the offset.
-            match self.size_and_align_from_meta(
-                &field_meta,
-                &field_layout,
-                SizeAndAlignSemantics::FOR_FIELD_OFFSET,
-            )? {
-                Some((_, align)) => {
-                    // For packed types, we need to cap alignment.
-                    let align = if let Some(packed) = packed { align.min(packed) } else { align };
-                    let offset = offset.offset.align_to(align);
-
-                    // Check if this brought us over the size limit.
-                    if offset > self.max_size_of_val() {
-                        assert!(SizeAndAlignSemantics::FOR_FIELD_OFFSET.overflow_is_ub);
-                        throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
-                    }
-
-                    offset
-                }
-                None => {
-                    // We cannot know the alignment of this field, so we cannot adjust.
-                    throw_unsup!(ExternTypeField)
-                }
-            }
-        } else {
-            if let ty::Adt(adt_def, ..) = base.layout().ty.kind() {
-                assert!(
-                    adt_def.is_struct(),
-                    "(unsized) unions should have all fields at exact offset 0, and enums cannot (yet) be unsized"
-                );
-            }
-
-            // We need to compute the offset by adding up the sizes of all previous fields, with alignment padding.
-            let orig_offset = offset;
-            let mut offset = Size::ZERO;
-
-            // FIXME(more_unsized): optimize this, and deduplicate with `size_of_val`
-            for field_idx in base.layout().fields.index_by_increasing_offset() {
-                let field_layout = base.layout().field(self, field_idx);
-                let field_meta = match base.meta().0 {
-                    None => {
-                        assert!(
-                            field_layout.ty.is_thin(*self.tcx, self.typing_env),
-                            "non-thin field in thin aggregate"
-                        );
-                        AnyMemPlaceMeta(None)
-                    }
-                    Some(base_meta) => {
-                        let base_meta = base_meta.change_sizedness();
-                        let field_meta = self
-                            .project_field(&base_meta, field)?
-                            .expect_sized("pointer metadata must be sized");
-                        AnyMemPlaceMeta(Some(field_meta))
-                    }
-                };
-
-                let Some((field_size, mut field_align)) = self.size_and_align_from_meta(
-                    &field_meta,
-                    &field_layout,
-                    SizeAndAlignSemantics::FOR_FIELD_OFFSET,
-                )?
-                else {
-                    // We cannot know the alignment of this field, so we cannot adjust.
-                    throw_unsup!(ExternTypeField)
-                };
-
-                // For packed types, we need to cap alignment.
-                if let Some(packed) = packed {
-                    field_align = Align::min(field_align, packed)
-                }
-
-                // Round up the offset to the current field's effective alignment
-                offset = offset.align_to(field_align);
-
-                // Check if this brought us over the size limit.
-                if offset > self.max_size_of_val() {
-                    assert!(SizeAndAlignSemantics::FOR_FIELD_OFFSET.overflow_is_ub);
-                    throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
-                }
-
-                // If this is the field we want, use its offset
-                if field_idx == field.as_usize() {
-                    break;
-                }
-                // Otherwise, add the size of this field
-                offset += field_size;
-
-                // Check if this brought us over the size limit.
-                if offset > self.max_size_of_val() {
-                    assert!(SizeAndAlignSemantics::FOR_FIELD_OFFSET.overflow_is_ub);
-                    throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
-                }
-            }
-            debug_assert!(offset >= orig_offset.offset, "LowerBound offset was incorrect?");
-            offset
+        let Some((offset, _effective_align)) = self.layout_compute_from_meta(
+            &base.meta(),
+            &base.layout(),
+            LayoutComputeSemantics::FOR_FIELD_OFFSET,
+            crate::interpret::eval_context::LayoutComputeGoal::FieldOffset(field),
+        )?
+        else {
+            // We cannot know the alignment of this field, so we cannot adjust.
+            throw_unsup!(ExternTypeField)
         };
 
         base.offset_with_meta(offset, OffsetMode::Inbounds, field_meta, field_layout, self)
@@ -384,7 +292,7 @@ where
                         .size_and_align_from_meta(
                             &field_meta,
                             &field_layout,
-                            SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                            LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
                         )?
                         .expect(
                             "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) \

@@ -102,7 +102,7 @@ use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx, Primitive, Si
 use rustc_arena::DroplessArena;
 use rustc_const_eval::const_eval::DummyMachine;
 use rustc_const_eval::interpret::{
-    ImmTy, Immediate, InterpCx, MemoryKind, OpTy, Projectable, Scalar, SizeAndAlignSemantics,
+    ImmTy, Immediate, InterpCx, LayoutComputeSemantics, MemoryKind, OpTy, Projectable, Scalar,
     intern_const_alloc_for_constprop,
 };
 use rustc_data_structures::fx::FxHasher;
@@ -1993,7 +1993,7 @@ fn op_to_prop_const<'tcx>(
     // try putting it into global memory to return it.
     if let Either::Left(mplace) = op.as_mplace_or_imm() {
         let (size, _align) =
-            ecx.size_and_align_of_val(&mplace, SizeAndAlignSemantics::RELAXED).discard_err()??;
+            ecx.size_and_align_of_val(&mplace, LayoutComputeSemantics::RELAXED).discard_err()??;
 
         // Do not try interning a value that contains provenance.
         // Due to https://github.com/rust-lang/rust/issues/128775, doing so could lead to bugs.
