@@ -16,7 +16,7 @@ use super::{
     Projectable, Provenance, Scalar, alloc_range, interp_ok, mir_assign_valid_types,
 };
 use crate::enter_trace_span;
-use crate::interpret::eval_context::SizeAndAlignSemantics;
+use crate::interpret::eval_context::LayoutComputeSemantics;
 
 pub trait MemPlaceSizedness: Copy + std::fmt::Debug + std::hash::Hash + Eq {
     // The default value should be valid for any `Sized` place.
@@ -696,7 +696,7 @@ where
     ) -> InterpResult<'tcx, Option<AllocRef<'_, 'tcx, M::Provenance, M::AllocExtra, M::Bytes>>>
     {
         let (size, _align) = self
-            .size_and_align_of_val(mplace, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+            .size_and_align_of_val(mplace, LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT)?
             .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
         // We check alignment separately, and *after* checking everything else.
         // If an access is both OOB and misaligned, we want to see the bounds error.
@@ -712,7 +712,7 @@ where
     ) -> InterpResult<'tcx, Option<AllocRefMut<'_, 'tcx, M::Provenance, M::AllocExtra, M::Bytes>>>
     {
         let (size, _align) = self
-            .size_and_align_of_val(mplace, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+            .size_and_align_of_val(mplace, LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT)?
             .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
         // We check alignment separately, and raise that error *after* checking everything else.
         // If an access is both OOB and misaligned, we want to see the bounds error.
@@ -1162,7 +1162,7 @@ where
 
         let dest = dest.force_mplace(self)?;
         let Some((dest_size, _)) =
-            self.size_and_align_of_val(&dest, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+            self.size_and_align_of_val(&dest, LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT)?
         else {
             span_bug!(
                 self.cur_span(),
@@ -1171,7 +1171,7 @@ where
         };
         if cfg!(debug_assertions) {
             let src_size = self
-                .size_and_align_of_val(&src, SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT)?
+                .size_and_align_of_val(&src, LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT)?
                 .unwrap()
                 .0;
             assert_eq!(src_size, dest_size, "Cannot copy differently-sized data");
@@ -1264,7 +1264,7 @@ where
         let Some((size, align)) = self.size_and_align_from_meta(
             &meta,
             &layout,
-            SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+            LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
         )?
         else {
             span_bug!(

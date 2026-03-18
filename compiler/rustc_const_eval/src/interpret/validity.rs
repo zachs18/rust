@@ -36,7 +36,7 @@ use super::{
     ValueVisitor, err_ub, format_interp_error,
 };
 use crate::enter_trace_span;
-use crate::interpret::eval_context::SizeAndAlignSemantics;
+use crate::interpret::eval_context::LayoutComputeSemantics;
 
 // for the validation errors
 #[rustfmt::skip]
@@ -686,7 +686,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
 
         // Determine size and alignment of pointee.
         let size_and_align = try_validation!(
-            self.ecx.size_and_align_of_val(&place, SizeAndAlignSemantics::FOR_RETAG),
+            self.ecx.size_and_align_of_val(&place, LayoutComputeSemantics::FOR_RETAG),
             self.path,
             Ub(InvalidMeta(msg)) => format!(
                 "encountered invalid {ptr_kind} metadata: {}",
@@ -1232,7 +1232,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
         let (_prov, start_offset) = mplace.ptr().into_raw_parts();
         let (size, _align) = self
             .ecx
-            .size_and_align_of_val(&mplace, SizeAndAlignSemantics::FOR_RETAG)?
+            .size_and_align_of_val(&mplace, LayoutComputeSemantics::FOR_RETAG)?
             .unwrap_or((mplace.layout.size, mplace.layout.align.abi));
         // If there is no padding at all, we can skip the rest: check for
         // a single data range covering the entire value.
@@ -1419,7 +1419,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
             // the check in `visit_value`.
             let zst = self
                 .ecx
-                .size_and_align_of_val(val, SizeAndAlignSemantics::FOR_RETAG)?
+                .size_and_align_of_val(val, LayoutComputeSemantics::FOR_RETAG)?
                 .is_some_and(|(s, _a)| s.bytes() == 0);
             if !zst && !val.layout.ty.is_freeze(*self.ecx.tcx, self.ecx.typing_env) {
                 if !self.in_mutable_memory(val) {
@@ -1472,7 +1472,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
             // handle slices and trait objects.
             let zst = self
                 .ecx
-                .size_and_align_of_val(val, SizeAndAlignSemantics::FOR_RETAG)?
+                .size_and_align_of_val(val, LayoutComputeSemantics::FOR_RETAG)?
                 .is_some_and(|(s, _a)| s.bytes() == 0);
             if !zst
                 && let Some(def) = val.layout.ty.ty_adt_def()

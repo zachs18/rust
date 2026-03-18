@@ -24,7 +24,7 @@ use super::{
     PointerArithmetic, Projectable, Provenance, Scalar, err_ub_format, interp_ok, throw_inval,
     throw_ub, throw_ub_format,
 };
-use crate::interpret::eval_context::SizeAndAlignSemantics;
+use crate::interpret::eval_context::LayoutComputeSemantics;
 use crate::interpret::{AnyMemPlaceMeta, MPlaceTy, Writeable};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -323,7 +323,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     // `invalid_is_ub = true` is fine since these are the unchecked intrinsics
                     .size_and_align_of_val(
                         &place,
-                        SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                        LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
                     )?
                     .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
 
@@ -348,7 +348,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let result = self.size_and_align_from_meta(
                     &meta,
                     &pointee_layout,
-                    SizeAndAlignSemantics::CHECKED_METASIZED_LAYOUT,
+                    LayoutComputeSemantics::CHECKED_METASIZED_LAYOUT,
                 )?;
 
                 let (valid, result) = match (intrinsic_name, result) {
@@ -381,7 +381,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let (size, align) = self.size_and_align_from_meta(
                     &meta,
                     &pointee_layout,
-                    SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                    LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
                 )?.expect("size_and_align_for_meta(UNCHECKED_METASIZED_LAYOUT) should never return None");
 
                 let result = match intrinsic_name {

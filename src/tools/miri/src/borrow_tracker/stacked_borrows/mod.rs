@@ -830,7 +830,7 @@ trait EvalContextPrivExt<'tcx, 'ecx>: crate::MiriInterpCxExt<'tcx> {
     ) -> InterpResult<'tcx, MPlaceTy<'tcx>> {
         let this = self.eval_context_mut();
         let size = this
-            .size_and_align_of_val(place, SizeAndAlignSemantics::FOR_RETAG)?
+            .size_and_align_of_val(place, LayoutComputeSemantics::FOR_RETAG)?
             .map(|(size, _)| size);
         // FIXME: If we cannot determine the size (because the unsized tail is an `extern type`),
         // bail out -- we cannot reasonably figure out which memory range to reborrow.
