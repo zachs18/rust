@@ -10,7 +10,8 @@ use rustc_middle::mir::*;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::MetadataFields;
 use rustc_middle::ty::{
-    self, CoroutineArgs, CoroutineArgsExt, EarlyBinder, GenericArgs, Ty, TyCtxt,
+    self, CoroutineArgs, CoroutineArgsExt, EarlyBinder, GenericArgs, InitAdtComponentArg,
+    InitAdtComponentInfo, Ty, TyCtxt,
 };
 use rustc_middle::{bug, span_bug};
 use rustc_span::{DUMMY_SP, Span, Spanned, Symbol, dummy_spanned};
@@ -2217,7 +2218,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         adt_def: ty::AdtDef<'tcx>,
         adt_args: ty::GenericArgsRef<'tcx>,
     ) {
-        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty } = self.extra;
+        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty: _ } = self.extra;
         let adt_variant = adt_def.variant(init_info.variant);
 
         if adt_def.is_union() {
@@ -2417,6 +2418,14 @@ impl<'tcx> InitShimBuilder<'tcx> {
         let unwind_cleanup_target = self.block_index_offset(0);
         self.block(vec![], TerminatorKind::Goto { target: unwind_cleanup_target }, true);
 
+        // Keep track of how many `arg` uses there are remaining, so we don't clone for the last usage.
+        let mut remaining_arg_uses = init_info
+            .component_infos
+            .iter()
+            .flat_map(|component_info| component_info.args)
+            .filter(|arg| matches!(arg, InitAdtComponentArg::Arg))
+            .count();
+
         // Each component has several blocks:
         // 1. Get the arg for that component (including cloning or moving the `Arg`, which is the only part that could fail).
         // 2. set component_needs_drop=false, then call `init_once` for that component [return -> keep going, unwind -> bb2]
@@ -2429,51 +2438,18 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let component_field_idx = FieldIdx::new(component_idx);
 
             // Make the arg for the call
-            let component_arg = match component_info.args.as_slice() {
-                [] => self.make_place(Mutability::Not, self.tcx.types.unit),
-                &[arg_] => match arg_ {
-                    ty::InitAdtComponentArg::Arg => {
-                        let component_arg = self.make_place(Mutability::Not, arg_ty);
-                        let target = self.block_index_offset(1);
-                        self.make_clone_call(
-                            component_arg,
-                            arg,
-                            arg_ty,
-                            target,
-                            unwind_cleanup_target,
-                        );
-                        component_arg
-                    }
-                    ty::InitAdtComponentArg::Ref(..) | ty::InitAdtComponentArg::PinRef(..) => {
-                        todo!()
-                    }
-                    ty::InitAdtComponentArg::Ptr(field_idx) => {
-                        let field_ty = adt_variant.fields[field_idx].ty(self.tcx, adt_args);
-                        let component_arg_ty = Ty::new_mut_ptr(self.tcx, field_ty);
-                        let component_arg = self.make_place(Mutability::Not, component_arg_ty);
-                        let stmt = self.make_statement(StatementKind::Assign(Box::new((
-                            component_arg,
-                            Rvalue::RawPtr(
-                                RawPtrKind::Mut,
-                                dst_ptr.project_deeper(
-                                    &[
-                                        PlaceElem::Deref,
-                                        PlaceElem::Downcast(None, init_info.variant),
-                                        PlaceElem::Field(field_idx, field_ty),
-                                    ],
-                                    self.tcx,
-                                ),
-                            ),
-                        ))));
-                        let target = self.block_index_offset(1);
-                        self.block(vec![stmt], TerminatorKind::Goto { target }, false);
-                        component_arg
-                    }
-                },
-                _args => {
-                    todo!("multiple args with cleanup")
-                }
-            };
+
+            let (component_arg, component_arg_ty) = self.make_adt_arg_blocks(
+                init_info,
+                adt_variant,
+                adt_args,
+                dst_ptr,
+                &mut remaining_arg_uses,
+                &component_info,
+                arg_needs_drop,
+                arg,
+                unwind_cleanup_target,
+            );
 
             // Get the Dst MU reference for the call, then
             // set the initializer as moved and do the call
@@ -2588,12 +2564,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let func_ty = Ty::new_fn_def(
                 self.tcx,
                 init_method_def_id,
-                [
-                    component_ty,
-                    component_dst_ty,
-                    error_ty,
-                    component_arg.ty(&self.local_decls, self.tcx).ty,
-                ],
+                [component_ty, component_dst_ty, error_ty, component_arg_ty],
             );
             let func = Operand::Constant(Box::new(ConstOperand {
                 span: self.span,
@@ -2606,7 +2577,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                     self.tcx,
                 )),
                 Operand::Move(dst_ref),
-                Operand::Move(component_arg),
+                component_arg,
                 Operand::Copy(pre_zeroed),
             ]
             .map(|arg| Spanned { node: arg, span: self.span });
@@ -2768,6 +2739,131 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         // Done with unwind cleanup, resume unwinding
         self.block(vec![], TerminatorKind::UnwindResume, true);
+    }
+
+    /// Makes the `ElemArg` for a given component then jumps to the next block (if any blocks were created).
+    /// On unwind, cleans up any partial parts of the `ElemArg` then jumps to `cleanup`.
+    fn make_adt_arg_blocks(
+        &mut self,
+        init_info: ty::InitAdtInfo<'tcx>,
+        adt_variant: &ty::VariantDef,
+        adt_args: ty::GenericArgsRef<'tcx>,
+        dst_ptr: Place<'tcx>,
+        remaining_arg_uses: &mut usize,
+        component_info: &InitAdtComponentInfo<'tcx>,
+        arg_needs_drop: Place<'tcx>,
+        arg: Place<'tcx>,
+        mut cleanup: BasicBlock,
+    ) -> (Operand<'tcx>, Ty<'tcx>) {
+        let arg_ty = self.extra.arg_ty;
+        let mut mk_arg = |self_: &mut Self| -> (Option<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
+            match *remaining_arg_uses {
+                0 => bug!("remaining_arg_uses was wrong?"),
+                1 => {
+                    // This is the last usage of `arg`, so we don't need a cleanup block
+                    // clear its drop flag and move out of it.
+                    let target = self_.block_index_offset(1);
+                    self_.block(
+                        vec![self_.make_set_bool_stmt(arg_needs_drop, false)],
+                        TerminatorKind::Goto { target },
+                        false,
+                    );
+                    *remaining_arg_uses = 0;
+                    (None, arg, arg_ty)
+                }
+                _ => {
+                    // Clone `arg` into a new place, and replace `cleanup` with a block that drops it then jumps to
+                    // the old value of `cleanup`.
+                    *remaining_arg_uses -= 1;
+                    let elem_arg = self_.make_place(Mutability::Not, arg_ty);
+                    let new_cleanup = self_.block_index_offset(1);
+                    let target = self_.block_index_offset(2);
+                    self_.make_clone_call(elem_arg, arg, arg_ty, target, cleanup);
+                    self_.block(
+                        vec![],
+                        TerminatorKind::Drop {
+                            place: elem_arg,
+                            target: cleanup,
+                            unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
+                            replace: false,
+                            drop: None,
+                            async_fut: None,
+                        },
+                        true,
+                    );
+                    cleanup = new_cleanup;
+                    (None, elem_arg, arg_ty)
+                }
+            }
+        };
+        let mk_ptr = |self_: &mut Self,
+                      field_idx: FieldIdx|
+         -> (Option<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
+            let field_ty = adt_variant.fields[field_idx].ty(self_.tcx, adt_args);
+            let component_arg_ty = Ty::new_mut_ptr(self_.tcx, field_ty);
+            let component_arg = self_.make_place(Mutability::Not, component_arg_ty);
+            let stmt = self_.make_statement(StatementKind::Assign(Box::new((
+                component_arg,
+                Rvalue::RawPtr(
+                    RawPtrKind::Mut,
+                    dst_ptr.project_deeper(
+                        &[
+                            PlaceElem::Deref,
+                            PlaceElem::Downcast(None, init_info.variant),
+                            PlaceElem::Field(field_idx, field_ty),
+                        ],
+                        self_.tcx,
+                    ),
+                ),
+            ))));
+            (Some(stmt), component_arg, component_arg_ty)
+        };
+        let mut mk_elem_arg = |self_: &mut Self, arg: InitAdtComponentArg| match arg {
+            InitAdtComponentArg::Arg => mk_arg(self_),
+            InitAdtComponentArg::Ptr(field_idx) => mk_ptr(self_, field_idx),
+            InitAdtComponentArg::Ref(_field_idx) => todo!(),
+            InitAdtComponentArg::PinRef(_field_idx) => todo!(),
+        };
+
+        match component_info.args[..] {
+            [] => (
+                Operand::Constant(Box::new(ConstOperand {
+                    span: self.span,
+                    user_ty: None,
+                    const_: Const::zero_sized(self.tcx.types.unit),
+                })),
+                self.tcx.types.unit,
+            ),
+            [arg] => {
+                let (stmt, arg_place, arg_ty) = mk_elem_arg(self, arg);
+                if let Some(stmt) = stmt {
+                    let target = self.block_index_offset(1);
+                    self.block(vec![stmt], TerminatorKind::Goto { target }, false);
+                }
+                (Operand::Move(arg_place), arg_ty)
+            }
+            ref args => {
+                // The `Ptr`/`Ref`/`PinRef` args can never fail, so they can happen last in one block.
+                let mut stmts = vec![];
+                let mut ops = IndexVec::new();
+                let mut tys = vec![];
+                for &arg in args {
+                    let (stmt, place, ty) = mk_elem_arg(self, arg);
+                    stmts.extend(stmt);
+                    ops.push(Operand::Move(place));
+                    tys.push(ty);
+                }
+                let elem_arg_ty = Ty::new_tup(self.tcx, &tys);
+                let elem_arg = self.make_place(Mutability::Not, elem_arg_ty);
+                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    elem_arg,
+                    Rvalue::Aggregate(Box::new(AggregateKind::Tuple), ops),
+                )))));
+                let target = self.block_index_offset(1);
+                self.block(stmts, TerminatorKind::Goto { target }, false);
+                (Operand::Move(elem_arg), elem_arg_ty)
+            }
+        }
     }
 
     fn make_clone_call(
