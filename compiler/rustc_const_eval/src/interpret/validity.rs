@@ -470,12 +470,11 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
 
             // tuples and tuple-like initializer types
             ty::Tuple(_)
+            | ty::InitAdt(..)
             | ty::InitTuple(..)
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..) => PathElem::TupleLikeElem(field),
-
-            ty::InitAdt(..) => todo!(),
 
             // enums
             ty::Adt(def, ..) if def.is_enum() => {
