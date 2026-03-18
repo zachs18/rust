@@ -2429,6 +2429,10 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // 3. check if `init_once` succeeded [yes -> keep going, no -> bb1]
         // 4. if that component initialized a field, set adt_field_IDX_needs_drop=true, then keep going
 
+        // Keep track of which fields were initialized, so we can fill all others with their default values
+        // on success.
+        let mut initialized_adt_fields = IndexVec::from_elem(false, &adt_variant.fields);
+
         for (component_idx, (component_ty, component_info)) in
             std::iter::zip(init_info.component_tys, init_info.component_infos).enumerate()
         {
@@ -2466,6 +2470,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let mut stmts = vec![];
             let (component_dst_ty, component_dst_ptr) =
                 if let Some(adt_field_idx) = component_info.field {
+                    initialized_adt_fields[adt_field_idx] = true;
                     let adt_field_ty = adt_variant.fields[adt_field_idx].ty(self.tcx, adt_args);
 
                     let mu_adt_field_ty = Ty::new_maybe_uninit(self.tcx, adt_field_ty);
@@ -2619,17 +2624,42 @@ impl<'tcx> InitShimBuilder<'tcx> {
             self.block(stmts, TerminatorKind::Goto { target }, false);
         }
 
-        // All the initializations succeeded and `Arg` was moved, so there's no drops to do.
-        // Set discriminant (if enum) and return
-        let set_discrim_if_enum = if adt_def.is_enum() {
-            vec![self.make_statement(StatementKind::SetDiscriminant {
+        // All the component initializers succeeded and `Arg` was moved, so there's no drops to do.
+        // Set all remaining fields to their default values, set discriminant (if enum), and return
+        let mut stmts = vec![];
+        // Fill all remaining fields with their default
+        for (field_idx, field) in adt_variant.fields.iter_enumerated() {
+            if initialized_adt_fields[field_idx] {
+                continue;
+            };
+            let Some(value_const_did) = field.value else { bug!() };
+            let const_ =
+                Const::from_unevaluated(self.tcx, value_const_did).instantiate(self.tcx, adt_args);
+            let field_ty = const_.ty();
+            let op = Operand::Constant(Box::new(ConstOperand {
+                span: self.span,
+                user_ty: None,
+                const_,
+            }));
+
+            // (*_dst_ptr).IDX = const CONST;
+            let field_dst_place =
+                dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx);
+
+            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                field_dst_place,
+                Rvalue::Use(op),
+            )))));
+        }
+        // Set the discriminant (if enum)
+        if adt_def.is_enum() {
+            stmts.push(self.make_statement(StatementKind::SetDiscriminant {
                 place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
                 variant_index: init_info.variant,
-            })]
-        } else {
-            vec![]
-        };
-        self.block(set_discrim_if_enum, TerminatorKind::Return, false);
+            }));
+        }
+        // Return
+        self.block(stmts, TerminatorKind::Return, false);
 
         // Now we make the two cleanup loops and patch bb1 and bb2 to point at them
 
