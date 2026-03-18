@@ -2218,7 +2218,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         adt_def: ty::AdtDef<'tcx>,
         adt_args: ty::GenericArgsRef<'tcx>,
     ) {
-        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty: _ } = self.extra;
+        let InitShimExtra { init_method_def_id, dst_ty, error_ty, arg_ty } = self.extra;
         let adt_variant = adt_def.variant(init_info.variant);
 
         if adt_def.is_union() {
@@ -2227,27 +2227,12 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         if init_info.component_tys.is_empty() {
             // If there are no components, then:
-            // 1. drop Arg
-            // 2. get a pointer to the destination to use for 3/4
-            // 3. fill all fields with their default values,
-            // 4. set the discriminant (if enum)
-            // 5. return `Ok(())`.
-
-            // Drop Arg
-            let target = self.block_index_offset(1);
-            self.block(
-                vec![],
-                TerminatorKind::Drop {
-                    place: arg,
-                    target,
-                    // If there are no elements, then there's nothing to clean up if this unwinds
-                    unwind: UnwindAction::Continue,
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                false,
-            );
+            // 1. get a pointer to the destination to use for 2/3
+            // 2. fill all fields with their default values,
+            // 3. set the discriminant (if enum)
+            // 4. return `Ok(())`.
+            // (We don't need to drop the arg, since `Arg = ()` if there are no components)
+            debug_assert!(arg_ty.is_unit());
 
             let mut stmts = vec![];
 
@@ -2439,7 +2424,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             .count();
 
         // Each component has several blocks:
-        // 1. Get the arg for that component (including cloning or moving the `Arg`, which is the only part that could fail).
+        // 1. Get the arg for that component (may be zero or more blocks).
         // 2. set component_needs_drop=false, then call `init_once` for that component [return -> keep going, unwind -> bb2]
         // 3. check if `init_once` succeeded [yes -> keep going, no -> bb1]
         // 4. if that component initialized a field, set adt_field_IDX_needs_drop=true, then keep going
