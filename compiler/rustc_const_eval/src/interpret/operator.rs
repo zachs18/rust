@@ -9,7 +9,7 @@ use rustc_span::sym;
 use tracing::trace;
 
 use super::{
-    AnyMemPlaceMeta, ImmTy, Immediate, InterpCx, Machine, OpTy, PlaceTy, SizeAndAlignSemantics,
+    AnyMemPlaceMeta, ImmTy, Immediate, InterpCx, LayoutComputeSemantics, Machine, OpTy, PlaceTy,
     interp_ok, throw_ub,
 };
 
@@ -323,7 +323,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             .size_and_align_from_meta(
                 &metadata,
                 &pointee_layout,
-                SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
             )?
             .expect(
                 "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None",
@@ -391,7 +391,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     .size_and_align_from_meta(
                         &metadata,
                         &pointee_layout,
-                        SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                        LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
                     )?
                     .expect(
                         "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None",
