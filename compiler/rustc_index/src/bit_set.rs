@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 #[cfg(not(feature = "nightly"))]
 use std::mem;
-use std::ops::{Bound, Range, RangeBounds};
+use std::ops::{Bound, DerefMut, Range, RangeBounds};
 use std::rc::Rc;
 use std::{fmt, iter, slice};
 
@@ -17,6 +17,26 @@ mod tests;
 type Word = u64;
 const WORD_BYTES: usize = size_of::<Word>();
 const WORD_BITS: usize = WORD_BYTES * 8;
+
+pub trait Words:
+    Sized
+    + DerefMut<Target = [Word]>
+    + From<Vec<Word>>
+    + Into<Vec<Word>>
+    + From<Box<[Word]>>
+    + Into<Box<[Word]>>
+{
+}
+impl<
+    T: Sized
+        + DerefMut<Target = [Word]>
+        + From<Vec<Word>>
+        + Into<Vec<Word>>
+        + From<Box<[Word]>>
+        + Into<Box<[Word]>>,
+> Words for T
+{
+}
 
 // The choice of chunk size has some trade-offs.
 //
@@ -115,9 +135,9 @@ macro_rules! bit_relations_inherent_impls {
 ///
 #[cfg_attr(feature = "nightly", derive(Decodable_NoContext, Encodable_NoContext))]
 #[derive(Eq, PartialEq, Hash)]
-pub struct DenseBitSet<T> {
+pub struct DenseBitSet<T, W = Box<[Word]>> {
     domain_size: usize,
-    words: Vec<Word>,
+    words: W,
     marker: PhantomData<T>,
 }
 
@@ -128,20 +148,43 @@ impl<T> DenseBitSet<T> {
     }
 }
 
-impl<T: Idx> DenseBitSet<T> {
+impl<T: Idx> DenseBitSet<T, Box<[Word]>> {
     /// Creates a new, empty bitset with a given `domain_size`.
     #[inline]
     pub fn new_empty(domain_size: usize) -> DenseBitSet<T> {
-        let num_words = num_words(domain_size);
-        DenseBitSet { domain_size, words: vec![0; num_words], marker: PhantomData }
+        Self::new_empty_generic(domain_size)
     }
 
     /// Creates a new, filled bitset with a given `domain_size`.
     #[inline]
     pub fn new_filled(domain_size: usize) -> DenseBitSet<T> {
+        Self::new_filled_generic(domain_size)
+    }
+}
+
+impl<T: Idx, W: Words> DenseBitSet<T, W> {
+    pub fn map_words<W2>(self) -> DenseBitSet<T, W2>
+    where
+        W: Into<W2>,
+    {
+        DenseBitSet { domain_size: self.domain_size, words: self.words.into(), marker: PhantomData }
+    }
+}
+
+impl<T: Idx, W: Words> DenseBitSet<T, W> {
+    /// Creates a new, empty bitset with a given `domain_size`.
+    #[inline]
+    pub fn new_empty_generic(domain_size: usize) -> Self {
+        let num_words = num_words(domain_size);
+        DenseBitSet { domain_size, words: vec![0; num_words].into(), marker: PhantomData }
+    }
+
+    /// Creates a new, filled bitset with a given `domain_size`.
+    #[inline]
+    pub fn new_filled_generic(domain_size: usize) -> Self {
         let num_words = num_words(domain_size);
         let mut result =
-            DenseBitSet { domain_size, words: vec![!0; num_words], marker: PhantomData };
+            DenseBitSet { domain_size, words: vec![!0; num_words].into(), marker: PhantomData };
         result.clear_excess_bits();
         result
     }
@@ -329,30 +372,30 @@ impl<T: Idx> DenseBitSet<T> {
 }
 
 // dense REL dense
-impl<T: Idx> BitRelations<DenseBitSet<T>> for DenseBitSet<T> {
-    fn union(&mut self, other: &DenseBitSet<T>) -> bool {
+impl<T: Idx, W1: Words, W2: Words> BitRelations<DenseBitSet<T, W1>> for DenseBitSet<T, W2> {
+    fn union(&mut self, other: &DenseBitSet<T, W1>) -> bool {
         assert_eq!(self.domain_size, other.domain_size);
         bitwise(&mut self.words, &other.words, |a, b| a | b)
     }
 
-    fn subtract(&mut self, other: &DenseBitSet<T>) -> bool {
+    fn subtract(&mut self, other: &DenseBitSet<T, W1>) -> bool {
         assert_eq!(self.domain_size, other.domain_size);
         bitwise(&mut self.words, &other.words, |a, b| a & !b)
     }
 
-    fn intersect(&mut self, other: &DenseBitSet<T>) -> bool {
+    fn intersect(&mut self, other: &DenseBitSet<T, W1>) -> bool {
         assert_eq!(self.domain_size, other.domain_size);
         bitwise(&mut self.words, &other.words, |a, b| a & b)
     }
 }
 
-impl<T: Idx> From<GrowableBitSet<T>> for DenseBitSet<T> {
+impl<T: Idx, W: Words> From<GrowableBitSet<T>> for DenseBitSet<T, W> {
     fn from(bit_set: GrowableBitSet<T>) -> Self {
-        bit_set.bit_set
+        bit_set.bit_set.map_words()
     }
 }
 
-impl<T> Clone for DenseBitSet<T> {
+impl<T, W: Clone> Clone for DenseBitSet<T, W> {
     fn clone(&self) -> Self {
         DenseBitSet {
             domain_size: self.domain_size,
@@ -367,7 +410,7 @@ impl<T> Clone for DenseBitSet<T> {
     }
 }
 
-impl<T: Idx> fmt::Debug for DenseBitSet<T> {
+impl<T: Idx, W: Words> fmt::Debug for DenseBitSet<T, W> {
     fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
         w.debug_list().entries(self.iter()).finish()
     }
@@ -1286,7 +1329,7 @@ impl<'a, T: Idx> Iterator for MixedBitIter<'a, T> {
 /// to or greater than the domain size.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GrowableBitSet<T: Idx> {
-    bit_set: DenseBitSet<T>,
+    bit_set: DenseBitSet<T, Vec<Word>>,
 }
 
 impl<T: Idx> Default for GrowableBitSet<T> {
@@ -1309,11 +1352,11 @@ impl<T: Idx> GrowableBitSet<T> {
     }
 
     pub fn new_empty() -> GrowableBitSet<T> {
-        GrowableBitSet { bit_set: DenseBitSet::new_empty(0) }
+        GrowableBitSet { bit_set: DenseBitSet::new_empty_generic(0) }
     }
 
     pub fn with_capacity(capacity: usize) -> GrowableBitSet<T> {
-        GrowableBitSet { bit_set: DenseBitSet::new_empty(capacity) }
+        GrowableBitSet { bit_set: DenseBitSet::new_empty_generic(capacity) }
     }
 
     /// Returns `true` if the set has changed.
@@ -1352,9 +1395,9 @@ impl<T: Idx> GrowableBitSet<T> {
     }
 }
 
-impl<T: Idx> From<DenseBitSet<T>> for GrowableBitSet<T> {
-    fn from(bit_set: DenseBitSet<T>) -> Self {
-        Self { bit_set }
+impl<T: Idx, W: Words> From<DenseBitSet<T, W>> for GrowableBitSet<T> {
+    fn from(bit_set: DenseBitSet<T, W>) -> Self {
+        Self { bit_set: bit_set.map_words() }
     }
 }
 
