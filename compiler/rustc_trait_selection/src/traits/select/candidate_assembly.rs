@@ -10,6 +10,7 @@ use std::ops::ControlFlow;
 
 use hir::LangItem;
 use hir::def_id::DefId;
+use rustc_abi::{FieldIdx, FieldUnsizability};
 use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
 use rustc_hir::{self as hir, CoroutineDesugaring, CoroutineKind};
 use rustc_infer::traits::{Obligation, PolyTraitObligation, PredicateObligation, SelectionError};
@@ -1144,7 +1145,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         // All of a's auto traits need to be in b's auto traits.
                         .all(|b| a_auto_traits.contains(&b));
                     if auto_traits_compatible {
-                        candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
+                        candidates.vec.push(BuiltinUnsizeCandidate {
+                            array_keep_elem: false,
+                            adt_unsizable_field_bitmask: 0,
+                        });
                     }
                 } else if principal_def_id_a.is_some() && principal_def_id_b.is_some() {
                     // not casual unsizing, now check whether this is trait upcasting coercion.
@@ -1178,7 +1182,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
             // `T` -> `Trait`
             (_, &ty::Dynamic(_, _)) => {
-                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
+                candidates.vec.push(BuiltinUnsizeCandidate {
+                    array_keep_elem: false,
+                    adt_unsizable_field_bitmask: 0,
+                });
             }
 
             // Ambiguous handling is below `T` -> `Trait`, because inference
@@ -1191,21 +1198,57 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
             // `[T; n]` -> `[U]` where `T = U` or `T: Unsize<U>`
             (&ty::Array(..), &ty::Slice(_)) => {
-                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
-                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: true });
+                candidates.vec.push(BuiltinUnsizeCandidate {
+                    array_keep_elem: false,
+                    adt_unsizable_field_bitmask: 0,
+                });
+                candidates.vec.push(BuiltinUnsizeCandidate {
+                    array_keep_elem: true,
+                    adt_unsizable_field_bitmask: 0,
+                });
             }
 
             // `[T; n]` -> `[U; n]` or `[T]` -> `[U]` unsizing where `T: Unsize<U>`
             (&ty::Array(..), &ty::Array(..)) | (&ty::Slice(_), &ty::Slice(_)) => {
-                candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
+                candidates.vec.push(BuiltinUnsizeCandidate {
+                    array_keep_elem: false,
+                    adt_unsizable_field_bitmask: 0,
+                });
             }
 
             // `Struct<T>` -> `Struct<U>`
-            (&ty::Adt(def_id_a, _), &ty::Adt(def_id_b, _))
-                if def_id_a.is_struct() || def_id_a.is_union() =>
+            (&ty::Adt(def_a, _), &ty::Adt(def_b, _))
+                if def_a == def_b && (def_a.is_struct() || def_a.is_union()) =>
             {
-                if def_id_a == def_id_b {
-                    candidates.vec.push(BuiltinUnsizeCandidate { array_keep_elem: false });
+                let field_count = def_a.all_fields().count();
+
+                let unsizing_params_for_maybe_unsizable_fields: Vec<(FieldIdx, _)> = def_a
+                    .all_fields()
+                    .enumerate()
+                    .filter(|(idx, field)| match field.unsizability {
+                        FieldUnsizability::Default => idx + 1 == field_count,
+                        FieldUnsizability::Yes => true,
+                        FieldUnsizability::No => false,
+                    })
+                    .map(|(idx, _field)| {
+                        let idx = FieldIdx::from_usize(idx);
+                        (idx, self.tcx().unsizing_params_for_adt_field((def_a.did(), idx)))
+                    })
+                    .collect();
+
+                //
+                if unsizing_params_for_maybe_unsizable_fields.len() > 8 {
+                    todo!(
+                        "emit a nice error message in ast lowering or something if an ADT has more than 8 unsizable fields"
+                    );
+                }
+                for bitmask_unsizing_fields in
+                    1usize..(1 << unsizing_params_for_maybe_unsizable_fields.len())
+                {
+                    candidates.vec.push(BuiltinUnsizeCandidate {
+                        array_keep_elem: false,
+                        adt_unsizable_field_bitmask: bitmask_unsizing_fields,
+                    });
                 }
             }
 

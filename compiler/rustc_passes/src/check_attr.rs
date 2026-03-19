@@ -355,6 +355,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::RustcThenThisWouldNeed(..)
                     | AttributeKind::RustcTrivialFieldReads
                     | AttributeKind::RustcUnsafeSpecializationMarker(..)
+                    | AttributeKind::RustcUnsizableField(..)
                     | AttributeKind::ShouldPanic { .. }
                     | AttributeKind::Stability { .. }
                     | AttributeKind::TestRunner(..)

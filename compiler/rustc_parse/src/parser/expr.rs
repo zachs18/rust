@@ -1862,6 +1862,7 @@ impl<'a> Parser<'a> {
             // `do init tuple (a, b, c)`
             let elems = self.parse_expr_paren_seq()?;
             let span = lo.to(self.prev_token.span);
+            self.psess.gated_spans.gate(sym::in_place_init, span);
             Ok(self.mk_expr(span, ExprKind::InitTuple(elems)))
         } else if self.eat_keyword(exp!(Struct)) {
             // ```
@@ -1882,8 +1883,14 @@ impl<'a> Parser<'a> {
                 ExprKind::Path(..) => todo!("handle error"),
                 _ => unreachable!(),
             }
+            let span = lo.to(self.prev_token.span);
+            self.psess.gated_spans.gate(sym::in_place_init, span);
             Ok(expr)
         } else {
+            // FIXME(in_place_init): `do init slice` and `do init array`
+
+            let span = lo.to(self.prev_token.span);
+            self.psess.gated_spans.gate(sym::in_place_init, span);
             todo!()
         }
     }

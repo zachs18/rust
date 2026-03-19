@@ -571,6 +571,15 @@ impl SingleAttributeParser for RustcScalableVectorParser {
     }
 }
 
+pub(crate) struct RustcUnsizableFieldParser;
+
+impl NoArgsAttributeParser for RustcUnsizableFieldParser {
+    const PATH: &[Symbol] = &[sym::rustc_unsizable_field];
+    const ON_DUPLICATE: OnDuplicate = OnDuplicate::Error;
+    const ALLOWED_TARGETS: AllowedTargets = AllowedTargets::AllowList(&[Allow(Target::Field)]);
+    const CREATE: fn(Span) -> AttributeKind = AttributeKind::RustcUnsizableField;
+}
+
 pub(crate) struct LangParser;
 
 impl SingleAttributeParser for LangParser {

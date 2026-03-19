@@ -191,6 +191,7 @@ impl AttributeKind {
             RustcThenThisWouldNeed(..) => No,
             RustcTrivialFieldReads => Yes,
             RustcUnsafeSpecializationMarker(..) => No,
+            RustcUnsizableField(..) => No, // included in `FieldDef`
             Sanitize { .. } => No,
             ShouldPanic { .. } => No,
             Stability { .. } => Yes,
