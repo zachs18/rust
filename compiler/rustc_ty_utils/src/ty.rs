@@ -1,3 +1,4 @@
+use rustc_abi::FieldIdx;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
@@ -363,7 +364,10 @@ fn asyncness(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Asyncness {
     })
 }
 
-fn unsizing_params_for_adt<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> DenseBitSet<u32> {
+fn unsizing_params_for_adt_field<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    (def_id, unsizing_field_idx): (DefId, FieldIdx),
+) -> DenseBitSet<u32> {
     let def = tcx.adt_def(def_id);
     let num_params = tcx.generics_of(def_id).count();
 
@@ -382,21 +386,34 @@ fn unsizing_params_for_adt<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> DenseBitSe
         },
     };
 
-    // The last field of the structure has to exist and contain type/const parameters.
-    let Some((tail_field, prefix_fields)) = def.non_enum_variant().fields.raw.split_last() else {
-        return DenseBitSet::new_empty(num_params);
-    };
+    // The given field of the structure has to exist and contain type/const parameters.
+    let fields = def.non_enum_variant().fields.as_slice();
+    let unsizing_field = &fields[unsizing_field_idx];
 
     let mut unsizing_params = DenseBitSet::new_empty(num_params);
-    for arg in tcx.type_of(tail_field.did).instantiate_identity().walk() {
+    for arg in tcx.type_of(unsizing_field.did).instantiate_identity().walk() {
         if let Some(i) = maybe_unsizing_param_idx(arg) {
             unsizing_params.insert(i);
         }
     }
 
+    // FIXME(more_unsized): to allow unsizing two fields together that mention the same parameter,
+    // this query needs to take *multiple* fields. Or, even better, it should take *just* the ADT
+    // and give back something like a `Vec<(DenseBitSet<FieldIdx>, DenseBitSet<u32>)>`
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        tracing::warn!(
+            "FIXME(more_unsized): rework multi-field unsizing to allow \
+            unsizing two fields together that mention the same parameter"
+        )
+    });
+
     // Ensure none of the other fields mention the parameters used
     // in unsizing.
-    for field in prefix_fields {
+    for (idx, field) in fields.iter_enumerated() {
+        if idx == unsizing_field_idx {
+            continue;
+        }
         for arg in tcx.type_of(field.did).instantiate_identity().walk() {
             if let Some(i) = maybe_unsizing_param_idx(arg) {
                 unsizing_params.remove(i);
@@ -476,7 +493,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         param_env,
         typing_env_normalized_for_post_analysis,
         defaultness,
-        unsizing_params_for_adt,
+        unsizing_params_for_adt_field,
         impl_self_is_guaranteed_unsized,
         ..*providers
     };

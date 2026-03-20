@@ -2,7 +2,7 @@
 
 use std::{debug_assert_matches, fmt};
 
-use rustc_abi::ExternAbi;
+use rustc_abi::{ExternAbi, FieldIdx};
 use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind};
@@ -38,6 +38,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     type CoroutineClosureId = DefId;
     type CoroutineId = DefId;
     type AdtId = DefId;
+    type FieldId = DefId;
     type ImplId = DefId;
     type UnevaluatedConstId = DefId;
     type Span = Span;
@@ -187,6 +188,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     }
 
     type AdtDef = ty::AdtDef<'tcx>;
+    type FieldDef = &'tcx ty::FieldDef;
     fn adt_def(self, adt_def_id: DefId) -> Self::AdtDef {
         self.adt_def(adt_def_id)
     }
@@ -693,8 +695,12 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     }
 
     type UnsizingParams = &'tcx rustc_index::bit_set::DenseBitSet<u32>;
-    fn unsizing_params_for_adt(self, adt_def_id: DefId) -> Self::UnsizingParams {
-        self.unsizing_params_for_adt(adt_def_id)
+    fn unsizing_params_for_adt_field(
+        self,
+        adt_def_id: DefId,
+        adt_field_idx: FieldIdx,
+    ) -> Self::UnsizingParams {
+        self.unsizing_params_for_adt_field((adt_def_id, adt_field_idx))
     }
 
     fn anonymize_bound_vars<T: TypeFoldable<TyCtxt<'tcx>>>(

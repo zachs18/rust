@@ -6,7 +6,7 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use rustc_abi::{FieldIdx, VariantIdx};
+use rustc_abi::{FieldIdx, FieldUnsizability, VariantIdx};
 use rustc_ast_ir::Mutability;
 
 use crate::elaborate::Elaboratable;
@@ -638,11 +638,6 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
 
     fn is_packed(self) -> bool;
 
-    /// Returns the type of the struct tail, or last field of the union.
-    ///
-    /// Expects the `AdtDef` to be a struct or union. If it is not, then this will panic.
-    fn struct_or_union_tail_ty(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
-
     fn is_phantom_data(self) -> bool;
 
     fn is_manually_drop(self) -> bool;
@@ -656,6 +651,8 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     // FIXME: perhaps use `all_fields` and expose `FieldDef`.
     fn all_field_tys(self, interner: I) -> ty::EarlyBinder<I, impl IntoIterator<Item = I::Ty>>;
 
+    fn all_fields(self) -> impl Iterator<Item = I::FieldDef> + Clone;
+
     fn sizedness_constraints(
         self,
         interner: I,
@@ -665,6 +662,14 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn is_fundamental(self) -> bool;
 
     fn destructor(self, interner: I) -> Option<AdtDestructorKind>;
+}
+
+pub trait FieldDef<I: Interner>: Copy + Debug + Hash + Eq {
+    fn def_id(self) -> I::FieldId;
+
+    fn unsizability(self) -> FieldUnsizability;
+
+    fn instantiate_ty(self, interner: I, args: I::GenericArgs) -> I::Ty;
 }
 
 pub trait InitAdtDef<I: Interner>: Copy + Debug + Hash + Eq {

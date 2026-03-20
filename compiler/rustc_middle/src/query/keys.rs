@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use rustc_abi::FieldIdx;
 use rustc_ast::tokenstream::TokenStream;
 use rustc_data_structures::stable_hasher::HashStable;
 use rustc_hir::def_id::{CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalModDefId};
@@ -187,6 +188,12 @@ impl QueryKey for (DefId, Ident) {
     #[inline(always)]
     fn key_as_def_id(&self) -> Option<DefId> {
         Some(self.0)
+    }
+}
+
+impl QueryKey for (DefId, FieldIdx) {
+    fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
+        tcx.def_span(self.0)
     }
 }
 

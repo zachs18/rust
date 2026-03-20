@@ -1,5 +1,7 @@
 //! Dealing with trait goals, i.e. `T: Trait<'a, U>`.
 
+use rustc_abi::{FieldIdx, FieldUnsizability};
+use rustc_index::bit_set::DenseBitSet;
 use rustc_type_ir::data_structures::IndexSet;
 use rustc_type_ir::fast_reject::DeepRejectCtxt;
 use rustc_type_ir::inherent::*;
@@ -978,9 +980,7 @@ where
                 (ty::Adt(a_def, a_args), ty::Adt(b_def, b_args))
                     if (a_def.is_struct() || a_def.is_union()) && a_def == b_def =>
                 {
-                    result_to_single(
-                        ecx.consider_builtin_struct_or_union_unsize(goal, a_def, a_args, b_args),
-                    )
+                    ecx.consider_builtin_struct_or_union_unsize(goal, a_def, a_args, b_args)
                 }
 
                 _ => vec![],
@@ -1386,49 +1386,101 @@ where
         def: I::AdtDef,
         a_args: I::GenericArgs,
         b_args: I::GenericArgs,
-    ) -> Result<Candidate<I>, NoSolution> {
+    ) -> Vec<Candidate<I>> {
         let cx = self.cx();
         let Goal { predicate: (_a_ty, b_ty), .. } = goal;
 
-        let unsizing_params = cx.unsizing_params_for_adt(def.def_id());
-        // We must be unsizing some type parameters. This also implies
-        // that the struct has a tail field.
-        if unsizing_params.is_empty() {
-            return Err(NoSolution);
+        let field_count = def.all_fields().count();
+
+        let unsizing_params_for_maybe_unsizable_fields: Vec<(FieldIdx, I::UnsizingParams)> = def
+            .all_fields()
+            .enumerate()
+            .filter(|(idx, field)| match field.unsizability() {
+                FieldUnsizability::Default => idx + 1 == field_count,
+                FieldUnsizability::Yes => true,
+                FieldUnsizability::No => false,
+            })
+            .map(|(idx, _field)| {
+                let idx = FieldIdx::from_usize(idx);
+                (idx, cx.unsizing_params_for_adt_field(def.def_id(), idx))
+            })
+            .collect();
+
+        if unsizing_params_for_maybe_unsizable_fields.len() > 8 {
+            todo!(
+                "emit a nice error message in ast lowering or something if an ADT has more than 8 unsizable fields"
+            );
         }
 
-        // FIXME(more_unsized): make this work for multi-unsizable-field ADTs.
-        // which will/may require returning `Vec<Candidate<I>>`
+        // If no fields are unsizable, we can't unsize
+        if unsizing_params_for_maybe_unsizable_fields.is_empty() {
+            return vec![];
+        }
 
-        let tail_field_ty = def.struct_or_union_tail_ty(cx).unwrap();
+        let mut candidates = vec![];
 
-        let a_tail_ty = tail_field_ty.instantiate(cx, a_args);
-        let b_tail_ty = tail_field_ty.instantiate(cx, b_args);
+        // Add a candidate for every subset of the unsizable fields, so we allow unsizing
+        // either `T`, `U`, or both in `Foo<T, U>`
+        for bitmask_unsizing_fields in
+            1usize..(1 << unsizing_params_for_maybe_unsizable_fields.len())
+        {
+            // Union the args involved in all fields being unsized
+            let unsizing_params = unsizing_params_for_maybe_unsizable_fields
+                .iter()
+                .enumerate()
+                .filter(|&(idx, _)| (bitmask_unsizing_fields & (1 << idx)) != 0)
+                .map(|(_, (_, params))| params)
+                .fold(DenseBitSet::new_empty(a_args.len()), |mut acc, field_params| {
+                    acc.union(field_params);
+                    acc
+                });
 
-        // Instantiate just the unsizing params from B into A. The type after
-        // this instantiation must be equal to B. This is so we don't unsize
-        // unrelated type parameters.
-        let new_a_args = cx.mk_args_from_iter(a_args.iter().enumerate().map(|(i, a)| {
-            if unsizing_params.contains(i as u32) { b_args.get(i).unwrap() } else { a }
-        }));
-        let unsized_a_ty = Ty::new_adt(cx, def, new_a_args);
+            // We must be changing some parameters.
+            if unsizing_params.is_empty() {
+                // Other unsizable fields could still work
+                continue;
+            }
 
-        // Finally, we require that `TailA: Unsize<TailB>` for the tail field
-        // types.
-        self.eq(goal.param_env, unsized_a_ty, b_ty)?;
-        self.add_goal(
-            GoalSource::ImplWhereBound,
-            goal.with(
-                cx,
-                ty::TraitRef::new(
-                    cx,
-                    cx.require_trait_lang_item(SolverTraitLangItem::Unsize),
-                    [a_tail_ty, b_tail_ty],
-                ),
-            ),
-        );
-        self.probe_builtin_trait_candidate(BuiltinImplSource::Misc)
-            .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
+            let result = self.probe_builtin_trait_candidate(BuiltinImplSource::Misc).enter(|ecx| {
+                // Instantiate just the unsizing params from B into A. The type after
+                // this instantiation must be equal to B. This is so we don't unsize
+                // unrelated type parameters.
+                let new_a_args = cx.mk_args_from_iter(a_args.iter().enumerate().map(|(i, a)| {
+                    if unsizing_params.contains(i as u32) { b_args.get(i).unwrap() } else { a }
+                }));
+                let unsized_a_ty = Ty::new_adt(cx, def, new_a_args);
+                ecx.eq(goal.param_env, unsized_a_ty, b_ty)?;
+
+                // Finally, we require that `FieldA: Unsize<FieldB>` for the unsizing fields'
+                // types.
+                for (idx, (field_idx, _params)) in
+                    unsizing_params_for_maybe_unsizable_fields.iter().enumerate()
+                {
+                    if (bitmask_unsizing_fields & (1 << idx)) != 0 {
+                        let field = def.all_fields().nth(field_idx.as_usize()).unwrap();
+
+                        let a_field_ty = field.instantiate_ty(cx, a_args);
+                        let b_field_ty = field.instantiate_ty(cx, b_args);
+                        ecx.add_goal(
+                            GoalSource::ImplWhereBound,
+                            goal.with(
+                                cx,
+                                ty::TraitRef::new(
+                                    cx,
+                                    cx.require_trait_lang_item(SolverTraitLangItem::Unsize),
+                                    [a_field_ty, b_field_ty],
+                                ),
+                            ),
+                        );
+                    }
+                }
+
+                ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes)
+            });
+            candidates.extend(result);
+        }
+
+        candidates
     }
 
     // Return `Some` if there is an impl (built-in or user provided) that may

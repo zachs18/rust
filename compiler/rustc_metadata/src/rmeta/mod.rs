@@ -407,7 +407,7 @@ define_tables! {
     asyncness: Table<DefIndex, ty::Asyncness>,
     constness: Table<DefIndex, hir::Constness>,
     safety: Table<DefIndex, hir::Safety>,
-    field_unsizability: Table<DefIndex, Option<hir::FieldUnsizability>>,
+    field_unsizability: Table<DefIndex, Option<rustc_abi::FieldUnsizability>>,
     defaultness: Table<DefIndex, hir::Defaultness>,
 
 - optional:

@@ -1,6 +1,6 @@
 use std::mem;
 
-use rustc_abi::ExternAbi;
+use rustc_abi::{ExternAbi, FieldUnsizability};
 use rustc_ast::visit::AssocCtxt;
 use rustc_ast::*;
 use rustc_data_structures::fx::FxIndexMap;
@@ -945,7 +945,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
         let ty =
             self.lower_ty_alloc(&f.ty, ImplTraitContext::Disallowed(ImplTraitPosition::FieldTy));
         let hir_id = self.lower_node_id(f.id);
-        self.lower_attrs(hir_id, &f.attrs, f.span, Target::Field);
+        let attrs = self.lower_attrs(hir_id, &f.attrs, f.span, Target::Field);
         hir::FieldDef {
             span: self.lower_span(f.span),
             hir_id,
@@ -963,8 +963,12 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             ty,
             safety: self.lower_safety(f.safety, hir::Safety::Safe),
             unsizability: {
-                // FIXME(more_unsized): check `#[rustc_unsizable_field]` and `#[rustc_non_unsizable_field]` attributes
-                hir::FieldUnsizability::Default
+                if find_attr!(attrs, RustcUnsizableField(..)) {
+                    FieldUnsizability::Yes
+                } else {
+                    // FIXME(more_unsized): check `#[rustc_unsizable_field]` and `#[rustc_non_unsizable_field]` attributes
+                    FieldUnsizability::Default
+                }
             },
         }
     }

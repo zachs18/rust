@@ -238,7 +238,7 @@ defaulted_enum! {
 }
 
 fixed_size_enum! {
-    hir::FieldUnsizability {
+    rustc_abi::FieldUnsizability {
         ( Default )
         ( Yes     )
         ( No      )

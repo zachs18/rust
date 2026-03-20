@@ -50,7 +50,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rustc_abi as abi;
-use rustc_abi::Align;
+use rustc_abi::{Align, FieldIdx};
 use rustc_arena::TypedArena;
 use rustc_ast as ast;
 use rustc_ast::expand::allocator::AllocatorKind;
@@ -386,12 +386,13 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    query unsizing_params_for_adt(key: DefId) -> &'tcx rustc_index::bit_set::DenseBitSet<u32>
+    query unsizing_params_for_adt_field(key: (DefId, FieldIdx)) -> &'tcx rustc_index::bit_set::DenseBitSet<u32>
     {
         arena_cache
         desc {
-            "determining what parameters of `{}` can participate in unsizing",
-            tcx.def_path_str(key),
+            "determining what parameters of `{}` can participate in unsizing field {}",
+            tcx.def_path_str(key.0),
+            key.1.as_usize(),
         }
     }
 

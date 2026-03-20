@@ -24,7 +24,8 @@ pub use generic_args::{GenericArgKind, TermKind, *};
 pub use generics::*;
 pub use intrinsic::IntrinsicDef;
 use rustc_abi::{
-    Align, FieldIdx, Integer, IntegerType, ReprFlags, ReprOptions, ScalableElt, VariantIdx,
+    Align, FieldIdx, FieldUnsizability, Integer, IntegerType, ReprFlags, ReprOptions, ScalableElt,
+    VariantIdx,
 };
 use rustc_ast as ast;
 use rustc_ast::expand::typetree::{FncTree, Kind, Type, TypeTree};
@@ -1326,7 +1327,7 @@ pub struct FieldDef {
     pub vis: Visibility<DefId>,
     pub safety: hir::Safety,
     pub value: Option<DefId>,
-    pub unsizability: hir::FieldUnsizability,
+    pub unsizability: FieldUnsizability,
 }
 
 impl PartialEq for FieldDef {
@@ -1386,6 +1387,24 @@ impl<'tcx> FieldDef {
     /// Computes the `Ident` of this variant by looking up the `Span`
     pub fn ident(&self, tcx: TyCtxt<'_>) -> Ident {
         Ident::new(self.name, tcx.def_ident_span(self.did).unwrap())
+    }
+}
+
+impl<'tcx> rustc_type_ir::inherent::FieldDef<TyCtxt<'tcx>> for &'tcx FieldDef {
+    fn def_id(self) -> DefId {
+        self.did
+    }
+
+    fn unsizability(self) -> rustc_abi::FieldUnsizability {
+        self.unsizability
+    }
+
+    fn instantiate_ty(
+        self,
+        interner: TyCtxt<'tcx>,
+        args: <TyCtxt<'tcx> as Interner>::GenericArgs,
+    ) -> <TyCtxt<'tcx> as Interner>::Ty {
+        self.ty(interner, args)
     }
 }
 

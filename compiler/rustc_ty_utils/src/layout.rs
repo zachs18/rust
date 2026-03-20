@@ -1,11 +1,11 @@
 use hir::def_id::DefId;
-use rustc_abi as abi;
 use rustc_abi::Integer::{I8, I32};
 use rustc_abi::Primitive::{self, Float, Int, Pointer};
 use rustc_abi::{
-    AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldOffset, FieldsShape, HasDataLayout,
-    Layout, LayoutCalculatorError, LayoutData, Niche, ReprFlags, ReprOptions, Scalar, Size,
-    StructPrefix, TagEncoding, VariantIdx, Variants, WrappingRange,
+    self as abi, AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldOffset,
+    FieldUnsizability, FieldsShape, HasDataLayout, Layout, LayoutCalculatorError, LayoutData,
+    Niche, ReprFlags, ReprOptions, Scalar, Size, StructPrefix, TagEncoding, VariantIdx, Variants,
+    WrappingRange,
 };
 use rustc_hashes::Hash64;
 use rustc_hir as hir;
@@ -739,7 +739,7 @@ fn layout_of_uncached<'tcx>(
                                 .instantiate_identity()
                                 .is_sized(tcx, typing_env);
                             Ok(match field.unsizability {
-                                hir::FieldUnsizability::Yes => {
+                                FieldUnsizability::Yes => {
                                     if !field_may_be_unsized {
                                         let guar = tcx.dcx().span_delayed_bug(
                                             tcx.def_span(def.did()),
@@ -749,8 +749,8 @@ fn layout_of_uncached<'tcx>(
                                     }
                                     true
                                 }
-                                hir::FieldUnsizability::No => false,
-                                hir::FieldUnsizability::Default => {
+                                FieldUnsizability::No => false,
+                                FieldUnsizability::Default => {
                                     (def.is_struct() || def.is_union())
                                         && idx + 1 == v.fields.len()
                                         && field_may_be_unsized
