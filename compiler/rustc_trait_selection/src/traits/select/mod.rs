@@ -2009,10 +2009,10 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
         // or are we stuck with multiple unsizing steps?
         if candidates
             .iter()
-            .any(|c| matches!(c.candidate, BuiltinUnsizeCandidate { array_keep_elem: true }))
+            .any(|c| matches!(c.candidate, BuiltinUnsizeCandidate { array_keep_elem: true, .. }))
         {
             candidates.retain(|c| {
-                !matches!(c.candidate, BuiltinUnsizeCandidate { array_keep_elem: false })
+                !matches!(c.candidate, BuiltinUnsizeCandidate { array_keep_elem: false, .. })
             });
         }
 

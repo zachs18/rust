@@ -9,8 +9,10 @@
 
 use std::ops::ControlFlow;
 
+use rustc_abi::{FieldIdx, FieldUnsizability};
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_hir::lang_items::LangItem;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_infer::infer::{BoundRegionConversionTime, DefineOpaqueTypes, InferOk};
 use rustc_infer::traits::ObligationCauseCode;
 use rustc_middle::traits::{BuiltinImplSource, SignatureMismatchData};
@@ -129,9 +131,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, PredicateObligations::new())
             }
 
-            BuiltinUnsizeCandidate { array_keep_elem } => {
-                self.confirm_builtin_unsize_candidate(obligation, array_keep_elem)?
-            }
+            BuiltinUnsizeCandidate { array_keep_elem, adt_unsizable_field_bitmask } => self
+                .confirm_builtin_unsize_candidate(
+                    obligation,
+                    array_keep_elem,
+                    adt_unsizable_field_bitmask,
+                )?,
 
             TraitUpcastingUnsizeCandidate(idx) => {
                 self.confirm_trait_upcasting_unsize_candidate(obligation, idx)?
@@ -1068,6 +1073,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         array_keep_elem: bool,
+        adt_unsizable_field_bitmask: usize,
     ) -> Result<ImplSource<'tcx, PredicateObligation<'tcx>>, SelectionError<'tcx>> {
         let tcx = self.tcx();
 
@@ -1237,35 +1243,54 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
             // `Struct<T>` -> `Struct<U>` or `Union<T>` -> `Union<U>`
             (&ty::Adt(def, args_a), &ty::Adt(_, args_b)) => {
-                let unsizing_params = tcx.unsizing_params_for_adt(def.did());
-                if unsizing_params.is_empty() {
-                    return Err(SelectionError::Unimplemented);
+                let field_count = def.non_enum_variant().fields.len();
+
+                // FIXME(more_unsized): should probably just make *this whole thing* be returned by the query
+                // instead of recomputing it in both assembly and confirmation, and in both trait solvers.
+                let unsizing_params_for_maybe_unsizable_fields: Vec<(FieldIdx, _)> = def
+                    .non_enum_variant()
+                    .fields
+                    .iter_enumerated()
+                    .filter(|(idx, field)| match field.unsizability {
+                        FieldUnsizability::Default => idx.as_usize() + 1 == field_count,
+                        FieldUnsizability::Yes => true,
+                        FieldUnsizability::No => false,
+                    })
+                    .map(|(idx, _field)| {
+                        (idx, self.tcx().unsizing_params_for_adt_field((def.did(), idx)))
+                    })
+                    .collect();
+
+                if unsizing_params_for_maybe_unsizable_fields.len() > 8 {
+                    todo!(
+                        "emit a nice error message in ast lowering or something if an ADT has more than 8 unsizable fields"
+                    );
                 }
 
-                let tail_field = def.non_enum_variant().tail();
-                let tail_field_ty = tcx.type_of(tail_field.did);
+                // If no fields are unsizable, we can't unsize, and there shouldn't have been a candidate
+                if unsizing_params_for_maybe_unsizable_fields.is_empty() {
+                    bug!();
+                }
 
                 let mut nested = PredicateObligations::new();
 
-                // Extract `TailField<T>` and `TailField<U>` from `Struct<T>` and `Struct<U>`,
-                // normalizing in the process, since `type_of` returns something directly from
-                // HIR ty lowering (which means it's un-normalized).
-                let source_tail = normalize_with_depth_to(
-                    self,
-                    obligation.param_env,
-                    obligation.cause.clone(),
-                    obligation.recursion_depth + 1,
-                    tail_field_ty.instantiate(tcx, args_a),
-                    &mut nested,
-                );
-                let target_tail = normalize_with_depth_to(
-                    self,
-                    obligation.param_env,
-                    obligation.cause.clone(),
-                    obligation.recursion_depth + 1,
-                    tail_field_ty.instantiate(tcx, args_b),
-                    &mut nested,
-                );
+                // Union the args involved in all fields being unsized
+                let unsizing_params = unsizing_params_for_maybe_unsizable_fields
+                    .iter()
+                    .enumerate()
+                    .filter(|&(idx, _)| (adt_unsizable_field_bitmask & (1 << idx)) != 0)
+                    .map(|(_, (_, params))| params)
+                    .fold(DenseBitSet::new_empty(args_a.len()), |mut acc, field_params| {
+                        acc.union(field_params);
+                        acc
+                    });
+
+                // We must be changing some parameters.
+                if unsizing_params.is_empty() {
+                    // Other unsizable fields could still work,
+                    // but this candidate can't
+                    return Err(SelectionError::Unimplemented);
+                }
 
                 // Check that the source struct with the target's
                 // unsizing parameters is equal to the target.
@@ -1281,16 +1306,43 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     .map_err(|_| SelectionError::Unimplemented)?;
                 nested.extend(obligations);
 
-                // Construct the nested `TailField<T>: Unsize<TailField<U>>` predicate.
-                let tail_unsize_obligation = obligation.with(
-                    tcx,
-                    ty::TraitRef::new(
-                        tcx,
-                        obligation.predicate.def_id(),
-                        [source_tail, target_tail],
-                    ),
-                );
-                nested.push(tail_unsize_obligation);
+                // Construct the nested `Field<T>: Unsize<Field<U>>` predicates.
+                for (idx, &(field_idx, _params)) in
+                    unsizing_params_for_maybe_unsizable_fields.iter().enumerate()
+                {
+                    if (adt_unsizable_field_bitmask & (1 << idx)) != 0 {
+                        // Extract `Field<T>` and `Field<U>` from `Struct<T>` and `Struct<U>`,
+                        // normalizing in the process, since `type_of` returns something directly from
+                        // HIR ty lowering (which means it's un-normalized).
+                        let field = &def.non_enum_variant().fields[field_idx];
+                        let source_field = normalize_with_depth_to(
+                            self,
+                            obligation.param_env,
+                            obligation.cause.clone(),
+                            obligation.recursion_depth + 1,
+                            field.ty(tcx, args_a),
+                            &mut nested,
+                        );
+                        let target_field = normalize_with_depth_to(
+                            self,
+                            obligation.param_env,
+                            obligation.cause.clone(),
+                            obligation.recursion_depth + 1,
+                            field.ty(tcx, args_b),
+                            &mut nested,
+                        );
+
+                        let tail_unsize_obligation = obligation.with(
+                            tcx,
+                            ty::TraitRef::new(
+                                tcx,
+                                obligation.predicate.def_id(),
+                                [source_field, target_field],
+                            ),
+                        );
+                        nested.push(tail_unsize_obligation);
+                    }
+                }
 
                 ImplSource::Builtin(BuiltinImplSource::Misc, nested)
             }

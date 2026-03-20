@@ -333,6 +333,7 @@ attribute_parsers!(
         Single<WithoutArgs<RustcStrictCoherenceParser>>,
         Single<WithoutArgs<RustcTrivialFieldReadsParser>>,
         Single<WithoutArgs<RustcUnsafeSpecializationMarkerParser>>,
+        Single<WithoutArgs<RustcUnsizableFieldParser>>,
         Single<WithoutArgs<ThreadLocalParser>>,
         Single<WithoutArgs<TrackCallerParser>>,
         // tidy-alphabetical-end

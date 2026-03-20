@@ -140,6 +140,28 @@ impl IntegerType {
     }
 }
 
+/// The unsizability of a field.
+///
+/// By default, only the last field of structs an unions is unsizable,
+/// and only if it can be unsized. This can be overridden with the
+/// `#[rustc_unsizable_field]` and `#[rustc_non_unsizable_field]`
+/// attributes, which mark a field as unsizable or not unsizable,
+/// respectively.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[cfg_attr(
+    feature = "nightly",
+    derive(Encodable_NoContext, Decodable_NoContext, HashStable_Generic)
+)]
+pub enum FieldUnsizability {
+    /// The field was not explicitly marked `#[rustc_unsizable_field]`
+    /// or `#[rustc_non_unsizable_field]`.
+    Default,
+    /// The field was explicitly marked `#[rustc_unsizable_field]`.
+    Yes,
+    /// The field was explicitly marked `#[rustc_non_unsizable_field]`.
+    No,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(
     feature = "nightly",

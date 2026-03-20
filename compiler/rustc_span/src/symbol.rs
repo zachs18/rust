@@ -1838,6 +1838,7 @@ symbols! {
         rustc_then_this_would_need,
         rustc_trivial_field_reads,
         rustc_unsafe_specialization_marker,
+        rustc_unsizable_field,
         rustdoc,
         rustdoc_internals,
         rustdoc_missing_doc_code_examples,

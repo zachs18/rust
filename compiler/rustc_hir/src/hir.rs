@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::ops::Not;
 
-use rustc_abi::ExternAbi;
+use rustc_abi::{ExternAbi, FieldUnsizability};
 use rustc_ast::attr::AttributeExt;
 use rustc_ast::token::DocFragmentKind;
 use rustc_ast::util::parser::ExprPrecedence;
@@ -4474,18 +4474,6 @@ impl fmt::Display for Constness {
             Self::NotConst => "non-const",
         })
     }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-#[derive(Encodable, Decodable, HashStable_Generic)]
-pub enum FieldUnsizability {
-    /// The field was not explicitly marked `#[rustc_unsizable_field]`
-    /// or `#[rustc_non_unsizable_field]`.
-    Default,
-    /// The field was explicitly marked `#[rustc_unsizable_field]`.
-    Yes,
-    /// The field was explicitly marked `#[rustc_non_unsizable_field]`.
-    No,
 }
 
 #[derive(Debug, Clone, Copy, HashStable_Generic)]

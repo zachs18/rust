@@ -1604,6 +1604,9 @@ pub enum AttributeKind {
     /// Represents `#[rustc_unsafe_specialization_marker]`.
     RustcUnsafeSpecializationMarker(Span),
 
+    /// Represents `#[rustc_unsizable_field]`.
+    RustcUnsizableField(Span),
+
     /// Represents `#[sanitize]`
     ///
     /// the on set and off set are distjoint since there's a third option: unset.

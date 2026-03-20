@@ -1386,6 +1386,10 @@ pub static BUILTIN_ATTRIBUTES: &[BuiltinAttribute] = &[
         "the `#[rustc_main]` attribute is used internally to specify test entry point function",
     ),
     rustc_attr!(
+        rustc_unsizable_field,Normal, template!(Word), WarnFollowing, EncodeCrossCrate::No,
+        "the `#[rustc_unsizable_field]` attribute is used to mark fields as unsizable",
+    ),
+    rustc_attr!(
         rustc_skip_during_method_dispatch, Normal, template!(List: &["array, boxed_slice"]), ErrorFollowing,
         EncodeCrossCrate::No,
         "the `#[rustc_skip_during_method_dispatch]` attribute is used to exclude a trait \
