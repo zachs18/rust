@@ -672,6 +672,8 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
 
     fn all_fields(self) -> impl Iterator<Item = I::FieldDef> + Clone;
 
+    fn variant(self, idx: VariantIdx) -> I::VariantDef;
+
     fn sizedness_constraints(
         self,
         interner: I,
@@ -681,6 +683,13 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn is_fundamental(self) -> bool;
 
     fn destructor(self, interner: I) -> Option<AdtDestructorKind>;
+}
+
+#[rust_analyzer::prefer_underscore_import]
+pub trait VariantDef<I: Interner>: Copy + Debug + Hash + Eq {
+    fn def_id(self) -> I::VariantId;
+
+    fn field(self, idx: FieldIdx) -> I::FieldDef;
 }
 
 #[rust_analyzer::prefer_underscore_import]
