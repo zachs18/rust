@@ -181,12 +181,10 @@ pub enum SelectionCandidate<'tcx> {
         /// We can unsize `[T; N]` to `[T]` or `[U] where T: Unsize<U>`.
         /// This keeps track of which is being done, if applicable.
         array_keep_elem: bool,
-        /// We can unsize ADTs with multiple unsizable fields in multiple ways.
-        /// This keeps track of which fields are being unsized, if applicable.
-        /// This is a bitmask of the which *of the unsizable fields* that *this*
-        /// candidate is unsizing. I.e. if this is `0b11`, then this is unsizing
-        /// the first two *unsizable* fields, not the first two fields overall.
-        adt_unsizable_field_bitmask: usize,
+        /// We can potentially unsize ADTs with multiple unsizable fields in multiple ways.
+        /// This keeps track of which possible unsizing is being considered,
+        /// as an index into the value returned by the `unsizing_info_for_adt` query.
+        adt_possible_unsizing_idx: usize,
     },
 
     BuiltinInitCandidate,

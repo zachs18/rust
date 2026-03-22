@@ -1,4 +1,6 @@
-use rustc_abi::FieldIdx;
+use std::collections::BTreeSet;
+
+use rustc_abi::{FieldIdx, FieldUnsizability, VariantIdx};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
@@ -364,12 +366,16 @@ fn asyncness(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Asyncness {
     })
 }
 
-fn unsizing_params_for_adt_field<'tcx>(
+fn unsizing_info_for_adt<'tcx>(
     tcx: TyCtxt<'tcx>,
-    (def_id, unsizing_field_idx): (DefId, FieldIdx),
-) -> DenseBitSet<u32> {
+    def_id: DefId,
+) -> Vec<(BTreeSet<(VariantIdx, FieldIdx)>, DenseBitSet<u32>)> {
     let def = tcx.adt_def(def_id);
     let num_params = tcx.generics_of(def_id).count();
+
+    if !(def.is_struct() || def.is_union()) {
+        unimplemented!("unsized enums");
+    }
 
     let maybe_unsizing_param_idx = |arg: ty::GenericArg<'tcx>| match arg.kind() {
         ty::GenericArgKind::Type(ty) => match ty.kind() {
@@ -386,42 +392,99 @@ fn unsizing_params_for_adt_field<'tcx>(
         },
     };
 
-    // The given field of the structure has to exist and contain type/const parameters.
-    let fields = def.non_enum_variant().fields.as_slice();
-    let unsizing_field = &fields[unsizing_field_idx];
-
-    let mut unsizing_params = DenseBitSet::new_empty(num_params);
-    for arg in tcx.type_of(unsizing_field.did).instantiate_identity().walk() {
-        if let Some(i) = maybe_unsizing_param_idx(arg) {
-            unsizing_params.insert(i);
-        }
-    }
-
-    // FIXME(more_unsized): to allow unsizing two fields together that mention the same parameter,
-    // this query needs to take *multiple* fields. Or, even better, it should take *just* the ADT
-    // and give back something like a `Vec<(DenseBitSet<FieldIdx>, DenseBitSet<u32>)>`
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        tracing::warn!(
-            "FIXME(more_unsized): rework multi-field unsizing to allow \
-            unsizing two fields together that mention the same parameter"
-        )
-    });
-
-    // Ensure none of the other fields mention the parameters used
-    // in unsizing.
-    for (idx, field) in fields.iter_enumerated() {
-        if idx == unsizing_field_idx {
-            continue;
-        }
-        for arg in tcx.type_of(field.did).instantiate_identity().walk() {
-            if let Some(i) = maybe_unsizing_param_idx(arg) {
-                unsizing_params.remove(i);
+    let mut unsizable_fields = vec![];
+    for (variant_idx, variant) in def.variants().iter_enumerated() {
+        for (field_idx, field) in variant.fields.iter_enumerated() {
+            let is_unsizable = match field.unsizability {
+                FieldUnsizability::No => false,
+                FieldUnsizability::Yes => true,
+                FieldUnsizability::Default => field_idx.as_usize() + 1 == variant.fields.len(),
+            };
+            if is_unsizable {
+                unsizable_fields.push((variant_idx, field_idx));
             }
         }
     }
 
-    unsizing_params
+    if unsizable_fields.len() > 8 {
+        todo!("error in lowering if more than 8 unsizable fields");
+    }
+
+    // For each possible subset of unsizable fields, add all the params that those fields mention.
+    // Note that the first set is empty, but keeping it makes indexing easier.
+    let set_count = 1 << unsizable_fields.len();
+    let mut unsizing_params = vec![DenseBitSet::new_empty(num_params); set_count];
+
+    let mut unsizable_field_idx = 0;
+    for variant in def.variants().iter() {
+        for (field_idx, field) in variant.fields.iter_enumerated() {
+            let is_unsizable = match field.unsizability {
+                FieldUnsizability::No => false,
+                FieldUnsizability::Yes => true,
+                FieldUnsizability::Default => field_idx.as_usize() + 1 == variant.fields.len(),
+            };
+            if is_unsizable {
+                for set_mask in 1..set_count {
+                    if set_mask & (1 << unsizable_field_idx) != 0 {
+                        for arg in tcx.type_of(field.did).instantiate_identity().walk() {
+                            if let Some(i) = maybe_unsizing_param_idx(arg) {
+                                unsizing_params[set_mask].insert(i);
+                            }
+                        }
+                    }
+                }
+
+                unsizable_field_idx += 1;
+            }
+        }
+    }
+
+    // Ensure none of the other fields mention the parameters used
+    // in unsizing.
+    let mut unsizable_field_idx = 0;
+    for variant in def.variants().iter() {
+        for (field_idx, field) in variant.fields.iter_enumerated() {
+            let is_unsizable = match field.unsizability {
+                FieldUnsizability::No => false,
+                FieldUnsizability::Yes => true,
+                FieldUnsizability::Default => field_idx.as_usize() + 1 == variant.fields.len(),
+            };
+            for set_mask in 1..set_count {
+                if !is_unsizable || (set_mask & (1 << unsizable_field_idx) == 0) {
+                    for arg in tcx.type_of(field.did).instantiate_identity().walk() {
+                        if let Some(i) = maybe_unsizing_param_idx(arg) {
+                            unsizing_params[set_mask].remove(i);
+                        }
+                    }
+                }
+            }
+            if is_unsizable {
+                unsizable_field_idx += 1;
+            }
+        }
+    }
+
+    let valid_unsizings: Vec<(BTreeSet<(VariantIdx, FieldIdx)>, DenseBitSet<u32>)> =
+        unsizing_params
+            .into_iter()
+            .enumerate()
+            .filter_map(|(set_mask, unsizing_params)| {
+                if !unsizing_params.is_empty() {
+                    let field_set = unsizable_fields
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(unsizable_field_idx, &unsizable_field)| {
+                            (set_mask & (1 << unsizable_field_idx) != 0).then_some(unsizable_field)
+                        })
+                        .collect();
+                    Some((field_set, unsizing_params))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+    valid_unsizings
 }
 
 fn impl_self_is_guaranteed_unsized<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) -> bool {
@@ -493,7 +556,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         param_env,
         typing_env_normalized_for_post_analysis,
         defaultness,
-        unsizing_params_for_adt_field,
+        unsizing_info_for_adt,
         impl_self_is_guaranteed_unsized,
         ..*providers
     };

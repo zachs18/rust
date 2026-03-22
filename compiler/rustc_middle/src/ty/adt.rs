@@ -303,6 +303,10 @@ impl<'tcx> rustc_type_ir::inherent::AdtDef<TyCtxt<'tcx>> for AdtDef<'tcx> {
         self.all_fields()
     }
 
+    fn variant(self, idx: VariantIdx) -> &'tcx VariantDef {
+        self.variant(idx)
+    }
+
     fn sizedness_constraints(
         self,
         tcx: TyCtxt<'tcx>,
