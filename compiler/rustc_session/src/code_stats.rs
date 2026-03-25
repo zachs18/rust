@@ -55,6 +55,7 @@ pub enum DataTypeKind {
     Struct,
     Union,
     Enum,
+    UnsizedType,
     Closure,
     Coroutine,
 }
@@ -140,7 +141,10 @@ impl CodeStats {
 
             let struct_like = match kind {
                 DataTypeKind::Struct | DataTypeKind::Closure => true,
-                DataTypeKind::Enum | DataTypeKind::Union | DataTypeKind::Coroutine => false,
+                DataTypeKind::Enum
+                | DataTypeKind::Union
+                | DataTypeKind::Coroutine
+                | DataTypeKind::UnsizedType => false,
             };
             for (i, variant_info) in variants.into_iter().enumerate() {
                 let VariantInfo { ref name, kind: _, align: _, size, ref fields } = *variant_info;

@@ -3262,6 +3262,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             return;
         };
         match kind.adt_kind() {
+            ty::AdtKind::UnsizedType => return,
             ty::AdtKind::Enum => {
                 let matching_variants: Vec<_> = kind
                     .variants()

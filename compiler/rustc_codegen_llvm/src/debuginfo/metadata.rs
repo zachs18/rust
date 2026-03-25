@@ -542,6 +542,7 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
             AdtKind::Struct => build_struct_type_di_node(cx, unique_type_id, span),
             AdtKind::Union => build_union_type_di_node(cx, unique_type_id, span),
             AdtKind::Enum => enums::build_enum_type_di_node(cx, unique_type_id, span),
+            AdtKind::UnsizedType => unimplemented!(),
         },
         ty::Tuple(_)
         | ty::InitArray(..)

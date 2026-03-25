@@ -260,7 +260,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     match ty.kind() {
                         ty::Uint(_) | ty::Int(_) | ty::Float(_) | ty::Bool | ty::Char => true,
                         ty::Adt(adt_def, _) => match adt_def.adt_kind() {
-                            ty::AdtKind::Struct | ty::AdtKind::Union => false,
+                            ty::AdtKind::Struct | ty::AdtKind::Union | ty::AdtKind::UnsizedType => {
+                                false
+                            }
                             ty::AdtKind::Enum => {
                                 adt_def.variants().iter().all(|v| v.fields.is_empty())
                             }

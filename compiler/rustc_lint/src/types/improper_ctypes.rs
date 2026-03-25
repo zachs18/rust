@@ -703,6 +703,7 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
                         self.visit_struct_or_union(state, ty, def, args)
                     }
                     AdtKind::Enum => self.visit_enum(state, ty, def, args),
+                    AdtKind::UnsizedType => todo!("ffi safety for `unsized type`s"),
                 }
             }
 
