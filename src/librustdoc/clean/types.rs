@@ -399,7 +399,7 @@ pub(crate) fn rustc_span(def_id: DefId, tcx: TyCtxt<'_>) -> Span {
 fn is_field_vis_inherited(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     let parent = tcx.parent(def_id);
     match tcx.def_kind(parent) {
-        DefKind::Struct | DefKind::Union => false,
+        DefKind::Struct | DefKind::Union | DefKind::UnsizedType => false,
         DefKind::Variant => true,
         parent_kind => panic!("unexpected parent kind: {parent_kind:?}"),
     }
@@ -712,6 +712,7 @@ impl Item {
             StructItem(ref struct_) => Some(struct_.has_stripped_entries()),
             UnionItem(ref union_) => Some(union_.has_stripped_entries()),
             EnumItem(ref enum_) => Some(enum_.has_stripped_entries()),
+            UnsizedTypeItem(ref ut) => Some(ut.has_stripped_entries()),
             VariantItem(ref v) => v.has_stripped_entries(),
             TypeAliasItem(ref type_alias) => {
                 type_alias.inner_type.as_ref().and_then(|t| t.has_stripped_entries())
@@ -894,6 +895,7 @@ pub(crate) enum ItemKind {
     StructItem(Struct),
     UnionItem(Union),
     EnumItem(Enum),
+    UnsizedTypeItem(UnsizedType),
     FunctionItem(Box<Function>),
     ModuleItem(Module),
     TypeAliasItem(Box<TypeAlias>),
@@ -951,6 +953,7 @@ impl ItemKind {
         match self {
             StructItem(s) => s.fields.iter(),
             UnionItem(u) => u.fields.iter(),
+            UnsizedTypeItem(u) => u.metadata_fields.iter(),
             VariantItem(v) => match &v.kind {
                 VariantKind::CLike => [].iter(),
                 VariantKind::Tuple(t) => t.iter(),
@@ -1927,6 +1930,18 @@ pub(crate) struct Union {
 impl Union {
     pub(crate) fn has_stripped_entries(&self) -> bool {
         self.fields.iter().any(|f| f.is_stripped())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct UnsizedType {
+    pub(crate) generics: Generics,
+    pub(crate) metadata_fields: Vec<Item>,
+}
+
+impl UnsizedType {
+    pub(crate) fn has_stripped_entries(&self) -> bool {
+        self.metadata_fields.iter().any(|f| f.is_stripped())
     }
 }
 

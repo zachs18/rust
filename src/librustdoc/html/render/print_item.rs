@@ -77,6 +77,7 @@ pub(super) fn print_item(cx: &Context<'_>, item: &clean::Item) -> impl fmt::Disp
             clean::TraitItem(..) => "Trait ",
             clean::StructItem(..) => "Struct ",
             clean::UnionItem(..) => "Union ",
+            clean::UnsizedTypeItem(..) => "Unsized Type ",
             clean::EnumItem(..) => "Enum ",
             clean::TypeAliasItem(..) => "Type Alias ",
             clean::MacroItem(..) => "Macro ",
@@ -150,6 +151,7 @@ pub(super) fn print_item(cx: &Context<'_>, item: &clean::Item) -> impl fmt::Disp
             }
             clean::UnionItem(s) => write!(buf, "{}", item_union(cx, item, s)),
             clean::EnumItem(e) => write!(buf, "{}", item_enum(cx, item, e)),
+            clean::UnsizedTypeItem(s) => write!(buf, "{}", item_unsized_type(cx, item, s)),
             clean::TypeAliasItem(t) => {
                 write!(buf, "{}", item_type_alias(cx, item, t))
             }
@@ -1509,6 +1511,95 @@ fn item_union(cx: &Context<'_>, it: &clean::Item, s: &clean::Union) -> impl fmt:
     })
 }
 
+#[derive(Template)]
+#[template(path = "item_unsized_type.html")]
+struct ItemUnsizedType<'a, 'cx> {
+    cx: &'a Context<'cx>,
+    it: &'a clean::Item,
+    metadata_fields: &'a [clean::Item],
+    generics: &'a clean::Generics,
+    is_type_alias: bool,
+    def_id: DefId,
+}
+
+impl<'a, 'cx: 'a> ItemUnsizedType<'a, 'cx> {
+    fn document(&self) -> impl fmt::Display {
+        document(self.cx, self.it, None, HeadingOffset::H2)
+    }
+
+    fn document_type_layout(&self) -> impl fmt::Display {
+        let def_id = self.it.item_id.expect_def_id();
+        document_type_layout(self.cx, def_id)
+    }
+
+    fn render_assoc_items(&self) -> impl fmt::Display {
+        let def_id = self.it.item_id.expect_def_id();
+        render_assoc_items(self.cx, self.it, def_id, AssocItemRender::All)
+    }
+
+    fn render_unsized_type(&self) -> impl Display {
+        render_unsized_type(
+            self.it,
+            Some(self.generics),
+            self.metadata_fields,
+            self.def_id,
+            self.is_type_alias,
+            self.cx,
+        )
+    }
+
+    fn print_field_attrs(&self, field: &'a clean::Item) -> impl Display {
+        fmt::from_fn(move |w| {
+            render_attributes_in_code(w, field, "", self.cx)?;
+            Ok(())
+        })
+    }
+
+    fn document_field(&self, field: &'a clean::Item) -> impl Display {
+        document(self.cx, field, Some(self.it), HeadingOffset::H3)
+    }
+
+    fn stability_field(&self, field: &clean::Item) -> Option<String> {
+        field.stability_class(self.cx.tcx())
+    }
+
+    fn print_ty(&self, ty: &'a clean::Type) -> impl Display {
+        print_type(ty, self.cx)
+    }
+
+    // FIXME (GuillaumeGomez): When <https://github.com/askama-rs/askama/issues/452> is implemented,
+    // we can replace the returned value with:
+    //
+    // `iter::Peekable<impl Iterator<Item = (&'a clean::Item, &'a clean::Type)>>`
+    //
+    // And update `item_unsized_type.html`.
+    fn metadata_fields_iter(&self) -> impl Iterator<Item = (&'a clean::Item, &'a clean::Type)> {
+        self.metadata_fields.iter().filter_map(|f| match f.kind {
+            clean::StructFieldItem(ref ty) => Some((f, ty)),
+            _ => None,
+        })
+    }
+}
+
+fn item_unsized_type(
+    cx: &Context<'_>,
+    it: &clean::Item,
+    s: &clean::UnsizedType,
+) -> impl fmt::Display {
+    fmt::from_fn(|w| {
+        ItemUnsizedType {
+            cx,
+            it,
+            metadata_fields: &s.metadata_fields,
+            generics: &s.generics,
+            is_type_alias: false,
+            def_id: it.def_id().unwrap(),
+        }
+        .render_into(w)?;
+        Ok(())
+    })
+}
+
 fn print_tuple_struct_fields(cx: &Context<'_>, s: &[clean::Item]) -> impl Display {
     fmt::from_fn(|f| {
         if !s.is_empty()
@@ -2365,6 +2456,74 @@ fn render_implementor(
             toggle_open_by_default: false,
         },
     )
+}
+
+fn render_unsized_type(
+    it: &clean::Item,
+    g: Option<&clean::Generics>,
+    metadata_fields: &[clean::Item],
+    def_id: DefId,
+    is_type_alias: bool,
+    cx: &Context<'_>,
+) -> impl Display {
+    fmt::from_fn(move |mut f| {
+        if is_type_alias {
+            // For now the only attributes we render for type aliases are `repr` attributes.
+            render_repr_attribute_in_code(f, cx, def_id)?;
+        } else {
+            render_attributes_in_code(f, it, "", cx)?;
+        }
+        write!(f, "{}unsized type {}", visibility_print_with_space(it, cx), it.name.unwrap(),)?;
+
+        let where_displayed = if let Some(generics) = g {
+            write!(f, "{}", print_generics(generics, cx))?;
+            if let Some(where_clause) = print_where_clause(generics, cx, 0, Ending::Newline) {
+                write!(f, "{where_clause}")?;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // If there wasn't a `where` clause, we add a whitespace.
+        if !where_displayed {
+            f.write_str(" ")?;
+        }
+
+        writeln!(f, "{{")?;
+        let count_metadata_fields = metadata_fields
+            .iter()
+            .filter(|field| matches!(field.kind, clean::StructFieldItem(..)))
+            .count();
+        let toggle = should_hide_fields(count_metadata_fields);
+        if toggle {
+            toggle_open(&mut f, format_args!("{count_metadata_fields} metadata fields"));
+        }
+
+        for metadata_field in metadata_fields {
+            if let clean::StructFieldItem(ref ty) = metadata_field.kind {
+                render_attributes_in_code(&mut f, metadata_field, "    ", cx)?;
+                writeln!(
+                    f,
+                    "    {}{}: {},",
+                    visibility_print_with_space(metadata_field, cx),
+                    metadata_field.name.unwrap(),
+                    print_type(ty, cx)
+                )?;
+            }
+        }
+
+        if it.has_stripped_entries().unwrap() {
+            writeln!(f, "    <span class=\"comment\">/* private metadata fields */</span>")?;
+        }
+        if toggle {
+            toggle_close(&mut f);
+        }
+        f.write_str("}").unwrap();
+        Ok(())
+    })
 }
 
 fn render_union(

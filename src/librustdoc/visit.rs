@@ -21,6 +21,7 @@ pub(crate) trait DocVisitor<'a>: Sized {
             StructItem(i) => i.fields.iter().for_each(|x| self.visit_item(x)),
             UnionItem(i) => i.fields.iter().for_each(|x| self.visit_item(x)),
             EnumItem(i) => i.variants.iter().for_each(|x| self.visit_item(x)),
+            UnsizedTypeItem(i) => i.metadata_fields.iter().for_each(|x| self.visit_item(x)),
             TraitItem(i) => i.items.iter().for_each(|x| self.visit_item(x)),
             ImplItem(i) => i.items.iter().for_each(|x| self.visit_item(x)),
             VariantItem(i) => match &i.kind {

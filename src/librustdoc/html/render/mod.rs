@@ -475,6 +475,7 @@ struct AllTypes {
     structs: FxIndexSet<ItemEntry>,
     enums: FxIndexSet<ItemEntry>,
     unions: FxIndexSet<ItemEntry>,
+    unsized_types: FxIndexSet<ItemEntry>,
     primitives: FxIndexSet<ItemEntry>,
     traits: FxIndexSet<ItemEntry>,
     macros: FxIndexSet<ItemEntry>,
@@ -494,6 +495,7 @@ impl AllTypes {
             structs: new_set(100),
             enums: new_set(100),
             unions: new_set(100),
+            unsized_types: new_set(100),
             primitives: new_set(26),
             traits: new_set(100),
             macros: new_set(100),
@@ -517,6 +519,7 @@ impl AllTypes {
                 ItemType::Struct => self.structs.insert(ItemEntry::new(new_url, name)),
                 ItemType::Enum => self.enums.insert(ItemEntry::new(new_url, name)),
                 ItemType::Union => self.unions.insert(ItemEntry::new(new_url, name)),
+                ItemType::UnsizedType => self.unsized_types.insert(ItemEntry::new(new_url, name)),
                 ItemType::Primitive => self.primitives.insert(ItemEntry::new(new_url, name)),
                 ItemType::Trait => self.traits.insert(ItemEntry::new(new_url, name)),
                 ItemType::Macro => self.macros.insert(ItemEntry::new(new_url, name)),
@@ -545,6 +548,9 @@ impl AllTypes {
         }
         if !self.unions.is_empty() {
             sections.insert(ItemSection::Unions);
+        }
+        if !self.unsized_types.is_empty() {
+            sections.insert(ItemSection::UnsizedTypes);
         }
         if !self.primitives.is_empty() {
             sections.insert(ItemSection::PrimitiveTypes);
@@ -2501,6 +2507,7 @@ pub(crate) enum ItemSection {
     Functions,
     TypeAliases,
     Unions,
+    UnsizedTypes,
     Implementations,
     TypeMethods,
     Methods,
@@ -2534,6 +2541,7 @@ impl ItemSection {
             Functions,
             TypeAliases,
             Unions,
+            UnsizedTypes,
             Implementations,
             TypeMethods,
             Methods,
@@ -2557,6 +2565,7 @@ impl ItemSection {
             Self::Structs => "structs",
             Self::Unions => "unions",
             Self::Enums => "enums",
+            Self::UnsizedTypes => "unsized-types",
             Self::Functions => "functions",
             Self::TypeAliases => "types",
             Self::Statics => "statics",
@@ -2587,6 +2596,7 @@ impl ItemSection {
             Self::Structs => "Structs",
             Self::Unions => "Unions",
             Self::Enums => "Enums",
+            Self::UnsizedTypes => "Unsized Types",
             Self::Functions => "Functions",
             Self::TypeAliases => "Type Aliases",
             Self::Statics => "Statics",
@@ -2618,6 +2628,7 @@ fn item_ty_to_section(ty: ItemType) -> ItemSection {
         ItemType::Struct => ItemSection::Structs,
         ItemType::Union => ItemSection::Unions,
         ItemType::Enum => ItemSection::Enums,
+        ItemType::UnsizedType => ItemSection::UnsizedTypes,
         ItemType::Function => ItemSection::Functions,
         ItemType::TypeAlias => ItemSection::TypeAliases,
         ItemType::Static => ItemSection::Statics,
@@ -2971,7 +2982,9 @@ fn repr_attribute<'tcx>(
     def_id: DefId,
 ) -> Option<Cow<'static, str>> {
     let adt = match tcx.def_kind(def_id) {
-        DefKind::Struct | DefKind::Enum | DefKind::Union => tcx.adt_def(def_id),
+        DefKind::Struct | DefKind::Enum | DefKind::Union | DefKind::UnsizedType => {
+            tcx.adt_def(def_id)
+        }
         _ => return None,
     };
     let repr = adt.repr();
