@@ -101,6 +101,7 @@ item_type! {
     // This number is reserved for use in JavaScript
     // Generic = 26,
     Attribute = 27,
+    UnsizedType = 28,
 }
 
 impl<'a> From<&'a clean::Item> for ItemType {
@@ -117,6 +118,7 @@ impl<'a> From<&'a clean::Item> for ItemType {
             clean::StructItem(..) => ItemType::Struct,
             clean::UnionItem(..) => ItemType::Union,
             clean::EnumItem(..) => ItemType::Enum,
+            clean::UnsizedTypeItem(..) => ItemType::UnsizedType,
             clean::FunctionItem(..) => ItemType::Function,
             clean::TypeAliasItem(..) => ItemType::TypeAlias,
             clean::StaticItem(..) => ItemType::Static,
@@ -160,6 +162,7 @@ impl ItemType {
             DefKind::Static { .. } => Self::Static,
             DefKind::Struct => Self::Struct,
             DefKind::Union => Self::Union,
+            DefKind::UnsizedType => Self::UnsizedType,
             DefKind::Trait => Self::Trait,
             DefKind::TyAlias => Self::TypeAlias,
             DefKind::TraitAlias => Self::TraitAlias,
@@ -205,6 +208,7 @@ impl ItemType {
             ItemType::Struct => "struct",
             ItemType::Union => "union",
             ItemType::Enum => "enum",
+            ItemType::UnsizedType => "unsizedtype",
             ItemType::Function => "fn",
             ItemType::TypeAlias => "type",
             ItemType::Static => "static",
@@ -231,7 +235,7 @@ impl ItemType {
         matches!(self, ItemType::Method | ItemType::TyMethod)
     }
     pub(crate) fn is_adt(&self) -> bool {
-        matches!(self, ItemType::Struct | ItemType::Union | ItemType::Enum)
+        matches!(self, ItemType::Struct | ItemType::Union | ItemType::Enum | ItemType::UnsizedType)
     }
     /// Keep this the same as isFnLikeTy in search.js
     pub(crate) fn is_fn_like(&self) -> bool {

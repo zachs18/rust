@@ -76,6 +76,7 @@ impl DocFolder for StabilityPropagator<'_, '_> {
                     | ItemKind::StructItem(..)
                     | ItemKind::UnionItem(..)
                     | ItemKind::EnumItem(..)
+                    | ItemKind::UnsizedTypeItem(..)
                     | ItemKind::FunctionItem(..)
                     | ItemKind::ModuleItem(..)
                     | ItemKind::TypeAliasItem(..)

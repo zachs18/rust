@@ -775,6 +775,7 @@ function preLoadCss(cssUrl) {
             block("fn", "functions", "Functions");
             block("type", "types", "Type Aliases");
             block("union", "unions", "Unions");
+            block("unsizedtype", "unsized-types", "Unsized Types");
             // No point, because these items don't appear in modules
             //block("impl", "impls", "Implementations");
             //block("tymethod", "tymethods", "Type Methods");

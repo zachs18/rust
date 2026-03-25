@@ -510,6 +510,7 @@ pub(crate) fn register_res(cx: &mut DocContext<'_>, res: Res) -> DefId {
             | Trait
             | Struct
             | Union
+            | UnsizedType
             | Mod
             | ForeignTy
             | Const { .. }

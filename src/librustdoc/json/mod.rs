@@ -184,6 +184,10 @@ impl<'tcx> FormatRenderer<'tcx> for JsonRenderer<'tcx> {
                     u.impls = self.get_impls(item_id.expect_def_id());
                     false
                 }
+                types::ItemEnum::UnsizedType(ref mut u) => {
+                    u.impls = self.get_impls(item_id.expect_def_id());
+                    false
+                }
                 types::ItemEnum::Primitive(ref mut p) => {
                     p.impls = self.get_impls(item_id.expect_def_id());
                     false

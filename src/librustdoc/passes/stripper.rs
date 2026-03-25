@@ -55,6 +55,7 @@ impl DocFolder for Stripper<'_, '_> {
             | clean::StaticItem(..)
             | clean::StructItem(..)
             | clean::EnumItem(..)
+            | clean::UnsizedTypeItem(..)
             | clean::TraitItem(..)
             | clean::FunctionItem(..)
             | clean::VariantItem(..)

@@ -27,6 +27,11 @@ pub(crate) trait DocFolder: Sized {
                 i.fields = i.fields.into_iter().filter_map(|x| self.fold_item(x)).collect();
                 UnionItem(i)
             }
+            UnsizedTypeItem(mut i) => {
+                i.metadata_fields =
+                    i.metadata_fields.into_iter().filter_map(|x| self.fold_item(x)).collect();
+                UnsizedTypeItem(i)
+            }
             EnumItem(mut i) => {
                 i.variants = i.variants.into_iter().filter_map(|x| self.fold_item(x)).collect();
                 EnumItem(i)

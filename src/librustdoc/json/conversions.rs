@@ -282,6 +282,7 @@ fn from_clean_item(item: &clean::Item, renderer: &JsonRenderer<'_>) -> ItemEnum 
         ImportItem(i) => ItemEnum::Use(i.into_json(renderer)),
         StructItem(s) => ItemEnum::Struct(s.into_json(renderer)),
         UnionItem(u) => ItemEnum::Union(u.into_json(renderer)),
+        UnsizedTypeItem(u) => ItemEnum::UnsizedType(u.into_json(renderer)),
         StructFieldItem(f) => ItemEnum::StructField(f.into_json(renderer)),
         EnumItem(e) => ItemEnum::Enum(e.into_json(renderer)),
         VariantItem(v) => ItemEnum::Variant(v.into_json(renderer)),
@@ -388,6 +389,19 @@ impl FromClean<clean::Union> for Union {
             generics: generics.into_json(renderer),
             has_stripped_fields,
             fields: renderer.ids(fields),
+            impls: Vec::new(), // Added in JsonRenderer::item
+        }
+    }
+}
+
+impl FromClean<clean::UnsizedType> for UnsizedType {
+    fn from_clean(unsized_type: &clean::UnsizedType, renderer: &JsonRenderer<'_>) -> Self {
+        let has_stripped_fields = unsized_type.has_stripped_entries();
+        let clean::UnsizedType { generics, metadata_fields } = unsized_type;
+        UnsizedType {
+            generics: generics.into_json(renderer),
+            has_stripped_fields,
+            metadata_fields: renderer.ids(metadata_fields),
             impls: Vec::new(), // Added in JsonRenderer::item
         }
     }
@@ -886,6 +900,7 @@ impl FromClean<ItemType> for ItemKind {
             Struct => ItemKind::Struct,
             Union => ItemKind::Union,
             Enum => ItemKind::Enum,
+            UnsizedType => ItemKind::UnsizedType,
             Function | TyMethod | Method => ItemKind::Function,
             TypeAlias => ItemKind::TypeAlias,
             Static => ItemKind::Static,
