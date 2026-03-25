@@ -64,6 +64,8 @@ bitflags::bitflags! {
         const IS_FIELD_REPRESENTING_TYPE    = 1 << 13;
         /// Indicates whether the type is `MaybeDangling<_>`.
         const IS_MAYBE_DANGLING             = 1 << 14;
+        /// Indicates whether the ADT is an `unsized type`.
+        const IS_UNSIZED_TYPE           = 1 << 15;
     }
 }
 rustc_data_structures::external_bitflags_debug! { AdtFlags }
@@ -270,6 +272,10 @@ impl<'tcx> rustc_type_ir::inherent::AdtDef<TyCtxt<'tcx>> for AdtDef<'tcx> {
         self.is_union()
     }
 
+    fn is_unsized_type(self) -> bool {
+        self.is_unsized_type()
+    }
+
     fn is_packed(self) -> bool {
         self.repr().packed()
     }
@@ -332,6 +338,7 @@ pub enum AdtKind {
     Struct,
     Union,
     Enum,
+    UnsizedType,
 }
 
 impl From<AdtKind> for DataTypeKind {
@@ -340,6 +347,7 @@ impl From<AdtKind> for DataTypeKind {
             AdtKind::Struct => DataTypeKind::Struct,
             AdtKind::Union => DataTypeKind::Union,
             AdtKind::Enum => DataTypeKind::Enum,
+            AdtKind::UnsizedType => DataTypeKind::UnsizedType,
         }
     }
 }
@@ -369,6 +377,7 @@ impl AdtDefData {
             AdtKind::Enum => AdtFlags::IS_ENUM,
             AdtKind::Union => AdtFlags::IS_UNION,
             AdtKind::Struct => AdtFlags::IS_STRUCT,
+            AdtKind::UnsizedType => AdtFlags::IS_UNSIZED_TYPE,
         };
 
         if kind == AdtKind::Struct && variants[FIRST_VARIANT].ctor.is_some() {
@@ -426,6 +435,12 @@ impl<'tcx> AdtDef<'tcx> {
         self.flags().contains(AdtFlags::IS_ENUM)
     }
 
+    /// Returns `true` if this is an `unsized type`.
+    #[inline]
+    pub fn is_unsized_type(self) -> bool {
+        self.flags().contains(AdtFlags::IS_UNSIZED_TYPE)
+    }
+
     /// Returns `true` if the variant list of this ADT is `#[non_exhaustive]`.
     ///
     /// Note that this function will return `true` even if the ADT has been
@@ -461,6 +476,7 @@ impl<'tcx> AdtDef<'tcx> {
             AdtKind::Struct => "struct",
             AdtKind::Union => "union",
             AdtKind::Enum => "enum",
+            AdtKind::UnsizedType => "unsized type",
         }
     }
 
@@ -471,6 +487,7 @@ impl<'tcx> AdtDef<'tcx> {
             AdtKind::Struct => "struct",
             AdtKind::Union => "union",
             AdtKind::Enum => "variant",
+            AdtKind::UnsizedType => "unsized type",
         }
     }
 

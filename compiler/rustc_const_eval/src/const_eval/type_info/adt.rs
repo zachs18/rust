@@ -47,6 +47,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                 self.write_enum_type_info(place, adt, generics)?;
                 variant
             }
+            AdtKind::UnsizedType => todo!("type_info for `unsized type`s"),
         };
         interp_ok(variant_idx)
     }

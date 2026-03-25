@@ -1217,6 +1217,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     );
                     if let Some(adt_def) = ty.normalized.ty_adt_def() {
                         match adt_def.adt_kind() {
+                            AdtKind::UnsizedType => {
+                                err.help("`unsized type`s cannot be directly constructed");
+                            }
                             AdtKind::Enum => {
                                 err.help("did you mean to use one of the enum's variants?");
                             }

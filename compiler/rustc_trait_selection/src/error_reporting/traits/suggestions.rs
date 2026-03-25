@@ -3623,6 +3623,9 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     AdtKind::Enum => {
                         err.note("no field of an enum variant may have a dynamically sized type");
                     }
+                    AdtKind::UnsizedType => {
+                        err.note("no field of an unsized type's pointer metadata may have a dynamically sized type");
+                    }
                 }
                 err.help("change the field's type to have a statically known size");
                 err.span_suggestion_verbose(
@@ -3657,6 +3660,9 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     }
                     AdtKind::Enum => {
                         err.note("no field of an enum variant may have a dynamically sized type");
+                    }
+                    AdtKind::UnsizedType => {
+                        err.note("no field of an unsized type's pointer metadata may have a dynamically sized type");
                     }
                 }
                 err.help("change the field's type to have a statically known size");

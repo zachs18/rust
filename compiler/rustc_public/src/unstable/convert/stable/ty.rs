@@ -163,6 +163,7 @@ impl<'tcx> Stable<'tcx> for ty::AdtKind {
             ty::AdtKind::Struct => AdtKind::Struct,
             ty::AdtKind::Union => AdtKind::Union,
             ty::AdtKind::Enum => AdtKind::Enum,
+            ty::AdtKind::UnsizedType => AdtKind::UnsizedType,
         }
     }
 }

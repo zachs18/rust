@@ -114,7 +114,8 @@ pub enum TyKind<I: Interner> {
     /// A primitive floating-point type. For example, `f64`.
     Float(FloatTy),
 
-    /// Algebraic data types (ADT). For example: structures, enumerations and unions.
+    /// Algebraic data types (ADT). For example: structures, enumerations, unions, and
+    /// custom unsized types.
     ///
     /// For example, the type `List<i32>` would be represented using the `AdtDef`
     /// for `struct List<T>` and the args `[i32]`.

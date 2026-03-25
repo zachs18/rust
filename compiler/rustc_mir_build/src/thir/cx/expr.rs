@@ -588,6 +588,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
             hir::ExprKind::Struct(qpath, fields, ref base) => match expr_ty.kind() {
                 ty::Adt(adt, args) => match adt.adt_kind() {
+                    AdtKind::UnsizedType => {
+                        bug!("`unsized type` expression should not be possible")
+                    }
                     AdtKind::Struct | AdtKind::Union => {
                         let user_provided_types = self.typeck_results.user_provided_types();
                         let user_ty = user_provided_types.get(expr.hir_id).copied().map(Box::new);
@@ -814,6 +817,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                 }
                             }
                         }
+                        _ => span_bug!(
+                            expr.span,
+                            "unexpected type for struct literal: {:?}",
+                            expr_ty
+                        ),
                     },
                     _ => {
                         span_bug!(expr.span, "unexpected type for struct literal: {:?}", expr_ty);
