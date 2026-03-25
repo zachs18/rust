@@ -2144,6 +2144,7 @@ fn resolution_failure(
                             Mod | ForeignMod => "inner item",
                             Struct => "field or associated item",
                             Enum | Union => "variant or associated item",
+                            UnsizedType => "metadata field or associated item",
                             Variant if is_struct_variant(did) => {
                                 let variant = res.name(tcx);
                                 let note = format!("variant `{variant}` has no such field");

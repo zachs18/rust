@@ -535,6 +535,7 @@ impl<'a, 'tcx> RustdocVisitor<'a, 'tcx> {
             | hir::ItemKind::Enum(..)
             | hir::ItemKind::Struct(..)
             | hir::ItemKind::Union(..)
+            | hir::ItemKind::UnsizedType(..)
             | hir::ItemKind::TyAlias(..)
             | hir::ItemKind::Static(..)
             | hir::ItemKind::Trait(..)

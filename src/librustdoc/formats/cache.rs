@@ -323,6 +323,7 @@ impl DocFolder for CacheBuilder<'_, '_> {
         match item.kind {
             clean::StructItem(..)
             | clean::EnumItem(..)
+            | clean::UnsizedTypeItem(..)
             | clean::TypeAliasItem(..)
             | clean::TraitItem(..)
             | clean::TraitAliasItem(..)
@@ -400,6 +401,7 @@ impl DocFolder for CacheBuilder<'_, '_> {
             | clean::ForeignTypeItem
             | clean::StructItem(..)
             | clean::UnionItem(..)
+            | clean::UnsizedTypeItem(..)
             | clean::VariantItem(..)
             | clean::TypeAliasItem(..)
             | clean::ImplItem(..) => {

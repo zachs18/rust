@@ -658,6 +658,8 @@ pub enum ItemKind {
     Enum,
     /// A variant of a enum.
     Variant,
+    /// An `unsized type` declaration.
+    UnsizedType,
     /// A function declaration, e.g. `fn f() {}`
     Function,
     /// A type alias declaration, e.g. `type Pig = std::borrow::Cow<'static, str>;`
@@ -741,6 +743,8 @@ pub enum ItemEnum {
     Enum(Enum),
     /// A variant of a enum.
     Variant(Variant),
+    /// An `unsized type` declaration.
+    UnsizedType(UnsizedType),
 
     /// A function declaration (including methods and other associated functions)
     Function(Function),
@@ -848,6 +852,7 @@ impl ItemEnum {
             ItemEnum::StructField(_) => ItemKind::StructField,
             ItemEnum::Enum(_) => ItemKind::Enum,
             ItemEnum::Variant(_) => ItemKind::Variant,
+            ItemEnum::UnsizedType(_) => ItemKind::UnsizedType,
             ItemEnum::Function(_) => ItemKind::Function,
             ItemEnum::Trait(_) => ItemKind::Trait,
             ItemEnum::TraitAlias(_) => ItemKind::TraitAlias,
@@ -884,6 +889,25 @@ pub struct Module {
     /// If `true`, this module is not part of the public API, but it contains
     /// items that are re-exported as public API.
     pub is_stripped: bool,
+}
+
+/// An `unsized type`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv_0_8", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
+#[cfg_attr(feature = "rkyv_0_8", rkyv(derive(Debug)))]
+pub struct UnsizedType {
+    /// The generic parameters and where clauses on this unsized type.
+    pub generics: Generics,
+    /// Whether any metadata fields have been removed from the result, due to being private or hidden.
+    pub has_stripped_fields: bool,
+    /// The list of metadat fields of the unsized type.
+    ///
+    /// All of the corresponding [`Item`]s are of kind [`ItemEnum::StructField`].
+    pub metadata_fields: Vec<Id>,
+    /// All impls (both of traits and inherent) for this unsized type.
+    ///
+    /// All of the corresponding [`Item`]s are of kind [`ItemEnum::Impl`].
+    pub impls: Vec<Id>,
 }
 
 /// A `union`.

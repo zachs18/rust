@@ -349,6 +349,7 @@ impl<'tcx> Visitor<'tcx> for SpanMapVisitor<'tcx> {
             | ItemKind::Enum(..)
             | ItemKind::Struct(..)
             | ItemKind::Union(..)
+            | ItemKind::UnsizedType(..)
             | ItemKind::Trait(..)
             | ItemKind::TraitAlias(..) => self.extract_info_from_hir_id(item.hir_id()),
             ItemKind::Impl(_)

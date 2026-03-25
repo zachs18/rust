@@ -2144,6 +2144,7 @@ pub(crate) fn clean_middle_ty<'tcx>(
                 AdtKind::Struct => ItemType::Struct,
                 AdtKind::Union => ItemType::Union,
                 AdtKind::Enum => ItemType::Enum,
+                AdtKind::UnsizedType => ItemType::UnsizedType,
             };
             inline::record_extern_fqn(cx, did, kind);
             let path = clean_middle_path(cx, did, false, ThinVec::new(), bound_ty.rebind(args));
@@ -2909,6 +2910,10 @@ fn clean_maybe_renamed_item<'tcx>(
                 ctor_kind: variant_data.ctor_kind(),
                 generics: clean_generics(generics, cx),
                 fields: variant_data.fields().iter().map(|x| clean_field(x, cx)).collect(),
+            }),
+            ItemKind::UnsizedType(_, generics, variant_data) => UnsizedTypeItem(UnsizedType {
+                generics: clean_generics(generics, cx),
+                metadata_fields: variant_data.fields().iter().map(|x| clean_field(x, cx)).collect(),
             }),
             // FIXME: handle attributes and derives that aren't proc macros, and macros with
             // multiple kinds
