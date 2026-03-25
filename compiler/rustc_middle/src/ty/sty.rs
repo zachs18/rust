@@ -641,14 +641,7 @@ impl<'tcx> Ty<'tcx> {
         tcx.debug_assert_args_compatible(def.did(), args);
         if cfg!(debug_assertions) {
             match tcx.def_kind(def.did()) {
-                DefKind::Struct | DefKind::Union | DefKind::Enum => {}
-                DefKind::UnsizedType =>
-                // This line is intentionally ill-formatted so I don't forget to address this
-                {
-                    bug!(
-                        "FIXME(ptr_metadata_v2): decide if `unsized type` are ADTs or their own thing."
-                    )
-                }
+                DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType => {}
                 DefKind::Mod
                 | DefKind::Variant
                 | DefKind::Trait

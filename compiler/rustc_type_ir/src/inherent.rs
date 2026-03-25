@@ -194,12 +194,12 @@ pub trait Ty<I: Interner<Ty = Self>>:
     fn is_guaranteed_unsized_raw(self) -> bool {
         match self.kind() {
             ty::Dynamic(_, _) | ty::Slice(_) | ty::Str => true,
+            ty::Adt(def, _) => def.is_unsized_type(),
             ty::Bool
             | ty::Char
             | ty::Int(_)
             | ty::Uint(_)
             | ty::Float(_)
-            | ty::Adt(_, _)
             | ty::Foreign(_)
             | ty::Array(_, _)
             | ty::Pat(_, _)
@@ -635,6 +635,7 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn is_struct(self) -> bool;
     fn is_enum(self) -> bool;
     fn is_union(self) -> bool;
+    fn is_unsized_type(self) -> bool;
 
     fn is_packed(self) -> bool;
 

@@ -579,6 +579,7 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
 
                         FfiSafe
                     }
+                    AdtKind::UnsizedType => todo!("ffi safety for `unsized type`s"),
                 }
             }
 

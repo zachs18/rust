@@ -382,6 +382,11 @@ impl TyKind {
     }
 
     #[inline]
+    pub fn is_unsized_type(&self) -> bool {
+        matches!(self, TyKind::RigidTy(RigidTy::Adt(def, _)) if def.kind() == AdtKind::UnsizedType)
+    }
+
+    #[inline]
     pub fn is_adt(&self) -> bool {
         matches!(self, TyKind::RigidTy(RigidTy::Adt(..)))
     }
@@ -840,6 +845,7 @@ pub enum AdtKind {
     Enum,
     Union,
     Struct,
+    UnsizedType,
 }
 
 impl AdtDef {
@@ -957,6 +963,7 @@ impl Display for AdtKind {
             AdtKind::Enum => "enum",
             AdtKind::Union => "union",
             AdtKind::Struct => "struct",
+            AdtKind::UnsizedType => "unsized type",
         })
     }
 }
@@ -972,6 +979,10 @@ impl AdtKind {
 
     pub fn is_union(&self) -> bool {
         matches!(self, AdtKind::Union)
+    }
+
+    pub fn is_unsized_type(&self) -> bool {
+        matches!(self, AdtKind::UnsizedType)
     }
 }
 
