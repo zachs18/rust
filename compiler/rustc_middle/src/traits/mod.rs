@@ -282,6 +282,11 @@ pub enum ObligationCauseCode<'tcx> {
         span: Span,
     },
 
+    /// Types of `unsized type`s' metadata fields must be `Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze`
+    UnsizedTypeMetadataField {
+        span: Span,
+    },
+
     /// An ADT or tuple field in `offset_of!` must be `Sized` or `Aligned` in most cases:
     /// * A `#[repr(C)] union` field never has any sizedness restrictions.
     /// * Any other ADT or tuple field must be `Sized` (or `Aligned` under `feature(offset_of_slice)`).
