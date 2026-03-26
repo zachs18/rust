@@ -528,6 +528,24 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         // Now, handle unsized cases
         match layout.ty.kind() {
+            ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
+                debug_assert_matches!(
+                    goal,
+                    LayoutComputeGoal::OverallLayout,
+                    "`unsized type`s do not have fields"
+                );
+                match semantics.extern_type_semantics {
+                    LayoutComputeExternTypeSemantics::Normal => interp_ok(None),
+                    LayoutComputeExternTypeSemantics::Unsupported => throw_unsup!(UnsizedTypeField),
+                    LayoutComputeExternTypeSemantics::Unreachable => {
+                        span_bug!(
+                            self.cur_span(),
+                            "size_and_align_of::<{}> not supported",
+                            layout.ty
+                        )
+                    }
+                }
+            }
             ty::Adt(adt_def, ..) if adt_def.is_union() => {
                 debug_assert_matches!(
                     goal,
@@ -825,7 +843,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
             ty::Foreign(_) => match semantics.extern_type_semantics {
                 LayoutComputeExternTypeSemantics::Normal => interp_ok(None),
-                LayoutComputeExternTypeSemantics::Unsupported => throw_unsup!(ExternTypeField),
+                LayoutComputeExternTypeSemantics::Unsupported => throw_unsup!(UnsizedTypeField),
                 LayoutComputeExternTypeSemantics::Unreachable => {
                     span_bug!(self.cur_span(), "size_and_align_of::<{}> not supported", layout.ty)
                 }

@@ -87,6 +87,8 @@ enum PointerKind<'tcx> {
     Adt(DefId, IndexVec<FieldIdx, PointerKind<'tcx>>),
     /// Possible multi-wide-pointee tuple.
     Tuple(Vec<PointerKind<'tcx>>),
+    /// Custom unsized type with custom metadata.
+    UnsizedType(DefId),
 }
 
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
@@ -146,6 +148,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     )
                 } else {
                     Some(PointerKind::Adt(did, fields))
+                }
+            }
+            ty::Adt(def, _args) if def.is_unsized_type() => {
+                let did = def.did();
+                let variant = def.variants().raw.first().unwrap();
+                if variant.fields.is_empty() && !variant.is_field_list_non_exhaustive() {
+                    Some(PointerKind::Thin)
+                } else {
+                    Some(PointerKind::UnsizedType(did))
                 }
             }
             ty::Tuple(field_tys) => {
@@ -396,25 +407,32 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                             | PointerKind::VTable(_)
                             | PointerKind::Length(_)
                             | PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
                             | PointerKind::Tuple(_),
                         )
                         | (
                             PointerKind::VTable(_)
                             | PointerKind::Length(_)
                             | PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
                             | PointerKind::Tuple(_),
                             PointerKind::OfParam(_) | PointerKind::OfAlias(_),
                         )
                         | (
-                            PointerKind::Adt(..) | PointerKind::Tuple(_),
                             PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
+                            | PointerKind::Tuple(_),
+                            PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
                             | PointerKind::Tuple(_)
                             | PointerKind::VTable(_)
                             | PointerKind::Length(_),
                         )
                         | (
                             PointerKind::VTable(_) | PointerKind::Length(_),
-                            PointerKind::Adt(..) | PointerKind::Tuple(_),
+                            PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
+                            | PointerKind::Tuple(_),
                         ) => {
                             err.note("the pointers may have different metadata");
                         }
@@ -433,6 +451,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                             | PointerKind::VTable(_)
                             | PointerKind::Length(_)
                             | PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
                             | PointerKind::Tuple(_)
                             | PointerKind::OfParam(_)
                             | PointerKind::OfAlias(_),
@@ -441,6 +460,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                             PointerKind::VTable(_)
                             | PointerKind::Length(_)
                             | PointerKind::Adt(..)
+                            | PointerKind::UnsizedType(..)
                             | PointerKind::Tuple(_)
                             | PointerKind::OfParam(_)
                             | PointerKind::OfAlias(_),
@@ -1188,6 +1208,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
             Some(
                 PointerKind::Length(_)
                 | PointerKind::Adt(..)
+                | PointerKind::UnsizedType(..)
                 | PointerKind::Tuple(_)
                 | PointerKind::OfAlias(_)
                 | PointerKind::OfParam(_),
