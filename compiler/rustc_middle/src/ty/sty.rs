@@ -1983,7 +1983,7 @@ impl<'tcx> Ty<'tcx> {
                 )])
             }
             ty::Adt(adt_def, _) if adt_def.is_enum() => ty::List::empty(),
-            ty::Adt(adt_def, args) => {
+            ty::Adt(adt_def, args) if adt_def.is_struct() || adt_def.is_union() => {
                 // FIXME(ptr_metadata_v2): visibility
                 let field_metadatas: Vec<_> = adt_def
                     .non_enum_variant()
@@ -1997,6 +1997,20 @@ impl<'tcx> Ty<'tcx> {
                             field.vis,
                             Ty::new_ptr_metadata(tcx, field.ty(tcx, args)),
                         )
+                    })
+                    .collect();
+                tcx.mk_metadata_field_list(&field_metadatas)
+            }
+            ty::Adt(adt_def, args) => {
+                assert!(adt_def.is_unsized_type());
+                // FIXME(ptr_metadata_v2): visibility
+                let field_metadatas: Vec<_> = adt_def
+                    .variant(VariantIdx::ZERO)
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        let id = field.ident(tcx);
+                        (id.name, Some(id.span), field.vis, field.ty(tcx, args))
                     })
                     .collect();
                 tcx.mk_metadata_field_list(&field_metadatas)
@@ -2188,6 +2202,8 @@ impl<'tcx> Ty<'tcx> {
             },
 
             ty::Tuple(tys) => tys.iter().all(|ty| ty.has_trivial_sizedness(tcx, sizedness)),
+
+            ty::Adt(def, _) if def.is_unsized_type() => false,
 
             ty::Adt(def, args) => def.sizedness_constraints(tcx, sizedness).is_none_or(|tys| {
                 tys.instantiate(tcx, args).iter().all(|ty| ty.has_trivial_sizedness(tcx, sizedness))

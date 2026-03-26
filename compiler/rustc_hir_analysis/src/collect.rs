@@ -868,10 +868,14 @@ fn adt_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::AdtDef<'_> {
 
             (AdtKind::Enum, variants)
         }
-        ItemKind::Struct(ident, _, def) | ItemKind::Union(ident, _, def) => {
+        ItemKind::Struct(ident, _, def)
+        | ItemKind::Union(ident, _, def)
+        | ItemKind::UnsizedType(ident, _, def) => {
             let adt_kind = match item.kind {
                 ItemKind::Struct(..) => AdtKind::Struct,
-                _ => AdtKind::Union,
+                ItemKind::UnsizedType(..) => AdtKind::UnsizedType,
+                ItemKind::Union(..) => AdtKind::Union,
+                _ => unreachable!(),
             };
             let variants = std::iter::once(lower_variant(
                 tcx,

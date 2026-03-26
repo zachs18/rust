@@ -121,6 +121,7 @@ pub enum TokenType {
     KwType,
     KwUnderscore,
     KwUnsafe,
+    KwUnsized,
     KwUse,
     KwWhere,
     KwWhile,
@@ -269,6 +270,7 @@ impl TokenType {
             KwType,
             KwUnderscore,
             KwUnsafe,
+            KwUnsized,
             KwUse,
             KwWhere,
             KwWhile,
@@ -349,6 +351,7 @@ impl TokenType {
             TokenType::KwType => Some(kw::Type),
             TokenType::KwUnderscore => Some(kw::Underscore),
             TokenType::KwUnsafe => Some(kw::Unsafe),
+            TokenType::KwUnsized => Some(kw::Unsized),
             TokenType::KwUse => Some(kw::Use),
             TokenType::KwWhere => Some(kw::Where),
             TokenType::KwWhile => Some(kw::While),
@@ -568,6 +571,7 @@ macro_rules! exp {
     (Type)           => { exp!(@kw, Type,       KwType) };
     (Underscore)     => { exp!(@kw, Underscore, KwUnderscore) };
     (Unsafe)         => { exp!(@kw, Unsafe,     KwUnsafe) };
+    (Unsized)        => { exp!(@kw, Unsized,    KwUnsized) };
     (Use)            => { exp!(@kw, Use,        KwUse) };
     (Where)          => { exp!(@kw, Where,      KwWhere) };
     (While)          => { exp!(@kw, While,      KwWhile) };

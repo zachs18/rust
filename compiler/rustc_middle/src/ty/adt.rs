@@ -465,6 +465,8 @@ impl<'tcx> AdtDef<'tcx> {
             AdtKind::Enum
         } else if self.is_union() {
             AdtKind::Union
+        } else if self.is_unsized_type() {
+            AdtKind::UnsizedType
         } else {
             AdtKind::Struct
         }
@@ -778,6 +780,9 @@ impl<'tcx> AdtDef<'tcx> {
         sizedness: ty::SizedTraitKind,
     ) -> Option<ty::EarlyBinder<'tcx, &'tcx ty::List<Ty<'tcx>>>> {
         if self.is_struct() || self.is_union() {
+            tcx.adt_sizedness_constraints((self.did(), sizedness))
+        } else if self.is_unsized_type() {
+            tracing::warn!("handle user impls of sizedness traits for `unsized type`");
             tcx.adt_sizedness_constraints((self.did(), sizedness))
         } else {
             None

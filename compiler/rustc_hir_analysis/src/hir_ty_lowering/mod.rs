@@ -2184,6 +2184,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                 | DefKind::TyAlias
                 | DefKind::Struct
                 | DefKind::Union
+                | DefKind::UnsizedType
                 | DefKind::ForeignTy,
                 did,
             ) => {
@@ -3127,8 +3128,10 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                     && let None = stmt.init
                     && let hir::TyKind::Path(hir::QPath::Resolved(_, self_ty_path)) =
                         hir_self_ty.kind
-                    && let Res::Def(DefKind::Enum | DefKind::Struct | DefKind::Union, def_id) =
-                        self_ty_path.res
+                    && let Res::Def(
+                        DefKind::Enum | DefKind::Struct | DefKind::Union | DefKind::UnsizedType,
+                        def_id,
+                    ) = self_ty_path.res
                     && let Some(_) = tcx
                         .inherent_impls(def_id)
                         .iter()

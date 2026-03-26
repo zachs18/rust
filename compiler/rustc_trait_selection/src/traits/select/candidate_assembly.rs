@@ -1451,7 +1451,13 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             }
 
             // Conditionally `Sized`.
-            ty::Tuple(..) | ty::Pat(..) | ty::Adt(..) | ty::UnsafeBinder(_) => {
+            ty::Tuple(..) | ty::Pat(..) | ty::UnsafeBinder(_) => {
+                candidates.vec.push(SizedCandidate);
+            }
+            // Never `Sized`, other sizedness traits depend on user impls
+            ty::Adt(def, _) if def.is_unsized_type() => {}
+            // Conditionally `Sized`.
+            ty::Adt(..) => {
                 candidates.vec.push(SizedCandidate);
             }
 
