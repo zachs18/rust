@@ -542,7 +542,7 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
             AdtKind::Struct => build_struct_type_di_node(cx, unique_type_id, span),
             AdtKind::Union => build_union_type_di_node(cx, unique_type_id, span),
             AdtKind::Enum => enums::build_enum_type_di_node(cx, unique_type_id, span),
-            AdtKind::UnsizedType => unimplemented!(),
+            AdtKind::UnsizedType => build_unsized_type_di_node(cx, t, unique_type_id),
         },
         ty::Tuple(_)
         | ty::InitArray(..)
@@ -906,6 +906,41 @@ fn build_foreign_type_di_node<'ll, 'tcx>(
     let &ty::Foreign(def_id) = unique_type_id.expect_ty().kind() else {
         bug!(
             "build_foreign_type_di_node() called with unexpected type: {:?}",
+            unique_type_id.expect_ty()
+        );
+    };
+
+    build_type_with_children(
+        cx,
+        type_map::stub(
+            cx,
+            Stub::Struct,
+            unique_type_id,
+            &compute_debuginfo_type_name(cx.tcx, t, false),
+            None,
+            cx.size_and_align_of(t),
+            Some(get_namespace_for_item(cx, def_id)),
+            DIFlags::FlagZero,
+        ),
+        |_, _| smallvec![],
+        NO_GENERICS,
+    )
+}
+
+fn build_unsized_type_di_node<'ll, 'tcx>(
+    cx: &CodegenCx<'ll, 'tcx>,
+    t: Ty<'tcx>,
+    unique_type_id: UniqueTypeId<'tcx>,
+) -> DINodeCreationResult<'ll> {
+    debug!("build_unsized_type_di_node: {:?}", t);
+
+    let def_id = if let &ty::Adt(def, _) = unique_type_id.expect_ty().kind()
+        && def.is_unsized_type()
+    {
+        def.did()
+    } else {
+        bug!(
+            "build_unsized_type_di_node() called with unexpected type: {:?}",
             unique_type_id.expect_ty()
         );
     };

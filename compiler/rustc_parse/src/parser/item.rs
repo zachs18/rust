@@ -366,6 +366,11 @@ impl<'a> Parser<'a> {
             // UNION ITEM
             self.bump(); // `union`
             self.parse_item_union()?
+        } else if self.eat_keyword_case(exp!(Unsized), case) {
+            // UNSIZED TYPE ITEM
+            self.expect_keyword(exp!(Type))?;
+            tracing::warn!("FIXME: feature-gate this");
+            self.parse_item_unsized_type()?
         } else if self.is_builtin() {
             // BUILTIN# ITEM
             return self.parse_item_builtin();
@@ -2024,6 +2029,39 @@ impl<'a> Parser<'a> {
         };
 
         Ok(ItemKind::Union(ident, generics, vdata))
+    }
+
+    /// Parses `unsized type Foo { ... }`.
+    fn parse_item_unsized_type(&mut self) -> PResult<'a, ItemKind> {
+        let ident = self.parse_ident()?;
+
+        let mut generics = self.parse_generics()?;
+
+        let vdata = if self.token.is_keyword(kw::Where) {
+            generics.where_clause = self.parse_where_clause()?;
+            let (fields, recovered) = self.parse_record_struct_body(
+                "union",
+                ident.span,
+                generics.where_clause.has_where_token,
+            )?;
+            VariantData::Struct { fields, recovered }
+        } else if self.token == token::OpenBrace {
+            let (fields, recovered) = self.parse_record_struct_body(
+                "union",
+                ident.span,
+                generics.where_clause.has_where_token,
+            )?;
+            VariantData::Struct { fields, recovered }
+        } else {
+            let token_str = super::token_descr(&self.token);
+            let msg =
+                format!("expected `where` or `{{` after unsized type name, found {token_str}");
+            let mut err = self.dcx().struct_span_err(self.token.span, msg);
+            err.span_label(self.token.span, "expected `where` or `{` after unsized type name");
+            return Err(err);
+        };
+
+        Ok(ItemKind::UnsizedType(ident, generics, vdata))
     }
 
     /// This function parses the fields of record structs:

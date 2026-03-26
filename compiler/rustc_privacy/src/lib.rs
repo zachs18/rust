@@ -794,9 +794,8 @@ impl<'tcx> EmbargoVisitor<'tcx> {
                     }
                 }
             }
-            DefKind::UnsizedType => todo!(),
-            DefKind::Struct | DefKind::Union => {
-                let def = self.tcx.adt_def(owner_id).non_enum_variant();
+            DefKind::Struct | DefKind::Union | DefKind::UnsizedType => {
+                let def = self.tcx.adt_def(owner_id).variants().raw.first().unwrap();
                 if let Some(item_ev) = item_ev {
                     self.reach(owner_id.def_id, item_ev).generics().predicates();
                     for field in &def.fields {

@@ -552,6 +552,7 @@ impl PathSource<'_, '_, '_> {
                         DefKind::Struct
                             | DefKind::Union
                             | DefKind::Enum
+                            | DefKind::UnsizedType
                             | DefKind::TyAlias
                             | DefKind::AssocTy,
                         _
@@ -564,6 +565,7 @@ impl PathSource<'_, '_, '_> {
                     DefKind::Struct
                         | DefKind::Union
                         | DefKind::Enum
+                        | DefKind::UnsizedType
                         | DefKind::Trait
                         | DefKind::TraitAlias
                         | DefKind::TyAlias
@@ -2177,6 +2179,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 Res::Def(DefKind::Struct, def_id)
                 | Res::Def(DefKind::Union, def_id)
                 | Res::Def(DefKind::Enum, def_id)
+                | Res::Def(DefKind::UnsizedType, def_id)
                 | Res::Def(DefKind::TyAlias, def_id)
                 | Res::Def(DefKind::Trait, def_id)
                     if i + 1 == proj_start =>
@@ -2674,7 +2677,10 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 // (it can't differ between `Self` and `self`).
                 matches!(
                     res,
-                    Res::Def(DefKind::Struct | DefKind::Union | DefKind::Enum, _,) | Res::PrimTy(_)
+                    Res::Def(
+                        DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType,
+                        _,
+                    ) | Res::PrimTy(_)
                 )
             });
         let mut visitor = FindReferenceVisitor { r: self.r, impl_self, lifetime: Set1::Empty };
@@ -2812,8 +2818,6 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 );
             }
 
-            ItemKind::UnsizedType(..) => todo!(),
-
             ItemKind::Fn(box Fn { generics, define_opaque, .. }) => {
                 self.with_generic_param_rib(
                     &generics.params,
@@ -2828,7 +2832,8 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
 
             ItemKind::Enum(_, generics, _)
             | ItemKind::Struct(_, generics, _)
-            | ItemKind::Union(_, generics, _) => {
+            | ItemKind::Union(_, generics, _)
+            | ItemKind::UnsizedType(_, generics, _) => {
                 self.resolve_adt(item, generics);
             }
 
