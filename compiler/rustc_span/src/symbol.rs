@@ -2219,6 +2219,7 @@ symbols! {
         unsized_fn_params,
         unsized_locals,
         unsized_tuple_coercion,
+        unsized_type,
         unsized_unions,
         unstable,
         unstable_feature_bound,
