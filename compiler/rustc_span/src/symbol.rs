@@ -1861,6 +1861,7 @@ symbols! {
         self_in_typedefs,
         self_struct_ctor,
         semiopaque,
+        send,
         sha2,
         sha3,
         sha512_sm_x86,
