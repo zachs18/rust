@@ -365,7 +365,7 @@ impl DefKind {
 
     #[inline]
     pub fn is_adt(self) -> bool {
-        matches!(self, DefKind::Struct | DefKind::Union | DefKind::Enum)
+        matches!(self, DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType)
     }
 
     #[inline]

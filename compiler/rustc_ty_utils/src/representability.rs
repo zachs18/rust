@@ -16,7 +16,7 @@ pub(crate) fn provide(providers: &mut Providers) {
 
 fn check_representability(tcx: TyCtxt<'_>, def_id: LocalDefId) {
     match tcx.def_kind(def_id) {
-        DefKind::Struct | DefKind::Union | DefKind::Enum => {
+        DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType => {
             for variant in tcx.adt_def(def_id).variants() {
                 for field in variant.fields.iter() {
                     tcx.ensure_ok().check_representability(field.did.expect_local());

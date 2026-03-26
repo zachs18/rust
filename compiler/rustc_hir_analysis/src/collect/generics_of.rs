@@ -407,6 +407,7 @@ fn param_default_policy(node: Node<'_>) -> Option<ParamDefaultPolicy> {
             | ItemKind::TyAlias(..)
             | ItemKind::Enum(..)
             | ItemKind::Struct(..)
+            | ItemKind::UnsizedType(..)
             | ItemKind::Union(..) => ParamDefaultPolicy::Allowed,
             ItemKind::Fn { .. } | ItemKind::Impl(_) => ParamDefaultPolicy::FutureCompatForbidden,
             // Re. GCI, we're not bound by backward compatibility.

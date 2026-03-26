@@ -2244,6 +2244,10 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
 
             ty::Pat(ty, _) => ty::Binder::dummy(vec![*ty]),
 
+            ty::Adt(def, _) if def.is_unsized_type() => {
+                unreachable!("tried to assemble builtin `{sizedness:?}` impl for `unsized type`")
+            }
+
             ty::Adt(def, args) => {
                 if let Some(crits) = def.sizedness_constraints(self.tcx(), sizedness) {
                     ty::Binder::dummy(crits.instantiate(self.tcx(), args).skip_norm_wip().to_vec())
