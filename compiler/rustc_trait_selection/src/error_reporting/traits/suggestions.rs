@@ -3165,6 +3165,9 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     err.note("argument required to be sized due to `extern \"rust-call\"` ABI");
                 }
             }
+            ObligationCauseCode::UnsizedTypeMetadataField { .. } => {
+                err.note("`unsized type` metadata fields must have `Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze` type");
+            }
             ObligationCauseCode::InitElem => {
                 err.note("initializer elements must have `Sized` type");
             }
