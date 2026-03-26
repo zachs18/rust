@@ -371,8 +371,7 @@ impl<'a> Parser<'a> {
         } else if self.eat_keyword_case(exp!(Unsized), case) {
             // UNSIZED TYPE ITEM
             self.expect_keyword(exp!(Type))?;
-            tracing::warn!("FIXME: feature-gate this");
-            self.parse_item_unsized_type()?
+            self.parse_item_unsized_type(lo)?
         } else if self.is_builtin() {
             // BUILTIN# ITEM
             return self.parse_item_builtin();
@@ -2036,7 +2035,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses `unsized type Foo { ... }`.
-    fn parse_item_unsized_type(&mut self) -> PResult<'a, ItemKind> {
+    fn parse_item_unsized_type(&mut self, lo: Span) -> PResult<'a, ItemKind> {
         let ident = self.parse_ident()?;
 
         let mut generics = self.parse_generics()?;
@@ -2065,6 +2064,7 @@ impl<'a> Parser<'a> {
             return Err(err);
         };
 
+        self.psess.gated_spans.gate(sym::unsized_type, lo.to(self.prev_token.span));
         Ok(ItemKind::UnsizedType(ident, generics, vdata))
     }
 
