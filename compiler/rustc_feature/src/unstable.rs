@@ -267,6 +267,8 @@ declare_features! (
     (incomplete, test_incomplete_feature, "CURRENT_RUSTC_VERSION", None),
     /// Added for testing unstable lints; perma-unstable.
     (internal, test_unstable_lint, "1.60.0", None),
+    /// Allows declaring `unsized type`s.
+    (unstable, unsized_type, "CURRENT_RUSTC_VERSION", None),
     /// Allows unsized tail fields in `union`s.
     (unstable, unsized_unions, "CURRENT_RUSTC_VERSION", None),
     /// Allows using the untyped pointer type.
