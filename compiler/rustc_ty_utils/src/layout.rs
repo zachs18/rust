@@ -662,6 +662,13 @@ fn layout_of_uncached<'tcx>(
             map_layout(cx.calc.simd_type(e_ly, e_len, def.repr().packed()))?
         }
 
+        // Custom `unsized type`s
+        ty::Adt(def, _args) if def.is_unsized_type() => {
+            let mut layout = LayoutData::unit(cx, /* sized */ false);
+            layout.align_is_exact = false;
+            tcx.mk_layout(layout)
+        }
+
         // ADTs.
         ty::Adt(def, args) => {
             // Cache the field layouts.

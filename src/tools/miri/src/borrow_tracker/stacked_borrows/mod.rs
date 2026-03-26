@@ -832,13 +832,14 @@ trait EvalContextPrivExt<'tcx, 'ecx>: crate::MiriInterpCxExt<'tcx> {
         let size = this
             .size_and_align_of_val(place, LayoutComputeSemantics::FOR_RETAG)?
             .map(|(size, _)| size);
-        // FIXME: If we cannot determine the size (because the unsized tail is an `extern type`),
+        // FIXME: If we cannot determine the size (because the unsized tail is an `extern type`
+        // or `unsized type`),
         // bail out -- we cannot reasonably figure out which memory range to reborrow.
         // See https://github.com/rust-lang/unsafe-code-guidelines/issues/276.
         let Some(size) = size else {
             static DEDUP: AtomicBool = AtomicBool::new(false);
             if !DEDUP.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                this.emit_diagnostic(NonHaltingDiagnostic::ExternTypeReborrow);
+                this.emit_diagnostic(NonHaltingDiagnostic::UnsizedTypeReborrow);
             }
             return interp_ok(place.clone());
         };

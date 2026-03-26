@@ -701,8 +701,8 @@ pub enum UnsupportedOpInfo {
     Unsupported(String),
     /// Unsized local variables.
     UnsizedLocal,
-    /// Extern type field with an indeterminate offset.
-    ExternTypeField,
+    /// `extern type` or `unsized type` field with an indeterminate offset.
+    UnsizedTypeField,
     //
     // The variants below are only reachable from CTFE/const prop, miri will never emit them.
     //
@@ -722,8 +722,8 @@ impl fmt::Display for UnsupportedOpInfo {
         use UnsupportedOpInfo::*;
         match self {
             Unsupported(s) => write!(f, "{s}"),
-            ExternTypeField => {
-                write!(f, "`extern type` field does not have a known offset")
+            UnsizedTypeField => {
+                write!(f, "`extern type` or `unsized type` field does not have a known offset")
             }
             UnsizedLocal => write!(f, "unsized locals are not supported"),
             ReadPartialPointer(ptr) => {

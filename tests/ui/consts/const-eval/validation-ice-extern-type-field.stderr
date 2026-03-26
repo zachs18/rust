@@ -1,4 +1,4 @@
-error[E0080]: `extern type` field does not have a known offset
+error[E0080]: `extern type` or `unsized type` field does not have a known offset
   --> $DIR/validation-ice-extern-type-field.rs:12:1
    |
 LL | const C1: &ThinDst = unsafe { std::mem::transmute(b"d".as_ptr()) };

@@ -1,4 +1,4 @@
-error[E0080]: `extern type` field does not have a known offset
+error[E0080]: `extern type` or `unsized type` field does not have a known offset
   --> $DIR/issue-91827-extern-types-field-offset.rs:38:17
    |
 LL |     let field = &x.a;

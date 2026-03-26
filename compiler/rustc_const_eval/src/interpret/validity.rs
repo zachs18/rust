@@ -598,6 +598,20 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
         }
         let meta = meta.to_unsized().0.unwrap().change_sizedness();
         match pointee.ty.kind() {
+            ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
+                // For custom unsized types, the fields of the metadata don't have
+                // individual meaning for the pointee, so we only need to visit each
+                // metadata field individually.
+                // FIXME(unsized_types): does this need to do anything when the metadata
+                // is an immediate?
+                if let Some(meta) = meta.as_mplace_or_imm().left() {
+                    for i in adt_def.variants().raw.first().unwrap().fields.indices() {
+                        let metadata_field: PlaceTy<'_, _> =
+                            self.ecx.project_field(&meta, i)?.into();
+                        self.visit_value(&metadata_field)?;
+                    }
+                }
+            }
             ty::Adt(adt_def, ..) => {
                 for i in adt_def.non_enum_variant().fields.indices() {
                     let field_ty = pointee.field(self.ecx, i.as_usize());
@@ -1722,7 +1736,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 err.kind(),
                 err_ub!(ValidationError { .. })
                     | InterpErrorKind::InvalidProgram(_)
-                    | InterpErrorKind::Unsupported(UnsupportedOpInfo::ExternTypeField)
+                    | InterpErrorKind::Unsupported(UnsupportedOpInfo::UnsizedTypeField)
             ) {
                 bug!("Unexpected error during validation: {}", format_interp_error(err));
             }

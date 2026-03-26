@@ -207,6 +207,9 @@ where
         // impl {Meta,}Sized,Thin for (T1, T2, .., Tn) where T1, T2, ..., Tn: {Meta,}Sized,Thin if n >= 1
         ty::Tuple(tys) => Ok(ty::Binder::dummy(tys.to_vec())),
 
+        // Custom `unsized type`s do not have builtin sizedness impls
+        ty::Adt(def, _args) if def.is_unsized_type() => Err(NoSolution),
+
         // impl {Meta,}Sized for Adt<Args...>
         //   where {meta,pointee,}sized_constraints(Adt)<Args...>: {Meta,}Sized
         //

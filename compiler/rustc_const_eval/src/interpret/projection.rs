@@ -218,7 +218,7 @@ where
         )?
         else {
             // We cannot know the alignment of this field, so we cannot adjust.
-            throw_unsup!(ExternTypeField)
+            throw_unsup!(UnsizedTypeField)
         };
 
         base.offset_with_meta(offset, OffsetMode::Inbounds, field_meta, field_layout, self)
