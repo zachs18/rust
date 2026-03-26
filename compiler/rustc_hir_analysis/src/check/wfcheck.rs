@@ -316,6 +316,7 @@ pub(super) fn check_item<'tcx>(
         hir::ItemKind::Struct(..) => check_type_defn(tcx, item, false),
         hir::ItemKind::Union(..) => check_type_defn(tcx, item, false),
         hir::ItemKind::Enum(..) => check_type_defn(tcx, item, true),
+        hir::ItemKind::UnsizedType(..) => check_type_defn(tcx, item, true),
         hir::ItemKind::Trait(..) => check_trait(tcx, item),
         hir::ItemKind::TraitAlias(..) => check_trait(tcx, item),
         _ => Ok(()),
@@ -1079,7 +1080,8 @@ fn check_type_defn<'tcx>(
             }
 
             // Under `feature(more_unsized)`, any field of a struct or union may be unsized
-            // (`enum` fields must stil all be sized for now).
+            // (`enum` fields must stil all be sized for now), but `unsized type`s' metadata
+            // fields must all be sized.
             if !all_sized && tcx.features().more_unsized() {
                 for field in &variant.fields {
                     let field_id = field.did.expect_local();
@@ -1107,6 +1109,7 @@ fn check_type_defn<'tcx>(
                                         ItemKind::Struct(..) => AdtKind::Struct,
                                         ItemKind::Union(..) => AdtKind::Union,
                                         ItemKind::Enum(..) => AdtKind::Enum,
+                                        ItemKind::UnsizedType(..) => AdtKind::UnsizedType,
                                         kind => span_bug!(
                                             item.span,
                                             "should be wfchecking an ADT, got {kind:?}"
@@ -1162,6 +1165,7 @@ fn check_type_defn<'tcx>(
                                     ItemKind::Struct(..) => AdtKind::Struct,
                                     ItemKind::Union(..) => AdtKind::Union,
                                     ItemKind::Enum(..) => AdtKind::Enum,
+                                    ItemKind::UnsizedType(..) => AdtKind::UnsizedType,
                                     kind => span_bug!(
                                         item.span,
                                         "should be wfchecking an ADT, got {kind:?}"
@@ -1185,6 +1189,44 @@ fn check_type_defn<'tcx>(
                     Err(ErrorHandled::Reported(..)) => {}
                     Err(ErrorHandled::TooGeneric(sp)) => {
                         span_bug!(sp, "enum variant discr was too generic to eval")
+                    }
+                }
+            }
+
+            // All metadata fields of `unsized type` must implement
+            // `Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze`.
+            if matches!(item.kind, ItemKind::UnsizedType(..)) {
+                for field in &variant.fields {
+                    let field_id = field.did.expect_local();
+                    let hir::FieldDef { ty: hir_ty, .. } =
+                        tcx.hir_node_by_def_id(field_id).expect_field();
+                    let ty = wfcx.normalize(
+                        hir_ty.span,
+                        None,
+                        tcx.type_of(field.did).instantiate_identity(),
+                    );
+                    for lang_item in [
+                        LangItem::Sized,
+                        LangItem::DebugTrait,
+                        LangItem::Copy,
+                        LangItem::Send,
+                        LangItem::Sync,
+                        LangItem::Ord,
+                        LangItem::HashTrait,
+                        LangItem::Unpin,
+                        LangItem::Freeze,
+                    ] {
+                        let lang_item = tcx.require_lang_item(lang_item, hir_ty.span);
+                        wfcx.register_bound(
+                            traits::ObligationCause::new(
+                                hir_ty.span,
+                                wfcx.body_def_id,
+                                ObligationCauseCode::UnsizedTypeMetadataField { span: hir_ty.span },
+                            ),
+                            wfcx.param_env,
+                            ty,
+                            lang_item,
+                        );
                     }
                 }
             }
