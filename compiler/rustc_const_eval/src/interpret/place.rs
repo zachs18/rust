@@ -4,8 +4,8 @@
 
 use either::{Either, Left, Right};
 use rustc_abi::{BackendRepr, FieldIdx, Size};
+use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::TyAndLayout;
-use rustc_middle::ty::{self, Ty};
 use rustc_middle::{bug, mir, span_bug};
 use tracing::field::Empty;
 use tracing::{instrument, trace};
@@ -1107,13 +1107,6 @@ where
         // padding in the target independent of layout choices.
         let src_has_padding = match src.layout().backend_repr {
             BackendRepr::Scalar(_) => false,
-            BackendRepr::ScalarPair(left, right)
-                if matches!(src.layout().ty.kind(), ty::Ref(..) | ty::RawPtr(..)) =>
-            {
-                // Wide pointers never have padding, so we can avoid calling `size()`.
-                debug_assert_eq!(left.size(self) + right.size(self), src.layout().size);
-                false
-            }
             BackendRepr::ScalarPair(left, right) => {
                 let left_size = left.size(self);
                 let right_size = right.size(self);

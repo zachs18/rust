@@ -135,7 +135,7 @@ pub enum NonHaltingDiagnostic {
     WeakMemoryOutdatedLoad {
         ptr: Pointer,
     },
-    ExternTypeReborrow,
+    UnsizedTypeReborrow,
     GenmcCompareExchangeWeak,
     GenmcCompareExchangeOrderingMismatch {
         success_ordering: AtomicRwOrd,
@@ -368,7 +368,7 @@ pub fn report_result<'tcx>(
                 // We list only the ones that can actually happen.
                 UnsupportedOpInfo::Unsupported(_)
                 | UnsupportedOpInfo::UnsizedLocal
-                | UnsupportedOpInfo::ExternTypeField,
+                | UnsupportedOpInfo::UnsizedTypeField,
             ) => "unsupported operation",
             InvalidProgram(
                 // We list only the ones that can actually happen.
@@ -637,8 +637,8 @@ impl<'tcx> MiriMachine<'tcx> {
             Int2Ptr { .. } => ("integer-to-pointer cast".to_string(), DiagLevel::Warning),
             NativeCallSharedMem { .. } =>
                 ("sharing memory with a native function".to_string(), DiagLevel::Warning),
-            ExternTypeReborrow =>
-                ("reborrow of reference to `extern type`".to_string(), DiagLevel::Warning),
+            UnsizedTypeReborrow =>
+                ("reborrow of reference to `extern type` or `unsized type`".to_string(), DiagLevel::Warning),
             GenmcCompareExchangeWeak | GenmcCompareExchangeOrderingMismatch { .. } =>
                 ("GenMC might miss possible behaviors of this code".to_string(), DiagLevel::Warning),
             CreatedPointerTag(..)
@@ -678,8 +678,8 @@ impl<'tcx> MiriMachine<'tcx> {
                 format!("sharing memory with a native function called via FFI"),
             WeakMemoryOutdatedLoad { ptr } =>
                 format!("weak memory emulation: outdated value returned from load at {ptr}"),
-            ExternTypeReborrow =>
-                format!("reborrow of a reference to `extern type` is not properly supported"),
+            UnsizedTypeReborrow =>
+                format!("reborrow of a reference to `extern type` or `unsized type` is not properly supported"),
             GenmcCompareExchangeWeak =>
                 "GenMC currently does not model spurious failures of `compare_exchange_weak`. Miri with GenMC might miss bugs related to spurious failures."
                     .to_string(),
@@ -774,7 +774,7 @@ impl<'tcx> MiriMachine<'tcx> {
                         ),
                     ]
                 },
-            ExternTypeReborrow => {
+            UnsizedTypeReborrow => {
                 assert!(self.borrow_tracker.as_ref().is_some_and(|b| {
                     matches!(
                         b.borrow().borrow_tracker_method(),
@@ -783,7 +783,7 @@ impl<'tcx> MiriMachine<'tcx> {
                 }));
                 vec![
                     note!(
-                        "`extern type` are not compatible with the Stacked Borrows aliasing model implemented by Miri; Miri may miss bugs in this code"
+                        "`extern type` and `unsized type` are not compatible with the Stacked Borrows aliasing model implemented by Miri; Miri may miss bugs in this code"
                     ),
                     note!(
                         "try running with `MIRIFLAGS=-Zmiri-tree-borrows` to use the more permissive but also even more experimental Tree Borrows aliasing checks instead"
