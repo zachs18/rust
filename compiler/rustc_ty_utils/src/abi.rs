@@ -600,8 +600,9 @@ fn fn_abi_new_uncached<'tcx>(
         let layout = if is_virtual_call && arg_idx == Some(0) {
             // Don't pass the vtable, it's not an argument of the virtual fn.
             // Instead, pass just the data pointer, but give it the type `*const/mut dyn Trait`
-            // or `&/&mut dyn Trait` because this is special-cased elsewhere in codegen
-            make_thin_self_ptr(cx, layout)
+            // or `&/&mut dyn Trait` because this is special-cased elsewhere in codegen,
+            // or pass a ZST (for thin metadata), but give it the type `Metadata<dyn Trait>`.
+            make_thin_self(cx, layout)
         } else {
             layout
         };
@@ -758,21 +759,17 @@ fn apply_deduced_attributes<'tcx>(
 }
 
 #[tracing::instrument(level = "debug", skip(cx))]
-fn make_thin_self_ptr<'tcx>(
+fn make_thin_self<'tcx>(
     cx: &(impl HasTyCtxt<'tcx> + HasTypingEnv<'tcx>),
     layout: TyAndLayout<'tcx>,
 ) -> TyAndLayout<'tcx> {
     let tcx = cx.tcx();
-    let wide_pointer_ty = if layout.is_unsized() {
+    let (wide_self_ty, erased_self_ty) = if layout.is_unsized() {
         // unsized `self` is passed as a pointer to `self`
         // FIXME (mikeyhew) change this to use &own if it is ever added to the language
-        Ty::new_mut_ptr(tcx, layout.ty)
-    } else {
-        match layout.backend_repr {
-            BackendRepr::ScalarPair(..) | BackendRepr::Scalar(..) => (),
-            _ => bug!("receiver type has unsupported layout: {:?}", layout),
-        }
-
+        (Ty::new_mut_ptr(tcx, layout.ty), Ty::new_mut_ptr(tcx, tcx.types.unit))
+    } else if matches!(layout.backend_repr, BackendRepr::ScalarPair(..)) {
+        // Pointer/reference to `Self`
         // In the case of Rc<Self>, we need to explicitly pass a *mut RcInner<Self>
         // with a Scalar (not ScalarPair) ABI. This is a hack that is understood
         // elsewhere in the compiler as a method on a `dyn Trait`.
@@ -786,19 +783,39 @@ fn make_thin_self_ptr<'tcx>(
                 .1
         }
 
-        wide_pointer_layout.ty
+        (wide_pointer_layout.ty, Ty::new_mut_ptr(tcx, tcx.types.unit))
+    } else if matches!(layout.backend_repr, BackendRepr::Scalar(..)) {
+        // `Metadata<Self>`
+        // In the case of Wrapper<Self>, we need to explicitly pass a Metadata<WrapperInner<Self>>
+        // with a ZST Memory (not Scalar) ABI. This is a hack that is understood
+        // elsewhere in the compiler as a method on a `dyn Trait`.
+        // To get the type `Metadata<WrapperInner<Self>>`, we just keep unwrapping newtypes until we
+        // get a built-in pointer type
+        let mut wide_meta_layout = layout;
+        while !wide_meta_layout.ty.is_ptr_metadata() {
+            wide_meta_layout = wide_meta_layout
+                .non_1zst_field(cx)
+                .expect("not exactly one non-1-ZST field in a `DispatchFromDyn` type")
+                .1
+        }
+
+        (wide_meta_layout.ty, Ty::new_ptr_metadata(tcx, tcx.types.unit))
+    } else {
+        bug!("receiver type has unsupported layout: {:?}", layout)
     };
 
     // we now have a type like `*mut RcInner<dyn Trait>`
     // change its layout to that of `*mut ()`, a thin pointer, but keep the same type
     // this is understood as a special case elsewhere in the compiler
-    let unit_ptr_ty = Ty::new_mut_ptr(tcx, tcx.types.unit);
+    // (or `Metadata<WrapperInner<dyn Trait>>` -> `Metadata<()>`).
 
     TyAndLayout {
-        ty: wide_pointer_ty,
+        ty: wide_self_ty,
 
         // NOTE(eddyb) using an empty `ParamEnv`, and `unwrap`-ing the `Result`
         // should always work because the type is always `*mut ()`.
-        ..tcx.layout_of(ty::TypingEnv::fully_monomorphized().as_query_input(unit_ptr_ty)).unwrap()
+        ..tcx
+            .layout_of(ty::TypingEnv::fully_monomorphized().as_query_input(erased_self_ty))
+            .unwrap()
     }
 }

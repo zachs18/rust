@@ -1,4 +1,5 @@
 use crate::marker::PointeeSized;
+use crate::ptr::Metadata;
 
 /// Used for immutable dereferencing operations, like `*v`.
 ///
@@ -371,7 +372,7 @@ pub trait Receiver: PointeeSized {
     #[rustc_diagnostic_item = "receiver_target"]
     #[lang = "receiver_target"]
     #[unstable(feature = "arbitrary_self_types", issue = "44874")]
-    type Target: ?Sized;
+    type Target: PointeeSized;
 }
 
 #[unstable(feature = "arbitrary_self_types", issue = "44874")]
@@ -379,6 +380,11 @@ impl<P: ?Sized, T: ?Sized> Receiver for P
 where
     P: Deref<Target = T>,
 {
+    type Target = T;
+}
+
+#[unstable(feature = "arbitrary_self_types", issue = "44874")]
+impl<T: PointeeSized> Receiver for Metadata<T> {
     type Target = T;
 }
 
