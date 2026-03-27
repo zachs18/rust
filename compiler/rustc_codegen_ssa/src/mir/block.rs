@@ -1218,6 +1218,35 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
             if let (0, Some(ty::InstanceKind::Virtual(_, idx))) = (i, instance.map(|i| i.def)) {
                 match op.val {
+                    // `self: Metadata<Self>` or wrapper
+                    Immediate(meta) => {
+                        // In the case of Wrapper<Self>, we need to explicitly pass a
+                        // Metadata<WrapperInner<Self>> with a Scalar (not ScalarPair) ABI. This is a hack
+                        // that is understood elsewhere in the compiler as a method on
+                        // `dyn Trait`.
+                        // To get a `*mut RcInner<Self>`, we just keep unwrapping newtypes until
+                        // we get a value of a built-in pointer type.
+                        //
+                        // This is also relevant for `Pin<&mut Self>`, where we need to peel the
+                        // `Pin`.
+                        while !op.layout.ty.is_ptr_metadata() {
+                            let (idx, _) = op.layout.non_1zst_field(bx).expect(
+                                "not exactly one non-1-ZST field in a `DispatchFromDyn` type",
+                            );
+                            op = op.extract_field(self, bx, idx.as_usize());
+                        }
+
+                        // Now that we have `Metadata<dyn Trait>`, look up the method in the vtable.
+                        // Ignore the first argument, which will be `Metadata<Self>` where `Self: Thin`.
+                        llfn = Some(meth::VirtualIndex::from_index(idx).get_fn(
+                            bx,
+                            meta,
+                            op.layout.ty,
+                            fn_abi,
+                        ));
+                        continue 'make_args;
+                    }
+                    // `self: &Self` (or mut or raw ptr), or wrapper
                     Pair(data_ptr, meta) => {
                         // In the case of Rc<Self>, we need to explicitly pass a
                         // *mut RcInner<Self> with a Scalar (not ScalarPair) ABI. This is a hack
@@ -1247,6 +1276,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         llargs.push(data_ptr);
                         continue 'make_args;
                     }
+                    // `self: Self` or wrapper
                     Ref(PlaceValue {
                         llval: data_ptr, llextra: AnyPlaceMeta(Some(meta)), ..
                     }) => {
