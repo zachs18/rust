@@ -1149,6 +1149,13 @@ impl<'tcx> TyCtxt<'tcx> {
         self.type_of(ordering_enum).no_bound_vars().unwrap()
     }
 
+    /// Gets a `Ty` representing the [`LangItem::AlignmentStruct`]
+    #[track_caller]
+    pub fn ty_alignment_struct(self, span: Span) -> Ty<'tcx> {
+        let alignment_struct = self.require_lang_item(hir::LangItem::AlignmentStruct, span);
+        self.type_of(alignment_struct).no_bound_vars().unwrap()
+    }
+
     /// Gets a `Ty` representing the [`LangItem::DynMetadata`], i.e. `std::ptr::DynMetadata<T>`
     /// for a given `T`.
     #[track_caller]
