@@ -378,6 +378,7 @@ symbols! {
         align_of_val,
         aligned,
         alignment,
+        alignment_struct,
         all,
         alloc,
         alloc_error_handler,
