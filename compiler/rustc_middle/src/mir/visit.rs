@@ -392,6 +392,9 @@ macro_rules! make_mir_visitor {
                             self.visit_ty($(& $mutability)? *error_ty, TyContext::Location(location));
                             self.visit_ty($(& $mutability)? *arg_ty, TyContext::Location(location));
                         }
+                        ty::InstanceKind::LayoutForMetaShim { method_def: _, layout_part: _, checked: _, self_ty } => {
+                            self.visit_ty($(& $mutability)? *self_ty, TyContext::Location(location));
+                        }
                     }
                     self.visit_args(callee_args, location);
                 }

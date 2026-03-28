@@ -205,10 +205,17 @@ fn own_existential_vtable_entries_iter(
     let trait_methods =
         tcx.associated_items(trait_def_id).in_definition_order().filter(|item| item.is_fn());
 
+    let is_sizedness_trait = tcx.is_sizedness_trait(trait_def_id);
+
     // Now list each method's DefId (for within its trait).
     let own_entries = trait_methods.filter_map(move |&trait_method| {
         debug!("own_existential_vtable_entry: trait_method={:?}", trait_method);
         let def_id = trait_method.def_id;
+
+        // `MetaSized` and `MetaAligned` methods should not be included in the vtable.
+        if is_sizedness_trait {
+            return None;
+        }
 
         // Final methods should not be included in the vtable.
         if trait_method.defaultness(tcx).is_final() {

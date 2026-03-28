@@ -411,6 +411,20 @@ impl<'tcx, P: Printer<'tcx> + std::fmt::Write> Print<'tcx, P> for ty::Instance<'
             } => cx.write_str(&format!(
                 " - init_shim({method:?}-{self_ty}-{dst_ty}-{error_ty}-{arg_ty})"
             ))?,
+            ty::InstanceKind::LayoutForMetaShim {
+                method_def: _,
+                self_ty,
+                checked,
+                layout_part,
+            } => cx.write_str(&format!(
+                " - {checkedness}_{part}_for_meta_shim({self_ty})",
+                checkedness = if checked { "checked" } else { "unchecked" },
+                part = match layout_part {
+                    ty::LayoutPart::Size => "size",
+                    ty::LayoutPart::Alignment => "align",
+                    ty::LayoutPart::Layout => "layout",
+                },
+            ))?,
             ty::InstanceKind::FnPtrAddrShim(_, ty) => cx.write_str(&format!(" - shim({ty})"))?,
             ty::InstanceKind::FutureDropPollShim(_, proxy_ty, impl_ty) => {
                 cx.write_str(&format!(" - dropshim({proxy_ty}-{impl_ty})"))?
