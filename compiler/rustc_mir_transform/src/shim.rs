@@ -883,55 +883,150 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         }
     }
 
-    fn only_alignment_shim(&mut self) {
-        todo!()
-    }
     fn layout_shim(&mut self) {
-        todo!()
-    }
-
-    #[cfg(false)]
-    fn only_alignment_shim(&mut self, checked: bool) {
+        let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
         let tcx = self.tcx;
+        let typing_env = ty::TypingEnv::fully_monomorphized();
 
         let dest = Place::return_place();
+        let dest_ty = dest.ty(&self.local_decls, tcx).ty;
+        let meta = Place::from(Local::new(1 + 0));
+        let option_did = tcx.require_lang_item(LangItem::Option, self.span);
+        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
+
+        let layout = match tcx.layout_of(typing_env.as_query_input(self_ty)) {
+            Ok(layout) => layout,
+            Err(err) => {
+                // If `self_ty` doesn't have a valid layout, then there should already have been an error,
+                // but we still need to emit some MIR.
+                tcx.dcx().delayed_bug(format!(
+                    "layout_for_meta shim for type with invalid layout: {err:?}"
+                ));
+                self.block(vec![], TerminatorKind::Unreachable, false);
+                return;
+            }
+        };
+
+        if self_ty.is_sized(tcx, typing_env) {
+            // If `Self: Sized`, then `layout.size/align` are accurate, and we can just return them.
+            let size = Operand::const_from_scalar(
+                tcx,
+                tcx.types.usize,
+                interpret::Scalar::from_target_usize(layout.size.bytes(), &tcx),
+                self.span,
+            );
+            let alignment = Operand::const_from_scalar(
+                self.tcx,
+                alignment_struct_ty,
+                interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
+                self.span,
+            );
+
+            let mut stmts = vec![];
+
+            match (checked, layout_part) {
+                (false, ty::LayoutPart::Size) => {
+                    // Return type is `usize` of just the size
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        dest,
+                        Rvalue::Use(size),
+                    )))));
+                }
+                (true, ty::LayoutPart::Size) => {
+                    // Return type is `Option<usize>` of just the size
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        dest,
+                        Rvalue::Aggregate(
+                            Box::new(AggregateKind::Adt(
+                                option_did,
+                                VariantIdx::from_usize(1),
+                                tcx.mk_args(&[tcx.types.usize.into()]),
+                                None,
+                                None,
+                            )),
+                            [size].into(),
+                        ),
+                    )))));
+                }
+                (false, ty::LayoutPart::Layout) => {
+                    // Return type is `(usize, Alignment)`
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        dest,
+                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
+                    )))));
+                }
+                (true, ty::LayoutPart::Layout) => {
+                    // Return type is `Option<(usize, Alignment)>`, so we need a temp for the tuple.
+                    // FIXME: use a const for the tuple.
+                    let tuple_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
+                    let tuple = self.make_place(ty::Mutability::Not, tuple_ty);
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        tuple,
+                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
+                    )))));
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        dest,
+                        Rvalue::Aggregate(
+                            Box::new(AggregateKind::Adt(
+                                option_did,
+                                VariantIdx::from_usize(1),
+                                tcx.mk_args(&[tuple_ty.into()]),
+                                None,
+                                None,
+                            )),
+                            [Operand::Move(tuple)].into(),
+                        ),
+                    )))));
+                }
+                (_, ty::LayoutPart::Alignment) => unreachable!(),
+            }
+            self.block(stmts, TerminatorKind::Return, false);
+            return;
+        }
+
+        todo!()
+    }
+
+    fn only_alignment_shim(&mut self) {
+        let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
+        let tcx = self.tcx;
+        let typing_env = ty::TypingEnv::fully_monomorphized();
+
+        let dest = Place::return_place();
+        let dest_ty = dest.ty(&self.local_decls, tcx).ty;
         let meta = Place::from(Local::new(1 + 0));
 
-        let layout = tcx.layout_of(self.self_ty).expect("type exists");
+        let layout = match tcx.layout_of(typing_env.as_query_input(self_ty)) {
+            Ok(layout) => layout,
+            Err(err) => {
+                // If `self_ty` doesn't have a valid layout, then there should already have been an error,
+                // but we still need to emit some MIR.
+                tcx.dcx().delayed_bug(format!(
+                    "layout_for_meta shim for type with invalid layout: {err:?}"
+                ));
+                self.block(vec![], TerminatorKind::Unreachable, false);
+                return;
+            }
+        };
 
-        if self.self_ty.is_aligned() {}
+        if self_ty.is_aligned(tcx, typing_env) {
+            // If `Self: Aligned`, then `layout.align` is accurate, and we can just return it.
+            // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
+            // or `Option<Alignment>` (which is niche-optimized), so a nonzero-`usize`-valued
+            // scalar constant is valid
+            let alignment = Operand::const_from_scalar(
+                self.tcx,
+                dest_ty,
+                interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
+                self.span,
+            );
+            let stmt = self
+                .make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(alignment)))));
+            self.block(vec![stmt], TerminatorKind::Return, false);
+            return;
+        }
 
-        // `func == Clone::clone(&ty) -> ty`
-        let func_ty = Ty::new_fn_def(tcx, self.def_id, [ty]);
-        let func = Operand::Constant(Box::new(ConstOperand {
-            span: self.span,
-            user_ty: None,
-            const_: Const::zero_sized(func_ty),
-        }));
-
-        let ref_loc =
-            self.make_place(Mutability::Not, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
-
-        // `let ref_loc: &ty = &src;`
-        let statement = self.make_statement(StatementKind::Assign(Box::new((
-            ref_loc,
-            Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src),
-        ))));
-
-        // `let loc = Clone::clone(ref_loc);`
-        self.block(
-            vec![statement],
-            TerminatorKind::Call {
-                func,
-                args: [Spanned { node: Operand::Move(ref_loc), span: DUMMY_SP }].into(),
-                destination: dest,
-                target: Some(next),
-                unwind: UnwindAction::Cleanup(cleanup),
-                call_source: CallSource::Normal,
-                fn_span: self.span,
-            },
-            false,
-        );
+        todo!()
     }
 
     #[cfg(false)]
