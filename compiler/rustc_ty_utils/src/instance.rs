@@ -506,11 +506,11 @@ fn resolve_associated_item<'tcx>(
                 let name = tcx.item_name(trait_item_id);
                 let (checked, layout_part) = match name.as_str() {
                     "unchecked_align_for_meta" => (false, ty::LayoutPart::Alignment),
-                    "checked_align_for_meta" => (false, ty::LayoutPart::Alignment),
+                    "checked_align_for_meta" => (true, ty::LayoutPart::Alignment),
                     "unchecked_size_for_meta" => (false, ty::LayoutPart::Size),
-                    "checked_size_for_meta" => (false, ty::LayoutPart::Size),
+                    "checked_size_for_meta" => (true, ty::LayoutPart::Size),
                     "unchecked_layout_for_meta" => (false, ty::LayoutPart::Layout),
-                    "checked_layout_for_meta" => (false, ty::LayoutPart::Layout),
+                    "checked_layout_for_meta" => (true, ty::LayoutPart::Layout),
                     name => {
                         bug!("{name:?} is not a known associated fn in `MetaSized`/`MetaAligned`")
                     }
