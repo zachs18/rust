@@ -22,6 +22,13 @@ fn is_sized_raw<'tcx>(tcx: TyCtxt<'tcx>, query: ty::PseudoCanonicalInput<'tcx, T
     is_trait_raw(tcx, query, LangItem::Sized)
 }
 
+fn is_aligned_raw<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    query: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>,
+) -> bool {
+    is_trait_raw(tcx, query, LangItem::Aligned)
+}
+
 fn is_thin_raw<'tcx>(tcx: TyCtxt<'tcx>, query: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
     is_trait_raw(tcx, query, LangItem::ThinPointeeTrait)
 }
@@ -63,6 +70,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         is_copy_raw,
         is_use_cloned_raw,
         is_sized_raw,
+        is_aligned_raw,
         is_thin_raw,
         is_freeze_raw,
         is_unsafe_unpin_raw,
