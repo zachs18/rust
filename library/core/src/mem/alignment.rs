@@ -11,6 +11,7 @@ use crate::{cmp, fmt, hash, mem, num};
 /// Note that particularly large alignments, while representable in this type,
 /// are likely not to be supported by actual allocators and linkers.
 #[unstable(feature = "ptr_alignment_type", issue = "102070")]
+#[lang = "alignment_struct"]
 #[derive(Copy)]
 #[derive_const(Clone, PartialEq, Eq)]
 #[repr(transparent)]
