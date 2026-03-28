@@ -18,7 +18,9 @@ use crate::clone::TrivialClone;
 use crate::cmp;
 use crate::fmt::Debug;
 use crate::hash::{Hash, Hasher};
+use crate::mem::Alignment;
 use crate::pin::UnsafePinned;
+use crate::ptr::Metadata;
 
 // NOTE: for consistent error messages between `core` and `minicore`, all `diagnostic` attributes
 // should be replicated exactly in `minicore` (if `minicore` defines the item).
@@ -203,9 +205,29 @@ pub trait Aligned: MetaAligned + PointeeSized {
 #[rustc_deny_explicit_impl]
 // `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
+// Note that `MetaSized` and `MetaAligned` are special-cased by the compiler to have their methods
+// not included in vtables (trait objects include the size/align in the vtable directly,
+// so it would be unnecessary).
 #[rustc_coinductive]
 pub trait MetaSized: MetaAligned + PointeeSized {
-    // Empty
+    /// Returns the size of a value with the given metadata.
+    ///
+    /// # Safety
+    ///
+    /// See [`unchecked_size_for_meta`](crate::mem::unchecked_size_for_meta).
+    unsafe fn unchecked_size_for_meta(self: Metadata<Self>) -> usize;
+
+    /// Returns the size of a value with the given metadata, or `None`
+    /// if this metadata cannot represent a valid value.
+    ///
+    /// See [`checked_size_for_meta`](crate::mem::checked_size_for_meta).
+    fn checked_size_for_meta(self: Metadata<Self>) -> Option<usize>;
+
+    /// FIXME: docs
+    unsafe fn unchecked_layout_for_meta(self: Metadata<Self>) -> (usize, Alignment);
+
+    /// FIXME: docs
+    fn checked_layout_for_meta(self: Metadata<Self>) -> Option<(usize, Alignment)>;
 }
 
 /// Types with an alignment that can be determined from pointer metadata.
@@ -220,9 +242,23 @@ pub trait MetaSized: MetaAligned + PointeeSized {
 #[rustc_deny_explicit_impl]
 // `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
+// Note that `MetaSized` and `MetaAligned` are special-cased by the compiler to have their methods
+// not included in vtables (trait objects include the size/align in the vtable directly,
+// so it would be unnecessary).
 #[rustc_coinductive]
 pub trait MetaAligned: PointeeSized {
-    // Empty
+    /// Returns the alignment of a value with the given metadata.
+    ///
+    /// # Safety
+    ///
+    /// See [`unchecked_align_for_meta`](crate::mem::unchecked_align_for_meta).
+    unsafe fn unchecked_align_for_meta(self: Metadata<Self>) -> Alignment;
+
+    /// Returns the align of a value with the given metadata, or `None`
+    /// if this metadata cannot represent a valid value.
+    ///
+    /// See [`checked_align_for_meta`](crate::mem::checked_align_for_meta).
+    fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment>;
 }
 
 /// Types that may or may not have a size.

@@ -121,6 +121,8 @@
 #![feature(adt_const_params)]
 #![feature(allow_internal_unsafe)]
 #![feature(allow_internal_unstable)]
+#![feature(arbitrary_self_types)]
+#![feature(arbitrary_self_types_pointers)]
 #![feature(auto_traits)]
 #![feature(builtin_syntax)]
 #![feature(cfg_sanitize)]

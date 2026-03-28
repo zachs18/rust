@@ -643,6 +643,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             | ty::InstanceKind::PtrMetadataDebugShim(..)
             | ty::InstanceKind::PtrMetadataHashShim(..)
             | ty::InstanceKind::InitShim { .. }
+            | ty::InstanceKind::LayoutForMetaShim { .. }
             | ty::InstanceKind::FnPtrAddrShim(..)
             | ty::InstanceKind::ThreadLocalShim(..)
             | ty::InstanceKind::AsyncDropGlueCtorShim(..)

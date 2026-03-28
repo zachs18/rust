@@ -89,7 +89,7 @@ pub use self::context::{
     CtxtInterners, CurrentGcx, FreeRegionInfo, GlobalCtxt, Lift, TyCtxt, TyCtxtFeed, tls,
 };
 pub use self::fold::*;
-pub use self::instance::{InitMethod, Instance, InstanceKind, ReifyReason};
+pub use self::instance::{InitMethod, Instance, InstanceKind, LayoutPart, ReifyReason};
 pub(crate) use self::list::RawList;
 pub use self::list::{List, ListWithCachedTypeInfo};
 pub use self::opaque_types::OpaqueTypeKey;
@@ -1786,6 +1786,7 @@ impl<'tcx> TyCtxt<'tcx> {
             | ty::InstanceKind::PtrMetadataDebugShim(..)
             | ty::InstanceKind::PtrMetadataHashShim(..)
             | ty::InstanceKind::InitShim { .. }
+            | ty::InstanceKind::LayoutForMetaShim { .. }
             | ty::InstanceKind::ThreadLocalShim(..)
             | ty::InstanceKind::FnPtrAddrShim(..)
             | ty::InstanceKind::AsyncDropGlueCtorShim(..)
