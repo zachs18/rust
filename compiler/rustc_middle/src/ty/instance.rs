@@ -94,6 +94,18 @@ pub enum InitMethod {
     InitRef,
 }
 
+/// Which `PinInit*` trait method is being shimmed.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(TyEncodable, TyDecodable, HashStable)]
+pub enum LayoutPart {
+    /// Only the size.
+    Size,
+    /// Only the alignment
+    Alignment,
+    /// Both the size and alignment
+    Layout,
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[derive(TyEncodable, TyDecodable, HashStable, TypeFoldable, TypeVisitable, Lift)]
 pub enum InstanceKind<'tcx> {
@@ -249,6 +261,14 @@ pub enum InstanceKind<'tcx> {
         error_ty: Ty<'tcx>,
         arg_ty: Ty<'tcx>,
     },
+
+    /// Compiler-generated implementation of a method from the `MetaSized` or `MetaAligned` traits.
+    LayoutForMetaShim {
+        method_def: DefId,
+        self_ty: Ty<'tcx>,
+        checked: bool,
+        layout_part: LayoutPart,
+    },
 }
 
 impl<'tcx> Instance<'tcx> {
@@ -328,6 +348,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::PtrMetadataHashShim(def_id, _, _)
             | InstanceKind::PtrMetadataDebugShim(def_id, _)
             | InstanceKind::InitShim { method_def: def_id, .. }
+            | InstanceKind::LayoutForMetaShim { method_def: def_id, .. }
             | InstanceKind::FnPtrAddrShim(def_id, _)
             | InstanceKind::FutureDropPollShim(def_id, _, _)
             | InstanceKind::AsyncDropGlue(def_id, _)
@@ -357,6 +378,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::PtrMetadataHashShim(..)
             | InstanceKind::PtrMetadataDebugShim(..)
             | InstanceKind::InitShim { .. }
+            | InstanceKind::LayoutForMetaShim { .. }
             | InstanceKind::FnPtrAddrShim(..) => None,
         }
     }
@@ -406,6 +428,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::PtrMetadataHashShim(..)
             | InstanceKind::PtrMetadataDebugShim(..)
             | InstanceKind::InitShim { .. }
+            | InstanceKind::LayoutForMetaShim { .. }
             | InstanceKind::ThreadLocalShim(..)
             | InstanceKind::FnPtrAddrShim(..)
             | InstanceKind::FnPtrShim(..)

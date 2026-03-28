@@ -762,6 +762,7 @@ fn check_mir_is_available<'tcx, I: Inliner<'tcx>>(
         | InstanceKind::PtrMetadataDebugShim(..)
         | InstanceKind::PtrMetadataHashShim(..)
         | InstanceKind::InitShim { .. }
+        | InstanceKind::LayoutForMetaShim { .. }
         | InstanceKind::ThreadLocalShim(..)
         | InstanceKind::FnPtrAddrShim(..) => return Ok(()),
     }

@@ -1,3 +1,4 @@
+// ignore-tidy-filelength
 use std::{assert_matches, fmt, iter};
 
 use rustc_abi::{ExternAbi, FIRST_VARIANT, FieldIdx, VariantIdx};
@@ -169,6 +170,7 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<
         ty::InstanceKind::PtrMetadataDebugShim(..) => build_ptr_metadata_fmt_shim(tcx, instance),
         ty::InstanceKind::PtrMetadataHashShim(..) => build_ptr_metadata_hash_shim(tcx, instance),
         ty::InstanceKind::InitShim { .. } => build_init_shim(tcx, instance),
+        ty::InstanceKind::LayoutForMetaShim { .. } => build_layout_for_meta_shim(tcx, instance),
         ty::InstanceKind::FnPtrAddrShim(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::InstanceKind::FutureDropPollShim(def_id, proxy_ty, impl_ty) => {
             let mut body =
@@ -775,6 +777,227 @@ impl<'tcx> CloneShimBuilder<'tcx> {
         let _final_cleanup_block = self.clone_fields(dest, src, target, unwind, tys);
     }
 
+    fn coroutine_shim(
+        &mut self,
+        dest: Place<'tcx>,
+        src: Place<'tcx>,
+        coroutine_def_id: DefId,
+        args: CoroutineArgs<TyCtxt<'tcx>>,
+    ) {
+        self.block(vec![], TerminatorKind::Goto { target: self.block_index_offset(3) }, false);
+        let unwind = self.block(vec![], TerminatorKind::UnwindResume, true);
+        // This will get overwritten with a switch once we know the target blocks
+        let switch = self.block(vec![], TerminatorKind::Unreachable, false);
+        let unwind = self.clone_fields(dest, src, switch, unwind, args.upvar_tys());
+        let target = self.block(vec![], TerminatorKind::Return, false);
+        let unreachable = self.block(vec![], TerminatorKind::Unreachable, false);
+        let mut cases = Vec::with_capacity(args.state_tys(coroutine_def_id, self.tcx).count());
+        for (index, state_tys) in args.state_tys(coroutine_def_id, self.tcx).enumerate() {
+            let variant_index = VariantIdx::new(index);
+            let dest = self.tcx.mk_place_downcast_unnamed(dest, variant_index);
+            let src = self.tcx.mk_place_downcast_unnamed(src, variant_index);
+            let clone_block = self.block_index_offset(1);
+            let start_block = self.block(
+                vec![self.make_statement(StatementKind::SetDiscriminant {
+                    place: Box::new(Place::return_place()),
+                    variant_index,
+                })],
+                TerminatorKind::Goto { target: clone_block },
+                false,
+            );
+            cases.push((index as u128, start_block));
+            let _final_cleanup_block = self.clone_fields(dest, src, target, unwind, state_tys);
+        }
+        let discr_ty = args.discr_ty(self.tcx);
+        let temp = self.make_place(Mutability::Mut, discr_ty);
+        let rvalue = Rvalue::Discriminant(src);
+        let statement = self.make_statement(StatementKind::Assign(Box::new((temp, rvalue))));
+        match &mut self.blocks[switch] {
+            BasicBlockData { statements, terminator: Some(Terminator { kind, .. }), .. } => {
+                statements.push(statement);
+                *kind = TerminatorKind::SwitchInt {
+                    discr: Operand::Move(temp),
+                    targets: SwitchTargets::new(cases.into_iter(), unreachable),
+                };
+            }
+            BasicBlockData { terminator: None, .. } => unreachable!(),
+        }
+    }
+}
+
+/// Builds a `Meta(Sized|Aligned)::(un)checked_(size|align|layout)_for_meta` shim for `self_ty`.
+/// Here, `def_id` is of the method.
+fn build_layout_for_meta_shim<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: ty::InstanceKind<'tcx>,
+) -> Body<'tcx> {
+    let ty::InstanceKind::LayoutForMetaShim { method_def, checked, layout_part, self_ty } =
+        instance
+    else {
+        unreachable!()
+    };
+    debug!("build_clone_shim(def_id={:?})", method_def);
+
+    let mut builder =
+        LayoutForMetaShimBuilder::new(tcx, instance, method_def, checked, layout_part, self_ty);
+
+    match layout_part {
+        ty::LayoutPart::Alignment => builder.only_alignment_shim(),
+        ty::LayoutPart::Size | ty::LayoutPart::Layout => builder.layout_shim(),
+    }
+
+    builder.into_mir()
+}
+
+#[allow(unused)]
+struct LayoutForMetaShimExtra<'tcx> {
+    method_def_id: DefId,
+    self_ty: Ty<'tcx>,
+    checked: bool,
+    layout_part: ty::LayoutPart,
+}
+type LayoutForMetaShimBuilder<'tcx> = ShimBuilder<'tcx, LayoutForMetaShimExtra<'tcx>>;
+
+#[allow(unused)]
+impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        instance: ty::InstanceKind<'tcx>,
+        method_def_id: DefId,
+        checked: bool,
+        layout_part: ty::LayoutPart,
+        self_ty: Ty<'tcx>,
+    ) -> Self {
+        let sig = tcx.fn_sig(method_def_id).instantiate(tcx, &[self_ty.into()]);
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
+        let span = tcx.def_span(method_def_id);
+
+        LayoutForMetaShimBuilder {
+            tcx,
+            local_decls: local_decls_for_sig(&sig, span),
+            blocks: IndexVec::new(),
+            span,
+            sig,
+            instance,
+            extra: LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part },
+        }
+    }
+
+    fn only_alignment_shim(&mut self) {
+        todo!()
+    }
+    fn layout_shim(&mut self) {
+        todo!()
+    }
+
+    #[cfg(false)]
+    fn only_alignment_shim(&mut self, checked: bool) {
+        let tcx = self.tcx;
+
+        let dest = Place::return_place();
+        let meta = Place::from(Local::new(1 + 0));
+
+        let layout = tcx.layout_of(self.self_ty).expect("type exists");
+
+        if self.self_ty.is_aligned() {}
+
+        // `func == Clone::clone(&ty) -> ty`
+        let func_ty = Ty::new_fn_def(tcx, self.def_id, [ty]);
+        let func = Operand::Constant(Box::new(ConstOperand {
+            span: self.span,
+            user_ty: None,
+            const_: Const::zero_sized(func_ty),
+        }));
+
+        let ref_loc =
+            self.make_place(Mutability::Not, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
+
+        // `let ref_loc: &ty = &src;`
+        let statement = self.make_statement(StatementKind::Assign(Box::new((
+            ref_loc,
+            Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src),
+        ))));
+
+        // `let loc = Clone::clone(ref_loc);`
+        self.block(
+            vec![statement],
+            TerminatorKind::Call {
+                func,
+                args: [Spanned { node: Operand::Move(ref_loc), span: DUMMY_SP }].into(),
+                destination: dest,
+                target: Some(next),
+                unwind: UnwindAction::Cleanup(cleanup),
+                call_source: CallSource::Normal,
+                fn_span: self.span,
+            },
+            false,
+        );
+    }
+
+    #[cfg(false)]
+    fn clone_fields<I>(
+        &mut self,
+        dest: Place<'tcx>,
+        src: Place<'tcx>,
+        target: BasicBlock,
+        mut unwind: BasicBlock,
+        tys: I,
+    ) -> BasicBlock
+    where
+        I: IntoIterator<Item = Ty<'tcx>>,
+    {
+        // For an iterator of length n, create 2*n + 1 blocks.
+        for (i, ity) in tys.into_iter().enumerate() {
+            // Each iteration creates two blocks, referred to here as block 2*i and block 2*i + 1.
+            //
+            // Block 2*i attempts to clone the field. If successful it branches to 2*i + 2 (the
+            // next clone block). If unsuccessful it branches to the previous unwind block, which
+            // is initially the `unwind` argument passed to this function.
+            //
+            // Block 2*i + 1 is the unwind block for this iteration. It drops the cloned value
+            // created by block 2*i. We store this block in `unwind` so that the next clone block
+            // will unwind to it if cloning fails.
+
+            let field = FieldIdx::new(i);
+            let src_field = self.tcx.mk_place_field(src, field, ity);
+
+            let dest_field = self.tcx.mk_place_field(dest, field, ity);
+
+            let next_unwind = self.block_index_offset(1);
+            let next_block = self.block_index_offset(2);
+            self.make_clone_call(dest_field, src_field, ity, next_block, unwind);
+            self.block(
+                vec![],
+                TerminatorKind::Drop {
+                    place: dest_field,
+                    target: unwind,
+                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                /* is_cleanup */ true,
+            );
+            unwind = next_unwind;
+        }
+        // If all clones succeed then we end up here.
+        self.block(vec![], TerminatorKind::Goto { target }, false);
+        unwind
+    }
+
+    #[cfg(false)]
+    fn tuple_like_shim<I>(&mut self, dest: Place<'tcx>, src: Place<'tcx>, tys: I)
+    where
+        I: IntoIterator<Item = Ty<'tcx>>,
+    {
+        self.block(vec![], TerminatorKind::Goto { target: self.block_index_offset(3) }, false);
+        let unwind = self.block(vec![], TerminatorKind::UnwindResume, true);
+        let target = self.block(vec![], TerminatorKind::Return, false);
+
+        let _final_cleanup_block = self.clone_fields(dest, src, target, unwind, tys);
+    }
+
+    #[cfg(false)]
     fn coroutine_shim(
         &mut self,
         dest: Place<'tcx>,
