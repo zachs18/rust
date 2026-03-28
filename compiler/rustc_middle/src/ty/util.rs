@@ -1349,6 +1349,17 @@ impl<'tcx> Ty<'tcx> {
             || tcx.is_sized_raw(typing_env.as_query_input(self))
     }
 
+    /// Checks whether values of this type `T` have an alignment known at
+    /// compile time (i.e., whether `T: Aligned`). Lifetimes are ignored
+    /// for the purposes of this check, so it can be an
+    /// over-approximation in generic contexts, where one can have
+    /// strange rules like `<T as Foo<'static>>::Bar: Aligned` that
+    /// actually carry lifetime requirements.
+    pub fn is_aligned(self, tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
+        self.has_trivial_sizedness(tcx, SizedTraitKind::Aligned)
+            || tcx.is_aligned_raw(typing_env.as_query_input(self))
+    }
+
     /// Checks whether pointers to values of this type `T` are thin
     /// (i.e., whether `T: Thin`). Lifetimes are ignored
     /// for the purposes of this check, so it can be an

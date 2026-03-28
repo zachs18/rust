@@ -1667,6 +1667,10 @@ rustc_queries! {
     query is_sized_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is `Sized`", env.value }
     }
+    /// Query backing `Ty::is_aligned`.
+    query is_aligned_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
+        desc { "computing whether `{}` is `Aligned`", env.value }
+    }
     /// Query backing `Ty::is_thin`.
     query is_thin_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is `Thin", env.value }
