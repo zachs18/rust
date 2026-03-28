@@ -984,7 +984,48 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             return;
         }
 
-        todo!()
+        match self_ty.kind() {
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::FnDef(..)
+            | ty::FnPtr(..)
+            | ty::Closure(..)
+            | ty::CoroutineClosure(..)
+            | ty::Coroutine(..)
+            | ty::CoroutineWitness(..)
+            | ty::Never
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
+            | ty::RawPtr(..)
+            | ty::Ref(..)
+            | ty::InitAdt(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitTuple(..)
+            | ty::Error(_) => bug!("{} should be `Sized`", self_ty),
+            ty::Foreign(..) => bug!("{} should not be `MetaSized`", self_ty),
+
+            ty::Adt(def, ..) if def.is_unsized_type() => bug!(
+                "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
+            ),
+
+            ty::Str => todo!(),
+            ty::Slice(_elem_ty) => todo!(),
+            ty::Array(_elem_ty, _len) => todo!(),
+            ty::Dynamic(..) => todo!(),
+            ty::Adt(def, args) => todo!("{:?} {:?}", def, args),
+            ty::Tuple(..) => todo!(),
+            ty::Pat(_inner_ty, _) => todo!(),
+            ty::UnsafeBinder(..) => todo!(),
+
+            ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
+                bug!("{} should not occur here", self_ty)
+            }
+        }
     }
 
     fn only_alignment_shim(&mut self) {
@@ -1026,7 +1067,48 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             return;
         }
 
-        todo!()
+        match self_ty.kind() {
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::FnDef(..)
+            | ty::FnPtr(..)
+            | ty::Closure(..)
+            | ty::CoroutineClosure(..)
+            | ty::Coroutine(..)
+            | ty::CoroutineWitness(..)
+            | ty::Never
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
+            | ty::RawPtr(..)
+            | ty::Ref(..)
+            | ty::InitAdt(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitTuple(..)
+            | ty::Str
+            | ty::Error(_) => bug!("{} should be `Aligned`", self_ty),
+            ty::Foreign(..) => bug!("{} should not be `MetaAligned`", self_ty),
+
+            ty::Adt(def, ..) if def.is_unsized_type() => bug!(
+                "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
+            ),
+
+            ty::Slice(elem_ty) | ty::Array(elem_ty, _) => todo!("{:?}", elem_ty),
+            ty::Dynamic(..) => todo!(),
+
+            ty::Adt(def, args) => todo!("{:?} {:?}", def, args),
+            ty::Tuple(..) => todo!(),
+            ty::Pat(_inner_ty, _) => todo!(),
+            ty::UnsafeBinder(..) => todo!(),
+
+            ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
+                bug!("{} should not occur here", self_ty)
+            }
+        }
     }
 
     #[cfg(false)]
