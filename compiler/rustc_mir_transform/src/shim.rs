@@ -162,7 +162,7 @@ fn make_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<
             build_drop_shim(tcx, def_id, ty)
         }
         ty::InstanceKind::ThreadLocalShim(..) => build_thread_local_shim(tcx, instance),
-        ty::InstanceKind::CloneShim(def_id, ty) => build_clone_shim(tcx, def_id, ty),
+        ty::InstanceKind::CloneShim(..) => build_clone_shim(tcx, instance),
         ty::InstanceKind::FnPtrAddrShim(def_id, ty) => build_fn_ptr_addr_shim(tcx, def_id, ty),
         ty::InstanceKind::FutureDropPollShim(def_id, proxy_ty, impl_ty) => {
             let mut body =
@@ -530,65 +530,19 @@ fn build_thread_local_shim<'tcx>(
     )
 }
 
-/// Builds a `Clone::clone` shim for `self_ty`. Here, `def_id` is `Clone::clone`.
-fn build_clone_shim<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, self_ty: Ty<'tcx>) -> Body<'tcx> {
-    debug!("build_clone_shim(def_id={:?})", def_id);
-
-    let mut builder = CloneShimBuilder::new(tcx, def_id, self_ty);
-
-    let dest = Place::return_place();
-    let src = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
-
-    match self_ty.kind() {
-        ty::FnDef(..) | ty::FnPtr(..) => builder.copy_shim(),
-        ty::Closure(_, args) => builder.tuple_like_shim(dest, src, args.as_closure().upvar_tys()),
-        ty::CoroutineClosure(_, args) => {
-            builder.tuple_like_shim(dest, src, args.as_coroutine_closure().upvar_tys())
-        }
-        ty::Tuple(..) => builder.tuple_like_shim(dest, src, self_ty.tuple_fields()),
-        ty::Coroutine(coroutine_def_id, args) => {
-            assert_eq!(tcx.coroutine_movability(*coroutine_def_id), hir::Movability::Movable);
-            builder.coroutine_shim(dest, src, *coroutine_def_id, args.as_coroutine())
-        }
-        _ => bug!("clone shim for `{:?}` which is not `Copy` and is not an aggregate", self_ty),
-    };
-
-    builder.into_mir()
-}
-
-struct CloneShimBuilder<'tcx> {
+struct ShimBuilder<'tcx, Extra> {
     tcx: TyCtxt<'tcx>,
-    def_id: DefId,
     local_decls: IndexVec<Local, LocalDecl<'tcx>>,
     blocks: IndexVec<BasicBlock, BasicBlockData<'tcx>>,
     span: Span,
     sig: ty::FnSig<'tcx>,
+    instance: ty::InstanceKind<'tcx>,
+    extra: Extra,
 }
 
-impl<'tcx> CloneShimBuilder<'tcx> {
-    fn new(tcx: TyCtxt<'tcx>, def_id: DefId, self_ty: Ty<'tcx>) -> Self {
-        // we must instantiate the self_ty because it's
-        // otherwise going to be TySelf and we can't index
-        // or access fields of a Place of type TySelf.
-        let sig = tcx.fn_sig(def_id).instantiate(tcx, &[self_ty.into()]);
-        let sig = tcx.instantiate_bound_regions_with_erased(sig);
-        let span = tcx.def_span(def_id);
-
-        CloneShimBuilder {
-            tcx,
-            def_id,
-            local_decls: local_decls_for_sig(&sig, span),
-            blocks: IndexVec::new(),
-            span,
-            sig,
-        }
-    }
-
+impl<'tcx, Extra> ShimBuilder<'tcx, Extra> {
     fn into_mir(self) -> Body<'tcx> {
-        let source = MirSource::from_instance(ty::InstanceKind::CloneShim(
-            self.def_id,
-            self.sig.inputs_and_output[0],
-        ));
+        let source = MirSource::from_instance(self.instance);
         new_body(source, self.blocks, self.local_decls, self.sig.inputs().len(), self.span)
     }
 
@@ -622,15 +576,6 @@ impl<'tcx> CloneShimBuilder<'tcx> {
         Statement::new(self.source_info(), kind)
     }
 
-    fn copy_shim(&mut self) {
-        let rcvr = self.tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
-        let ret_statement = self.make_statement(StatementKind::Assign(Box::new((
-            Place::return_place(),
-            Rvalue::Use(Operand::Copy(rcvr)),
-        ))));
-        self.block(vec![ret_statement], TerminatorKind::Return, false);
-    }
-
     fn make_place(&mut self, mutability: Mutability, ty: Ty<'tcx>) -> Place<'tcx> {
         let span = self.span;
         let mut local = LocalDecl::new(ty, span);
@@ -638,6 +583,74 @@ impl<'tcx> CloneShimBuilder<'tcx> {
             local = local.immutable();
         }
         Place::from(self.local_decls.push(local))
+    }
+}
+
+/// Builds a `Clone::clone` shim for `self_ty`. Here, `def_id` is `Clone::clone`.
+fn build_clone_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -> Body<'tcx> {
+    let ty::InstanceKind::CloneShim(def_id, self_ty) = instance else { unreachable!() };
+    debug!("build_clone_shim(def_id={:?})", def_id);
+
+    let mut builder = CloneShimBuilder::new(tcx, instance, def_id, self_ty);
+
+    let dest = Place::return_place();
+    let src = tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+
+    match self_ty.kind() {
+        ty::FnDef(..) | ty::FnPtr(..) => builder.copy_shim(),
+        ty::Closure(_, args) => builder.tuple_like_shim(dest, src, args.as_closure().upvar_tys()),
+        ty::CoroutineClosure(_, args) => {
+            builder.tuple_like_shim(dest, src, args.as_coroutine_closure().upvar_tys())
+        }
+        ty::Tuple(..) => builder.tuple_like_shim(dest, src, self_ty.tuple_fields()),
+        ty::Coroutine(coroutine_def_id, args) => {
+            assert_eq!(tcx.coroutine_movability(*coroutine_def_id), hir::Movability::Movable);
+            builder.coroutine_shim(dest, src, *coroutine_def_id, args.as_coroutine())
+        }
+        _ => bug!("clone shim for `{:?}` which is not `Copy` and is not an aggregate", self_ty),
+    };
+
+    builder.into_mir()
+}
+
+struct CloneShimExtra {
+    clone_def_id: DefId,
+}
+
+type CloneShimBuilder<'tcx> = ShimBuilder<'tcx, CloneShimExtra>;
+
+impl<'tcx> CloneShimBuilder<'tcx> {
+    fn new(
+        tcx: TyCtxt<'tcx>,
+        instance: ty::InstanceKind<'tcx>,
+        def_id: DefId,
+        self_ty: Ty<'tcx>,
+    ) -> Self {
+        // we must instantiate the self_ty because it's
+        // otherwise going to be TySelf and we can't index
+        // or access fields of a Place of type TySelf.
+        let sig = tcx.fn_sig(def_id).instantiate(tcx, &[self_ty.into()]);
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
+        let span = tcx.def_span(def_id);
+
+        CloneShimBuilder {
+            tcx,
+            local_decls: local_decls_for_sig(&sig, span),
+            blocks: IndexVec::new(),
+            span,
+            sig,
+            instance,
+            extra: CloneShimExtra { clone_def_id: def_id },
+        }
+    }
+
+    fn copy_shim(&mut self) {
+        let rcvr = self.tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
+        let ret_statement = self.make_statement(StatementKind::Assign(Box::new((
+            Place::return_place(),
+            Rvalue::Use(Operand::Copy(rcvr)),
+        ))));
+        self.block(vec![ret_statement], TerminatorKind::Return, false);
     }
 
     fn make_clone_call(
@@ -651,7 +664,7 @@ impl<'tcx> CloneShimBuilder<'tcx> {
         let tcx = self.tcx;
 
         // `func == Clone::clone(&ty) -> ty`
-        let func_ty = Ty::new_fn_def(tcx, self.def_id, [ty]);
+        let func_ty = Ty::new_fn_def(tcx, self.extra.clone_def_id, [ty]);
         let func = Operand::Constant(Box::new(ConstOperand {
             span: self.span,
             user_ty: None,
