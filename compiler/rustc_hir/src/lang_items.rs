@@ -165,6 +165,8 @@ language_item_table! {
     AlignmentStruct,         sym::alignment_struct,    alignment_struct,           Target::Struct,         GenericRequirement::Exact(0);
     AlignmentMax,            sym::alignment_max_method, alignment_max_method,      Target::Method(MethodKind::Inherent), GenericRequirement::None;
     AlignmentMin,            sym::alignment_min_method, alignment_min_method,      Target::Method(MethodKind::Inherent), GenericRequirement::None;
+    VtableSize,              sym::vtable_size,         vtable_size_fn,             Target::Fn,             GenericRequirement::Exact(0);
+    VtableAlign,             sym::vtable_align,        vtable_align_fn,            Target::Fn,             GenericRequirement::Exact(0);
     /// Trait injected by `#[derive(PartialEq)]`, (i.e. "Partial EQ").
     StructuralPeq,           sym::structural_peq,      structural_peq_trait,       Target::Trait,          GenericRequirement::None;
     Copy,                    sym::copy,                copy_trait,                 Target::Trait,          GenericRequirement::Exact(0);
