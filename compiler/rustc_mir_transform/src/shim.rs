@@ -585,6 +585,10 @@ impl<'tcx, Extra> ShimBuilder<'tcx, Extra> {
         Statement::new(self.source_info(), kind)
     }
 
+    fn make_assign(&self, dest: Place<'tcx>, value: Rvalue<'tcx>) -> Statement<'tcx> {
+        Statement::new(self.source_info(), StatementKind::Assign(Box::new((dest, value))))
+    }
+
     fn make_place(&mut self, mutability: Mutability, ty: Ty<'tcx>) -> Place<'tcx> {
         let span = self.span;
         let mut local = LocalDecl::new(ty, span);
@@ -595,7 +599,7 @@ impl<'tcx, Extra> ShimBuilder<'tcx, Extra> {
     }
 
     fn make_set_bool_stmt(&self, place: Place<'tcx>, value: bool) -> Statement<'tcx> {
-        self.make_statement(StatementKind::Assign(Box::new((
+        self.make_assign(
             place,
             Rvalue::Use(Operand::const_from_scalar(
                 self.tcx,
@@ -603,7 +607,7 @@ impl<'tcx, Extra> ShimBuilder<'tcx, Extra> {
                 interpret::Scalar::from_bool(value),
                 self.span,
             )),
-        ))))
+        )
     }
 }
 
@@ -667,10 +671,8 @@ impl<'tcx> CloneShimBuilder<'tcx> {
 
     fn copy_shim(&mut self) {
         let rcvr = self.tcx.mk_place_deref(Place::from(Local::new(1 + 0)));
-        let ret_statement = self.make_statement(StatementKind::Assign(Box::new((
-            Place::return_place(),
-            Rvalue::Use(Operand::Copy(rcvr)),
-        ))));
+        let ret_statement =
+            self.make_assign(Place::return_place(), Rvalue::Use(Operand::Copy(rcvr)));
         self.block(vec![ret_statement], TerminatorKind::Return, false);
     }
 
@@ -696,10 +698,8 @@ impl<'tcx> CloneShimBuilder<'tcx> {
             self.make_place(Mutability::Not, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
 
         // `let ref_loc: &ty = &src;`
-        let statement = self.make_statement(StatementKind::Assign(Box::new((
-            ref_loc,
-            Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src),
-        ))));
+        let statement = self
+            .make_assign(ref_loc, Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src));
 
         // `let loc = Clone::clone(ref_loc);`
         self.block(
@@ -812,7 +812,7 @@ impl<'tcx> CloneShimBuilder<'tcx> {
         let discr_ty = args.discr_ty(self.tcx);
         let temp = self.make_place(Mutability::Mut, discr_ty);
         let rvalue = Rvalue::Discriminant(src);
-        let statement = self.make_statement(StatementKind::Assign(Box::new((temp, rvalue))));
+        let statement = self.make_assign(temp, rvalue);
         match &mut self.blocks[switch] {
             BasicBlockData { statements, terminator: Some(Terminator { kind, .. }), .. } => {
                 statements.push(statement);
@@ -908,7 +908,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             }
         };
 
-
         let include_alignment = matches!(layout_part, ty::LayoutPart::Layout);
         let (size, alignment) = match self_ty.kind() {
             _ if self_ty.is_sized(tcx, typing_env) => {
@@ -984,11 +983,11 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
 
                 let vtable_size = self.make_place(ty::Mutability::Not, tcx.types.usize);
                 self.block(
-                    vec![self.make_statement(StatementKind::Assign(Box::new((
+                    vec![self.make_assign(
                         vtable_ptr,
                         // `Metadata<dyn Trait>` is essentially just a vtable ptr.
                         Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
-                    ))))],
+                    )],
                     TerminatorKind::Call {
                         func: Operand::function_handle(
                             tcx,
@@ -1014,11 +1013,11 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 let align = include_alignment.then(|| {
                     let vtable_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
                     self.block(
-                        vec![self.make_statement(StatementKind::Assign(Box::new((
+                        vec![self.make_assign(
                             vtable_ptr,
                             // `Metadata<dyn Trait>` is essentially just a vtable ptr.
                             Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
-                        ))))],
+                        )],
                         TerminatorKind::Call {
                             func: Operand::function_handle(
                                 tcx,
@@ -1044,14 +1043,14 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     let align = self.make_place(ty::Mutability::Not, alignment_struct_ty);
 
                     self.block(
-                        vec![self.make_statement(StatementKind::Assign(Box::new((
+                        vec![self.make_assign(
                             align,
                             Rvalue::Cast(
                                 CastKind::Transmute,
                                 Operand::Copy(vtable_align),
                                 alignment_struct_ty,
                             ),
-                        ))))],
+                        )],
                         TerminatorKind::Goto { target: self.block_index_offset(1) },
                         false,
                     );
@@ -1074,13 +1073,11 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         match (checked, layout_part, alignment) {
             (false, ty::LayoutPart::Size, _) => {
                 // Return type is `usize` of just the size
-                stmts.push(
-                    self.make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(size))))),
-                );
+                stmts.push(self.make_assign(dest, Rvalue::Use(size)));
             }
             (true, ty::LayoutPart::Size, _) => {
                 // Return type is `Option<usize>` of just the size
-                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                stmts.push(self.make_assign(
                     dest,
                     Rvalue::Aggregate(
                         Box::new(AggregateKind::Adt(
@@ -1092,36 +1089,38 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                         )),
                         [size].into(),
                     ),
-                )))));
+                ));
             }
             (false, ty::LayoutPart::Layout, Some(alignment)) => {
                 // Return type is `(usize, Alignment)`
-                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                stmts.push(self.make_assign(
                     dest,
                     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
-                )))));
+                ));
             }
             (true, ty::LayoutPart::Layout, Some(alignment)) => {
                 // Return type is `Option<(usize, Alignment)>`, so we need a temp for the tuple.
                 let tuple_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
                 let tuple = self.make_place(ty::Mutability::Not, tuple_ty);
-                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                    tuple,
-                    Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
-                )))));
-                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                    dest,
-                    Rvalue::Aggregate(
-                        Box::new(AggregateKind::Adt(
-                            option_did,
-                            VariantIdx::from_usize(1),
-                            tcx.mk_args(&[tuple_ty.into()]),
-                            None,
-                            None,
-                        )),
-                        [Operand::Move(tuple)].into(),
+                stmts.extend([
+                    self.make_assign(
+                        tuple,
+                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
                     ),
-                )))));
+                    self.make_assign(
+                        dest,
+                        Rvalue::Aggregate(
+                            Box::new(AggregateKind::Adt(
+                                option_did,
+                                VariantIdx::from_usize(1),
+                                tcx.mk_args(&[tuple_ty.into()]),
+                                None,
+                                None,
+                            )),
+                            [Operand::Move(tuple)].into(),
+                        ),
+                    ),
+                ]);
             }
             (_, ty::LayoutPart::Alignment, _) | (_, ty::LayoutPart::Layout, None) => unreachable!(),
         }
@@ -1162,8 +1161,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
                 self.span,
             );
-            let stmt = self
-                .make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(alignment)))));
+            let stmt = self.make_assign(dest, Rvalue::Use(alignment));
             self.block(vec![stmt], TerminatorKind::Return, false);
             return;
         }
@@ -1254,10 +1252,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                         // _dyn_acc = field_dynamic_alignment;
                         first_dyn = false;
                         self.block(
-                            vec![self.make_statement(StatementKind::Assign(Box::new((
-                                dyn_acc,
-                                Rvalue::Use(field_dynamic_alignment),
-                            ))))],
+                            vec![self.make_assign(dyn_acc, Rvalue::Use(field_dynamic_alignment))],
                             TerminatorKind::Goto { target: self.block_index_offset(1) },
                             false,
                         );
@@ -1351,18 +1346,56 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 Rvalue::Cast(CastKind::Transmute, Operand::Copy(dyn_acc), dest_ty)
             }
 
-            ty::Slice(elem_ty) | ty::Array(elem_ty, _) => todo!("{:?}", elem_ty),
+            &ty::Slice(elem_ty) | &ty::Array(elem_ty, _) => {
+                // The alignment of a slice or array is the alignment of the element, so just do
+                // (effectively) a tail call.
+
+                let elem_meta_ty = Ty::new_ptr_metadata(tcx, elem_ty);
+                let elem_meta_idx = match self_ty.kind() {
+                    ty::Slice(..) => FieldIdx::ONE,
+                    ty::Array(..) => FieldIdx::ZERO,
+                    _ => unreachable!(),
+                };
+                let elem_meta =
+                    meta.project_deeper(&[PlaceElem::Field(elem_meta_idx, elem_meta_ty)], tcx);
+
+                self.block(
+                    vec![],
+                    TerminatorKind::Call {
+                        func: Operand::function_handle(
+                            self.tcx,
+                            method_def_id,
+                            [ty::GenericArg::from(elem_ty)],
+                            self.span,
+                        ),
+                        args: Box::new([Spanned {
+                            node: Operand::Copy(elem_meta),
+                            span: self.span,
+                        }]),
+                        destination: Place::return_place(),
+                        target: Some(self.block_index_offset(1)),
+                        // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
+                        // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
+                        unwind: UnwindAction::Continue,
+                        call_source: CallSource::Misc,
+                        fn_span: self.span,
+                    },
+                    false,
+                );
+                self.block(vec![], TerminatorKind::Return, false);
+                return;
+            }
             ty::Dynamic(..) => {
                 let vtable_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
                 // The `vtable_size` intrinsic takes a `*const ()`.
                 let vtable_ptr_ty = Ty::new_ptr(tcx, tcx.types.unit, ty::Mutability::Not);
                 let vtable_ptr = self.make_place(ty::Mutability::Not, vtable_ptr_ty);
                 self.block(
-                    vec![self.make_statement(StatementKind::Assign(Box::new((
+                    vec![self.make_assign(
                         vtable_ptr,
                         // `Metadata<dyn Trait>` is essentially just a vtable ptr.
                         Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
-                    ))))],
+                    )],
                     TerminatorKind::Call {
                         func: Operand::function_handle(
                             tcx,
@@ -1397,7 +1430,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 bug!("{} should not occur here", self_ty)
             }
         };
-        let stmt = self.make_statement(StatementKind::Assign(Box::new((dest, alignment))));
+        let stmt = self.make_assign(dest, alignment);
         self.block(vec![stmt], TerminatorKind::Return, false);
     }
 
@@ -1464,10 +1497,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
 
             let discr_place = self.make_place(ty::Mutability::Not, ret_ty.discriminant_ty(tcx));
 
-            let discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                discr_place,
-                Rvalue::Discriminant(field_align_ret),
-            ))));
+            let discr_stmt = self.make_assign(discr_place, Rvalue::Discriminant(field_align_ret));
             self.block(
                 vec![discr_stmt],
                 TerminatorKind::SwitchInt {
@@ -1483,7 +1513,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 false,
             );
 
-            let assign_none_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let assign_none_stmt = self.make_assign(
                 Place::return_place(),
                 Rvalue::Aggregate(
                     Box::new(AggregateKind::Adt(
@@ -1495,7 +1525,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     )),
                     [].into(),
                 ),
-            ))));
+            );
             self.block(vec![assign_none_stmt], TerminatorKind::Return, false);
 
             // (field_align_ret as Some).0: Alignment
@@ -1609,7 +1639,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         let discr_ty = args.discr_ty(self.tcx);
         let temp = self.make_place(Mutability::Mut, discr_ty);
         let rvalue = Rvalue::Discriminant(src);
-        let statement = self.make_statement(StatementKind::Assign(Box::new((temp, rvalue))));
+        let statement = self.make_assign(temp, rvalue);
         match &mut self.blocks[switch] {
             BasicBlockData { statements, terminator: Some(Terminator { kind, .. }), .. } => {
                 statements.push(statement);
@@ -1705,8 +1735,7 @@ impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
                 self.span,
             );
 
-            let retval_stmt = self
-                .make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(equal_const)))));
+            let retval_stmt = self.make_assign(dest, Rvalue::Use(equal_const));
 
             self.block(vec![retval_stmt], TerminatorKind::Return, false);
             return;
@@ -1744,23 +1773,23 @@ impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
             let tmp_discriminant = self.make_place(Mutability::Not, self.tcx.types.i8);
 
             // `let lhs_ref: &ty = &(*lhs).field_idx;`
-            let lhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let lhs_ref_stmt = self.make_assign(
                 lhs_ref,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     lhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
                 ),
-            ))));
+            );
             // `let rhs_ref: &ty = &(*rhs).field_idx;`
-            let rhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let rhs_ref_stmt = self.make_assign(
                 rhs_ref,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     rhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
                 ),
-            ))));
+            );
 
             let discriminant_check_block = self.block_index_offset(1);
             let return_this_ordering_block = self.block_index_offset(2);
@@ -1787,10 +1816,8 @@ impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
 
             self.block(vec![lhs_ref_stmt, rhs_ref_stmt], cmp_call, false);
 
-            let tmp_discriminant_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                tmp_discriminant,
-                Rvalue::Discriminant(tmp_ordering),
-            ))));
+            let tmp_discriminant_stmt =
+                self.make_assign(tmp_discriminant, Rvalue::Discriminant(tmp_ordering));
 
             let discriminant_switch_int = TerminatorKind::SwitchInt {
                 discr: Operand::Copy(tmp_discriminant),
@@ -1803,10 +1830,7 @@ impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
 
             self.block(vec![tmp_discriminant_stmt], discriminant_switch_int, false);
 
-            let retval_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                dest,
-                Rvalue::Use(Operand::Copy(tmp_ordering)),
-            ))));
+            let retval_stmt = self.make_assign(dest, Rvalue::Use(Operand::Copy(tmp_ordering)));
 
             self.block(vec![retval_stmt], TerminatorKind::Return, false);
         }
@@ -1820,23 +1844,23 @@ impl<'tcx> PtrMetadataCmpShimBuilder<'tcx> {
             let rhs_ref = self.make_place(Mutability::Not, field_ref_ty);
 
             // `let lhs_ref: &ty = &(*lhs).field_idx;`
-            let lhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let lhs_ref_stmt = self.make_assign(
                 lhs_ref,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     lhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
                 ),
-            ))));
+            );
             // `let rhs_ref: &ty = &(*rhs).field_idx;`
-            let rhs_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let rhs_ref_stmt = self.make_assign(
                 rhs_ref,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     rhs.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
                 ),
-            ))));
+            );
 
             let return_block = self.block_index_offset(1);
 
@@ -2023,26 +2047,25 @@ impl<'tcx> PtrMetadataFmtShimBuilder<'tcx> {
             );
             let dyn_field_ref_place = self.make_place(Mutability::Not, dyn_debug_ref_type);
 
-            let reborrow_debug_struct_stmt =
-                self.make_statement(StatementKind::Assign(Box::new((
-                    debug_struct_ref_place,
-                    Rvalue::Ref(
-                        self.tcx.lifetimes.re_erased,
-                        BorrowKind::Mut { kind: MutBorrowKind::Default },
-                        debug_struct_place,
-                    ),
-                ))));
+            let reborrow_debug_struct_stmt = self.make_assign(
+                debug_struct_ref_place,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Mut { kind: MutBorrowKind::Default },
+                    debug_struct_place,
+                ),
+            );
 
-            let field_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let field_ref_stmt = self.make_assign(
                 field_ref_place,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     this.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
                 ),
-            ))));
+            );
 
-            let dyn_field_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let dyn_field_ref_stmt = self.make_assign(
                 dyn_field_ref_place,
                 Rvalue::Cast(
                     CastKind::PointerCoercion(
@@ -2052,7 +2075,7 @@ impl<'tcx> PtrMetadataFmtShimBuilder<'tcx> {
                     Operand::Move(field_ref_place),
                     dyn_debug_ref_type,
                 ),
-            ))));
+            );
 
             let name = make_const_str_operand(field_name.as_str());
             let args = [
@@ -2095,14 +2118,14 @@ impl<'tcx> PtrMetadataFmtShimBuilder<'tcx> {
 
         let debug_struct_ref_place = self.make_place(Mutability::Mut, debug_struct_mut_ref_type);
 
-        let reborrow_debug_struct_stmt = self.make_statement(StatementKind::Assign(Box::new((
+        let reborrow_debug_struct_stmt = self.make_assign(
             debug_struct_ref_place,
             Rvalue::Ref(
                 self.tcx.lifetimes.re_erased,
                 BorrowKind::Mut { kind: MutBorrowKind::Default },
                 debug_struct_place,
             ),
-        ))));
+        );
 
         let args = [Spanned { node: Operand::Move(debug_struct_ref_place), span: DUMMY_SP }];
         let target = self.block_index_offset(1);
@@ -2219,14 +2242,14 @@ impl<'tcx> PtrMetadataHashShimBuilder<'tcx> {
                 Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, field_ty),
             );
 
-            let field_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let field_ref_stmt = self.make_assign(
                 field_ref_place,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     this.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx),
                 ),
-            ))));
+            );
 
             let args = [
                 Spanned { node: Operand::Move(field_ref_place), span: DUMMY_SP },
@@ -2298,8 +2321,7 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
                 interpret::Scalar::from_i8(0),
                 builder.span,
             );
-            let assign_false_to_return_place = builder
-                .make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(false_const)))));
+            let assign_false_to_return_place = builder.make_assign(dest, Rvalue::Use(false_const));
             builder.block(vec![assign_false_to_return_place], TerminatorKind::Return, false);
         }
         ty::InitMethod::InitOnce => {
@@ -2415,14 +2437,14 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, init_elem_ty),
             );
 
-            let elem_init_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let elem_init_ref_stmt = self.make_assign(
                 elem_init_ref_place,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Shared,
                     this.project_deeper(&[PlaceElem::Field(field_idx, init_elem_ty)], self.tcx),
                 ),
-            ))));
+            );
 
             let elem_metadata_dest = dest.project_deeper(
                 &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(self.tcx, elem_ty))],
@@ -2503,8 +2525,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 .into(),
             );
 
-            let write_ok_unit_stmt =
-                self.make_statement(StatementKind::Assign(Box::new((return_place, ok_unit))));
+            let write_ok_unit_stmt = self.make_assign(return_place, ok_unit);
 
             self.block(vec![write_ok_unit_stmt], TerminatorKind::Return, false);
             return;
@@ -2555,20 +2576,20 @@ impl<'tcx> InitShimBuilder<'tcx> {
         let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
         let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
         // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
-        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+        entry_stmts.push(self.make_assign(
             dst_mu_ptr,
             Rvalue::RawPtr(
                 RawPtrKind::Mut,
                 dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
             ),
-        )))));
+        ));
 
         let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
         let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
-        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+        entry_stmts.push(self.make_assign(
             dst_ptr,
             Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
-        )))));
+        ));
 
         let entry_target = self.block_index_offset(3);
         self.block(entry_stmts, TerminatorKind::Goto { target: entry_target }, false);
@@ -2608,20 +2629,16 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 //  _arg_needs_drop = false;
                 //  _elem_arg = move arg;
                 //  goto -> next;
-                let move_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                    elem_arg,
-                    Rvalue::Use(Operand::Move(arg)),
-                ))));
-                let set_arg_needs_drop_stmt =
-                    self.make_statement(StatementKind::Assign(Box::new((
-                        arg_needs_drop,
-                        Rvalue::Use(Operand::const_from_scalar(
-                            self.tcx,
-                            self.tcx.types.bool,
-                            interpret::Scalar::from_bool(false),
-                            self.span,
-                        )),
-                    ))));
+                let move_stmt = self.make_assign(elem_arg, Rvalue::Use(Operand::Move(arg)));
+                let set_arg_needs_drop_stmt = self.make_assign(
+                    arg_needs_drop,
+                    Rvalue::Use(Operand::const_from_scalar(
+                        self.tcx,
+                        self.tcx.types.bool,
+                        interpret::Scalar::from_bool(false),
+                        self.span,
+                    )),
+                );
                 self.block(
                     vec![move_stmt, set_arg_needs_drop_stmt],
                     TerminatorKind::Goto { target },
@@ -2656,49 +2673,41 @@ impl<'tcx> InitShimBuilder<'tcx> {
             );
             let dst_elem_ptr_ty = Ty::new_mut_ptr(self.tcx, elem_ty);
             let dst_elem_ptr = self.make_place(Mutability::Not, dst_elem_ptr_ty);
-            let dst_elem_ptr_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                dst_elem_ptr,
-                Rvalue::RawPtr(RawPtrKind::Mut, dst_elem_place),
-            ))));
+            let dst_elem_ptr_stmt =
+                self.make_assign(dst_elem_ptr, Rvalue::RawPtr(RawPtrKind::Mut, dst_elem_place));
 
             //  _dst_mu_elem_ptr = _dst_elem_ptr as *mut MaybeUninit<ELEM>;
             let dst_mu_elem_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_elem_ty);
             let dst_mu_elem_ptr = self.make_place(Mutability::Not, dst_mu_elem_ptr_ty);
-            let cast_elem_ptr_to_mu_elem_ptr_stmt =
-                self.make_statement(StatementKind::Assign(Box::new((
-                    dst_mu_elem_ptr,
-                    Rvalue::Cast(
-                        CastKind::PtrToPtr,
-                        Operand::Move(dst_elem_ptr),
-                        dst_mu_elem_ptr_ty,
-                    ),
-                ))));
+            let cast_elem_ptr_to_mu_elem_ptr_stmt = self.make_assign(
+                dst_mu_elem_ptr,
+                Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_elem_ptr), dst_mu_elem_ptr_ty),
+            );
 
             //  _dst_mu_elem_ref = &mut *_dst_mu_elem_ptr;
             let dst_mu_elem_ref_ty =
                 Ty::new_mut_ref(self.tcx, self.tcx.lifetimes.re_erased, mu_elem_ty);
             let dst_mu_elem_ref = self.make_place(Mutability::Not, dst_mu_elem_ref_ty);
 
-            let dst_mu_elem_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let dst_mu_elem_ref_stmt = self.make_assign(
                 dst_mu_elem_ref,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Mut { kind: MutBorrowKind::Default },
                     dst_mu_elem_ptr.project_deeper(&[PlaceElem::Deref], self.tcx),
                 ),
-            ))));
+            );
 
             //  _init_elem_IDX_needs_drop = false;
-            let set_init_elem_needs_drop_stmt =
-                self.make_statement(StatementKind::Assign(Box::new((
-                    init_elems_needs_drop[idx],
-                    Rvalue::Use(Operand::const_from_scalar(
-                        self.tcx,
-                        self.tcx.types.bool,
-                        interpret::Scalar::from_bool(false),
-                        self.span,
-                    )),
-                ))));
+            let set_init_elem_needs_drop_stmt = self.make_assign(
+                init_elems_needs_drop[idx],
+                Rvalue::Use(Operand::const_from_scalar(
+                    self.tcx,
+                    self.tcx.types.bool,
+                    interpret::Scalar::from_bool(false),
+                    self.span,
+                )),
+            );
 
             //  _return_place = <INITELEM as PinInitOnce<ELEM, Error, Arg>>::init_once(
             //    move this.IDX,
@@ -2752,10 +2761,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
             //  switchInt [0 -> next, otherwise -> failure_cleanup_target]
             let continue_target = self.block_index_offset(1);
             let result_discr = self.make_place(Mutability::Not, self.tcx.types.isize);
-            let get_result_discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                result_discr,
-                Rvalue::Discriminant(return_place),
-            ))));
+            let get_result_discr_stmt =
+                self.make_assign(result_discr, Rvalue::Discriminant(return_place));
             self.block(
                 vec![get_result_discr_stmt],
                 TerminatorKind::SwitchInt {
@@ -2964,7 +2971,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, component_ty),
             );
 
-            let component_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+            let component_ref_stmt = self.make_assign(
                 component_ref_place,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
@@ -2974,7 +2981,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                         self.tcx,
                     ),
                 ),
-            ))));
+            );
 
             let elem_metadata_dest = dest.project_deeper(
                 &[PlaceElem::Field(adt_field_idx, Ty::new_ptr_metadata(self.tcx, adt_field_ty))],
@@ -3045,20 +3052,20 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
             let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
             // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
-            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+            stmts.push(self.make_assign(
                 dst_mu_ptr,
                 Rvalue::RawPtr(
                     RawPtrKind::Mut,
                     dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
                 ),
-            )))));
+            ));
 
             let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
             let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
-            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+            stmts.push(self.make_assign(
                 dst_ptr,
                 Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
-            )))));
+            ));
             let dst_place = if adt_def.is_enum() {
                 dst_ptr.project_deeper(
                     &[PlaceElem::Deref, PlaceElem::Downcast(None, init_info.variant)],
@@ -3084,10 +3091,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 let field_dst_place =
                     dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx);
 
-                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                    field_dst_place,
-                    Rvalue::Use(op),
-                )))));
+                stmts.push(self.make_assign(field_dst_place, Rvalue::Use(op)));
             }
 
             // Set the discriminant if this is an enum
@@ -3118,9 +3122,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 .into(),
             );
 
-            stmts.push(
-                self.make_statement(StatementKind::Assign(Box::new((return_place, ok_unit)))),
-            );
+            stmts.push(self.make_assign(return_place, ok_unit));
 
             self.block(stmts, TerminatorKind::Return, false);
             return;
@@ -3173,20 +3175,20 @@ impl<'tcx> InitShimBuilder<'tcx> {
         let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
         let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
         // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
-        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+        entry_stmts.push(self.make_assign(
             dst_mu_ptr,
             Rvalue::RawPtr(
                 RawPtrKind::Mut,
                 dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
             ),
-        )))));
+        ));
 
         let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
         let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
-        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+        entry_stmts.push(self.make_assign(
             dst_ptr,
             Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
-        )))));
+        ));
         let dst_place = if adt_def.is_enum() {
             dst_ptr.project_deeper(
                 &[PlaceElem::Deref, PlaceElem::Downcast(None, init_info.variant)],
@@ -3280,22 +3282,22 @@ impl<'tcx> InitShimBuilder<'tcx> {
                         .project_deeper(&[PlaceElem::Field(adt_field_idx, adt_field_ty)], self.tcx);
                     let adt_field_ptr_ty = Ty::new_mut_ptr(self.tcx, adt_field_ty);
                     let adt_field_ptr = self.make_place(Mutability::Not, adt_field_ptr_ty);
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    stmts.push(self.make_assign(
                         adt_field_ptr,
                         Rvalue::RawPtr(RawPtrKind::Mut, adt_field_place),
-                    )))));
+                    ));
 
                     //  _dst_ptr = _adt_field_ptr as *mut MaybeUninit<ELEM>;
                     let mu_adt_field_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_adt_field_ty);
                     let mu_adt_field_ptr = self.make_place(Mutability::Not, mu_adt_field_ptr_ty);
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    stmts.push(self.make_assign(
                         mu_adt_field_ptr,
                         Rvalue::Cast(
                             CastKind::PtrToPtr,
                             Operand::Move(adt_field_ptr),
                             mu_adt_field_ptr_ty,
                         ),
-                    )))));
+                    ));
 
                     (adt_field_ty, mu_adt_field_ptr)
                 } else {
@@ -3303,7 +3305,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                     let mu_unit_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_unit_ty);
                     let mu_unit_ptr = self.make_place(Mutability::Not, mu_unit_ptr_ty);
 
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    stmts.push(self.make_assign(
                         mu_unit_ptr,
                         Rvalue::Cast(
                             CastKind::PointerWithExposedProvenance,
@@ -3315,7 +3317,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                             ),
                             mu_unit_ptr_ty,
                         ),
-                    )))));
+                    ));
 
                     (self.tcx.types.unit, mu_unit_ptr)
                 };
@@ -3329,17 +3331,17 @@ impl<'tcx> InitShimBuilder<'tcx> {
                     Ty::new_maybe_uninit(self.tcx, component_dst_ty),
                 ),
             );
-            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+            stmts.push(self.make_assign(
                 dst_ref,
                 Rvalue::Ref(
                     self.tcx.lifetimes.re_erased,
                     BorrowKind::Mut { kind: MutBorrowKind::Default },
                     component_dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx),
                 ),
-            )))));
+            ));
 
             //  _component_IDX_needs_drop = false;
-            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+            stmts.push(self.make_assign(
                 components_needs_drop[component_idx],
                 Rvalue::Use(Operand::const_from_scalar(
                     self.tcx,
@@ -3347,7 +3349,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                     interpret::Scalar::from_bool(false),
                     self.span,
                 )),
-            )))));
+            ));
 
             //  _return_place = <INITELEM as PinInitOnce<ELEM, Error, Arg>>::init_once(
             //    move this.IDX,
@@ -3397,10 +3399,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
             //  switchInt [0 -> next, otherwise -> failure_cleanup_target]
             let continue_target = self.block_index_offset(1);
             let result_discr = self.make_place(Mutability::Not, self.tcx.types.isize);
-            let get_result_discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
-                result_discr,
-                Rvalue::Discriminant(return_place),
-            ))));
+            let get_result_discr_stmt =
+                self.make_assign(result_discr, Rvalue::Discriminant(return_place));
             self.block(
                 vec![get_result_discr_stmt],
                 TerminatorKind::SwitchInt {
@@ -3446,10 +3446,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let field_dst_place =
                 dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self.tcx);
 
-            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                field_dst_place,
-                Rvalue::Use(op),
-            )))));
+            stmts.push(self.make_assign(field_dst_place, Rvalue::Use(op)));
         }
         // Set the discriminant (if enum)
         if adt_def.is_enum() {
@@ -3613,13 +3610,13 @@ impl<'tcx> InitShimBuilder<'tcx> {
             let field_ty = adt_variant.fields[field_idx].ty(self_.tcx, adt_args);
             let component_arg_ty = Ty::new_mut_ptr(self_.tcx, field_ty);
             let component_arg = self_.make_place(Mutability::Not, component_arg_ty);
-            let stmt = self_.make_statement(StatementKind::Assign(Box::new((
+            let stmt = self_.make_assign(
                 component_arg,
                 Rvalue::RawPtr(
                     RawPtrKind::Mut,
                     dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self_.tcx),
                 ),
-            ))));
+            );
             (Some(stmt), component_arg, component_arg_ty)
         };
         let mut mk_elem_arg = |self_: &mut Self, arg: InitAdtComponentArg| match arg {
@@ -3659,10 +3656,12 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 }
                 let elem_arg_ty = Ty::new_tup(self.tcx, &tys);
                 let elem_arg = self.make_place(Mutability::Not, elem_arg_ty);
-                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                    elem_arg,
-                    Rvalue::Aggregate(Box::new(AggregateKind::Tuple), ops),
-                )))));
+                stmts.push(
+                    self.make_assign(
+                        elem_arg,
+                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), ops),
+                    ),
+                );
                 let target = self.block_index_offset(1);
                 self.block(stmts, TerminatorKind::Goto { target }, false);
                 (Operand::Move(elem_arg), elem_arg_ty)
@@ -3693,10 +3692,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
             self.make_place(Mutability::Not, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
 
         // `let ref_loc: &ty = &src;`
-        let statement = self.make_statement(StatementKind::Assign(Box::new((
-            ref_loc,
-            Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src),
-        ))));
+        let statement = self
+            .make_assign(ref_loc, Rvalue::Ref(tcx.lifetimes.re_erased, BorrowKind::Shared, src));
 
         // `let loc = Clone::clone(ref_loc);`
         self.block(
