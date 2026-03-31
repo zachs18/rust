@@ -163,6 +163,8 @@ language_item_table! {
     OffsetOf,                sym::offset_of,           offset_of,                  Target::Fn,             GenericRequirement::Exact(1);
     OffsetForMeta,           sym::offset_for_meta,     offset_for_meta,            Target::Fn,             GenericRequirement::Exact(1);
     AlignmentStruct,         sym::alignment_struct,    alignment_struct,           Target::Struct,         GenericRequirement::Exact(0);
+    AlignmentMax,            sym::alignment_max_method, alignment_max_method,      Target::Method(MethodKind::Inherent), GenericRequirement::None;
+    AlignmentMin,            sym::alignment_min_method, alignment_min_method,      Target::Method(MethodKind::Inherent), GenericRequirement::None;
     /// Trait injected by `#[derive(PartialEq)]`, (i.e. "Partial EQ").
     StructuralPeq,           sym::structural_peq,      structural_peq_trait,       Target::Trait,          GenericRequirement::None;
     Copy,                    sym::copy,                copy_trait,                 Target::Trait,          GenericRequirement::Exact(0);

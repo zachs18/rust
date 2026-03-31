@@ -252,8 +252,21 @@ impl Alignment {
     }
 
     // FIXME(const-hack) Remove me once `Ord::max` is usable in const
-    pub(crate) const fn max(a: Self, b: Self) -> Self {
+    #[unstable(feature = "ptr_alignment_type", issue = "102070")]
+    #[lang = "alignment_max_method"]
+    #[doc(hidden)]
+    #[inline]
+    pub const fn max(a: Self, b: Self) -> Self {
         if a.as_usize() > b.as_usize() { a } else { b }
+    }
+
+    // FIXME(const-hack) Remove me once `Ord::min` is usable in const
+    #[unstable(feature = "ptr_alignment_type", issue = "102070")]
+    #[lang = "alignment_min_method"]
+    #[doc(hidden)]
+    #[inline]
+    pub const fn min(a: Self, b: Self) -> Self {
+        if a.as_usize() < b.as_usize() { a } else { b }
     }
 }
 

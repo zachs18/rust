@@ -1048,10 +1048,9 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
     }
 
     fn only_alignment_shim(&mut self) {
-        let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
+        let LayoutForMetaShimExtra { method_def_id, self_ty, .. } = self.extra;
         let tcx = self.tcx;
         let typing_env = ty::TypingEnv::fully_monomorphized();
-        let option_did = tcx.require_lang_item(LangItem::Option, self.span);
         let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
 
         let dest = Place::return_place();
@@ -1125,13 +1124,30 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
 
                 let pack = def.repr().pack;
                 if pack == Some(Align::ONE) {
+                    // The alignment of a `repr(packed(1))` ADT is always 1, so we can just return that.
+                    // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
+                    // or `Option<Alignment>` (which is niche-optimized), so a nonzero-`usize`-valued
+                    // scalar constant is valid
                     break 'adt_alignment Rvalue::Use(Operand::const_from_scalar(
                         self.tcx,
-                        alignment_struct_ty,
+                        dest_ty,
                         interpret::Scalar::from_target_usize(1, &tcx),
                         self.span,
                     ));
                 }
+
+                let alignment_max_fn = Operand::function_handle(
+                    tcx,
+                    tcx.require_lang_item(LangItem::AlignmentMax, self.span),
+                    [],
+                    self.span,
+                );
+                let alignment_min_fn = Operand::function_handle(
+                    tcx,
+                    tcx.require_lang_item(LangItem::AlignmentMin, self.span),
+                    [],
+                    self.span,
+                );
 
                 let dyn_acc = self.make_place(ty::Mutability::Not, alignment_struct_ty);
                 let mut first_dyn = true;
@@ -1139,7 +1155,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
 
                 for (field_idx, field) in def.non_enum_variant().fields.iter_enumerated() {
                     let field_ty = field.ty(tcx, args);
-                    let dynamic_alignment = match self.field_align(
+                    let field_dynamic_alignment = match self.field_align(
                         field_ty,
                         meta.project_deeper(
                             &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(tcx, field_ty))],
@@ -1153,17 +1169,36 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                         }
                     };
                     if first_dyn {
+                        // For the first dynamically-aligned field, just do
+                        // _dyn_acc = field_dynamic_alignment;
                         first_dyn = false;
                         self.block(
                             vec![self.make_statement(StatementKind::Assign(Box::new((
                                 dyn_acc,
-                                Rvalue::Use(dynamic_alignment),
+                                Rvalue::Use(field_dynamic_alignment),
                             ))))],
                             TerminatorKind::Goto { target: self.block_index_offset(1) },
                             false,
                         );
                     } else {
-                        todo!();
+                        // For later fields, do
+                        // _dyn_acc = Alignment::max(_dyn_acc, field_dynamic_alignment) [return -> next, unwind continue]
+                        self.block(
+                            vec![],
+                            TerminatorKind::Call {
+                                func: alignment_max_fn.clone(),
+                                args: Box::new([
+                                    Spanned { node: Operand::Copy(dyn_acc), span: self.span },
+                                    Spanned { node: field_dynamic_alignment, span: self.span },
+                                ]),
+                                target: Some(self.block_index_offset(1)),
+                                destination: dyn_acc,
+                                unwind: UnwindAction::Continue,
+                                call_source: CallSource::Misc,
+                                fn_span: self.span,
+                            },
+                            false,
+                        );
                     }
                 }
                 debug_assert!(
@@ -1171,11 +1206,62 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     "non-`Aligned` struct/union should have at least one non-`Aligned` field"
                 );
                 if static_acc > Align::ONE {
-                    todo!()
+                    // _dyn_acc = Alignment::max(_dyn_acc, max_static_field_alignment) [return -> next, unwind continue]
+                    self.block(
+                        vec![],
+                        TerminatorKind::Call {
+                            func: alignment_max_fn,
+                            args: Box::new([
+                                Spanned { node: Operand::Copy(dyn_acc), span: self.span },
+                                Spanned {
+                                    node: Operand::const_from_scalar(
+                                        self.tcx,
+                                        alignment_struct_ty,
+                                        interpret::Scalar::from_target_usize(
+                                            static_acc.bytes(),
+                                            &tcx,
+                                        ),
+                                        self.span,
+                                    ),
+                                    span: self.span,
+                                },
+                            ]),
+                            target: Some(self.block_index_offset(1)),
+                            destination: dyn_acc,
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
                 }
 
                 if let Some(pack) = pack {
-                    todo!()
+                    // _dyn_acc = Alignment::min(_dyn_acc, pack_alignment) [return -> next, unwind continue]
+                    self.block(
+                        vec![],
+                        TerminatorKind::Call {
+                            func: alignment_min_fn,
+                            args: Box::new([
+                                Spanned { node: Operand::Copy(dyn_acc), span: self.span },
+                                Spanned {
+                                    node: Operand::const_from_scalar(
+                                        self.tcx,
+                                        alignment_struct_ty,
+                                        interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
+                                        self.span,
+                                    ),
+                                    span: self.span,
+                                },
+                            ]),
+                            target: Some(self.block_index_offset(1)),
+                            destination: dyn_acc,
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
                 }
 
                 // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
@@ -1187,7 +1273,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ty::Slice(elem_ty) | ty::Array(elem_ty, _) => todo!("{:?}", elem_ty),
             ty::Dynamic(..) => todo!(),
 
-            ty::Adt(def, args) => todo!("{:?} {:?}", def, args),
             ty::Tuple(..) => todo!(),
             ty::Pat(_inner_ty, _) => todo!(),
             ty::UnsafeBinder(..) => todo!(),
@@ -1208,7 +1293,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
     ///
     /// Should only be used in `only_alignment_shim`.
     fn field_align(&mut self, ty: Ty<'tcx>, meta: Place<'tcx>) -> Either<Operand<'tcx>, Align> {
-        let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
+        let LayoutForMetaShimExtra { method_def_id, checked, .. } = self.extra;
         let tcx = self.tcx;
         let typing_env = ty::TypingEnv::fully_monomorphized();
         let option_did = tcx.require_lang_item(LangItem::Option, self.span);
@@ -1230,7 +1315,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         let field_align_ret = self.make_place(ty::Mutability::Not, ret_ty);
 
         // bb:
-        //  _field_align = <T as MetaAligned>::(un)checked_align_for_meta(Copy meta) [return -> nextbb, unwind continue]
+        //  field_align_ret = <T as MetaAligned>::(un)checked_align_for_meta(Copy meta) [return -> nextbb, unwind continue]
         // nextbb: ...
         self.block(
             vec![],
@@ -1255,7 +1340,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
 
         if checked {
             // bb:
-            //  _discr = discriminant(_field_align);
+            //  _discr = discriminant(field_align_ret);
             //  switchInt _discr [None -> returnbb, Some(_) -> nextbb]
             // returnbb:
             //  _0 = None
@@ -1298,10 +1383,14 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ))));
             self.block(vec![assign_none_stmt], TerminatorKind::Return, false);
 
-            Either::Left(Operand::Copy(
-                field_align_ret
-                    .project_deeper(&[PlaceElem::Downcast(None, VariantIdx::from_usize(1))], tcx),
-            ))
+            // (field_align_ret as Some).0: Alignment
+            Either::Left(Operand::Copy(field_align_ret.project_deeper(
+                &[
+                    PlaceElem::Downcast(None, VariantIdx::from_usize(1)),
+                    PlaceElem::Field(FieldIdx::ZERO, alignment_struct_ty),
+                ],
+                tcx,
+            )))
         } else {
             Either::Left(Operand::Copy(field_align_ret))
         }
