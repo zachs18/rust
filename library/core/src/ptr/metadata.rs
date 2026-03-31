@@ -7,14 +7,10 @@ use crate::intrinsics::{aggregate_raw_ptr, ptr_metadata};
 use crate::marker::{MetaSized, PointeeSized};
 use crate::ptr::NonNull;
 
+/// The type for pointer metadata in pointers and references to `T`.
+///
 /// `Metadata<T>` implements [`Copy`], [`Ord`], [`Hash`], [`Debug`](core::fmt::Debug), [`Send`],
 /// [`Sync`], [`Unpin`], and [`Freeze`](core::marker::Freeze) for all `T`.
-///
-/// FIXME(ptr_metadata_v2): fix these docs to be about `builtin # ptr_metadata(T)` type.
-///
-/// FIXME(ptr_metadata_v2): consider whether to reintroduce `Pointee` as `SimplePointee`
-///
-/// Provides the pointer metadata type of any pointed-to type.
 ///
 /// # Pointer metadata
 ///
@@ -23,30 +19,29 @@ use crate::ptr::NonNull;
 ///
 /// For statically-sized types (that implement the `Sized` traits)
 /// as well as for `extern` types,
-/// pointers are said to be “thin”: metadata is zero-sized and its type is `()`.
+/// pointers are said to be “thin”: metadata is zero-sized.
 ///
 /// Pointers to [dynamically-sized types][dst] are said to be “wide” or “fat”,
-/// they have non-zero-sized metadata:
-///
-/// * For structs whose last field is a DST, metadata is the metadata for the last field
-/// * For the `str` type, metadata is the length in bytes as `usize`
-/// * For slice types like `[T]`, metadata is the length in items as `usize`
-/// * For trait objects like `dyn SomeTrait`, metadata is [`DynMetadata<Self>`][DynMetadata]
-///   (e.g. `DynMetadata<dyn SomeTrait>`)
-///
-/// In the future, the Rust language may gain new kinds of types
-/// that have different pointer metadata.
+/// they have non-zero-sized metadata.
 ///
 /// [dst]: https://doc.rust-lang.org/nomicon/exotic-sizes.html#dynamically-sized-types-dsts
 ///
+/// # Fields
 ///
-/// # The `Pointee` trait
+/// `Metadata<T>` has different fields depending on `T`:
 ///
-/// The point of this trait is its `Metadata` associated type,
-/// which is `()` or `usize` or `DynMetadata<_>` as described above.
-/// It is automatically implemented for every type.
-/// It can be assumed to be implemented in a generic context, even without a corresponding bound.
+/// * For primitive types which are always `Thin` (integers, `!`, `fn` pointers, `extern type`s, etc), `Metadata<T>` has no fields.
+/// * For the `str` type, `Metadata<str>` has one field `len: usize`.
+/// * For slice types `[T]`, `Metadata<[T]>` has two fields `len: usize` and `elem: Metadata<T>`.
+/// * For array types `[T; N]`, `Metadata<[T]>` has one `elem: Metadata<T>`.
+/// * For trait objects like `dyn SomeTrait`, `Metadata<dyn SomeTrait>` has one field of type [`DynMetadata<dyn SomeTrait>`][DynMetadata]
+/// * For tuples, for each field `U` of the tuple, `Metadata<T>` has a corresponding field of type `Metadata<U>`.
+/// * For structs and unions, for each field `f: FieldTy` of the struct/union, `Metadata<T>` has a corresponding field `f: Metadata<FieldTy>`.
+/// * For enums, `Metadata<T>` has no fields.
+/// * For `unsized type`s, `Metadata<T>` has the fields listed in the `unsized type` declaration.
 ///
+/// In the future, the Rust language may gain new kinds of types
+/// that have different pointer metadata.
 ///
 /// # Usage
 ///
@@ -60,19 +55,70 @@ use crate::ptr::NonNull;
 /// with [`from_raw_parts`] or [`from_raw_parts_mut`].
 ///
 /// [`to_raw_parts`]: *const::to_raw_parts
+///
+/// Metadata can be constructed from scratch using the [`build_metadata!`] macro by providing a value for each of `Metadata<T>`'s fields.
+///
+/// # "Safe" metadata
+///
+/// Raw pointers may have any metadata value that can be constructed with [`build_metadata!`].
+///
+/// Any metadata value which is used as the metadata for a reference must be "safe".
+/// For types which implement [`MetaSized`] (or [`MetaAligned`]), any "safe"
+/// metadata value must have a valid size and alignment (or only alignment).
+//FIXME(ptr_metadata_v2): make these docs better.
+///
+/// For types with builtin [`MetaSized`]/[`MetaAligned`] impls, a metadata value is "safe" if and only if
+/// it's computed layout (computed with infinite precision) has a size `<= isize::MAX`.
+///
+/// For `unsized type`s with custom [`MetaSized`]/[`MetaAligned`] impls, the author of the `unsized type` should define what
+/// a "safe" metadata value is for their type. Note that if an `unsized type T` implements `Thin`, then the single value of `Metadata<T>` *must* be safe.
+///
+/// [`MetaAligned`]: core::marker::MetaAligned
+///
+/// # FIXME: put this somewhere
+///
+/// For `unsized type`s, privacy can prevent users from constructing arbitrary metadata values,
+/// so `unsized type` authors can make safety assumptions even about non-"safe" metadata values.
 pub type Metadata<T> = builtin!(ptr_metadata(T));
 
-/// FIXME(ptr_metadata_v2): add docs
+/// Macro to construct a [`Metadata<T>`].
 ///
-/// Macro to construct a [`Metadata`]
+/// The pointee type can be optionally specified with `for $ty;`, but if type inference can deduce
+/// the type this may not be necessary.
+///
+/// This is followed by a a list of fields `$fieldname: $valueexpr`, each terminated by a comma.
+///
+/// This is followed by either `..` or `.. $baseexpr`. Similar to struct expressions, this
+/// indicates that remaining fields are filled with their default values (for `..`), or values
+/// taken from `$baseexpr`. For [`Metadata<T>`], "default values" means that any fields which are
+/// [`Metadata<impl Thin>`] are filled in with their single possible value.
+///
+/// Either `..` or `..base` is required in all cases, so that more fields can be added to [`Metadata<T>`] for existing `T`s
+/// without breaking existing code.
+//FIXME(ptr_metadata_v2): actually change the parser to require that?
+///
+/// See the docs for [`Metadata`] for what fields are available for a given `T`.
+///
+/// # Usage
+///
+/// ```rust
+/// #![feature(ptr_metadata)]
+/// #![feature(ptr_metadata_v2)]
+/// #![feature(more_unsized)]
+/// # struct T;
+/// # use core::ptr::{Metadata, build_metadata};
+/// let _ = build_metadata!(for T; ..); // for `T: Thin`
+/// let _: Metadata<T> = build_metadata!(..); // If type inference can deduce the pointee type, it does not need to be specified
+///
+/// let slice_42: Metadata<[u8]> = build_metadata!(len: 42, ..); // For most types, if the field is `Metadata<impl Thin>`, it can be omitted
+/// let slice_37_of_slice_42: Metadata<[[u8]]> = build_metadata!(len: 37, elem: slice_42, ..);
+/// let slice_25_of_slice_42: Metadata<[[u8]]> = build_metadata!(len: 25, ..slice_37_of_slice_42); // Takes `elem` from `slice_37_of_slice_42`.
+/// ```
 #[unstable(feature = "ptr_metadata_v2", issue = "none")]
 #[allow_internal_unstable(builtin_syntax)]
 pub macro build_metadata {
-    ($(for $pointee:ty $(;)?)?) => { builtin # ptr_metadata($(for $pointee)?) },
     ($($field:ident $(: $value:expr)?,)* ..$($base:expr)?) => { builtin # ptr_metadata($($field $(: $value)?,)* .. $($base)?) },
     (for $pointee:ty; $($field:ident $(: $value:expr)?,)* ..$($base:expr)?) => { builtin # ptr_metadata(for $pointee; $($field $(: $value)?,)* .. $($base)?) },
-    ($($field:ident $(: $value:expr)?),+ $(,)?) => { builtin # ptr_metadata($($field $(: $value)?,)+) },
-    (for $pointee:ty; $($field:ident $(: $value:expr)?),+ $(,)?) => { builtin # ptr_metadata(for $pointee; $($field $(: $value)?,)+) },
 }
 
 /// Pointers to types implementing this trait are “thin”.
