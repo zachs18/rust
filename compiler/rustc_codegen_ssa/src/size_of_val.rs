@@ -436,6 +436,9 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         ty::Adt(adt_def, ..) if adt_def.is_enum() => {
             unimplemented!("unsized enums")
         }
+        ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
+            unimplemented!("call MetaSized::(un)checked_layout_for_meta")
+        }
         ty::Adt(..) | ty::Tuple(..) => {
             let FieldsShape::Arbitrary { in_memory_order, .. } = &layout.fields else {
                 bug!(

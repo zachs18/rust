@@ -134,16 +134,24 @@ pub macro build_metadata {
 ///     assert_eq!(size_of::<&T>(), size_of::<usize>())
 /// }
 /// ```
+///
+/// # Safety
+///
+/// Implementations of `Thin` are provided by the compiler for most types.
+///
+/// Only `unsized type`s may have a manual implementation of `Thin`. If an `unsized type`
+/// implements both `Thin` and `MetaSized` (or `MetaAligned`), then the single possible value
+/// of [`Metadata<Self>`] must be "safe" as described in `Metadata`'s documentation.
 #[unstable(feature = "ptr_metadata", issue = "81513")]
 #[fundamental]
 #[rustc_specialization_trait]
-#[rustc_deny_explicit_impl]
 #[rustc_dyn_incompatible_trait]
 // `Thin` being coinductive is okay for the same reasons as
 // `Sized`.
 #[rustc_coinductive]
+// `Thin` can only be manually implemented for `unsized type`s.
 #[lang = "thin_pointee_trait"]
-pub trait Thin: PointeeSized {}
+pub unsafe trait Thin: PointeeSized {}
 
 /// Extracts the metadata component of a pointer.
 ///

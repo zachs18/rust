@@ -529,6 +529,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         // Now, handle unsized cases
         match layout.ty.kind() {
             ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
+                if true {
+                    unimplemented!("call MetaSized::(un)checked_layout_for_meta");
+                }
                 debug_assert_matches!(
                     goal,
                     LayoutComputeGoal::OverallLayout,
