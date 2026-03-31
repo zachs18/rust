@@ -20,7 +20,9 @@ use rustc_span::{DUMMY_SP, Span, sym};
 use rustc_trait_selection::error_reporting::InferCtxtErrorExt;
 use rustc_trait_selection::traits::misc::{
     ConstParamTyImplementationError, CopyImplementationError, InfringingFieldsReason,
+    SizednessImplementationError, ThinInfringingFieldsReason,
     type_allowed_to_implement_const_param_ty, type_allowed_to_implement_copy,
+    type_allowed_to_implement_sizedness,
 };
 use rustc_trait_selection::traits::{self, ObligationCause, ObligationCtxt};
 use tracing::debug;
@@ -38,6 +40,9 @@ pub(super) fn check_trait<'tcx>(
     checker.check(lang_items.drop_trait(), visit_implementation_of_drop)?;
     checker.check(lang_items.async_drop_trait(), visit_implementation_of_drop)?;
     checker.check(lang_items.copy_trait(), visit_implementation_of_copy)?;
+    checker.check(lang_items.thin_pointee_trait(), visit_implementation_of_sizedness)?;
+    checker.check(lang_items.meta_sized_trait(), visit_implementation_of_sizedness)?;
+    checker.check(lang_items.meta_aligned_trait(), visit_implementation_of_sizedness)?;
     checker.check(lang_items.unpin_trait(), visit_implementation_of_unpin)?;
     checker.check(lang_items.const_param_ty_trait(), |checker| {
         visit_implementation_of_const_param_ty(checker)
@@ -85,6 +90,50 @@ fn visit_implementation_of_drop(checker: &Checker<'_>) -> Result<(), ErrorGuaran
         span: impl_.self_ty.span,
         trait_: tcx.item_name(checker.impl_header.trait_ref.skip_binder().def_id),
     }))
+}
+
+fn visit_implementation_of_sizedness(checker: &Checker<'_>) -> Result<(), ErrorGuaranteed> {
+    let tcx = checker.tcx;
+    let impl_header = checker.impl_header;
+    let impl_did = checker.impl_def_id;
+    debug!("visit_implementation_of_sizedness: impl_did={:?}", impl_did);
+
+    let self_type = impl_header.trait_ref.instantiate_identity().self_ty();
+    debug!("visit_implementation_of_sizedness: self_type={:?} (bound)", self_type);
+
+    let param_env = tcx.param_env(impl_did);
+    assert!(!self_type.has_escaping_bound_vars());
+
+    debug!("visit_implementation_of_sizedness: self_type={:?} (free)", self_type);
+
+    if let ty::ImplPolarity::Negative = impl_header.polarity {
+        return Ok(());
+    }
+
+    let cause = traits::ObligationCause::misc(DUMMY_SP, impl_did);
+    match type_allowed_to_implement_sizedness(
+        tcx,
+        param_env,
+        self_type,
+        cause,
+        checker.trait_def_id,
+    ) {
+        Ok(()) => Ok(()),
+        Err(SizednessImplementationError::NotAnUnsizedType) => {
+            let span = tcx.hir_expect_item(impl_did).expect_impl().self_ty.span;
+            Err(tcx.dcx().emit_err(errors::SizednessImplOnNonUnsizedType { span }))
+        }
+        Err(SizednessImplementationError::ThinInfrigingFields(fields)) => {
+            let span = tcx.hir_expect_item(impl_did).expect_impl().self_ty.span;
+            Err(thin_infringing_fields_error(
+                tcx,
+                fields.into_iter().map(|(field, ty, reason)| (tcx.def_span(field.did), ty, reason)),
+                LangItem::ThinPointeeTrait,
+                impl_did,
+                span,
+            ))
+        }
+    }
 }
 
 fn visit_implementation_of_copy(checker: &Checker<'_>) -> Result<(), ErrorGuaranteed> {
@@ -779,6 +828,133 @@ fn infringing_fields_error<'tcx>(
         trait_name,
         label_spans,
         notes,
+    });
+
+    suggest_constraining_type_params(
+        tcx,
+        tcx.hir_get_generics(impl_did).expect("impls always have generics"),
+        &mut err,
+        bounds
+            .iter()
+            .map(|(param, constraint, def_id)| (param.as_str(), constraint.as_str(), *def_id)),
+        None,
+    );
+
+    err.emit()
+}
+
+fn thin_infringing_fields_error<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    infringing_tys: impl Iterator<Item = (Span, Ty<'tcx>, ThinInfringingFieldsReason<'tcx>)>,
+    lang_item: LangItem,
+    impl_did: LocalDefId,
+    impl_span: Span,
+) -> ErrorGuaranteed {
+    let trait_did = tcx.require_lang_item(lang_item, impl_span);
+
+    let trait_name = tcx.def_path_str(trait_did);
+
+    // We'll try to suggest constraining type parameters to fulfill the requirements of
+    // their `Thin` implementation.
+    let mut errors: BTreeMap<_, Vec<_>> = Default::default();
+    let mut bounds = vec![];
+
+    let mut seen_tys = FxHashSet::default();
+
+    let mut field_ty_pointee_not_thin_spans = Vec::new();
+    let mut invalid_field_ty_label_spans = Vec::new();
+
+    for (span, ty, reason) in infringing_tys {
+        // Only report an error once per type.
+        if !seen_tys.insert(ty) {
+            continue;
+        }
+
+        match reason {
+            ThinInfringingFieldsReason::Fulfill(fulfillment_errors) => {
+                field_ty_pointee_not_thin_spans.push(span);
+                for error in fulfillment_errors {
+                    let error_predicate = error.obligation.predicate;
+                    // Only note if it's not the root obligation, otherwise it's trivial and
+                    // should be self-explanatory (i.e. a field literally doesn't implement Copy).
+
+                    // FIXME: This error could be more descriptive, especially if the error_predicate
+                    // contains a foreign type or if it's a deeply nested type...
+                    if error_predicate != error.root_obligation.predicate {
+                        errors
+                            .entry((ty.to_string(), error_predicate.to_string()))
+                            .or_default()
+                            .push(error.obligation.cause.span);
+                    }
+                    if let ty::PredicateKind::Clause(ty::ClauseKind::Trait(ty::TraitPredicate {
+                        trait_ref,
+                        polarity: ty::PredicatePolarity::Positive,
+                        ..
+                    })) = error_predicate.kind().skip_binder()
+                    {
+                        let ty = trait_ref.self_ty();
+                        if let ty::Param(_) = ty.kind() {
+                            bounds.push((
+                                format!("{ty}"),
+                                trait_ref.print_trait_sugared().to_string(),
+                                Some(trait_ref.def_id),
+                            ));
+                        }
+                    }
+                }
+            }
+            ThinInfringingFieldsReason::Regions(region_errors) => {
+                field_ty_pointee_not_thin_spans.push(span);
+                for error in region_errors {
+                    let ty = ty.to_string();
+                    match error {
+                        RegionResolutionError::ConcreteFailure(origin, a, b) => {
+                            let predicate = format!("{b}: {a}");
+                            errors
+                                .entry((ty.clone(), predicate.clone()))
+                                .or_default()
+                                .push(origin.span());
+                            if let ty::RegionKind::ReEarlyParam(ebr) = b.kind()
+                                && ebr.is_named()
+                            {
+                                bounds.push((b.to_string(), a.to_string(), None));
+                            }
+                        }
+                        RegionResolutionError::GenericBoundFailure(origin, a, b) => {
+                            let predicate = format!("{a}: {b}");
+                            errors
+                                .entry((ty.clone(), predicate.clone()))
+                                .or_default()
+                                .push(origin.span());
+                            if let infer::region_constraints::GenericKind::Param(_) = a {
+                                bounds.push((a.to_string(), b.to_string(), None));
+                            }
+                        }
+                        _ => continue,
+                    }
+                }
+            }
+            ThinInfringingFieldsReason::NotPhantomDataOrMetadata => {
+                invalid_field_ty_label_spans.push(span);
+            }
+        }
+    }
+    let mut notes = Vec::new();
+    for ((ty, error_predicate), spans) in errors {
+        let span: MultiSpan = spans.into();
+        notes.push(errors::ImplForTyRequires {
+            span,
+            error_predicate,
+            trait_name: trait_name.clone(),
+            ty,
+        });
+    }
+
+    let mut err = tcx.dcx().create_err(errors::ThinCannotImplForTy {
+        span: impl_span,
+        notes,
+        invalid_field_ty_label_spans,
+        field_ty_pointee_not_thin_spans,
     });
 
     suggest_constraining_type_params(

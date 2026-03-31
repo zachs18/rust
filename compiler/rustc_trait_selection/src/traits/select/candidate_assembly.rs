@@ -121,13 +121,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // `DiscriminantKind` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate);
                 }
-                Some(LangItem::ThinPointeeTrait) => {
-                    self.assemble_builtin_sized_candidate(
-                        obligation.predicate.self_ty().skip_binder(),
-                        &mut candidates,
-                        SizedTraitKind::Thin,
-                    );
-                }
                 Some(LangItem::Sized) => {
                     self.assemble_builtin_sized_candidate(
                         obligation.predicate.self_ty().skip_binder(),
@@ -140,20 +133,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         obligation.predicate.self_ty().skip_binder(),
                         &mut candidates,
                         SizedTraitKind::Aligned,
-                    );
-                }
-                Some(LangItem::MetaSized) => {
-                    self.assemble_builtin_sized_candidate(
-                        obligation.predicate.self_ty().skip_binder(),
-                        &mut candidates,
-                        SizedTraitKind::MetaSized,
-                    );
-                }
-                Some(LangItem::MetaAligned) => {
-                    self.assemble_builtin_sized_candidate(
-                        obligation.predicate.self_ty().skip_binder(),
-                        &mut candidates,
-                        SizedTraitKind::MetaAligned,
                     );
                 }
                 Some(LangItem::PointeeSized) => {
@@ -258,6 +237,27 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                                 obligation.predicate.self_ty().skip_binder(),
                                 &mut candidates,
                                 InitTraitKind::Init,
+                            );
+                        }
+                        Some(LangItem::ThinPointeeTrait) => {
+                            self.assemble_builtin_sized_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                SizedTraitKind::Thin,
+                            );
+                        }
+                        Some(LangItem::MetaSized) => {
+                            self.assemble_builtin_sized_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                SizedTraitKind::MetaSized,
+                            );
+                        }
+                        Some(LangItem::MetaAligned) => {
+                            self.assemble_builtin_sized_candidate(
+                                obligation.predicate.self_ty().skip_binder(),
+                                &mut candidates,
+                                SizedTraitKind::MetaAligned,
                             );
                         }
                         _ => {}
