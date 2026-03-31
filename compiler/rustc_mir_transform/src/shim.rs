@@ -901,6 +901,11 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             interpret::Scalar::from_target_usize(tcx.max_size_of_val().bytes(), &tcx),
             self.span,
         );
+        let size_align_tup_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
+        let include_alignment = matches!(layout_part, ty::LayoutPart::Layout);
+        // only used if `checked`
+        let checked_dest_inner_ty =
+            if include_alignment { size_align_tup_ty } else { tcx.types.usize };
 
         let layout = match tcx.layout_of(typing_env.as_query_input(self_ty)) {
             Ok(layout) => layout,
@@ -914,8 +919,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 return;
             }
         };
-
-        let include_alignment = matches!(layout_part, ty::LayoutPart::Layout);
         let (size, alignment) = match self_ty.kind() {
             _ if self_ty.is_sized(tcx, typing_env) => {
                 // If `Self: Sized`, then `layout.size/align` are accurate, and we can just return them.
@@ -1045,24 +1048,16 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 );
 
                 if checked {
-                    // only used for `LayoutPart::Layout`
-                    let size_align_tup_ty =
-                        Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
-
                     // if elem_result.is_none() { return None }
-                    let dest_inner_ty =
-                        if include_alignment { size_align_tup_ty } else { tcx.types.usize };
-                    self.question_mark_blocks(elem_result, dest_inner_ty);
+                    // `elem_result` is the same type as this function's return type
+                    let elem_result_tup = self.question_mark_blocks(
+                        elem_result,
+                        checked_dest_inner_ty,
+                        checked_dest_inner_ty,
+                    );
 
                     let (elem_size, alignment) = if include_alignment {
-                        // `elem_result: Option<(usize, Alignment)>`
-                        let elem_result_tup = elem_result.project_deeper(
-                            &[
-                                PlaceElem::Downcast(None, VariantIdx::from_usize(1)),
-                                PlaceElem::Field(FieldIdx::ZERO, size_align_tup_ty),
-                            ],
-                            tcx,
-                        );
+                        // `elem_result_tup: (usize, Alignment)`
                         (
                             Operand::Copy(elem_result_tup.project_deeper(
                                 &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
@@ -1074,17 +1069,8 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                             ))),
                         )
                     } else {
-                        // `elem_result: Option<usize>`
-                        (
-                            Operand::Copy(elem_result.project_deeper(
-                                &[
-                                    PlaceElem::Downcast(None, VariantIdx::from_usize(1)),
-                                    PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize),
-                                ],
-                                tcx,
-                            )),
-                            None,
-                        )
+                        // `elem_result_tup: usize`
+                        (Operand::Copy(elem_result_tup), None)
                     };
 
                     // let size = elem_size.checked_mul(len)?;
@@ -1120,7 +1106,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                         },
                         false,
                     );
-                    self.return_none_block(dest_inner_ty);
+                    self.return_none_block(checked_dest_inner_ty);
 
                     // if sum > max { return None }
                     let gt_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
@@ -1140,7 +1126,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                         },
                         false,
                     );
-                    self.return_none_block(dest_inner_ty);
+                    self.return_none_block(checked_dest_inner_ty);
 
                     (Operand::Copy(sum_value), alignment)
                 } else {
@@ -1644,6 +1630,10 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         self.block(vec![stmt], TerminatorKind::Return, false);
     }
 
+    /// Given a `Place` of type `Option<scrutinee_inner_ty>`, perform `?` on it
+    /// in a function returning `Option<dest_inner_ty>`, and return the projeted
+    /// `Some.0` place.
+    ///
     /// ```text
     /// bb:
     ///  _discr = discriminant(scrutinee);
@@ -1654,7 +1644,12 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
     /// nextbb: ... (not added)
     /// ```
     ///
-    fn question_mark_blocks(&mut self, scrutinee: Place<'tcx>, dest_inner_ty: Ty<'tcx>) {
+    fn question_mark_blocks(
+        &mut self,
+        scrutinee: Place<'tcx>,
+        scrutinee_inner_ty: Ty<'tcx>,
+        dest_inner_ty: Ty<'tcx>,
+    ) -> Place<'tcx> {
         let tcx = self.tcx;
         let scrutinee_ty = scrutinee.ty(&self.local_decls, tcx).ty;
 
@@ -1677,6 +1672,14 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         );
 
         self.return_none_block(dest_inner_ty);
+
+        scrutinee.project_deeper(
+            &[
+                PlaceElem::Downcast(None, VariantIdx::from_usize(1)),
+                PlaceElem::Field(FieldIdx::ZERO, scrutinee_inner_ty),
+            ],
+            tcx,
+        )
     }
 
     fn return_none_block(&mut self, none_inner_ty: Ty<'tcx>) {
@@ -1758,17 +1761,16 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             //  _0 = None
             //  return
             // nextbb: ...
+            //
+            // and return (field_align_ret as Some).0: Alignment
 
-            self.question_mark_blocks(field_align_ret, alignment_struct_ty);
+            let field_align_ret = self.question_mark_blocks(
+                field_align_ret,
+                alignment_struct_ty,
+                alignment_struct_ty,
+            );
 
-            // (field_align_ret as Some).0: Alignment
-            Either::Left(Operand::Copy(field_align_ret.project_deeper(
-                &[
-                    PlaceElem::Downcast(None, VariantIdx::from_usize(1)),
-                    PlaceElem::Field(FieldIdx::ZERO, alignment_struct_ty),
-                ],
-                tcx,
-            )))
+            Either::Left(Operand::Copy(field_align_ret))
         } else {
             Either::Left(Operand::Copy(field_align_ret))
         }
