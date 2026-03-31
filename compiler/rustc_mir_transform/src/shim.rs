@@ -908,84 +908,26 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             }
         };
 
-        if self_ty.is_sized(tcx, typing_env) {
-            // If `Self: Sized`, then `layout.size/align` are accurate, and we can just return them.
-            let size = Operand::const_from_scalar(
-                tcx,
-                tcx.types.usize,
-                interpret::Scalar::from_target_usize(layout.size.bytes(), &tcx),
-                self.span,
-            );
-            let alignment = Operand::const_from_scalar(
-                self.tcx,
-                alignment_struct_ty,
-                interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
-                self.span,
-            );
 
-            let mut stmts = vec![];
-
-            match (checked, layout_part) {
-                (false, ty::LayoutPart::Size) => {
-                    // Return type is `usize` of just the size
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                        dest,
-                        Rvalue::Use(size),
-                    )))));
-                }
-                (true, ty::LayoutPart::Size) => {
-                    // Return type is `Option<usize>` of just the size
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                        dest,
-                        Rvalue::Aggregate(
-                            Box::new(AggregateKind::Adt(
-                                option_did,
-                                VariantIdx::from_usize(1),
-                                tcx.mk_args(&[tcx.types.usize.into()]),
-                                None,
-                                None,
-                            )),
-                            [size].into(),
-                        ),
-                    )))));
-                }
-                (false, ty::LayoutPart::Layout) => {
-                    // Return type is `(usize, Alignment)`
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                        dest,
-                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
-                    )))));
-                }
-                (true, ty::LayoutPart::Layout) => {
-                    // Return type is `Option<(usize, Alignment)>`, so we need a temp for the tuple.
-                    // FIXME: use a const for the tuple.
-                    let tuple_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
-                    let tuple = self.make_place(ty::Mutability::Not, tuple_ty);
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                        tuple,
-                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
-                    )))));
-                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
-                        dest,
-                        Rvalue::Aggregate(
-                            Box::new(AggregateKind::Adt(
-                                option_did,
-                                VariantIdx::from_usize(1),
-                                tcx.mk_args(&[tuple_ty.into()]),
-                                None,
-                                None,
-                            )),
-                            [Operand::Move(tuple)].into(),
-                        ),
-                    )))));
-                }
-                (_, ty::LayoutPart::Alignment) => unreachable!(),
-            }
-            self.block(stmts, TerminatorKind::Return, false);
-            return;
-        }
-
+        let include_alignment = matches!(layout_part, ty::LayoutPart::Layout);
         let (size, alignment) = match self_ty.kind() {
+            _ if self_ty.is_sized(tcx, typing_env) => {
+                // If `Self: Sized`, then `layout.size/align` are accurate, and we can just return them.
+                (
+                    Operand::const_from_scalar(
+                        tcx,
+                        tcx.types.usize,
+                        interpret::Scalar::from_target_usize(layout.size.bytes(), &tcx),
+                        self.span,
+                    ),
+                    Some(Operand::const_from_scalar(
+                        self.tcx,
+                        alignment_struct_ty,
+                        interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
+                        self.span,
+                    )),
+                )
+            }
             ty::Bool
             | ty::Char
             | ty::Int(_)
@@ -1026,16 +968,99 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 Operand::Copy(
                     meta.project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx),
                 ),
-                Operand::const_from_scalar(
+                Some(Operand::const_from_scalar(
                     self.tcx,
                     alignment_struct_ty,
                     interpret::Scalar::from_target_usize(1, &tcx),
                     self.span,
-                ),
+                )),
             ),
             ty::Slice(_elem_ty) => todo!(),
             ty::Array(_elem_ty, _len) => todo!(),
-            ty::Dynamic(..) => todo!(),
+            ty::Dynamic(..) => {
+                // The `vtable_size/vtable_align` intrinsics take a `*const ()`.
+                let vtable_ptr_ty = Ty::new_ptr(tcx, tcx.types.unit, ty::Mutability::Not);
+                let vtable_ptr = self.make_place(ty::Mutability::Not, vtable_ptr_ty);
+
+                let vtable_size = self.make_place(ty::Mutability::Not, tcx.types.usize);
+                self.block(
+                    vec![self.make_statement(StatementKind::Assign(Box::new((
+                        vtable_ptr,
+                        // `Metadata<dyn Trait>` is essentially just a vtable ptr.
+                        Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
+                    ))))],
+                    TerminatorKind::Call {
+                        func: Operand::function_handle(
+                            tcx,
+                            tcx.require_lang_item(LangItem::VtableSize, self.span),
+                            [],
+                            self.span,
+                        ),
+                        args: Box::new([Spanned {
+                            node: Operand::Copy(vtable_ptr),
+                            span: self.span,
+                        }]),
+                        destination: vtable_size,
+                        target: Some(self.block_index_offset(1)),
+                        unwind: UnwindAction::Continue,
+                        call_source: CallSource::Misc,
+                        fn_span: self.span,
+                    },
+                    false,
+                );
+
+                let size = Operand::Copy(vtable_size);
+
+                let align = include_alignment.then(|| {
+                    let vtable_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
+                    self.block(
+                        vec![self.make_statement(StatementKind::Assign(Box::new((
+                            vtable_ptr,
+                            // `Metadata<dyn Trait>` is essentially just a vtable ptr.
+                            Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
+                        ))))],
+                        TerminatorKind::Call {
+                            func: Operand::function_handle(
+                                tcx,
+                                tcx.require_lang_item(LangItem::VtableAlign, self.span),
+                                [],
+                                self.span,
+                            ),
+                            args: Box::new([Spanned {
+                                node: Operand::Copy(vtable_ptr),
+                                span: self.span,
+                            }]),
+                            destination: vtable_align,
+                            target: Some(self.block_index_offset(1)),
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
+
+                    // `Alignment` is a newtype around a `repr(usize)` enum,
+                    // so we can `transmute` a power-of-two `usize` into it.
+                    let align = self.make_place(ty::Mutability::Not, alignment_struct_ty);
+
+                    self.block(
+                        vec![self.make_statement(StatementKind::Assign(Box::new((
+                            align,
+                            Rvalue::Cast(
+                                CastKind::Transmute,
+                                Operand::Copy(vtable_align),
+                                alignment_struct_ty,
+                            ),
+                        ))))],
+                        TerminatorKind::Goto { target: self.block_index_offset(1) },
+                        false,
+                    );
+
+                    Operand::Copy(align)
+                });
+
+                (size, align)
+            }
             ty::Tuple(..) => todo!(),
             ty::Pat(_inner_ty, _) => todo!(),
             ty::UnsafeBinder(..) => todo!(),
@@ -1044,7 +1069,63 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 bug!("{} should not occur here", self_ty)
             }
         };
-        todo!()
+
+        let mut stmts = vec![];
+        match (checked, layout_part, alignment) {
+            (false, ty::LayoutPart::Size, _) => {
+                // Return type is `usize` of just the size
+                stmts.push(
+                    self.make_statement(StatementKind::Assign(Box::new((dest, Rvalue::Use(size))))),
+                );
+            }
+            (true, ty::LayoutPart::Size, _) => {
+                // Return type is `Option<usize>` of just the size
+                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    dest,
+                    Rvalue::Aggregate(
+                        Box::new(AggregateKind::Adt(
+                            option_did,
+                            VariantIdx::from_usize(1),
+                            tcx.mk_args(&[tcx.types.usize.into()]),
+                            None,
+                            None,
+                        )),
+                        [size].into(),
+                    ),
+                )))));
+            }
+            (false, ty::LayoutPart::Layout, Some(alignment)) => {
+                // Return type is `(usize, Alignment)`
+                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    dest,
+                    Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
+                )))));
+            }
+            (true, ty::LayoutPart::Layout, Some(alignment)) => {
+                // Return type is `Option<(usize, Alignment)>`, so we need a temp for the tuple.
+                let tuple_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
+                let tuple = self.make_place(ty::Mutability::Not, tuple_ty);
+                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    tuple,
+                    Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
+                )))));
+                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    dest,
+                    Rvalue::Aggregate(
+                        Box::new(AggregateKind::Adt(
+                            option_did,
+                            VariantIdx::from_usize(1),
+                            tcx.mk_args(&[tuple_ty.into()]),
+                            None,
+                            None,
+                        )),
+                        [Operand::Move(tuple)].into(),
+                    ),
+                )))));
+            }
+            (_, ty::LayoutPart::Alignment, _) | (_, ty::LayoutPart::Layout, None) => unreachable!(),
+        }
+        self.block(stmts, TerminatorKind::Return, false);
     }
 
     fn only_alignment_shim(&mut self) {
@@ -1318,7 +1399,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         };
         let stmt = self.make_statement(StatementKind::Assign(Box::new((dest, alignment))));
         self.block(vec![stmt], TerminatorKind::Return, false);
-        return;
     }
 
     /// Returns an `Operand` that represents the alignment of `ty` with `meta`,
