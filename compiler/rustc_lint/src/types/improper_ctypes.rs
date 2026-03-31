@@ -579,7 +579,20 @@ impl<'a, 'tcx> ImproperCTypesVisitor<'a, 'tcx> {
 
                         FfiSafe
                     }
-                    AdtKind::UnsizedType => todo!("ffi safety for `unsized type`s"),
+                    AdtKind::UnsizedType => {
+                        // FFI-safe if and only if it impmlements `Thin`
+                        if ty.is_thin(self.cx.tcx, self.cx.typing_env()) {
+                            FfiSafe
+                        } else {
+                            FfiUnsafe {
+                                ty,
+                                reason: msg!(
+                                    "`unsized type`s are only ffi-safe if they implement `Thin`"
+                                ),
+                                help: Some(msg!("consider using `libc::c_void` instead")),
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1055,12 +1068,8 @@ impl<'tcx> LateLintPass<'tcx> for ImproperCTypesLint {
                     self.check_reprc_adt(cx, item, adt_def);
                 }
             }
-
-            hir::ItemKind::UnsizedType(..) => {
-                tracing::warn!(
-                    "FIXME(ptr_metadata_v2): `unsized type` improper_ctypes interaction"
-                );
-            }
+            // `unsized type`s cannot be marked `repr(C)`
+            hir::ItemKind::UnsizedType(..) => {}
 
             // Doesn't define something that can contain a external type to be checked.
             hir::ItemKind::Impl(..)
