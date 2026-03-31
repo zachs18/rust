@@ -1271,7 +1271,42 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             }
 
             ty::Slice(elem_ty) | ty::Array(elem_ty, _) => todo!("{:?}", elem_ty),
-            ty::Dynamic(..) => todo!(),
+            ty::Dynamic(..) => {
+                let vtable_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
+                // The `vtable_size` intrinsic takes a `*const ()`.
+                let vtable_ptr_ty = Ty::new_ptr(tcx, tcx.types.unit, ty::Mutability::Not);
+                let vtable_ptr = self.make_place(ty::Mutability::Not, vtable_ptr_ty);
+                self.block(
+                    vec![self.make_statement(StatementKind::Assign(Box::new((
+                        vtable_ptr,
+                        // `Metadata<dyn Trait>` is essentially just a vtable ptr.
+                        Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
+                    ))))],
+                    TerminatorKind::Call {
+                        func: Operand::function_handle(
+                            tcx,
+                            tcx.require_lang_item(LangItem::VtableAlign, self.span),
+                            [],
+                            self.span,
+                        ),
+                        args: Box::new([Spanned {
+                            node: Operand::Copy(vtable_ptr),
+                            span: self.span,
+                        }]),
+                        destination: vtable_align,
+                        target: Some(self.block_index_offset(1)),
+                        unwind: UnwindAction::Continue,
+                        call_source: CallSource::Misc,
+                        fn_span: self.span,
+                    },
+                    false,
+                );
+
+                // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
+                // or `Option<Alignment>` (which is niche-optimized), so we can `transmute` a power-of-two
+                // `usize` into it.
+                Rvalue::Cast(CastKind::Transmute, Operand::Copy(vtable_align), dest_ty)
+            }
 
             ty::Tuple(..) => todo!(),
             ty::Pat(_inner_ty, _) => todo!(),
