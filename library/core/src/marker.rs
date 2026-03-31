@@ -194,6 +194,45 @@ pub trait Aligned: MetaAligned + PointeeSized {
 }
 
 /// Types with a size that can be determined from pointer metadata.
+///
+/// # Safety
+///
+/// `MetaSized` (and [`MetaAligned`]) implementations are provided by the compiler for most applicable types.
+/// Only `unsized type`s may have custom implementations of `MetaSized`.
+///
+/// ## Callers
+///
+/// See [`Metadata`] for definition of "safe" metadata.
+///
+/// The `checked_*` methods must return `Some(_)` and must not diverge on any "safe" metadata value,
+/// and the `unchecked_*` methods must not invoke UB or diverge on any "safe" metadata value.
+///
+/// It is UB to call the `unchecked_*` methods with a non-"safe" metadata value.
+/// The `checked_*` methods return `None` or diverge for non-"safe" metadata values.
+///
+/// ## Implementors
+///
+/// The author of an `unsized type` is responsible for defining what is a "safe" value of `Metadata<Self>`.
+/// Note that for a `Thin + MetaSized` `unsized type`, the single possible metadata value must be "safe".
+///
+/// The methods of `MetaSized` and `MetaAligned` must be implemented consistently with each other; that is,
+/// they must return the same size and alignment (or fail) for a given metadata value in a single program execution.
+///
+/// The `checked_*` methods must return `Some(_)` and must not diverge on any "safe" metadata value,
+/// and the `unchecked_*` methods must not invoke UB or diverge on any "safe" metadata value.
+///
+/// The `unchecked_*` functions *should* invoke UB if given a non-"safe" metadata value, so that Miri
+/// can better check things.
+///
+/// The `checked_*` functions *should* return `None` if given a non-"safe" metadata value, instead of panicking
+/// or diverging.
+///
+/// Additionally the following requirements apply:
+///
+/// ## Consistency
+///
+/// For a given value of `Metadata<Self>`, the methods of `MetaSized` and `MetaAligned` must return consistent results.
+//FIXME: expand on this
 #[unstable(feature = "sized_hierarchy", issue = "144404")]
 #[lang = "meta_sized"]
 #[diagnostic::on_unimplemented(
@@ -209,7 +248,7 @@ pub trait Aligned: MetaAligned + PointeeSized {
 // not included in vtables (trait objects include the size/align in the vtable directly,
 // so it would be unnecessary).
 #[rustc_coinductive]
-pub trait MetaSized: MetaAligned + PointeeSized {
+pub unsafe trait MetaSized: MetaAligned + PointeeSized {
     /// Returns the size of a value with the given metadata.
     ///
     /// # Safety
@@ -231,6 +270,10 @@ pub trait MetaSized: MetaAligned + PointeeSized {
 }
 
 /// Types with an alignment that can be determined from pointer metadata.
+///
+/// # Safety
+///
+/// See [`MetaSized`].
 #[unstable(feature = "sized_hierarchy", issue = "144404")]
 #[lang = "meta_aligned"]
 #[diagnostic::on_unimplemented(
@@ -246,7 +289,7 @@ pub trait MetaSized: MetaAligned + PointeeSized {
 // not included in vtables (trait objects include the size/align in the vtable directly,
 // so it would be unnecessary).
 #[rustc_coinductive]
-pub trait MetaAligned: PointeeSized {
+pub unsafe trait MetaAligned: PointeeSized {
     /// Returns the alignment of a value with the given metadata.
     ///
     /// # Safety
