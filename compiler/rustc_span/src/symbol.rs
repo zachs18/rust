@@ -378,6 +378,8 @@ symbols! {
         align_of_val,
         aligned,
         alignment,
+        alignment_max_method,
+        alignment_min_method,
         alignment_struct,
         all,
         alloc,
