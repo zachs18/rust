@@ -2746,8 +2746,9 @@ pub const fn contract_check_ensures<C: Fn(&Ret) -> bool + Copy, Ret>(
 /// `ptr` must point to a vtable.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "vtable_size"]
 #[rustc_intrinsic]
-pub unsafe fn vtable_size(ptr: *const ()) -> usize;
+pub const unsafe fn vtable_size(ptr: *const ()) -> usize;
 
 /// The intrinsic will return the alignment stored in that vtable.
 ///
@@ -2756,8 +2757,9 @@ pub unsafe fn vtable_size(ptr: *const ()) -> usize;
 /// `ptr` must point to a vtable.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "vtable_align"]
 #[rustc_intrinsic]
-pub unsafe fn vtable_align(ptr: *const ()) -> usize;
+pub const unsafe fn vtable_align(ptr: *const ()) -> usize;
 
 /// The size of a type in bytes.
 ///
