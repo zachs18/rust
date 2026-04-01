@@ -1697,6 +1697,7 @@ impl<'a, 'tcx> BoundVarContext<'a, 'tcx> {
                 DefKind::Struct
                 | DefKind::Union
                 | DefKind::Enum
+                | DefKind::UnsizedType
                 | DefKind::TyAlias
                 | DefKind::Trait
                 | DefKind::TraitAlias,

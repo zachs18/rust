@@ -1606,7 +1606,9 @@ impl<'a, 'tcx> EncodeContext<'a, 'tcx> {
                     record!(self.tables.eval_static_initializer[def_id] <- data);
                 }
             }
-            if let DefKind::Enum | DefKind::Struct | DefKind::Union = def_kind {
+            if let DefKind::Enum | DefKind::Struct | DefKind::Union | DefKind::UnsizedType =
+                def_kind
+            {
                 self.encode_info_for_adt(local_id);
             }
             if let DefKind::Mod = def_kind {
@@ -1691,6 +1693,11 @@ impl<'a, 'tcx> EncodeContext<'a, 'tcx> {
             let module_children = tcx.module_children_local(local_def_id);
             record_array!(self.tables.module_children_non_reexports[def_id] <-
                 module_children.iter().map(|child| child.res.def_id().index));
+        } else if adt_def.is_unsized_type() {
+            // For non-enum, there is only one variant, and its def_id is the adt's.
+            debug_assert_eq!(adt_def.variants().len(), 1);
+            debug_assert_eq!(adt_def.variant(VariantIdx::ZERO).def_id, def_id);
+            // Therefore, the loop over variants will encode its fields as the adt's children.
         } else {
             // For non-enum, there is only one variant, and its def_id is the adt's.
             debug_assert_eq!(adt_def.variants().len(), 1);

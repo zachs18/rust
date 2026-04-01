@@ -68,7 +68,7 @@ pub(crate) fn add_constraints_from_crate<'a, 'tcx>(
     for def_id in crate_items.definitions() {
         let def_kind = tcx.def_kind(def_id);
         match def_kind {
-            DefKind::Struct | DefKind::Union | DefKind::Enum => {
+            DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType => {
                 constraint_cx.build_constraints_for_item(def_id);
 
                 let adt = tcx.adt_def(def_id);
