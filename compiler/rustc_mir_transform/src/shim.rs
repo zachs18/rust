@@ -1211,7 +1211,24 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 );
                 (size, Some(alignment))
             }
-            ty::Tuple(..) => todo!(),
+            ty::Tuple(tys) => {
+                let FieldsShape::Arbitrary { offsets: _, ref in_memory_order } = layout.fields
+                else {
+                    bug!("tuple had non-Arbitrary FieldsShape")
+                };
+                let in_order_fields = in_memory_order.iter().map(|&field_idx| {
+                    let field_ty = tys[field_idx.as_usize()];
+                    (field_idx, field_ty)
+                });
+                let (size, alignment) = self.struct_like_layout(
+                    in_order_fields,
+                    meta,
+                    None,
+                    None,
+                    checked_dest_inner_ty,
+                );
+                (size, Some(alignment))
+            }
 
             ty::Str => (
                 Operand::Copy(
