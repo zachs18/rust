@@ -1588,14 +1588,14 @@ fn get_args_from_tuple<'ll, 'tcx>(
                 match arg.mode {
                     PassMode::Ignore => {}
                     PassMode::Direct(_) | PassMode::Cast { .. } => {
-                        let field = tuple_place.project_field(bx, tuple_index);
+                        let field = tuple_place.project_field(None, bx, tuple_index);
                         let llvm_ty = field.layout.llvm_type(bx.cx);
                         let val = bx.load(llvm_ty, field.val.llval, field.val.align);
                         result.push(val);
                         tuple_index += 1;
                     }
                     PassMode::Pair(_, _) => {
-                        let field = tuple_place.project_field(bx, tuple_index);
+                        let field = tuple_place.project_field(None, bx, tuple_index);
                         let llvm_ty = field.layout.llvm_type(bx.cx);
                         let pair_val = bx.load(llvm_ty, field.val.llval, field.val.align);
                         result.push(bx.extract_value(pair_val, 0));
@@ -1603,7 +1603,7 @@ fn get_args_from_tuple<'ll, 'tcx>(
                         tuple_index += 1;
                     }
                     PassMode::Indirect { .. } => {
-                        let field = tuple_place.project_field(bx, tuple_index);
+                        let field = tuple_place.project_field(None, bx, tuple_index);
                         result.push(field.val.llval);
                         tuple_index += 1;
                     }

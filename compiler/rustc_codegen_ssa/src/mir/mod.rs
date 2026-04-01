@@ -524,7 +524,7 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                     if let PassMode::Cast { pad_i32: true, .. } = arg.mode {
                         llarg_idx += 1;
                     }
-                    let pr_field = place.project_field(bx, i);
+                    let pr_field = place.project_field(Some(fx), bx, i);
                     bx.store_fn_arg(arg, &mut llarg_idx, pr_field);
                 }
                 assert_eq!(
@@ -631,8 +631,8 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                         }
                         _ => {
                             let tmp = PlaceRef::alloca_unsized_indirect(bx, arg.layout);
-                            let tmp_arg = tmp.project_field(bx, 0);
-                            let tmp_extra = tmp.project_field(bx, 1);
+                            let tmp_arg = tmp.project_field(None, bx, 0);
+                            let tmp_extra = tmp.project_field(None, bx, 1);
                             OperandValue::Immediate(llarg).store(bx, tmp_arg);
                             bx.store_fn_arg(meta_abi, &mut llarg_idx, tmp_extra);
                             tmp

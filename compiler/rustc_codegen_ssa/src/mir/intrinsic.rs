@@ -152,20 +152,21 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             sym::size_of_val => {
                 let tp_ty = fn_args.type_at(0);
                 let meta = args[0].deref(bx).val.llextra;
-                let (llsize, _) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
+                let (llsize, _) = size_of_val::size_and_align_of_dst(Some(self), bx, tp_ty, meta);
                 llsize
             }
             sym::align_of_val => {
                 let tp_ty = fn_args.type_at(0);
                 let meta = args[0].deref(bx).val.llextra;
-                let (_, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
+                let (_, llalign) = size_of_val::size_and_align_of_dst(Some(self), bx, tp_ty, meta);
                 llalign
             }
             sym::unchecked_size_for_meta | sym::unchecked_align_for_meta => {
                 let tp_ty = fn_args.type_at(0);
                 let meta =
                     AnyPlaceMeta(Some(args[0].expect_sized("pointer metadata must be sized")));
-                let (llsize, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
+                let (llsize, llalign) =
+                    size_of_val::size_and_align_of_dst(Some(self), bx, tp_ty, meta);
                 match name {
                     sym::unchecked_size_for_meta => llsize,
                     sym::unchecked_align_for_meta => llalign,
@@ -177,12 +178,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let meta =
                     AnyPlaceMeta(Some(args[0].expect_sized("pointer metadata must be sized")));
                 let (llvalid, llsize, llalign) =
-                    size_of_val::checked_size_and_align_of_dst(bx, tp_ty, meta);
+                    size_of_val::checked_size_and_align_of_dst(Some(self), bx, tp_ty, meta);
                 let llvalid = bx.from_immediate(llvalid); // required for Rust bool
 
-                let dest = result.project_field(bx, 0);
+                let dest = result.project_field(None, bx, 0);
                 bx.store_to_place(llvalid, dest.val);
-                let dest = result.project_field(bx, 1);
+                let dest = result.project_field(None, bx, 1);
                 let llval = match name {
                     sym::checked_size_for_meta => llsize,
                     sym::checked_align_for_meta => llalign,
@@ -450,9 +451,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let val = bx.from_immediate(val);
                 let success = bx.from_immediate(success);
 
-                let dest = result.project_field(bx, 0);
+                let dest = result.project_field(None, bx, 0);
                 bx.store_to_place(val, dest.val);
-                let dest = result.project_field(bx, 1);
+                let dest = result.project_field(None, bx, 1);
                 bx.store_to_place(success, dest.val);
 
                 return Ok(());
