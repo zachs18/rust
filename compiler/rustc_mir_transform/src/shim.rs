@@ -970,6 +970,8 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
             | ty::InitTuple(..)
+            | ty::Pat(..)
+            | ty::UnsafeBinder(..)
             | ty::Error(_) => bug!("{} should be `Sized`", self_ty),
             ty::Foreign(..) => bug!("{} should not be `MetaSized`", self_ty),
 
@@ -1514,8 +1516,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
 
                 (size, align)
             }
-            ty::Pat(_inner_ty, _) => todo!(),
-            ty::UnsafeBinder(..) => todo!(),
 
             ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
                 bug!("{} should not occur here", self_ty)
@@ -2240,8 +2240,10 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
             | ty::InitTuple(..)
-            | ty::Str
-            | ty::Error(_) => bug!("{} should be `Aligned`", self_ty),
+            | ty::Pat(..)
+            | ty::UnsafeBinder(..)
+            | ty::Error(_) => bug!("{} should be `Sized` (thus `Aligned`)", self_ty),
+            ty::Str => bug!("{} should be `Aligned`", self_ty),
             ty::Foreign(..) => bug!("{} should not be `MetaAligned`", self_ty),
 
             ty::Adt(def, ..) if def.is_unsized_type() => bug!(
@@ -2345,9 +2347,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 // `usize` into it.
                 Rvalue::Cast(CastKind::Transmute, Operand::Copy(vtable_align), dest_ty)
             }
-
-            ty::Pat(_inner_ty, _) => todo!(),
-            ty::UnsafeBinder(..) => todo!(),
 
             ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
                 bug!("{} should not occur here", self_ty)
