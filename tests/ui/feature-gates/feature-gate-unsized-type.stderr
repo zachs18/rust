@@ -1,4 +1,3 @@
- WARN rustc_parse::parser::item FIXME: feature-gate this
 error[E0658]: `unsized type`s are experimental
   --> $DIR/feature-gate-unsized-type.rs:1:1
    |

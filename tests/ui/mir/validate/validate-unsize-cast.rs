@@ -8,7 +8,7 @@ pub trait CastTo<U: ?Sized>: Unsize<U> {}
 
 // Not well-formed!
 impl<T: ?Sized, U: ?Sized> CastTo<U> for T {}
-//~^ ERROR the trait bound `T: Unsize<U>` is not satisfied
+//~^ ERROR the trait bound `T: std::marker::Unsize<U>` is not satisfied
 
 pub trait Cast {
     fn cast<U: ?Sized>(&self)

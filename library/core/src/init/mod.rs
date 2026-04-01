@@ -14,6 +14,8 @@ pub use adapters::{
     uninit_with_metadata_unchecked,
 };
 #[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{Unsize, unsize};
+#[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{WithArg, with_arg};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{

@@ -13,7 +13,7 @@ trait Trait<'a>: Super<'a> + for<'hr> Super<'hr> {}
 
 fn foo<'a>(x: Box<dyn Trait<'a>>) -> Box<dyn Super<'a>> {
     x
-    //[next]~^ ERROR type annotations needed: cannot satisfy `dyn Trait<'_>: Unsize<dyn Super<'_>>
+    //[next]~^ ERROR type annotations needed: cannot satisfy `dyn Trait<'_>: std::marker::Unsize<dyn Super<'_>>
 }
 
 fn main() {}
