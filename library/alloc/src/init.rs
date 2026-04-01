@@ -3,6 +3,7 @@
 use core::alloc::{Allocator, Layout};
 use core::clone::CloneToUninit;
 pub use core::init::*;
+use core::marker::PointeeSized;
 use core::mem::{self, MaybeUninit};
 use core::ptr::{self, Metadata};
 
@@ -234,10 +235,8 @@ unsafe impl<T: Clone, A: Allocator, Error> PinInit<[T], Error> for Vec<T, A> {
 unsafe impl<T: Clone, A: Allocator, Error> InitMut<[T], Error> for Vec<T, A> {}
 unsafe impl<T: Clone, A: Allocator, Error> Init<[T], Error> for Vec<T, A> {}
 
-// `Option<&T>` and `Option<Box<T>>` are guaranteed to represent `None` as null.
-// For fat pointers, the bytes that would be the pointer metadata in the `Some`
-// variant are padding in the `None` variant, so ignoring them and
-// zero-initializing instead is ok.
-// `Option<&mut T>` never implements `Clone`, so there's no need for an impl of
-// `SpecFromElem`.
-unsafe impl<T: ?Sized> NoneIsZero for Box<T> {}
+// `Option<&T>` and `Option<Box<T>>` are guaranteed to represent `None` as null
+// when `T: Thin`.
+// Additionally (though not guaranteed), they represent `None` as null when `T`
+// is not `Thin` but the metadata has no niches.
+unsafe impl<T: PointeeSized + NoNicheMetadata> NoneIsZero for Box<T> {}

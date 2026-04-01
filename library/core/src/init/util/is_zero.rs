@@ -1,6 +1,7 @@
 use crate::marker::{MetaSized, PointeeSized};
 use crate::mem::size_of_val;
 use crate::num::{NonZero, Saturating, Wrapping};
+use crate::ptr::Thin;
 
 /// Whether this value's representation is all zeros,
 /// or can be represented with all zeroes.
@@ -130,13 +131,24 @@ macro_rules! impl_is_zero_tuples {
 
 impl_is_zero_tuples!(A, B, C, D, E, F, G, H);
 
-// `Option<&T>` and `Option<Box<T>>` are guaranteed to represent `None` as null.
-// For fat pointers, the bytes that would be the pointer metadata in the `Some`
-// variant are padding in the `None` variant, so ignoring them and
-// zero-initializing instead is ok.
+// `Option<&T>` and `Option<Box<T>>` are guaranteed to represent `None` as null
+// when `T: Thin`.
+// Additionally (though not guaranteed), they represent `None` as null when `T`
+// is not `Thin` but the metadata has no niches.
 // `Option<&mut T>` never implements `Clone`, so there's no need for an impl of
 // `SpecFromElem`.
-unsafe impl<T: PointeeSized> NoneIsZero for &T {}
+unsafe impl<T: PointeeSized + NoNicheMetadata> NoneIsZero for &T {}
+
+/// Whether `std::ptr::Metadata<Self>` has no niches.
+#[doc(hidden)]
+#[unstable(feature = "std_internals", issue = "none")]
+#[rustc_specialization_trait]
+#[rustc_dyn_incompatible_trait]
+pub unsafe trait NoNicheMetadata {}
+
+unsafe impl<T: Thin> NoNicheMetadata for T {}
+unsafe impl NoNicheMetadata for str {}
+unsafe impl<T: MetaSized + NoNicheMetadata> NoNicheMetadata for [T] {}
 
 // `Option<NonZero<u32>>` and similar have a representation guarantee that
 // they're the same size as the corresponding `u32` type, as well as a guarantee

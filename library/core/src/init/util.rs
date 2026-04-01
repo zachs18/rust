@@ -1,4 +1,4 @@
-pub use is_zero::{IsZero, NoneIsZero};
+pub use is_zero::{IsZero, NoNicheMetadata, NoneIsZero};
 
 use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
