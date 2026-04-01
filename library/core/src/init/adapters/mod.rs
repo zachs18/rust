@@ -3,11 +3,12 @@ pub use chain::Chain;
 pub use from_fn::{FnNoArg, FnWithArg, FromFn};
 pub use repeat::Repeat;
 pub use uninit::Uninit;
+pub use unsize::Unsize;
 pub use with_arg::WithArg;
 pub use zeroed::Zeroed;
 
 use crate::init::{ConstLength, RuntimeLength};
-use crate::marker::MetaSized;
+use crate::marker::{MetaSized, Unsize as UnsizeTrait};
 use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, Thin, build_metadata};
 
@@ -16,6 +17,7 @@ mod chain;
 mod from_fn;
 mod repeat;
 mod uninit;
+mod unsize;
 mod with_arg;
 mod zeroed;
 
@@ -169,4 +171,12 @@ pub const fn from_fn_with_arg<T, F>(func: F) -> FromFn<T, F, FnWithArg> {
 /// Create an initializer that initializes a place with an initializer and a pre-provided argument.
 pub const fn with_arg<T: MetaSized, I, Arg>(init: I, arg: Arg) -> WithArg<T, I, Arg> {
     WithArg::new(init, arg)
+}
+
+// `Unsize`
+
+/// Create an initializer that initializes an unsized place with an initializer for a value that
+/// can be unsized-coerced into the type of that place.
+pub const fn unsize<U: MetaSized, T: MetaSized + UnsizeTrait<U>, I>(init: I) -> Unsize<U, T, I> {
+    Unsize::new(init)
 }
