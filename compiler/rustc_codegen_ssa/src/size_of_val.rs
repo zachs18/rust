@@ -12,7 +12,8 @@ use tracing::trace;
 
 use crate::common::IntPredicate;
 use crate::mir::operand::OperandRef;
-use crate::mir::{AnyPlaceMeta, PlaceMetadata};
+use crate::mir::place::PlaceRef;
+use crate::mir::{AnyPlaceMeta, FunctionCx, PlaceMetadata};
 use crate::traits::*;
 use crate::{common, meth};
 
@@ -27,11 +28,12 @@ enum CalculationResult<V> {
 }
 
 pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: AnyPlaceMeta<'tcx, Bx::Value>,
 ) -> (Bx::Value, Bx::Value) {
-    match size_and_align_of_dst_impl(bx, t, info, false) {
+    match size_and_align_of_dst_impl(fx, bx, t, info, false) {
         CalculationResult::Unchecked { size, align }
         | CalculationResult::Checked { size, align, .. } => (size, align),
         CalculationResult::Invalid => (bx.const_usize(0), bx.const_usize(1)),
@@ -39,11 +41,12 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 }
 
 pub fn checked_size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: AnyPlaceMeta<'tcx, Bx::Value>,
 ) -> (Bx::Value, Bx::Value, Bx::Value) {
-    match size_and_align_of_dst_impl(bx, t, info, true) {
+    match size_and_align_of_dst_impl(fx, bx, t, info, true) {
         CalculationResult::Unchecked { size, align } => (bx.const_bool(true), size, align),
         CalculationResult::Checked { valid, size, align } => (valid, size, align),
         CalculationResult::Invalid => (bx.const_bool(false), bx.const_usize(0), bx.const_usize(1)),
@@ -51,12 +54,13 @@ pub fn checked_size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 }
 
 pub fn field_offset_for_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: AnyPlaceMeta<'tcx, Bx::Value>,
     field: FieldIdx,
 ) -> (Bx::Value, Bx::Value) {
-    match layout_of_dst_impl(bx, t, info, false, LayoutComputeGoal::FieldOffset(field)) {
+    match layout_of_dst_impl(fx, bx, t, info, false, LayoutComputeGoal::FieldOffset(field)) {
         CalculationResult::Unchecked { size, align }
         | CalculationResult::Checked { size, align, .. } => (size, align),
         CalculationResult::Invalid => (bx.const_usize(0), bx.const_usize(1)),
@@ -64,12 +68,13 @@ pub fn field_offset_for_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 }
 
 pub fn checked_field_offset_for_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: AnyPlaceMeta<'tcx, Bx::Value>,
     field: FieldIdx,
 ) -> (Bx::Value, Bx::Value, Bx::Value) {
-    match layout_of_dst_impl(bx, t, info, true, LayoutComputeGoal::FieldOffset(field)) {
+    match layout_of_dst_impl(fx, bx, t, info, true, LayoutComputeGoal::FieldOffset(field)) {
         CalculationResult::Unchecked { size, align } => (bx.const_bool(true), size, align),
         CalculationResult::Checked { valid, size, align } => (valid, size, align),
         CalculationResult::Invalid => (bx.const_bool(false), bx.const_usize(0), bx.const_usize(1)),
@@ -175,15 +180,17 @@ fn layout_for_arraylike_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 }
 
 fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: AnyPlaceMeta<'tcx, Bx::Value>,
     checked: bool,
 ) -> CalculationResult<Bx::Value> {
-    layout_of_dst_impl(bx, t, info, checked, LayoutComputeGoal::OverallLayout)
+    layout_of_dst_impl(fx, bx, t, info, checked, LayoutComputeGoal::OverallLayout)
 }
 
 fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    mut fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
     bx: &mut Bx,
     t: Ty<'tcx>,
     info: AnyPlaceMeta<'tcx, Bx::Value>,
@@ -319,7 +326,7 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 move_annotation: None,
             }));
 
-            let elem_layout = size_and_align_of_dst_impl(bx, *elem_ty, elem_info, checked);
+            let elem_layout = size_and_align_of_dst_impl(fx, bx, *elem_ty, elem_info, checked);
 
             layout_for_arraylike_impl(bx, checked, goal, elem_layout, bx.const_usize(len))
         }
@@ -337,7 +344,7 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             let elem_info =
                 AnyPlaceMeta(Some(meta_elem.expect_sized("pointer metadata must be sized")));
 
-            let elem_layout = size_and_align_of_dst_impl(bx, *elem_ty, elem_info, checked);
+            let elem_layout = size_and_align_of_dst_impl(fx, bx, *elem_ty, elem_info, checked);
             layout_for_arraylike_impl(bx, checked, goal, elem_layout, len)
         }
         ty::Foreign(_) => {
@@ -397,7 +404,13 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             for field_idx in 0..field_count.get() {
                 let field_ty = layout.field(bx, field_idx);
                 let field_meta = field_meta(bx, field_idx);
-                match size_and_align_of_dst_impl(bx, field_ty.ty, field_meta, checked) {
+                match size_and_align_of_dst_impl(
+                    fx.as_deref_mut(),
+                    bx,
+                    field_ty.ty,
+                    field_meta,
+                    checked,
+                ) {
                     CalculationResult::Invalid => return CalculationResult::Invalid,
                     CalculationResult::Unchecked { size: field_size, align: field_align } => {
                         adt_size = max(bx, field_size, adt_size);
@@ -469,24 +482,29 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             for &field_idx in in_memory_order {
                 let field_ty = layout.field(bx, field_idx.as_usize());
                 let field_meta = field_meta(bx, field_idx.as_usize());
-                let (field_size, field_align) =
-                    match size_and_align_of_dst_impl(bx, field_ty.ty, field_meta, checked) {
-                        CalculationResult::Invalid => return CalculationResult::Invalid,
-                        CalculationResult::Unchecked { size: field_size, align: field_align } => {
-                            (field_size, field_align)
-                        }
-                        CalculationResult::Checked {
-                            valid: field_valid,
-                            size: field_size,
-                            align: field_align,
-                        } => {
-                            adt_valid = match adt_valid {
-                                Some(adt_valid) => Some(bx.and(adt_valid, field_valid)),
-                                None => Some(field_valid),
-                            };
-                            (field_size, field_align)
-                        }
-                    };
+                let (field_size, field_align) = match size_and_align_of_dst_impl(
+                    fx.as_deref_mut(),
+                    bx,
+                    field_ty.ty,
+                    field_meta,
+                    checked,
+                ) {
+                    CalculationResult::Invalid => return CalculationResult::Invalid,
+                    CalculationResult::Unchecked { size: field_size, align: field_align } => {
+                        (field_size, field_align)
+                    }
+                    CalculationResult::Checked {
+                        valid: field_valid,
+                        size: field_size,
+                        align: field_align,
+                    } => {
+                        adt_valid = match adt_valid {
+                            Some(adt_valid) => Some(bx.and(adt_valid, field_valid)),
+                            None => Some(field_valid),
+                        };
+                        (field_size, field_align)
+                    }
+                };
                 let field_align = clamp_field_align(bx, field_align);
                 adt_size = round_up_to_alignment(bx, &mut adt_valid, adt_size, field_align);
 

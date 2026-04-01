@@ -48,7 +48,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     // `BackendTypes` is a supertrait of both `CodegenMethods` and
     // `BuilderMethods`. This bound ensures all impls agree on the associated
     // types within.
-    type CodegenCx: CodegenMethods<
+    type CodegenCx: 'a
+        + CodegenMethods<
             'tcx,
             Value = Self::Value,
             Function = Self::Function,

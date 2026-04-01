@@ -192,8 +192,12 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
 
 impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
     /// Access a field, at a point when the value's case is known.
+    ///
+    /// If `fx` is `None`, then attempting to perform a projection that would require
+    /// computing the layout of an `unsized type` will ICE.
     pub fn project_field<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
         self,
+        fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
         bx: &mut Bx,
         ix: usize,
     ) -> Self {
@@ -256,7 +260,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
 
             // Get the alignment of the field
             let (_, mut unsized_align) =
-                size_of_val::size_and_align_of_dst(bx, field.ty, field_llextra);
+                size_of_val::size_and_align_of_dst(fx, bx, field.ty, field_llextra);
 
             // For packed types, we need to cap alignment.
             if let ty::Adt(def, _) = self.layout.ty.kind()
@@ -281,6 +285,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             // We need to get the pointer manually now.
             // We do this by casting to a `*i8`, then offsetting it by the appropriate (dynamically computed) amount.
             let (offset, _field_align) = crate::size_of_val::field_offset_for_dst(
+                fx,
                 bx,
                 self.layout.ty,
                 self.val.llextra,
@@ -307,15 +312,18 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                 bx.abort();
             }
             Ok(Some((tag_field, imm))) => {
-                let tag_place = self.project_field(bx, tag_field.as_usize());
+                let tag_place = self.project_field(None, bx, tag_field.as_usize());
                 OperandValue::Immediate(imm).store(bx, tag_place);
             }
             Ok(None) => {}
         }
     }
 
+    /// If `fx` is `None`, then attempting to perform a projection that would require
+    /// computing the layout of an `unsized type` will ICE.
     pub fn project_index<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
         &self,
+        fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
         bx: &mut Bx,
         llindex: V,
     ) -> Self {
@@ -345,7 +353,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                 AnyPlaceMeta(Some(elem_meta.expect_sized("pointer metadata must be sized")));
 
             let (elem_size, _elem_align) =
-                size_of_val::size_and_align_of_dst(bx, elem_ty, elem_meta);
+                size_of_val::size_and_align_of_dst(fx, bx, elem_ty, elem_meta);
 
             let byte_idx = bx.mul(elem_size, llindex);
 
@@ -411,8 +419,8 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             },
             meta_val => {
                 let ptr_place = PlaceRef::alloca(bx, pointer_layout);
-                let ptr_data = ptr_place.project_field(bx, 0);
-                let ptr_meta = ptr_place.project_field(bx, 1);
+                let ptr_data = ptr_place.project_field(None, bx, 0);
+                let ptr_meta = ptr_place.project_field(None, bx, 1);
 
                 OperandValue::Immediate(self.val.llval).store(bx, ptr_data);
                 meta_val.change_sizedness().store(bx, ptr_meta);
@@ -456,7 +464,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             cg_base = match *elem {
                 mir::ProjectionElem::Deref => bx.load_operand(cg_base).deref(bx),
                 mir::ProjectionElem::Field(ref field, _) => {
-                    cg_base.project_field(bx, field.index())
+                    cg_base.project_field(Some(self), bx, field.index())
                 }
                 mir::ProjectionElem::OpaqueCast(ty) => {
                     bug!("encountered OpaqueCast({ty}) in codegen")
@@ -468,17 +476,17 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let index = &mir::Operand::Copy(mir::Place::from(index));
                     let index = self.codegen_operand(bx, index);
                     let llindex = index.immediate();
-                    cg_base.project_index(bx, llindex)
+                    cg_base.project_index(Some(self), bx, llindex)
                 }
                 mir::ProjectionElem::ConstantIndex { offset, from_end: false, min_length: _ } => {
                     let lloffset = bx.cx().const_usize(offset);
-                    cg_base.project_index(bx, lloffset)
+                    cg_base.project_index(Some(self), bx, lloffset)
                 }
                 mir::ProjectionElem::ConstantIndex { offset, from_end: true, min_length: _ } => {
                     let lloffset = bx.cx().const_usize(offset);
                     let lllen = cg_base.len(bx);
                     let llindex = bx.sub(lllen, lloffset);
-                    cg_base.project_index(bx, llindex)
+                    cg_base.project_index(Some(self), bx, llindex)
                 }
                 mir::ProjectionElem::Subslice { from, to, from_end } => {
                     let elem_ty = match cg_base.layout.ty.kind() {
@@ -491,8 +499,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             "FIXME(ptr_metadata_v2): implement subslice projection for unsized elements"
                         );
                     }
-                    let mut subslice =
-                        cg_base.project_index(bx, bx.cx().const_usize(from)).change_sizedness();
+                    let mut subslice = cg_base
+                        .project_index(Some(self), bx, bx.cx().const_usize(from))
+                        .change_sizedness();
                     let projected_ty =
                         PlaceTy::from_ty(cg_base.layout.ty).projection_ty(tcx, *elem).ty;
                     subslice.layout = bx.cx().layout_of(self.monomorphize(projected_ty));
