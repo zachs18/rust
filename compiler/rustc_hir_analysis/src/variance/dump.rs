@@ -38,7 +38,12 @@ pub(crate) fn variances(tcx: TyCtxt<'_>) {
         }
 
         match tcx.def_kind(id) {
-            DefKind::AssocFn | DefKind::Fn | DefKind::Enum | DefKind::Struct | DefKind::Union => {}
+            DefKind::AssocFn
+            | DefKind::Fn
+            | DefKind::Enum
+            | DefKind::Struct
+            | DefKind::Union
+            | DefKind::UnsizedType => {}
             DefKind::TyAlias if tcx.type_alias_is_lazy(id) => {}
             kind => {
                 let message = format!(

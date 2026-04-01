@@ -173,7 +173,14 @@ impl<'tcx> InherentOverlapChecker<'tcx> {
 
     fn check_item(&mut self, id: hir::ItemId) -> Result<(), ErrorGuaranteed> {
         let def_kind = self.tcx.def_kind(id.owner_id);
-        if !matches!(def_kind, DefKind::Enum | DefKind::Struct | DefKind::Trait | DefKind::Union) {
+        if !matches!(
+            def_kind,
+            DefKind::Enum
+                | DefKind::Struct
+                | DefKind::Trait
+                | DefKind::Union
+                | DefKind::UnsizedType
+        ) {
             return Ok(());
         }
 

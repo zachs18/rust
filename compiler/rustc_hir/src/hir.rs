@@ -4483,10 +4483,16 @@ impl<'hir> Item<'hir> {
         ItemId { owner_id: self.owner_id }
     }
 
-    /// Check if this is an [`ItemKind::Enum`], [`ItemKind::Struct`] or
-    /// [`ItemKind::Union`].
+    /// Check if this is an [`ItemKind::Enum`], [`ItemKind::Struct`],
+    /// [`ItemKind::Union`], or [`ItemKind::UnsizedType`].
     pub fn is_adt(&self) -> bool {
-        matches!(self.kind, ItemKind::Enum(..) | ItemKind::Struct(..) | ItemKind::Union(..))
+        matches!(
+            self.kind,
+            ItemKind::Enum(..)
+                | ItemKind::Struct(..)
+                | ItemKind::Union(..)
+                | ItemKind::UnsizedType(..)
+        )
     }
 
     /// Check if this is an [`ItemKind::Struct`] or [`ItemKind::Union`].
@@ -4530,6 +4536,9 @@ impl<'hir> Item<'hir> {
 
         expect_union, (Ident, &'hir Generics<'hir>, &VariantData<'hir>),
             ItemKind::Union(ident, generics, data), (*ident, generics, data);
+
+        expect_unsized_type, (Ident, &'hir Generics<'hir>, &VariantData<'hir>),
+            ItemKind::UnsizedType(ident, generics, data), (*ident, generics, data);
 
         expect_trait,
             (
@@ -4810,6 +4819,7 @@ impl ItemKind<'_> {
             | ItemKind::Enum(_, generics, _)
             | ItemKind::Struct(_, generics, _)
             | ItemKind::Union(_, generics, _)
+            | ItemKind::UnsizedType(_, generics, _)
             | ItemKind::Trait { generics, .. }
             | ItemKind::TraitAlias(_, _, generics, _)
             | ItemKind::Impl(Impl { generics, .. }) => generics,
@@ -4825,6 +4835,11 @@ impl ItemKind<'_> {
                 VariantData::Struct { recovered: ast::Recovered::Yes(_), .. },
             ) => true,
             ItemKind::Union(
+                _,
+                _,
+                VariantData::Struct { recovered: ast::Recovered::Yes(_), .. },
+            ) => true,
+            ItemKind::UnsizedType(
                 _,
                 _,
                 VariantData::Struct { recovered: ast::Recovered::Yes(_), .. },

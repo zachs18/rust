@@ -88,7 +88,7 @@ pub(crate) fn determine_parameters_to_be_inferred<'a, 'tcx>(
         let def_kind = tcx.def_kind(def_id);
 
         match def_kind {
-            DefKind::Struct | DefKind::Union | DefKind::Enum => {
+            DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::UnsizedType => {
                 terms_cx.add_inferreds_for_item(def_id);
 
                 let adt = tcx.adt_def(def_id);

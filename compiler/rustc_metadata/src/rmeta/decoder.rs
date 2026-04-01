@@ -1090,6 +1090,7 @@ impl CrateMetadata {
             DefKind::Variant => ty::AdtKind::Enum,
             DefKind::Struct => ty::AdtKind::Struct,
             DefKind::Union => ty::AdtKind::Union,
+            DefKind::UnsizedType => ty::AdtKind::UnsizedType,
             _ => bug!(),
         };
 
@@ -1131,6 +1132,7 @@ impl CrateMetadata {
             DefKind::Enum => ty::AdtKind::Enum,
             DefKind::Struct => ty::AdtKind::Struct,
             DefKind::Union => ty::AdtKind::Union,
+            DefKind::UnsizedType => ty::AdtKind::UnsizedType,
             _ => bug!("get_adt_def called on a non-ADT {:?}", did),
         };
         let repr = self.root.tables.repr_options.get(self, item_id).unwrap().decode((self, tcx));
