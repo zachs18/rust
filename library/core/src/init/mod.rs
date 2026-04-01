@@ -28,7 +28,7 @@ pub use dyn_init::DynInit;
 pub use util::{ConstLength, Length, RuntimeLength};
 #[doc(hidden)]
 #[unstable(feature = "std_internals", issue = "none")]
-pub use util::{IsZero, NoneIsZero};
+pub use util::{IsZero, NoNicheMetadata, NoneIsZero};
 
 use crate::clone::CloneToUninit;
 use crate::marker::MetaSized;
