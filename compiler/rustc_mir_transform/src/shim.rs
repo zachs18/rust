@@ -2,7 +2,7 @@
 use std::{assert_matches, fmt, iter};
 
 use either::Either;
-use rustc_abi::{Align, ExternAbi, FIRST_VARIANT, FieldIdx, VariantIdx};
+use rustc_abi::{Align, ExternAbi, FIRST_VARIANT, FieldIdx, FieldsShape, VariantIdx};
 use rustc_const_eval::interpret::PointerArithmetic;
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
@@ -1187,12 +1187,31 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     );
                 }
 
-                let full_size = self.round_size_up_to_alignment(size_acc, align_acc);
+                let full_size = self.round_size_up_to_alignment(
+                    size_acc,
+                    Operand::Copy(align_acc),
+                    checked_dest_inner_ty,
+                );
                 (Operand::Copy(full_size), Some(Operand::Copy(align_acc)))
             }
             ty::Adt(def, args) => {
-                debug_assert!(def.is_struct());
-                todo!("{:?} {:?}", def, args)
+                let FieldsShape::Arbitrary { offsets: _, ref in_memory_order } = layout.fields
+                else {
+                    bug!("struct had non-Arbitrary FieldsShape")
+                };
+                let variant = def.non_enum_variant();
+                let in_order_fields = in_memory_order.iter().map(|&field_idx| {
+                    let field_ty = variant.fields[field_idx].ty(tcx, args);
+                    (field_idx, field_ty)
+                });
+                let (size, alignment) = self.struct_like_layout(
+                    in_order_fields,
+                    meta,
+                    def.repr().pack,
+                    def.repr().align,
+                    checked_dest_inner_ty,
+                );
+                (size, Some(alignment))
             }
             ty::Tuple(..) => todo!(),
 
@@ -1545,42 +1564,309 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         self.block(stmts, TerminatorKind::Return, false);
     }
 
-    /// `size` must be `<= isize::MAX`, and `alignment` must be a `mem::Alignment`
+    fn struct_like_layout(
+        &mut self,
+        in_order_fields: impl Iterator<Item = (FieldIdx, Ty<'tcx>)>,
+        meta: Place<'tcx>,
+        pack: Option<Align>,
+        overalign: Option<Align>,
+        checked_dest_inner_ty: Ty<'tcx>,
+    ) -> (Operand<'tcx>, Operand<'tcx>) {
+        let tcx = self.tcx;
+        let checked = self.extra.checked;
+        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
+        let size_align_tup_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
+
+        let alignment_max_fn = Operand::function_handle(
+            tcx,
+            tcx.require_lang_item(LangItem::AlignmentMax, self.span),
+            [],
+            self.span,
+        );
+        let alignment_min_fn = Operand::function_handle(
+            tcx,
+            tcx.require_lang_item(LangItem::AlignmentMin, self.span),
+            [],
+            self.span,
+        );
+
+        let size_acc = self.make_place(ty::Mutability::Mut, tcx.types.usize);
+        let align_acc = self.make_place(ty::Mutability::Mut, alignment_struct_ty);
+        // FIXME: keep track of statically-sized/aligned fields separately to avoid bloat.
+
+        // We need to get the alignment of all the fields, since we need to get the alignment of the type
+        // to round the size up, so we use `(un)checked_layout_for_meta` for the field layout calls,
+        // even if this call itself is `*_size_for_meta`.
+        let meta_sized =
+            tcx.associated_items(tcx.require_lang_item(LangItem::MetaSized, self.span));
+        let (field_method_sym, field_ret_ty) = if checked {
+            ("checked_layout_for_meta", Ty::new_option(tcx, size_align_tup_ty))
+        } else {
+            ("unchecked_layout_for_meta", size_align_tup_ty)
+        };
+        let field_method_def_id = meta_sized
+            .filter_by_name_unhygienic(Symbol::intern(field_method_sym))
+            .next()
+            .unwrap()
+            .def_id;
+
+        let mut is_first_field = true;
+        for (field_idx, field_ty) in in_order_fields {
+            let field_meta_ty = Ty::new_ptr_metadata(tcx, field_ty);
+            let field_meta =
+                meta.project_deeper(&[PlaceElem::Field(field_idx, field_meta_ty)], tcx);
+
+            let field_layout_ret = self.make_place(ty::Mutability::Not, field_ret_ty);
+
+            // bb:
+            //  field_layout_ret = <FIELDTY as MetaSized>::(un)checked_layout_for_meta(Copy meta.FIELDIDX) [return -> nextbb, unwind continue]
+            // nextbb: ...
+            self.block(
+                vec![],
+                TerminatorKind::Call {
+                    func: Operand::function_handle(
+                        self.tcx,
+                        field_method_def_id,
+                        [ty::GenericArg::from(field_ty)],
+                        self.span,
+                    ),
+                    args: Box::new([Spanned { node: Operand::Copy(field_meta), span: self.span }]),
+                    destination: field_layout_ret,
+                    target: Some(self.block_index_offset(1)),
+                    // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
+                    // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: self.span,
+                },
+                false,
+            );
+
+            let field_layout = if checked {
+                self.question_mark_blocks(
+                    field_layout_ret,
+                    size_align_tup_ty,
+                    checked_dest_inner_ty,
+                )
+            } else {
+                field_layout_ret
+            };
+
+            let field_size = field_layout
+                .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx);
+            let field_align = field_layout
+                .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)], tcx);
+
+            if is_first_field {
+                is_first_field = false;
+                // First field, just set the accumulators to the field layout.
+                // Don't need to do any checking or rounding.
+                self.block(
+                    vec![
+                        self.make_assign(size_acc, Rvalue::Use(Operand::Copy(field_size))),
+                        self.make_assign(align_acc, Rvalue::Use(Operand::Copy(field_align))),
+                    ],
+                    TerminatorKind::Goto { target: self.block_index_offset(1) },
+                    false,
+                );
+            } else {
+                // Round the current size up to the field's effective alignment,
+                // then add the field's size.
+                //
+                // sizecmpbb:
+                //  _size_gt_result = field_size > size_acc;
+                //  switchInt(_size_gt_result) [1 => setbb, 2 => alignbb];
+                // sizesetbb:
+                //  size_acc = field_size;
+                //  goto -> nextbb;
+                // alignbb:
+                //  align_acc = Alignment::max(align_acc, field_align) [return -> nextbb, unwind continue];
+                // nextbb: ...
+
+                let effective_field_align = if let Some(pack) = pack {
+                    if pack.bytes() == 1 {
+                        Operand::const_from_scalar(
+                            self.tcx,
+                            self.tcx.types.usize,
+                            interpret::Scalar::from_target_usize(1, &tcx),
+                            self.span,
+                        )
+                    } else {
+                        let clamped_field_align =
+                            self.make_place(ty::Mutability::Not, alignment_struct_ty);
+                        self.block(
+                            vec![],
+                            TerminatorKind::Call {
+                                func: alignment_min_fn.clone(),
+                                args: Box::new([
+                                    Spanned { node: Operand::Copy(field_align), span: self.span },
+                                    Spanned {
+                                        node: Operand::const_from_scalar(
+                                            self.tcx,
+                                            alignment_struct_ty,
+                                            interpret::Scalar::from_target_usize(
+                                                pack.bytes(),
+                                                &tcx,
+                                            ),
+                                            self.span,
+                                        ),
+                                        span: self.span,
+                                    },
+                                ]),
+                                destination: clamped_field_align,
+                                target: Some(self.block_index_offset(1)),
+                                unwind: UnwindAction::Continue,
+                                call_source: CallSource::Misc,
+                                fn_span: self.span,
+                            },
+                            false,
+                        );
+                        Operand::Copy(clamped_field_align)
+                    }
+                } else {
+                    Operand::Copy(field_align)
+                };
+
+                let field_offset = self.round_size_up_to_alignment(
+                    size_acc,
+                    effective_field_align,
+                    checked_dest_inner_ty,
+                );
+
+                let field_end_offset = self.add_sizes(
+                    Operand::Copy(field_offset),
+                    Operand::Copy(field_size),
+                    checked_dest_inner_ty,
+                );
+                self.block(
+                    vec![self.make_assign(size_acc, Rvalue::Use(Operand::Copy(field_end_offset)))],
+                    TerminatorKind::Goto { target: self.block_index_offset(1) },
+                    false,
+                );
+
+                // alignbb:
+                self.block(
+                    vec![],
+                    TerminatorKind::Call {
+                        func: alignment_max_fn.clone(),
+                        args: Box::new([
+                            Spanned { node: Operand::Copy(align_acc), span: self.span },
+                            Spanned { node: Operand::Copy(field_align), span: self.span },
+                        ]),
+                        destination: align_acc,
+                        target: Some(self.block_index_offset(1)),
+                        unwind: UnwindAction::Continue,
+                        call_source: CallSource::Misc,
+                        fn_span: self.span,
+                    },
+                    false,
+                );
+            }
+        }
+
+        // Clamp alignment to `repr(packed)`
+        if let Some(pack) = pack {
+            // alignbb:
+            self.block(
+                vec![],
+                TerminatorKind::Call {
+                    func: alignment_min_fn.clone(),
+                    args: Box::new([
+                        Spanned { node: Operand::Copy(align_acc), span: self.span },
+                        Spanned {
+                            node: Operand::const_from_scalar(
+                                self.tcx,
+                                alignment_struct_ty,
+                                interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
+                                self.span,
+                            ),
+                            span: self.span,
+                        },
+                    ]),
+                    destination: align_acc,
+                    target: Some(self.block_index_offset(1)),
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: self.span,
+                },
+                false,
+            );
+        }
+
+        // Raise alignment to `repr(align)`
+        if let Some(overalign) = overalign {
+            // alignbb:
+            self.block(
+                vec![],
+                TerminatorKind::Call {
+                    func: alignment_max_fn.clone(),
+                    args: Box::new([
+                        Spanned { node: Operand::Copy(align_acc), span: self.span },
+                        Spanned {
+                            node: Operand::const_from_scalar(
+                                self.tcx,
+                                alignment_struct_ty,
+                                interpret::Scalar::from_target_usize(overalign.bytes(), &tcx),
+                                self.span,
+                            ),
+                            span: self.span,
+                        },
+                    ]),
+                    destination: align_acc,
+                    target: Some(self.block_index_offset(1)),
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: self.span,
+                },
+                false,
+            );
+        }
+
+        let full_size = self.round_size_up_to_alignment(
+            size_acc,
+            Operand::Copy(align_acc),
+            checked_dest_inner_ty,
+        );
+        (Operand::Copy(full_size), Operand::Copy(align_acc))
+    }
+
+    /// `size` must be `<= isize::MAX`, and `alignment` must be a `mem::Alignment`.
+    /// If the rounded-up value is `> isize::MAX` in `checked` mode, `None::<dest_inner_ty>` will be returned.
+    /// In unchecked mode, there will be an `assume(value <= isize::MAX)`.
     fn round_size_up_to_alignment(
         &mut self,
         unrounded_size: Place<'tcx>,
-        alignment: Place<'tcx>,
+        alignment: Operand<'tcx>,
+        checked_dest_inner_ty: Ty<'tcx>,
     ) -> Place<'tcx> {
         let tcx = self.tcx;
+        let checked = self.extra.checked;
 
         // Round size up to alignment, and check if that caused it to go over `isize::MAX`.
-        // `size = (size + align - 1) & !align`
-        // This can't cause unsigned overflow even intermediately, as the sum could at most be 0b10...00 + 0b01...11 = `usize::MAX`,
-        // and since `align > 0`, the sum is at least 1, so the subtraction can't overflow.
-        let align_usize = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        let align_mask_usize = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        let align_usize_stmt = self.make_assign(
-            align_usize,
-            Rvalue::Cast(CastKind::Transmute, Operand::Copy(alignment), tcx.types.usize),
-        );
-        let align_mask_stmt = self
-            .make_assign(align_mask_usize, Rvalue::UnaryOp(UnOp::Not, Operand::Copy(align_usize)));
+        // `align_minus_one = align - 1;`
+        // `align_mask = !align_minus_one;`
+        // `size = (size + align_minus_one) & align_mask;`
+        // This can't cause unsigned overflow even intermediately
+        // * since the alignment is at least 1, the subtraction can't overflow.
+        // * the sum is at most `isize::MAX` (highest alignment - 1) + isize::MAX (highest size) < usize::MAX.
+        // * bitops cannot overflow.
+        // We still need to check that the result is `<= isize::MAX`, since it could have become `isize::MAX + 1` (at most)
 
-        let size_plus_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        let size_plus_align_stmt = self.make_assign(
-            size_plus_align,
-            Rvalue::BinaryOp(
-                BinOp::AddUnchecked,
-                Box::new((Operand::Copy(unrounded_size), Operand::Copy(align_usize))),
-            ),
-        );
-        let size_plus_align_minus_1 = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        let size_plus_align_minus_1_stmt = self.make_assign(
-            size_plus_align_minus_1,
+        let mut stmts = vec![];
+
+        let align_usize = self.make_place(ty::Mutability::Not, tcx.types.usize);
+        stmts.push(self.make_assign(
+            align_usize,
+            Rvalue::Cast(CastKind::Transmute, alignment, tcx.types.usize),
+        ));
+
+        let align_minus_one = self.make_place(ty::Mutability::Not, tcx.types.usize);
+        stmts.push(self.make_assign(
+            align_minus_one,
             Rvalue::BinaryOp(
                 BinOp::SubUnchecked,
                 Box::new((
-                    Operand::Copy(size_plus_align),
+                    Operand::Copy(align_usize),
                     Operand::const_from_scalar(
                         tcx,
                         tcx.types.usize,
@@ -1589,30 +1875,129 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     ),
                 )),
             ),
-        );
+        ));
 
-        let full_size = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        let full_size_stmt = self.make_assign(
-            full_size,
-            Rvalue::BinaryOp(
-                BinOp::BitAnd,
-                Box::new((Operand::Copy(size_plus_align_minus_1), Operand::Copy(align_mask_usize))),
+        let align_mask = self.make_place(ty::Mutability::Not, tcx.types.usize);
+        stmts.push(
+            self.make_assign(
+                align_mask,
+                Rvalue::UnaryOp(UnOp::Not, Operand::Copy(align_minus_one)),
             ),
         );
 
-        self.block(
-            vec![
-                align_usize_stmt,
-                align_mask_stmt,
-                size_plus_align_stmt,
-                size_plus_align_minus_1_stmt,
-                full_size_stmt,
-            ],
-            TerminatorKind::Goto { target: self.block_index_offset(1) },
-            false,
+        let size_plus_align_minus_one = self.make_place(ty::Mutability::Not, tcx.types.usize);
+        stmts.push(self.make_assign(
+            size_plus_align_minus_one,
+            Rvalue::BinaryOp(
+                BinOp::AddUnchecked,
+                Box::new((Operand::Copy(unrounded_size), Operand::Copy(align_minus_one))),
+            ),
+        ));
+
+        let full_size = self.make_place(ty::Mutability::Not, tcx.types.usize);
+        stmts.push(self.make_assign(
+            full_size,
+            Rvalue::BinaryOp(
+                BinOp::BitAnd,
+                Box::new((Operand::Copy(size_plus_align_minus_one), Operand::Copy(align_mask))),
+            ),
+        ));
+
+        let max_size = Operand::const_from_scalar(
+            tcx,
+            tcx.types.usize,
+            interpret::Scalar::from_target_usize(tcx.max_size_of_val().bytes(), &tcx),
+            self.span,
         );
+        // le_result = full_size <= max;
+        let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
+        stmts.push(self.make_assign(
+            le_result,
+            Rvalue::BinaryOp(BinOp::Le, Box::new((Operand::Copy(full_size), max_size))),
+        ));
+
+        if checked {
+            // if !(full_size <= max) { return None }
+            self.block(
+                stmts,
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(le_result),
+                    targets: SwitchTargets::static_if(
+                        0,
+                        self.block_index_offset(1),
+                        self.block_index_offset(2),
+                    ),
+                },
+                false,
+            );
+            self.return_none_block(checked_dest_inner_ty);
+        } else {
+            // assume(full_size <= max);
+            stmts.push(self.make_statement(StatementKind::Intrinsic(Box::new(
+                NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
+            ))));
+            self.block(stmts, TerminatorKind::Goto { target: self.block_index_offset(1) }, false);
+        }
 
         full_size
+    }
+
+    /// Both inputs must be `<= isize::MAX`, so there can never be any unsigned overflow.
+    /// If the sum is `> isize::MAX` in `checked` mode, `None::<dest_inner_ty>` will be returned.
+    /// In unchecked mode, there will be an `assume(full_sum <= isize::MAX)`.
+    fn add_sizes(
+        &mut self,
+        lhs: Operand<'tcx>,
+        rhs: Operand<'tcx>,
+        checked_dest_inner_ty: Ty<'tcx>,
+    ) -> Place<'tcx> {
+        let tcx = self.tcx;
+        let checked = self.extra.checked;
+
+        let mut stmts = vec![];
+
+        let sum = self.make_place(ty::Mutability::Not, tcx.types.usize);
+        stmts.push(
+            self.make_assign(sum, Rvalue::BinaryOp(BinOp::AddUnchecked, Box::new((lhs, rhs)))),
+        );
+
+        let max_size = Operand::const_from_scalar(
+            tcx,
+            tcx.types.usize,
+            interpret::Scalar::from_target_usize(tcx.max_size_of_val().bytes(), &tcx),
+            self.span,
+        );
+        // le_result = full_size <= max;
+        let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
+        stmts.push(self.make_assign(
+            le_result,
+            Rvalue::BinaryOp(BinOp::Le, Box::new((Operand::Copy(sum), max_size))),
+        ));
+
+        if checked {
+            // if !(full_size <= max) { return None }
+            self.block(
+                stmts,
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(le_result),
+                    targets: SwitchTargets::static_if(
+                        0,
+                        self.block_index_offset(1),
+                        self.block_index_offset(2),
+                    ),
+                },
+                false,
+            );
+            self.return_none_block(checked_dest_inner_ty);
+        } else {
+            // assume(full_size <= max);
+            stmts.push(self.make_statement(StatementKind::Intrinsic(Box::new(
+                NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
+            ))));
+            self.block(stmts, TerminatorKind::Goto { target: self.block_index_offset(1) }, false);
+        }
+
+        sum
     }
 
     fn only_alignment_shim(&mut self) {
