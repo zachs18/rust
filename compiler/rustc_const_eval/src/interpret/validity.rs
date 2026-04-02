@@ -498,7 +498,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
             ty::PtrMetadata(pointee) => {
                 let fields =
                     pointee.metadata_fields_for_pointee(*self.ecx.tcx, Some(self.ecx.typing_env));
-                let ty::layout::MetadataFields::KnownFields(fields) = fields else {
+                let ty::layout::MetadataFields::KnownFields { fields, .. } = fields else {
                     bug!("ValidityVisitor should be called on monomorphic data(?)")
                 };
                 PathElem::Field(fields[field].0)

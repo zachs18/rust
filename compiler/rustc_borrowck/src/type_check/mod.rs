@@ -2183,7 +2183,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 }
             }
             AggregateKind::PtrMetadata(pointee_ty, _) => {
-                let ty::layout::MetadataFields::KnownFields(fields) = pointee_ty
+                let ty::layout::MetadataFields::KnownFields { fields, .. } = pointee_ty
                     .metadata_fields_for_pointee(
                         tcx,
                         Some(self.infcx.typing_env(self.infcx.param_env)),

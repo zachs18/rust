@@ -2071,7 +2071,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             .metadata_fields_for_pointee(tcx, Some(self.infcx.typing_env(self.param_env)));
 
         let expected_fields = match expected_fields {
-            ty::layout::MetadataFields::KnownFields(expected_fields) => expected_fields,
+            ty::layout::MetadataFields::KnownFields { fields: expected_fields, non_exhaustive } => {
+                if non_exhaustive && matches!(base_expr, rustc_hir::StructTailExpr::None) {
+                    let mut err = self.dcx().struct_span_err(
+                        expr.span,
+                        format!("pointer metadata of `{}` may have more fields added", pointee_ty),
+                    );
+                    err.note(format!(
+                        "if the other metadata fields of `{pointee_ty}` have default values, you can use `..` default field syntax"
+                    ));
+                    err.emit();
+                }
+                expected_fields
+            }
             ty::layout::MetadataFields::ThinUnknownFields => match base_expr {
                 rustc_hir::StructTailExpr::None => {
                     let mut err = self.dcx().struct_span_err(
@@ -3710,7 +3722,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     );
 
                     match metadata_fields {
-                        ty::layout::MetadataFields::KnownFields(fields) => {
+                        ty::layout::MetadataFields::KnownFields { fields, .. } => {
                             for (i, (mfname, mfspan, _mfvis, mfty)) in fields.iter().enumerate() {
                                 // FIXME(ptr_metadata_v2): visibility
                                 let is_field = match mfspan {
