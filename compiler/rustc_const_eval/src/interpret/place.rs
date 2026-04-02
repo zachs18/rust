@@ -592,13 +592,13 @@ where
             .expect("`typed_ptr_to_mplace` called on non-ptr type");
         let layout = self.layout_of(pointee_type)?;
 
-        let ptr = self.project_field(val, FieldIdx::ZERO)?;
+        let ptr = self.project_simple_field(val, FieldIdx::ZERO)?;
         let ptr = self.read_immediate(&ptr)?;
 
         let meta = AnyMemPlaceMeta(if pointee_type.is_thin(*self.tcx, self.typing_env) {
             None
         } else {
-            let meta = self.project_field(val, FieldIdx::ONE)?;
+            let meta = self.project_simple_field(val, FieldIdx::ONE)?;
             Some(meta.to_op(self)?.expect_sized("pointer metadata must be sized"))
         });
 
@@ -696,7 +696,10 @@ where
     ) -> InterpResult<'tcx, Option<AllocRef<'_, 'tcx, M::Provenance, M::AllocExtra, M::Bytes>>>
     {
         let (size, _align) = self
-            .size_and_align_of_val(mplace, LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT)?
+            .simple_size_and_align_of_val(
+                mplace,
+                LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
+            )?
             .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
         // We check alignment separately, and *after* checking everything else.
         // If an access is both OOB and misaligned, we want to see the bounds error.
@@ -747,7 +750,7 @@ where
     /// place; for reading, a more efficient alternative is `eval_place_to_op`.
     #[instrument(skip(self), level = "trace")]
     pub fn eval_place(
-        &self,
+        &mut self,
         mir_place: mir::Place<'tcx>,
     ) -> InterpResult<'tcx, PlaceTy<'tcx, M::Provenance>> {
         let _trace =

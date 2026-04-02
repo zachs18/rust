@@ -148,9 +148,9 @@ fn aes_round<'tcx>(
     let dest = dest.transmute(u128_array_layout, ecx)?;
 
     for i in 0..len {
-        let state = ecx.read_scalar(&ecx.project_index(&state, i)?)?.to_u128()?;
-        let key = ecx.read_scalar(&ecx.project_index(&key, i)?)?.to_u128()?;
-        let dest = ecx.project_index(&dest, i)?;
+        let state = ecx.read_scalar(&ecx.project_simple_index(&state, i)?)?.to_u128()?;
+        let key = ecx.read_scalar(&ecx.project_simple_index(&key, i)?)?.to_u128()?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = f(state, key);
 

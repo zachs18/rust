@@ -58,9 +58,11 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 // Forward to `panic_bounds_check` lang item.
 
                 // First arg: index.
-                let index = this.read_immediate(&this.eval_operand(index, None)?)?;
+                let index_op = this.eval_operand(index, None)?;
+                let index = this.read_immediate(&index_op)?;
                 // Second arg: len.
-                let len = this.read_immediate(&this.eval_operand(len, None)?)?;
+                let len_op = this.eval_operand(len, None)?;
+                let len = this.read_immediate(&len_op)?;
 
                 // Call the lang item.
                 let panic_bounds_check = this.tcx.lang_items().panic_bounds_check_fn().unwrap();
@@ -77,9 +79,11 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 // Forward to `panic_misaligned_pointer_dereference` lang item.
 
                 // First arg: required.
-                let required = this.read_immediate(&this.eval_operand(required, None)?)?;
+                let required_op = this.eval_operand(required, None)?;
+                let required = this.read_immediate(&required_op)?;
                 // Second arg: found.
-                let found = this.read_immediate(&this.eval_operand(found, None)?)?;
+                let found_op = this.eval_operand(found, None)?;
+                let found = this.read_immediate(&found_op)?;
 
                 // Call the lang item.
                 let panic_misaligned_pointer_dereference =

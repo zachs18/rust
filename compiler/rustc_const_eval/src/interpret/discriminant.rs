@@ -96,7 +96,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         let tag_layout = self.layout_of(tag_scalar_layout.primitive().to_int_ty(*self.tcx))?;
 
         // Read tag and sanity-check `tag_layout`.
-        let tag_val = self.read_immediate(&self.project_field(op, tag_field)?)?;
+        let tag_val = self.read_immediate(&self.project_simple_field(op, tag_field)?)?;
         assert_eq!(tag_layout.size, tag_val.layout.size);
         assert_eq!(tag_layout.backend_repr.is_signed(), tag_val.layout.backend_repr.is_signed());
         trace!("tag value: {}", tag_val);

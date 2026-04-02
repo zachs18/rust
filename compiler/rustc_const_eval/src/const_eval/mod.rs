@@ -54,7 +54,8 @@ pub(crate) fn try_destructure_mir_constant_for_user_output<'tcx>(
 
     let fields_iter = (0..field_count)
         .map(|i| {
-            let field_op = ecx.project_field(&down, FieldIdx::from_usize(i)).discard_err()?;
+            let field_op =
+                ecx.project_simple_field(&down, FieldIdx::from_usize(i)).discard_err()?;
             let val = op_to_const(&ecx, &field_op, /* for diagnostics */ true);
             Some((val, field_op.layout.ty))
         })

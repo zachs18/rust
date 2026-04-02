@@ -137,8 +137,8 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
                 assert_eq!(left_len, right_len);
 
-                let left = this.read_scalar(&this.project_index(&left, 0)?)?.to_f32()?;
-                let right = this.read_scalar(&this.project_index(&right, 0)?)?.to_f32()?;
+                let left = this.read_scalar(&this.project_simple_index(&left, 0)?)?.to_f32()?;
+                let right = this.read_scalar(&this.project_simple_index(&right, 0)?)?.to_f32()?;
                 // The difference between the com* and ucom* variants is signaling
                 // of exceptions when either argument is a quiet NaN. We do not
                 // support accessing the SSE status register from miri (or from Rust,
@@ -161,7 +161,7 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let [op] = this.check_shim_sig_lenient(abi, CanonAbi::C, link_name, args)?;
                 let (op, _) = this.project_to_simd(op)?;
 
-                let op = this.read_immediate(&this.project_index(&op, 0)?)?;
+                let op = this.read_immediate(&this.project_simple_index(&op, 0)?)?;
 
                 let rnd = match unprefixed_name {
                     // "current SSE rounding mode", assume nearest

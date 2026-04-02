@@ -24,7 +24,7 @@ pub use rustc_middle::mir::interpret::*; // have all the `interpret` symbols in 
 
 pub use self::call::FnArg;
 pub use self::eval_context::{
-    InterpCx, LayoutComputeExternTypeSemantics, LayoutComputeSemantics, format_interp_error,
+    InterpCx, LayoutComputeFailureSemantics, LayoutComputeSemantics, format_interp_error,
 };
 use self::eval_context::{from_known_layout, mir_assign_valid_types};
 pub use self::intern::{

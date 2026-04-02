@@ -59,9 +59,9 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(dest_len, right_len);
 
                 for i in 0..dest_len {
-                    let left = this.read_scalar(&this.project_index(&left, i)?)?.to_u8()?;
-                    let right = this.read_scalar(&this.project_index(&right, i)?)?.to_u8()?;
-                    let dest = this.project_index(&dest, i)?;
+                    let left = this.read_scalar(&this.project_simple_index(&left, i)?)?.to_u8()?;
+                    let right = this.read_scalar(&this.project_simple_index(&right, i)?)?.to_u8()?;
+                    let dest = this.project_simple_index(&dest, i)?;
                     this.write_scalar(Scalar::from_u8(gf2p8_mul(left, right)), &dest)?;
                 }
             }
@@ -99,13 +99,13 @@ fn affine_transform<'tcx>(
         let mut matrix = [0u8; 8];
         for j in 0..8 {
             matrix[usize::try_from(j).unwrap()] =
-                ecx.read_scalar(&ecx.project_index(&right, i.wrapping_add(j))?)?.to_u8()?;
+                ecx.read_scalar(&ecx.project_simple_index(&right, i.wrapping_add(j))?)?.to_u8()?;
         }
 
         // Multiply the matrix with the vector and perform the addition.
         for j in 0..8 {
             let index = i.wrapping_add(j);
-            let left = ecx.read_scalar(&ecx.project_index(&left, index)?)?.to_u8()?;
+            let left = ecx.read_scalar(&ecx.project_simple_index(&left, index)?)?.to_u8()?;
             let left = if inverse { TABLE[usize::from(left)] } else { left };
 
             let mut res = 0;
@@ -125,7 +125,7 @@ fn affine_transform<'tcx>(
             // Perform the addition.
             res ^= imm8;
 
-            let dest = ecx.project_index(&dest, index)?;
+            let dest = ecx.project_simple_index(&dest, index)?;
             ecx.write_scalar(Scalar::from_u8(res), &dest)?;
         }
     }

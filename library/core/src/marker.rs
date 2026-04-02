@@ -220,6 +220,9 @@ pub trait Aligned: MetaAligned + PointeeSized {
 ///
 /// The methods of `MetaSized` and `MetaAligned` must not unwind.
 ///
+/// The methods of `MetaSized` and `MetaAligned` must be idempotent and async-signal-safe (FIXME: expand), since they
+/// may be called at any time.
+///
 /// The `checked_*` methods must return `Some(_)` and must not diverge on any "safe" metadata value,
 /// and the `unchecked_*` methods must not invoke UB or diverge on any "safe" metadata value.
 ///

@@ -66,8 +66,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         field: FieldIdx,
     ) -> InterpResult<'tcx, FnArg<'tcx, M::Provenance>> {
         interp_ok(match arg {
-            FnArg::Copy(op) => FnArg::Copy(self.project_field(op, field)?),
-            FnArg::InPlace(mplace) => FnArg::InPlace(self.project_field(mplace, field)?),
+            FnArg::Copy(op) => FnArg::Copy(self.project_simple_field(op, field)?),
+            FnArg::InPlace(mplace) => FnArg::InPlace(self.project_simple_field(mplace, field)?),
         })
     }
 
@@ -405,6 +405,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 ReturnContinuation::Goto { unwind, .. } => {
                     *unwind = mir::UnwindAction::Unreachable;
                 }
+                ReturnContinuation::Continue => {}
             }
         }
 
@@ -1017,6 +1018,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 ReturnContinuation::Stop { .. } => {
                     panic!("encountered ReturnContinuation::Stop when unwinding!")
                 }
+                ReturnContinuation::Continue => {
+                    panic!("encountered ReturnContinuation::Continue when unwinding!")
+                }
             }
         } else {
             // Follow the normal return edge.
@@ -1027,6 +1031,10 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         self.stack().is_empty(),
                         "only the bottommost frame can have ReturnContinuation::Stop"
                     );
+                    interp_ok(())
+                }
+                ReturnContinuation::Continue => {
+                    // aaa
                     interp_ok(())
                 }
             }

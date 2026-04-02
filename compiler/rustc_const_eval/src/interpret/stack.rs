@@ -127,6 +127,9 @@ pub enum ReturnContinuation {
     /// wants them leaked to intern what they need (and just throw away
     /// the entire `ecx` when it is done).
     Stop { cleanup: bool },
+    /// This only occurs when calling a method of `MetaSized` when computing
+    /// the layout of an `unsized type`.
+    Continue,
 }
 
 /// State of a local variable including a memoized layout
@@ -449,6 +452,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         let cleanup = match return_cont {
             ReturnContinuation::Goto { .. } => true,
             ReturnContinuation::Stop { cleanup, .. } => cleanup,
+            ReturnContinuation::Continue => true,
         };
 
         if cleanup {
