@@ -357,6 +357,11 @@ fn apply_overrides(tcx: TyCtxt<'_>, did: LocalDefId, codegen_fn_attrs: &mut Code
         codegen_fn_attrs.flags |= CodegenFnAttrFlags::TRACK_CALLER;
     }
 
+    // inherit rustc_nounwind
+    if tcx.should_inherit_never_unwind(did) {
+        codegen_fn_attrs.flags |= CodegenFnAttrFlags::NEVER_UNWIND;
+    }
+
     // Foreign items by default use no mangling for their symbol name.
     if tcx.is_foreign_item(did) {
         codegen_fn_attrs.flags |= CodegenFnAttrFlags::FOREIGN_ITEM;
@@ -616,6 +621,14 @@ fn should_inherit_track_caller(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     })
 }
 
+/// Checks if the provided DefId is a method in a trait impl for a trait which has rustc_nounwind
+/// applied to the method prototype.
+fn should_inherit_never_unwind(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    tcx.trait_item_of(def_id).is_some_and(|id| {
+        tcx.codegen_fn_attrs(id).flags.intersects(CodegenFnAttrFlags::NEVER_UNWIND)
+    })
+}
+
 /// If the provided DefId is a method in a trait impl, return the value of the `#[align]`
 /// attribute on the method prototype (if any).
 fn inherited_align<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Align> {
@@ -626,6 +639,7 @@ pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers {
         codegen_fn_attrs,
         should_inherit_track_caller,
+        should_inherit_never_unwind,
         inherited_align,
         sanitizer_settings_for,
         ..*providers
