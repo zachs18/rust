@@ -1492,6 +1492,10 @@ rustc_queries! {
         desc { "computing should_inherit_track_caller of `{}`", tcx.def_path_str(def_id) }
     }
 
+    query should_inherit_never_unwind(def_id: DefId) -> bool {
+        desc { "computing should_inherit_never_unwind of `{}`", tcx.def_path_str(def_id) }
+    }
+
     query inherited_align(def_id: DefId) -> Option<Align> {
         desc { "computing inherited_align of `{}`", tcx.def_path_str(def_id) }
     }

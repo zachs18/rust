@@ -218,14 +218,15 @@ pub trait Aligned: MetaAligned + PointeeSized {
 /// The methods of `MetaSized` and `MetaAligned` must be implemented consistently with each other; that is,
 /// they must return the same size and alignment (or fail) for a given metadata value in a single program execution.
 ///
+/// The methods of `MetaSized` and `MetaAligned` must not unwind.
+///
 /// The `checked_*` methods must return `Some(_)` and must not diverge on any "safe" metadata value,
 /// and the `unchecked_*` methods must not invoke UB or diverge on any "safe" metadata value.
 ///
 /// The `unchecked_*` functions *should* invoke UB if given a non-"safe" metadata value, so that Miri
 /// can better check things.
 ///
-/// The `checked_*` functions *should* return `None` if given a non-"safe" metadata value, instead of panicking
-/// or diverging.
+/// The `checked_*` functions *should* return `None` if given a non-"safe" metadata value.
 ///
 /// Additionally the following requirements apply:
 ///
@@ -254,18 +255,22 @@ pub unsafe trait MetaSized: MetaAligned + PointeeSized {
     /// # Safety
     ///
     /// See [`unchecked_size_for_meta`](crate::mem::unchecked_size_for_meta).
+    #[rustc_nounwind]
     unsafe fn unchecked_size_for_meta(self: Metadata<Self>) -> usize;
 
     /// Returns the size of a value with the given metadata, or `None`
     /// if this metadata cannot represent a valid value.
     ///
     /// See [`checked_size_for_meta`](crate::mem::checked_size_for_meta).
+    #[rustc_nounwind]
     fn checked_size_for_meta(self: Metadata<Self>) -> Option<usize>;
 
     /// FIXME: docs
+    #[rustc_nounwind]
     unsafe fn unchecked_layout_for_meta(self: Metadata<Self>) -> (usize, Alignment);
 
     /// FIXME: docs
+    #[rustc_nounwind]
     fn checked_layout_for_meta(self: Metadata<Self>) -> Option<(usize, Alignment)>;
 }
 
@@ -295,12 +300,14 @@ pub unsafe trait MetaAligned: PointeeSized {
     /// # Safety
     ///
     /// See [`unchecked_align_for_meta`](crate::mem::unchecked_align_for_meta).
+    #[rustc_nounwind]
     unsafe fn unchecked_align_for_meta(self: Metadata<Self>) -> Alignment;
 
     /// Returns the align of a value with the given metadata, or `None`
     /// if this metadata cannot represent a valid value.
     ///
     /// See [`checked_align_for_meta`](crate::mem::checked_align_for_meta).
+    #[rustc_nounwind]
     fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment>;
 }
 
