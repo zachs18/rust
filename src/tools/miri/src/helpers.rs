@@ -277,7 +277,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         let adt = base.layout().ty.ty_adt_def().unwrap();
         for (idx, field) in adt.non_enum_variant().fields.iter_enumerated() {
             if field.name.as_str() == name {
-                return interp_ok(Some(this.project_field(base, idx)?));
+                return interp_ok(Some(this.project_simple_field(base, idx)?));
             }
         }
         interp_ok(None)
@@ -455,7 +455,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
         trace!("visit_frozen(place={:?}, size={:?})", *place, size);
         debug_assert_eq!(
             size,
-            this.size_and_align_of_val(place, LayoutComputeSemantics::FOR_RETAG)?
+            this.simple_size_and_align_of_val(place, LayoutComputeSemantics::FOR_RETAG)?
                 .map(|(size, _)| size)
                 .unwrap_or_else(|| place.layout.size)
         );
@@ -496,7 +496,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     trace!("unsafe_cell_action on {:?}", place.ptr());
                     // We need a size to go on.
                     let unsafe_cell_size = this
-                        .size_and_align_of_val(place, LayoutComputeSemantics::FOR_RETAG)?
+                        .simple_size_and_align_of_val(place, LayoutComputeSemantics::FOR_RETAG)?
                         .map(|(size, _)| size)
                         // for extern types, just cover what we can
                         .unwrap_or_else(|| place.layout.size);
@@ -535,6 +535,11 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             #[inline(always)]
             fn ecx(&self) -> &MiriInterpCx<'tcx> {
                 self.ecx
+            }
+
+            #[inline(always)]
+            fn ecx_mut(&mut self) -> &mut MiriInterpCx<'tcx> {
+                todo!()
             }
 
             // Hook to detect `UnsafeCell`.

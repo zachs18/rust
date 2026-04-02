@@ -39,9 +39,9 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     let src_idx = lane_idx.strict_rem(lane_count / 2);
 
                     let lhs_lane =
-                        this.read_immediate(&this.project_index(src, src_idx.strict_mul(2))?)?;
+                        this.read_immediate(&this.project_simple_index(src, src_idx.strict_mul(2))?)?;
                     let rhs_lane = this.read_immediate(
-                        &this.project_index(src, src_idx.strict_mul(2).strict_add(1))?,
+                        &this.project_simple_index(src, src_idx.strict_mul(2).strict_add(1))?,
                     )?;
 
                     // Compute `if lhs > rhs { lhs } else { rhs }`, i.e., `max`.
@@ -55,7 +55,7 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                         rhs_lane
                     };
 
-                    let dest = this.project_index(&dest, lane_idx)?;
+                    let dest = this.project_simple_index(&dest, lane_idx)?;
                     this.write_immediate(*res_lane, &dest)?;
                 }
             }
@@ -94,13 +94,13 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     // Convert "pair index" into "index of first element of the pair".
                     let i = src_pair_idx.strict_mul(2);
 
-                    let lhs = this.read_immediate(&this.project_index(src, i)?)?;
-                    let rhs = this.read_immediate(&this.project_index(src, i.strict_add(1))?)?;
+                    let lhs = this.read_immediate(&this.project_simple_index(src, i)?)?;
+                    let rhs = this.read_immediate(&this.project_simple_index(src, i.strict_add(1))?)?;
 
                     // Wrapping addition on the element type.
                     let sum = this.binary_op(BinOp::Add, &lhs, &rhs)?;
 
-                    let dst_lane = this.project_index(&dest, lane_idx)?;
+                    let dst_lane = this.project_simple_index(&dest, lane_idx)?;
                     this.write_immediate(*sum, &dst_lane)?;
                 }
             }
@@ -130,9 +130,9 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 for dest_idx in 0..dest_len {
                     let src_idx = dest_idx.strict_mul(2);
 
-                    let a_scalar = this.read_scalar(&this.project_index(&src, src_idx)?)?;
+                    let a_scalar = this.read_scalar(&this.project_simple_index(&src, src_idx)?)?;
                     let b_scalar =
-                        this.read_scalar(&this.project_index(&src, src_idx.strict_add(1))?)?;
+                        this.read_scalar(&this.project_simple_index(&src, src_idx.strict_add(1))?)?;
 
                     let a_val = a_scalar.to_uint(src_elem_size)?;
                     let b_val = b_scalar.to_uint(src_elem_size)?;
@@ -141,7 +141,7 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                     // This cannot wrap since the element type is at most u64.
                     let sum = a_val.strict_add(b_val);
 
-                    let dst_lane = this.project_index(&dest, dest_idx)?;
+                    let dst_lane = this.project_simple_index(&dest, dest_idx)?;
                     this.write_scalar(Scalar::from_uint(sum, dest_elem_size), &dst_lane)?;
                 }
             }
@@ -162,15 +162,15 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(idx_len, dest_len);
 
                 for i in 0..dest_len {
-                    let idx = this.read_immediate(&this.project_index(&indices, i)?)?;
+                    let idx = this.read_immediate(&this.project_simple_index(&indices, i)?)?;
                     let idx_u = idx.to_scalar().to_u8()?;
                     let val = if u64::from(idx_u) < table_len {
-                        let t = this.read_immediate(&this.project_index(&table, idx_u.into())?)?;
+                        let t = this.read_immediate(&this.project_simple_index(&table, idx_u.into())?)?;
                         t.to_scalar()
                     } else {
                         Scalar::from_u8(0)
                     };
-                    this.write_scalar(val, &this.project_index(&dest, i)?)?;
+                    this.write_scalar(val, &this.project_simple_index(&dest, i)?)?;
                 }
             }
             // Used to implement the __crc32{b,h,w,x} and __crc32c{b,h,w,x} functions.

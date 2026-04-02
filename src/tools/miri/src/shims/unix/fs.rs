@@ -273,7 +273,7 @@ trait EvalContextExtPrivate<'tcx>: crate::MiriInterpCxExt<'tcx> {
         if matches!(&this.tcx.sess.target.os, Os::Solaris | Os::Illumos) {
             let st_fstype = this.project_field_named(&buf, "st_fstype")?;
             // This is an array; write 0 into first element so that it encodes the empty string.
-            this.write_int(0, &this.project_index(&st_fstype, 0)?)?;
+            this.write_int(0, &this.project_simple_index(&st_fstype, 0)?)?;
         }
 
         interp_ok(0)

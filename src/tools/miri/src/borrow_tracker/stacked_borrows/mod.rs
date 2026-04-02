@@ -937,6 +937,11 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 self.ecx
             }
 
+            #[inline(always)]
+            fn ecx_mut(&mut self) -> &mut MiriInterpCx<'tcx> {
+                self.ecx
+            }
+
             fn visit_box(&mut self, box_ty: Ty<'tcx>, place: &PlaceTy<'tcx>) -> InterpResult<'tcx> {
                 // Only boxes for the global allocator get any special treatment.
                 if box_ty.is_box_global(*self.ecx.tcx) {

@@ -66,10 +66,10 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
                 let imm8 = this.read_scalar(imm8)?.to_u32()? & 0xFF;
                 for i in 0..dest_len {
-                    let a_lane = this.project_index(&a, i)?;
-                    let b_lane = this.project_index(&b, i)?;
-                    let c_lane = this.project_index(&c, i)?;
-                    let d_lane = this.project_index(&dest, i)?;
+                    let a_lane = this.project_simple_index(&a, i)?;
+                    let b_lane = this.project_simple_index(&b, i)?;
+                    let c_lane = this.project_simple_index(&c, i)?;
+                    let d_lane = this.project_simple_index(&dest, i)?;
 
                     let va = this.read_scalar(&a_lane)?.to_u32()?;
                     let vb = this.read_scalar(&b_lane)?.to_u32()?;
@@ -196,14 +196,14 @@ fn vpdpbusd<'tcx>(
     assert_eq!(b_len, a_len);
 
     for i in 0..dest_len {
-        let src = ecx.read_scalar(&ecx.project_index(&src, i)?)?.to_i32()?;
-        let dest = ecx.project_index(&dest, i)?;
+        let src = ecx.read_scalar(&ecx.project_simple_index(&src, i)?)?.to_i32()?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let mut intermediate_sum: i32 = 0;
         for j in 0..4 {
             let idx = i.strict_mul(4).strict_add(j);
-            let a = ecx.read_scalar(&ecx.project_index(&a, idx)?)?.to_u8()?;
-            let b = ecx.read_scalar(&ecx.project_index(&b, idx)?)?.to_i8()?;
+            let a = ecx.read_scalar(&ecx.project_simple_index(&a, idx)?)?.to_u8()?;
+            let b = ecx.read_scalar(&ecx.project_simple_index(&b, idx)?)?.to_i8()?;
 
             let product = i32::from(a).strict_mul(i32::from(b));
             intermediate_sum = intermediate_sum.strict_add(product);

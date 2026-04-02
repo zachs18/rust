@@ -12,6 +12,7 @@ use super::{
     AnyMemPlaceMeta, ImmTy, Immediate, InterpCx, LayoutComputeSemantics, Machine, OpTy, PlaceTy,
     interp_ok, throw_ub,
 };
+use crate::interpret::projection::MaybeMut;
 
 impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     fn three_way_compare<T: Ord>(&self, lhs: T, rhs: T) -> ImmTy<'tcx, M::Provenance> {
@@ -360,7 +361,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     }
 
     fn binary_ptr_op(
-        &self,
+        mut this: impl MaybeMut<Self>,
         bin_op: mir::BinOp,
         left: &ImmTy<'tcx, M::Provenance>,
         right: &ImmTy<'tcx, M::Provenance>,
@@ -376,26 +377,26 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let delta = right;
 
                 let pointee_ty = ptr.layout.ty.builtin_deref(true).unwrap();
-                let pointee_layout = self.layout_of(pointee_ty)?;
+                let pointee_layout = this.layout_of(pointee_ty)?;
 
-                let base_data_ptr = self.project_field(ptr, FieldIdx::ZERO)?;
-                let meta = self.project_field(ptr, FieldIdx::ONE)?;
+                let base_data_ptr = this.project_simple_field(ptr, FieldIdx::ZERO)?;
+                let meta = this.project_simple_field(ptr, FieldIdx::ONE)?;
 
                 let base_data_ptr =
-                    self.read_immediate(&base_data_ptr)?.to_scalar().to_pointer(self)?;
+                    this.read_immediate(&base_data_ptr)?.to_scalar().to_pointer(&*this)?;
 
                 let metadata = AnyMemPlaceMeta(Some(
                     OpTy::from(meta.clone()).expect_sized("pointer metadata must be sized"),
                 ));
-                let (pointee_size, _pointee_align) = self
-                    .size_and_align_from_meta(
-                        &metadata,
-                        &pointee_layout,
-                        LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
-                    )?
-                    .expect(
-                        "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None",
-                    );
+                let (pointee_size, _pointee_align) = Self::size_and_align_from_meta_inner(
+                    this.reborrow(),
+                    &metadata,
+                    &pointee_layout,
+                    LayoutComputeSemantics::UNCHECKED_METASIZED_LAYOUT,
+                )?
+                .expect(
+                    "size_and_align_from_meta(UNCHECKED_METASIZED_LAYOUT) should never return None",
+                );
 
                 // The size always fits in `i64` as it can be at most `isize::MAX`.
                 let pointee_size = i64::try_from(pointee_size.bytes()).unwrap();
@@ -403,7 +404,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // `pointee_size` is guaranteed to fit into both types.
                 let pointee_size = ImmTy::from_int(pointee_size, delta.layout);
                 // Multiply element size and element count.
-                let (val, overflowed) = self
+                let (val, overflowed) = this
                     .binary_op(mir::BinOp::MulWithOverflow, delta, &pointee_size)?
                     .to_scalar_pair();
                 // This must not overflow.
@@ -411,14 +412,14 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     throw_ub!(PointerArithOverflow)
                 }
 
-                let offset_bytes = val.to_target_isize(self)?;
+                let offset_bytes = val.to_target_isize(&*this)?;
                 if !delta.layout.backend_repr.is_signed() && offset_bytes < 0 {
                     // We were supposed to do an unsigned offset but the result is negative -- this
                     // can only mean that the cast wrapped around.
                     throw_ub!(PointerArithOverflow)
                 }
-                let offset_ptr = self.ptr_offset_inbounds(base_data_ptr, offset_bytes)?;
-                let offset_ptr = Scalar::from_maybe_pointer(offset_ptr, self);
+                let offset_ptr = this.ptr_offset_inbounds(base_data_ptr, offset_bytes)?;
+                let offset_ptr = Scalar::from_maybe_pointer(offset_ptr, &*this);
 
                 let result = match *meta {
                     Immediate::Scalar(meta) => {
@@ -434,8 +435,20 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
 
             // Fall back to machine hook so Miri can support more pointer ops.
-            _ => M::binary_ptr_op(self, bin_op, left, right),
+            _ => M::binary_ptr_op(&*this, bin_op, left, right),
         }
+    }
+
+    /// Returns the result of the specified operation.
+    ///
+    /// Whether this produces a scalar or a pair depends on the specific `bin_op`.
+    pub fn binary_op_maybe_custom_metasized_offset(
+        &mut self,
+        bin_op: mir::BinOp,
+        left: &ImmTy<'tcx, M::Provenance>,
+        right: &ImmTy<'tcx, M::Provenance>,
+    ) -> InterpResult<'tcx, ImmTy<'tcx, M::Provenance>> {
+        Self::binary_op_inner(self, bin_op, left, right)
     }
 
     /// Returns the result of the specified operation.
@@ -443,6 +456,18 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     /// Whether this produces a scalar or a pair depends on the specific `bin_op`.
     pub fn binary_op(
         &self,
+        bin_op: mir::BinOp,
+        left: &ImmTy<'tcx, M::Provenance>,
+        right: &ImmTy<'tcx, M::Provenance>,
+    ) -> InterpResult<'tcx, ImmTy<'tcx, M::Provenance>> {
+        Self::binary_op_inner(self, bin_op, left, right)
+    }
+
+    /// Returns the result of the specified operation.
+    ///
+    /// Whether this produces a scalar or a pair depends on the specific `bin_op`.
+    pub fn binary_op_inner(
+        this: impl MaybeMut<Self>,
         bin_op: mir::BinOp,
         left: &ImmTy<'tcx, M::Provenance>,
         right: &ImmTy<'tcx, M::Provenance>,
@@ -457,13 +482,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert_eq!(left.layout.ty, right.layout.ty);
                 let left = left.to_scalar();
                 let right = right.to_scalar();
-                interp_ok(self.binary_char_op(bin_op, left.to_char()?, right.to_char()?))
+                interp_ok(this.binary_char_op(bin_op, left.to_char()?, right.to_char()?))
             }
             ty::Bool => {
                 assert_eq!(left.layout.ty, right.layout.ty);
                 let left = left.to_scalar();
                 let right = right.to_scalar();
-                interp_ok(self.binary_bool_op(bin_op, left.to_bool()?, right.to_bool()?))
+                interp_ok(this.binary_bool_op(bin_op, left.to_bool()?, right.to_bool()?))
             }
             ty::Float(fty) => {
                 assert_eq!(left.layout.ty, right.layout.ty);
@@ -472,16 +497,16 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let right = right.to_scalar();
                 interp_ok(match fty {
                     FloatTy::F16 => {
-                        self.binary_float_op(bin_op, layout, left.to_f16()?, right.to_f16()?)
+                        this.binary_float_op(bin_op, layout, left.to_f16()?, right.to_f16()?)
                     }
                     FloatTy::F32 => {
-                        self.binary_float_op(bin_op, layout, left.to_f32()?, right.to_f32()?)
+                        this.binary_float_op(bin_op, layout, left.to_f32()?, right.to_f32()?)
                     }
                     FloatTy::F64 => {
-                        self.binary_float_op(bin_op, layout, left.to_f64()?, right.to_f64()?)
+                        this.binary_float_op(bin_op, layout, left.to_f64()?, right.to_f64()?)
                     }
                     FloatTy::F128 => {
-                        self.binary_float_op(bin_op, layout, left.to_f128()?, right.to_f128()?)
+                        this.binary_float_op(bin_op, layout, left.to_f128()?, right.to_f128()?)
                     }
                 })
             }
@@ -495,7 +520,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     right.layout.ty
                 );
 
-                self.binary_int_op(bin_op, left, right)
+                this.binary_int_op(bin_op, left, right)
             }
             _ if left.layout.ty.is_any_ptr() => {
                 // The RHS type must be a `pointer` *or an integer type* (for `Offset`).
@@ -508,10 +533,10 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     right.layout.ty
                 );
 
-                self.binary_ptr_op(bin_op, left, right)
+                Self::binary_ptr_op(this, bin_op, left, right)
             }
             _ => span_bug!(
-                self.cur_span(),
+                this.cur_span(),
                 "Invalid MIR: bad LHS type for binop: {}",
                 left.layout.ty
             ),

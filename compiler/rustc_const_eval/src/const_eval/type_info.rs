@@ -76,7 +76,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         let ty_struct = ty_struct.ty_adt_def().unwrap().non_enum_variant();
         // Fill all fields of the `TypeInfo` struct.
         for (idx, field) in ty_struct.fields.iter_enumerated() {
-            let field_dest = self.project_field(dest, idx)?;
+            let field_dest = self.project_simple_field(dest, idx)?;
             let ptr_bit_width = || self.tcx.data_layout.pointer_size().bits();
             match field.name {
                 sym::kind => {
@@ -85,7 +85,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::Tuple)?;
                             // project to the single tuple variant field of `type_info::Tuple` struct type
-                            let tuple_place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let tuple_place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                             assert_eq!(
                                 1,
                                 tuple_place
@@ -103,7 +104,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         ty::Array(ty, len) => {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::Array)?;
-                            let array_place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let array_place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
 
                             self.write_array_type_info(array_place, *ty, *len)?;
 
@@ -112,7 +114,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         ty::Slice(ty) => {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::Slice)?;
-                            let slice_place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let slice_place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
 
                             self.write_slice_type_info(slice_place, *ty)?;
 
@@ -133,7 +136,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         }
                         ty::Int(int_ty) => {
                             let (variant, variant_place) = self.downcast(&field_dest, sym::Int)?;
-                            let place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                             self.write_int_type_info(
                                 place,
                                 int_ty.bit_width().unwrap_or_else(/* isize */ ptr_bit_width),
@@ -143,7 +147,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         }
                         ty::Uint(uint_ty) => {
                             let (variant, variant_place) = self.downcast(&field_dest, sym::Int)?;
-                            let place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                             self.write_int_type_info(
                                 place,
                                 uint_ty.bit_width().unwrap_or_else(/* usize */ ptr_bit_width),
@@ -154,7 +159,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         ty::Float(float_ty) => {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::Float)?;
-                            let place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                             self.write_float_type_info(place, float_ty.bit_width())?;
                             variant
                         }
@@ -166,7 +172,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::Reference)?;
                             let reference_place =
-                                self.project_field(&variant_place, FieldIdx::ZERO)?;
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                             self.write_reference_type_info(reference_place, *ty, *mutability)?;
 
                             variant
@@ -175,7 +181,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::Pointer)?;
                             let pointer_place =
-                                self.project_field(&variant_place, FieldIdx::ZERO)?;
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
 
                             self.write_pointer_type_info(pointer_place, *ty, *mutability)?;
 
@@ -184,7 +190,8 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         ty::Dynamic(predicates, region) => {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::DynTrait)?;
-                            let dyn_place = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            let dyn_place =
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                             self.write_dyn_trait_type_info(dyn_place, *predicates, *region)?;
                             variant
                         }
@@ -192,7 +199,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                             let (variant, variant_place) =
                                 self.downcast(&field_dest, sym::FnPtr)?;
                             let fn_ptr_place =
-                                self.project_field(&variant_place, FieldIdx::ZERO)?;
+                                self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
 
                             // FIXME: handle lifetime bounds
                             let sig = sig.skip_binder();
@@ -230,7 +237,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                     let variant_index = if layout.is_sized() {
                         let (variant, variant_place) = self.downcast(&field_dest, sym::Some)?;
                         let size_field_place =
-                            self.project_field(&variant_place, FieldIdx::ZERO)?;
+                            self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                         self.write_scalar(
                             ScalarInt::try_from_target_usize(layout.size.bytes(), self.tcx.tcx)
                                 .unwrap(),
@@ -260,7 +267,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field_ty_field) in
             place.layout.ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
             match field_ty_field.name {
                 sym::name => {
                     let name = match name.as_ref() {
@@ -304,7 +311,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         tuple_ty: Ty<'tcx>,
     ) -> InterpResult<'tcx> {
         let tuple_layout = self.layout_of(tuple_ty)?;
-        let fields_slice_place = self.project_field(&tuple_place, FieldIdx::ZERO)?;
+        let fields_slice_place = self.project_simple_field(&tuple_place, FieldIdx::ZERO)?;
         self.allocate_fill_and_write_slice_ptr(
             fields_slice_place,
             fields.len() as u64,
@@ -325,7 +332,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
 
             match field.name {
                 // Write the `TypeId` of the array's elements to the `element_ty` field.
@@ -348,7 +355,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
 
             match field.name {
                 // Write the `TypeId` of the slice's elements to the `element_ty` field.
@@ -369,7 +376,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
             match field.name {
                 sym::bits => self.write_scalar(
                     Scalar::from_u32(bit_width.try_into().expect("bit_width overflowed")),
@@ -390,7 +397,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
             match field.name {
                 sym::bits => self.write_scalar(
                     Scalar::from_u32(bit_width.try_into().expect("bit_width overflowed")),
@@ -412,7 +419,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
 
             match field.name {
                 // Write the `TypeId` of the reference's inner type to the `ty` field.
@@ -438,7 +445,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
 
             match field.name {
                 sym::unsafety => {
@@ -459,7 +466,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
                         let (variant, variant_place) = self.downcast(&field_place, sym::Named)?;
                         let str_place = self.allocate_str_dedup(other_abi.as_str())?;
                         let str_ref = self.mplace_to_imm_ptr(&str_place, None)?;
-                        let payload = self.project_field(&variant_place, FieldIdx::ZERO)?;
+                        let payload = self.project_simple_field(&variant_place, FieldIdx::ZERO)?;
                         self.write_immediate(*str_ref, &payload)?;
                         self.write_discriminant(variant, &field_place)?;
                     }
@@ -496,7 +503,7 @@ impl<'tcx> InterpCx<'tcx, CompileTimeMachine<'tcx>> {
         for (field_idx, field) in
             place.layout().ty.ty_adt_def().unwrap().non_enum_variant().fields.iter_enumerated()
         {
-            let field_place = self.project_field(&place, field_idx)?;
+            let field_place = self.project_simple_field(&place, field_idx)?;
 
             match field.name {
                 // Write the `TypeId` of the pointer's inner type to the `ty` field.

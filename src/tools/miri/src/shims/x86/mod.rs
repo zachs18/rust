@@ -56,8 +56,8 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 };
 
                 let (sum, cb_out) = carrying_add(this, cb_in, a, b, op)?;
-                this.write_scalar(cb_out, &this.project_field(dest, FieldIdx::ZERO)?)?;
-                this.write_immediate(*sum, &this.project_field(dest, FieldIdx::ONE)?)?;
+                this.write_scalar(cb_out, &this.project_simple_field(dest, FieldIdx::ZERO)?)?;
+                this.write_immediate(*sum, &this.project_simple_field(dest, FieldIdx::ONE)?)?;
             }
 
             // Used to implement the `_mm_pause` function.
@@ -325,13 +325,13 @@ fn bin_op_simd_float_first<'tcx, F: rustc_apfloat::Float>(
 
     let res0 = bin_op_float::<F>(
         which,
-        &ecx.read_immediate(&ecx.project_index(&left, 0)?)?,
-        &ecx.read_immediate(&ecx.project_index(&right, 0)?)?,
+        &ecx.read_immediate(&ecx.project_simple_index(&left, 0)?)?,
+        &ecx.read_immediate(&ecx.project_simple_index(&right, 0)?)?,
     )?;
-    ecx.write_scalar(res0, &ecx.project_index(&dest, 0)?)?;
+    ecx.write_scalar(res0, &ecx.project_simple_index(&dest, 0)?)?;
 
     for i in 1..dest_len {
-        ecx.copy_op(&ecx.project_index(&left, i)?, &ecx.project_index(&dest, i)?)?;
+        ecx.copy_op(&ecx.project_simple_index(&left, i)?, &ecx.project_simple_index(&dest, i)?)?;
     }
 
     interp_ok(())
@@ -354,9 +354,9 @@ fn bin_op_simd_float_all<'tcx, F: rustc_apfloat::Float>(
     assert_eq!(dest_len, right_len);
 
     for i in 0..dest_len {
-        let left = ecx.read_immediate(&ecx.project_index(&left, i)?)?;
-        let right = ecx.read_immediate(&ecx.project_index(&right, i)?)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.read_immediate(&ecx.project_simple_index(&left, i)?)?;
+        let right = ecx.read_immediate(&ecx.project_simple_index(&right, i)?)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = bin_op_float::<F>(which, &left, &right)?;
         ecx.write_scalar(res, &dest)?;
@@ -418,11 +418,11 @@ fn unary_op_ss<'tcx>(
 
     assert_eq!(dest_len, op_len);
 
-    let res0 = unary_op_f32(ecx, which, &ecx.read_immediate(&ecx.project_index(&op, 0)?)?)?;
-    ecx.write_scalar(res0, &ecx.project_index(&dest, 0)?)?;
+    let res0 = unary_op_f32(ecx, which, &ecx.read_immediate(&ecx.project_simple_index(&op, 0)?)?)?;
+    ecx.write_scalar(res0, &ecx.project_simple_index(&dest, 0)?)?;
 
     for i in 1..dest_len {
-        ecx.copy_op(&ecx.project_index(&op, i)?, &ecx.project_index(&dest, i)?)?;
+        ecx.copy_op(&ecx.project_simple_index(&op, i)?, &ecx.project_simple_index(&dest, i)?)?;
     }
 
     interp_ok(())
@@ -442,8 +442,8 @@ fn unary_op_ps<'tcx>(
     assert_eq!(dest_len, op_len);
 
     for i in 0..dest_len {
-        let op = ecx.read_immediate(&ecx.project_index(&op, i)?)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let op = ecx.read_immediate(&ecx.project_simple_index(&op, i)?)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = unary_op_f32(ecx, which, &op)?;
         ecx.write_scalar(res, &dest)?;
@@ -488,8 +488,8 @@ fn shift_simd_by_scalar<'tcx>(
     let shift = u32::try_from(extract_first_u64(ecx, right)?).unwrap_or(u32::MAX);
 
     for i in 0..dest_len {
-        let left = ecx.read_scalar(&ecx.project_index(&left, i)?)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.read_scalar(&ecx.project_simple_index(&left, i)?)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = match which {
             ShiftOp::Left => {
@@ -529,7 +529,7 @@ fn extract_first_u64<'tcx>(
     let op = op.transmute(array_layout, ecx)?;
 
     // Get the first u64 from the array
-    ecx.read_scalar(&ecx.project_index(&op, 0)?)?.to_u64()
+    ecx.read_scalar(&ecx.project_simple_index(&op, 0)?)?.to_u64()
 }
 
 // Rounds the first element of `right` according to `rounding`
@@ -550,15 +550,15 @@ fn round_first<'tcx, F: rustc_apfloat::Float>(
 
     let rounding = rounding_from_imm(ecx.read_scalar(rounding)?.to_i32()?)?;
 
-    let op0: F = ecx.read_scalar(&ecx.project_index(&right, 0)?)?.to_float()?;
+    let op0: F = ecx.read_scalar(&ecx.project_simple_index(&right, 0)?)?.to_float()?;
     let res = op0.round_to_integral(rounding).value;
     ecx.write_scalar(
         Scalar::from_uint(res.to_bits(), Size::from_bits(F::BITS)),
-        &ecx.project_index(&dest, 0)?,
+        &ecx.project_simple_index(&dest, 0)?,
     )?;
 
     for i in 1..dest_len {
-        ecx.copy_op(&ecx.project_index(&left, i)?, &ecx.project_index(&dest, i)?)?;
+        ecx.copy_op(&ecx.project_simple_index(&left, i)?, &ecx.project_simple_index(&dest, i)?)?;
     }
 
     interp_ok(())
@@ -579,11 +579,11 @@ fn round_all<'tcx, F: rustc_apfloat::Float>(
     let rounding = rounding_from_imm(ecx.read_scalar(rounding)?.to_i32()?)?;
 
     for i in 0..dest_len {
-        let op: F = ecx.read_scalar(&ecx.project_index(&op, i)?)?.to_float()?;
+        let op: F = ecx.read_scalar(&ecx.project_simple_index(&op, i)?)?.to_float()?;
         let res = op.round_to_integral(rounding).value;
         ecx.write_scalar(
             Scalar::from_uint(res.to_bits(), Size::from_bits(F::BITS)),
-            &ecx.project_index(&dest, i)?,
+            &ecx.project_simple_index(&dest, i)?,
         )?;
     }
 
@@ -630,8 +630,8 @@ fn convert_float_to_int<'tcx>(
     assert!(matches!(dest.layout.field(ecx, 0).ty.kind(), ty::Int(_)));
 
     for i in 0..op_len.min(dest_len) {
-        let op = ecx.read_immediate(&ecx.project_index(&op, i)?)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let op = ecx.read_immediate(&ecx.project_simple_index(&op, i)?)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = ecx.float_to_int_checked(&op, dest.layout, rnd)?.unwrap_or_else(|| {
             // Fallback to minimum according to SSE/AVX semantics.
@@ -641,7 +641,7 @@ fn convert_float_to_int<'tcx>(
     }
     // Fill remainder with zeros
     for i in op_len..dest_len {
-        let dest = ecx.project_index(&dest, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
         ecx.write_scalar(Scalar::from_int(0, dest.layout.size), &dest)?;
     }
 
@@ -705,9 +705,9 @@ fn horizontal_bin_op<'tcx>(
 
     let middle = items_per_chunk / 2;
     for i in 0..num_chunks {
-        let left = ecx.project_index(&left, i)?;
-        let right = ecx.project_index(&right, i)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.project_simple_index(&left, i)?;
+        let right = ecx.project_simple_index(&right, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         for j in 0..items_per_chunk {
             // `j` is the index in `dest`
@@ -715,8 +715,8 @@ fn horizontal_bin_op<'tcx>(
             let (k, src) = if j < middle { (j, &left) } else { (j.strict_sub(middle), &right) };
             // `base_i` is the index of the first item of the 2-item chunk in `src`
             let base_i = k.strict_mul(2);
-            let lhs = ecx.read_immediate(&ecx.project_index(src, base_i)?)?;
-            let rhs = ecx.read_immediate(&ecx.project_index(src, base_i.strict_add(1))?)?;
+            let lhs = ecx.read_immediate(&ecx.project_simple_index(src, base_i)?)?;
+            let rhs = ecx.read_immediate(&ecx.project_simple_index(src, base_i.strict_add(1))?)?;
 
             let res = if saturating {
                 Immediate::from(ecx.saturating_arith(which, &lhs, &rhs)?)
@@ -724,7 +724,7 @@ fn horizontal_bin_op<'tcx>(
                 *ecx.binary_op(which, &lhs, &rhs)?
             };
 
-            ecx.write_immediate(res, &ecx.project_index(&dest, j)?)?;
+            ecx.write_immediate(res, &ecx.project_simple_index(&dest, j)?)?;
         }
     }
 
@@ -760,9 +760,9 @@ fn conditional_dot_product<'tcx>(
     let imm = ecx.read_scalar(imm)?.to_uint(imm.layout.size)?;
 
     for i in 0..num_chunks {
-        let left = ecx.project_index(&left, i)?;
-        let right = ecx.project_index(&right, i)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.project_simple_index(&left, i)?;
+        let right = ecx.project_simple_index(&right, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         // Calculate dot product
         // Elements are floating point numbers, but we can use `from_int`
@@ -770,8 +770,8 @@ fn conditional_dot_product<'tcx>(
         let mut sum = ImmTy::from_int(0u8, element_layout);
         for j in 0..items_per_chunk {
             if imm & (1 << j.strict_add(4)) != 0 {
-                let left = ecx.read_immediate(&ecx.project_index(&left, j)?)?;
-                let right = ecx.read_immediate(&ecx.project_index(&right, j)?)?;
+                let left = ecx.read_immediate(&ecx.project_simple_index(&left, j)?)?;
+                let right = ecx.read_immediate(&ecx.project_simple_index(&right, j)?)?;
 
                 let mul = ecx.binary_op(mir::BinOp::Mul, &left, &right)?;
                 sum = ecx.binary_op(mir::BinOp::Add, &sum, &mul)?;
@@ -780,7 +780,7 @@ fn conditional_dot_product<'tcx>(
 
         // Write to destination (conditioned to imm)
         for j in 0..items_per_chunk {
-            let dest = ecx.project_index(&dest, j)?;
+            let dest = ecx.project_simple_index(&dest, j)?;
 
             if imm & (1 << j) != 0 {
                 ecx.write_immediate(*sum, &dest)?;
@@ -812,8 +812,8 @@ fn test_bits_masked<'tcx>(
     let mut all_zero = true;
     let mut masked_set = true;
     for i in 0..op_len {
-        let op = ecx.project_index(&op, i)?;
-        let mask = ecx.project_index(&mask, i)?;
+        let op = ecx.project_simple_index(&op, i)?;
+        let mask = ecx.project_simple_index(&mask, i)?;
 
         let op = ecx.read_scalar(&op)?.to_uint(op.layout.size)?;
         let mask = ecx.read_scalar(&mask)?.to_uint(mask.layout.size)?;
@@ -845,8 +845,8 @@ fn test_high_bits_masked<'tcx>(
     let mut direct = true;
     let mut negated = true;
     for i in 0..op_len {
-        let op = ecx.project_index(&op, i)?;
-        let mask = ecx.project_index(&mask, i)?;
+        let op = ecx.project_simple_index(&op, i)?;
+        let mask = ecx.project_simple_index(&mask, i)?;
 
         let op = ecx.read_scalar(&op)?.to_uint(op.layout.size)?;
         let mask = ecx.read_scalar(&mask)?.to_uint(mask.layout.size)?;
@@ -893,23 +893,23 @@ fn mpsadbw<'tcx>(
     let right_offset = u64::try_from(imm & 0b11).unwrap().strict_mul(4);
 
     for i in 0..num_chunks {
-        let left = ecx.project_index(&left, i)?;
-        let right = ecx.project_index(&right, i)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.project_simple_index(&left, i)?;
+        let right = ecx.project_simple_index(&right, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         for j in 0..dest_items_per_chunk {
             let left_offset = left_offset.strict_add(j);
             let mut res: u16 = 0;
             for k in 0..4 {
                 let left = ecx
-                    .read_scalar(&ecx.project_index(&left, left_offset.strict_add(k))?)?
+                    .read_scalar(&ecx.project_simple_index(&left, left_offset.strict_add(k))?)?
                     .to_u8()?;
                 let right = ecx
-                    .read_scalar(&ecx.project_index(&right, right_offset.strict_add(k))?)?
+                    .read_scalar(&ecx.project_simple_index(&right, right_offset.strict_add(k))?)?
                     .to_u8()?;
                 res = res.strict_add(left.abs_diff(right).into());
             }
-            ecx.write_scalar(Scalar::from_u16(res), &ecx.project_index(&dest, j)?)?;
+            ecx.write_scalar(Scalar::from_u16(res), &ecx.project_simple_index(&dest, j)?)?;
         }
     }
 
@@ -943,16 +943,16 @@ fn psadbw<'tcx>(
     assert_eq!(dest_len, left_len.strict_div(8));
 
     for i in 0..dest_len {
-        let dest = ecx.project_index(&dest, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let mut acc: u16 = 0;
         for j in 0..8 {
             let src_index = i.strict_mul(8).strict_add(j);
 
-            let left = ecx.project_index(&left, src_index)?;
+            let left = ecx.project_simple_index(&left, src_index)?;
             let left = ecx.read_scalar(&left)?.to_u8()?;
 
-            let right = ecx.project_index(&right, src_index)?;
+            let right = ecx.project_simple_index(&right, src_index)?;
             let right = ecx.read_scalar(&right)?.to_u8()?;
 
             acc = acc.strict_add(left.abs_diff(right).into());
@@ -988,14 +988,14 @@ fn pmaddwd<'tcx>(
 
     for i in 0..dest_len {
         let j1 = i.strict_mul(2);
-        let left1 = ecx.read_scalar(&ecx.project_index(&left, j1)?)?.to_i16()?;
-        let right1 = ecx.read_scalar(&ecx.project_index(&right, j1)?)?.to_i16()?;
+        let left1 = ecx.read_scalar(&ecx.project_simple_index(&left, j1)?)?.to_i16()?;
+        let right1 = ecx.read_scalar(&ecx.project_simple_index(&right, j1)?)?.to_i16()?;
 
         let j2 = j1.strict_add(1);
-        let left2 = ecx.read_scalar(&ecx.project_index(&left, j2)?)?.to_i16()?;
-        let right2 = ecx.read_scalar(&ecx.project_index(&right, j2)?)?.to_i16()?;
+        let left2 = ecx.read_scalar(&ecx.project_simple_index(&left, j2)?)?.to_i16()?;
+        let right2 = ecx.read_scalar(&ecx.project_simple_index(&right, j2)?)?.to_i16()?;
 
-        let dest = ecx.project_index(&dest, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         // Multiplications are i16*i16->i32, which will not overflow.
         let mul1 = i32::from(left1).strict_mul(right1.into());
@@ -1036,14 +1036,14 @@ fn pmaddbw<'tcx>(
 
     for i in 0..dest_len {
         let j1 = i.strict_mul(2);
-        let left1 = ecx.read_scalar(&ecx.project_index(&left, j1)?)?.to_u8()?;
-        let right1 = ecx.read_scalar(&ecx.project_index(&right, j1)?)?.to_i8()?;
+        let left1 = ecx.read_scalar(&ecx.project_simple_index(&left, j1)?)?.to_u8()?;
+        let right1 = ecx.read_scalar(&ecx.project_simple_index(&right, j1)?)?.to_i8()?;
 
         let j2 = j1.strict_add(1);
-        let left2 = ecx.read_scalar(&ecx.project_index(&left, j2)?)?.to_u8()?;
-        let right2 = ecx.read_scalar(&ecx.project_index(&right, j2)?)?.to_i8()?;
+        let left2 = ecx.read_scalar(&ecx.project_simple_index(&left, j2)?)?.to_u8()?;
+        let right2 = ecx.read_scalar(&ecx.project_simple_index(&right, j2)?)?.to_i8()?;
 
-        let dest = ecx.project_index(&dest, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         // Multiplication of a u8 and an i8 into an i16 cannot overflow.
         let mul1 = i16::from(left1).strict_mul(right1.into());
@@ -1084,9 +1084,9 @@ fn permute<'tcx>(
     let mask = u32::try_from(dest_len).unwrap().strict_sub(1);
 
     for i in 0..dest_len {
-        let dest = ecx.project_index(&dest, i)?;
-        let index = ecx.read_scalar(&ecx.project_index(&indices, i)?)?.to_u32()?;
-        let element = ecx.project_index(&values, (index & mask).into())?;
+        let dest = ecx.project_simple_index(&dest, i)?;
+        let index = ecx.read_scalar(&ecx.project_simple_index(&indices, i)?)?.to_u32()?;
+        let element = ecx.project_simple_index(&values, (index & mask).into())?;
 
         ecx.copy_op(&element, &dest)?;
     }
@@ -1115,9 +1115,9 @@ fn pmulhrsw<'tcx>(
     assert_eq!(dest_len, right_len);
 
     for i in 0..dest_len {
-        let left = ecx.read_scalar(&ecx.project_index(&left, i)?)?.to_i16()?;
-        let right = ecx.read_scalar(&ecx.project_index(&right, i)?)?.to_i16()?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.read_scalar(&ecx.project_simple_index(&left, i)?)?.to_i16()?;
+        let right = ecx.read_scalar(&ecx.project_simple_index(&right, i)?)?.to_i16()?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = (i32::from(left).strict_mul(right.into()) >> 14).strict_add(1) >> 1;
 
@@ -1172,15 +1172,15 @@ fn pclmulqdq<'tcx>(
 
         // select the 64-bit integer from left that the user specified (low or high)
         let index = if (imm8 & 0x01) == 0 { lo } else { hi };
-        let left = ecx.read_scalar(&ecx.project_index(&left, index)?)?.to_u64()?;
+        let left = ecx.read_scalar(&ecx.project_simple_index(&left, index)?)?.to_u64()?;
 
         // select the 64-bit integer from right that the user specified (low or high)
         let index = if (imm8 & 0x10) == 0 { lo } else { hi };
-        let right = ecx.read_scalar(&ecx.project_index(&right, index)?)?.to_u64()?;
+        let right = ecx.read_scalar(&ecx.project_simple_index(&right, index)?)?.to_u64()?;
 
         let result = left.widening_carryless_mul(right);
 
-        let dest = ecx.project_index(&dest, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
         ecx.write_scalar(Scalar::from_u128(result), &dest)?;
     }
 
@@ -1213,14 +1213,14 @@ fn pshufb<'tcx>(
     assert_eq!(dest_len, right_len);
 
     for i in 0..dest_len {
-        let right = ecx.read_scalar(&ecx.project_index(&right, i)?)?.to_u8()?;
-        let dest = ecx.project_index(&dest, i)?;
+        let right = ecx.read_scalar(&ecx.project_simple_index(&right, i)?)?.to_u8()?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         let res = if right & 0x80 == 0 {
             // Shuffle each 128-bit (16-byte) block independently.
             let block_offset = i & !15; // round down to previous multiple of 16
             let j = block_offset.strict_add((right % 16).into());
-            ecx.read_scalar(&ecx.project_index(&left, j)?)?
+            ecx.read_scalar(&ecx.project_simple_index(&left, j)?)?
         } else {
             // If the highest bit in `right` is 1, write zero.
             Scalar::from_u8(0)
@@ -1256,15 +1256,15 @@ fn pack_generic<'tcx>(
     assert_eq!(dest_items_per_chunk, op_items_per_chunk.strict_mul(2));
 
     for i in 0..num_chunks {
-        let left = ecx.project_index(&left, i)?;
-        let right = ecx.project_index(&right, i)?;
-        let dest = ecx.project_index(&dest, i)?;
+        let left = ecx.project_simple_index(&left, i)?;
+        let right = ecx.project_simple_index(&right, i)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
 
         for j in 0..op_items_per_chunk {
-            let left = ecx.read_scalar(&ecx.project_index(&left, j)?)?;
-            let right = ecx.read_scalar(&ecx.project_index(&right, j)?)?;
-            let left_dest = ecx.project_index(&dest, j)?;
-            let right_dest = ecx.project_index(&dest, j.strict_add(op_items_per_chunk))?;
+            let left = ecx.read_scalar(&ecx.project_simple_index(&left, j)?)?;
+            let right = ecx.read_scalar(&ecx.project_simple_index(&right, j)?)?;
+            let left_dest = ecx.project_simple_index(&dest, j)?;
+            let right_dest = ecx.project_simple_index(&dest, j.strict_add(op_items_per_chunk))?;
 
             let left_res = f(left)?;
             let right_res = f(right)?;
@@ -1371,9 +1371,9 @@ fn psign<'tcx>(
     assert_eq!(dest_len, right_len);
 
     for i in 0..dest_len {
-        let dest = ecx.project_index(&dest, i)?;
-        let left = ecx.read_immediate(&ecx.project_index(&left, i)?)?;
-        let right = ecx.read_scalar(&ecx.project_index(&right, i)?)?.to_int(dest.layout.size)?;
+        let dest = ecx.project_simple_index(&dest, i)?;
+        let left = ecx.read_immediate(&ecx.project_simple_index(&left, i)?)?;
+        let right = ecx.read_scalar(&ecx.project_simple_index(&right, i)?)?.to_int(dest.layout.size)?;
 
         let res =
             ecx.binary_op(mir::BinOp::Mul, &left, &ImmTy::from_int(right.signum(), dest.layout))?;

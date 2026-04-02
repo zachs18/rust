@@ -110,7 +110,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         // `TypeId` is a newtype around an array of pointers. All pointers must have the same
         // provenance, and that provenance represents the type.
         let ptr_size = self.pointer_size().bytes_usize();
-        let arr = self.project_field(op, FieldIdx::ZERO)?;
+        let arr = self.project_simple_field(op, FieldIdx::ZERO)?;
 
         let mut ty_and_hash = None;
         let mut elem_iter = self.project_array_fields(&arr)?;
@@ -1323,7 +1323,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         va_list: &P,
     ) -> InterpResult<'tcx, P> {
         // The struct wrapped by VaList.
-        let va_list_inner = self.project_field(va_list, FieldIdx::ZERO)?;
+        let va_list_inner = self.project_simple_field(va_list, FieldIdx::ZERO)?;
 
         // Find the first pointer field in this struct. The exact index is target-specific.
         let ty::Adt(adt, substs) = va_list_inner.layout().ty.kind() else {
@@ -1332,7 +1332,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         for (i, field) in adt.non_enum_variant().fields.iter().enumerate() {
             if field.ty(*self.tcx, substs).is_raw_ptr() {
-                return self.project_field(&va_list_inner, FieldIdx::from_usize(i));
+                return self.project_simple_field(&va_list_inner, FieldIdx::from_usize(i));
             }
         }
 

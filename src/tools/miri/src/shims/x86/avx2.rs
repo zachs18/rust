@@ -76,11 +76,11 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
                 let slice = this.read_pointer(slice)?;
                 for i in 0..actual_len {
-                    let mask = this.project_index(&mask, i)?;
-                    let dest = this.project_index(&dest, i)?;
+                    let mask = this.project_simple_index(&mask, i)?;
+                    let dest = this.project_simple_index(&dest, i)?;
 
                     if this.read_scalar(&mask)?.to_uint(mask_item_size)? >> high_bit_offset != 0 {
-                        let offset = this.project_index(&offsets, i)?;
+                        let offset = this.project_simple_index(&offsets, i)?;
                         let offset =
                             i64::try_from(this.read_scalar(&offset)?.to_int(offset.layout.size)?)
                                 .unwrap();
@@ -93,11 +93,11 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                             /*nonoverlapping*/ true,
                         )?;
                     } else {
-                        this.copy_op(&this.project_index(&src, i)?, &dest)?;
+                        this.copy_op(&this.project_simple_index(&src, i)?, &dest)?;
                     }
                 }
                 for i in actual_len..dest_len {
-                    let dest = this.project_index(&dest, i)?;
+                    let dest = this.project_simple_index(&dest, i)?;
                     this.write_scalar(Scalar::from_int(0, dest.layout.size), &dest)?;
                 }
             }
