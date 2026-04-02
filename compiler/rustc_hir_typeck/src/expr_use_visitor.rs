@@ -775,7 +775,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         // expression that will actually be used
         match self.cx.structurally_resolve_type(with_expr.span, with_place.place.ty()).kind() {
             ty::PtrMetadata(pointee_ty) => {
-                let MetadataFields::KnownFields(field_tys) =
+                let MetadataFields::KnownFields { fields: field_tys, non_exhaustive } =
                     pointee_ty.metadata_fields_for_pointee(self.cx.tcx(), None)
                 else {
                     // is this reachable for `builtin!(ptr_metadata(..base))`
@@ -784,6 +784,12 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                         "ptr_metadata expr for pointee with unknown metadata fields should have been rejected already"
                     );
                 };
+                if non_exhaustive && matches!(opt_with, hir::StructTailExpr::None) {
+                    bug!(
+                        "ptr_metadata expr with StructTailExpr::None for pointee with non_exhaustive metadata fields \
+                        should have been rejected already"
+                    );
+                }
 
                 // Consume those fields of the with expression that are needed.
                 for (f_index, (_name, _span, _vis, field_ty)) in field_tys.iter().enumerate() {

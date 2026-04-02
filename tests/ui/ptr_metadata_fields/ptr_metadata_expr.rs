@@ -66,20 +66,30 @@ fn slice_metadata_annotated_type() -> builtin # ptr_metadata([impl Sized]) {
     builtin # ptr_metadata(for [u32]; len: 42, ..)
 }
 
-fn str_metadata<T>(len: usize) -> builtin # ptr_metadata(str) {
+fn str_metadata_without_dotdot<T>(len: usize) -> builtin # ptr_metadata(str) {
     builtin # ptr_metadata(len)
+    //~^ ERROR: may have more fields added
+    //~| NOTE: you can use `..`
 }
 
-fn str_metadata_unnecessary_dotdot<T>(len: usize) -> builtin # ptr_metadata(str) {
+fn str_metadata<T>(len: usize) -> builtin # ptr_metadata(str) {
     builtin # ptr_metadata(len, ..)
 }
 
 trait Trait {}
 
-fn trait_object_metadata(
+fn trait_object_metadata_without_dotdot(
     vtable: DynMetadata<dyn Trait + 'static>,
 ) -> builtin # ptr_metadata(dyn Trait) {
     builtin # ptr_metadata(vtable)
+    //~^ ERROR: may have more fields added
+    //~| NOTE: you can use `..`
+}
+
+fn trait_object_metadata(
+    vtable: DynMetadata<dyn Trait + 'static>,
+) -> builtin # ptr_metadata(dyn Trait) {
+    builtin # ptr_metadata(vtable, ..)
 }
 
 struct Foo {
@@ -88,7 +98,22 @@ struct Foo {
 }
 
 fn struct_metadata(vtable: DynMetadata<dyn Trait + 'static>) -> builtin # ptr_metadata(Foo) {
-    builtin # ptr_metadata(y: builtin # ptr_metadata(vtable), ..)
+    builtin # ptr_metadata(y: builtin # ptr_metadata(vtable, ..), ..)
+}
+
+struct Bar {}
+
+fn not_nonexhaustive_struct_metadata() -> builtin # ptr_metadata(Bar) {
+    builtin # ptr_metadata()
+}
+
+#[non_exhaustive]
+struct Qux {}
+
+fn nonexhaustive_struct_metadata() -> builtin # ptr_metadata(Qux) {
+    builtin # ptr_metadata()
+    //~^ ERROR: may have more fields added
+    //~| NOTE: you can use `..`
 }
 
 fn main() {}

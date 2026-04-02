@@ -420,7 +420,7 @@ fn resolve_associated_item<'tcx>(
                 let &ty::PtrMetadata(pointee_ty) = trait_ref.self_ty().kind() else {
                     bug!("non-PtrMetadata self ty for builtin Ord impl")
                 };
-                let ty::layout::MetadataFields::KnownFields(..) =
+                let ty::layout::MetadataFields::KnownFields { .. } =
                     pointee_ty.metadata_fields_for_pointee(tcx, None)
                 else {
                     return Ok(None);
@@ -436,7 +436,7 @@ fn resolve_associated_item<'tcx>(
                 let &ty::PtrMetadata(pointee_ty) = trait_ref.self_ty().kind() else {
                     bug!("non-PtrMetadata self ty for builtin Debug impl")
                 };
-                let ty::layout::MetadataFields::KnownFields(..) =
+                let ty::layout::MetadataFields::KnownFields { .. } =
                     pointee_ty.metadata_fields_for_pointee(tcx, None)
                 else {
                     return Ok(None);
@@ -453,7 +453,7 @@ fn resolve_associated_item<'tcx>(
                     bug!("non-PtrMetadata self ty for builtin Hash impl")
                 };
                 let hasher_ty = args.type_at(1);
-                let ty::layout::MetadataFields::KnownFields(..) =
+                let ty::layout::MetadataFields::KnownFields { .. } =
                     pointee_ty.metadata_fields_for_pointee(tcx, None)
                 else {
                     return Ok(None);

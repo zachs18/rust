@@ -42,6 +42,30 @@ error[E0282]: type annotations needed
 LL |     let _ = builtin # ptr_metadata(for _; ..);
    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
 
-error: aborting due to 7 previous errors
+error: pointer metadata of `str` may have more fields added
+  --> $DIR/ptr_metadata_expr.rs:70:5
+   |
+LL |     builtin # ptr_metadata(len)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: if the other metadata fields of `str` have default values, you can use `..` default field syntax
+
+error: pointer metadata of `dyn Trait` may have more fields added
+  --> $DIR/ptr_metadata_expr.rs:84:5
+   |
+LL |     builtin # ptr_metadata(vtable)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: if the other metadata fields of `dyn Trait` have default values, you can use `..` default field syntax
+
+error: pointer metadata of `Qux` may have more fields added
+  --> $DIR/ptr_metadata_expr.rs:114:5
+   |
+LL |     builtin # ptr_metadata()
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: if the other metadata fields of `Qux` have default values, you can use `..` default field syntax
+
+error: aborting due to 10 previous errors
 
 For more information about this error, try `rustc --explain E0282`.

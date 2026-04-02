@@ -174,7 +174,7 @@ impl<'tcx> PlaceTy<'tcx> {
                     // since this should only be used when monomorphic enough?
                     let metadata_fields = pointee_ty.metadata_fields_for_pointee(tcx, None);
                     let metadata_fields = match metadata_fields {
-                        MetadataFields::KnownFields(fields) => fields,
+                        MetadataFields::KnownFields { fields, .. } => fields,
                         MetadataFields::ThinUnknownFields | MetadataFields::TooGeneric => {
                             bug!("field {f:?} out of range for {self_ty}")
                         }

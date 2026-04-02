@@ -298,7 +298,7 @@ fn build_pointer_metadata_di_node<'ll, 'tcx>(
         |cx, owner| {
             // FIXME(ptr_metadata_v2_fields): implement multiple fields
             let layout = cx.layout_of(ptr_metadata_type);
-            let ty::layout::MetadataFields::KnownFields(fields) =
+            let ty::layout::MetadataFields::KnownFields { fields, .. } =
                 pointee_type.metadata_fields_for_pointee(cx.tcx, None)
             else {
                 unreachable!("should be monomorphic during codegen")
