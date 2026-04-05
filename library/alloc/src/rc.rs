@@ -2016,7 +2016,7 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Rc<T, A> {
+impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
     /// Makes a mutable reference into the given `Rc`.
     ///
     /// If there are other `Rc` pointers to the same allocation, then `make_mut` will
@@ -2074,14 +2074,14 @@ impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Rc<T, A> {
 
         if Rc::strong_count(this) != 1 {
             // Gotta clone the data, there are other Rcs.
-            *this = Rc::clone_from_ref_in(&**this, this.alloc.clone());
+            let cloned = ManuallyDrop::new(Rc::clone_from_ref_in(&**this, &this.alloc));
+            this.ptr = cloned.ptr;
         } else if Rc::weak_count(this) != 0 {
             // Can just steal the data, all that's left is Weaks
 
             // We don't need panic-protection like the above branch does, but we might as well
             // use the same mechanism.
-            let mut in_progress: UniqueRcUninit<T, A> =
-                UniqueRcUninit::new(&**this, this.alloc.clone());
+            let mut in_progress: UniqueRcUninit<T, &A> = UniqueRcUninit::new(&**this, &this.alloc);
             unsafe {
                 // Initialize `in_progress` with move of **this.
                 // We have to express this in terms of bytes because `T: ?Sized`; there is no
@@ -2097,7 +2097,8 @@ impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Rc<T, A> {
                 // Weak here -- we know other Weaks can clean up for us)
                 this.inner().dec_weak();
                 // Replace `this` with newly constructed Rc that has the moved data.
-                ptr::write(this, in_progress.into_rc());
+                let moved = ManuallyDrop::new(in_progress.into_rc());
+                this.ptr = moved.ptr;
             }
         }
         // This unsafety is ok because we're guaranteed that the pointer
