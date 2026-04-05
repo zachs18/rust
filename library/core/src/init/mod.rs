@@ -103,7 +103,7 @@ pub unsafe trait PinInitOnce<T: MetaSized, Error = !, Arg = ()> {
 
     /// Initialize a `T` value into the provided destination.
     ///
-    /// `arg` allows for callers to pass in extra data that may only be available after knowing the metadata, e.g. in `Rc::new_cyclic`.
+    /// `arg` allows for callers to pass in extra data that may only be available after knowing the metadata, e.g. in `Rc::build_cyclic`.
     ///
     /// `pre_zeroed` allows for optimization in some cases where allocators can provide pre-zeroed memory.
     ///
