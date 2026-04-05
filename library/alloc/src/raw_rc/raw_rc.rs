@@ -16,7 +16,6 @@ use core::mem::{ManuallyDrop, SizedTypeProperties};
 use core::ops::{CoerceUnsized, DispatchFromDyn};
 #[cfg(not(no_global_oom_handling))]
 use core::ops::{ControlFlow, DerefMut, Try};
-use core::pin::PinCoerceUnsized;
 use core::ptr::NonNull;
 #[cfg(not(no_global_oom_handling))]
 use core::str;
@@ -1212,13 +1211,6 @@ where
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         T::cmp(self.as_ref(), other.as_ref())
     }
-}
-
-unsafe impl<T, A> PinCoerceUnsized for RawRc<T, A>
-where
-    T: ?Sized,
-    A: Allocator,
-{
 }
 
 /// Decrements strong reference count in a reference-counted allocation with a value object that is
