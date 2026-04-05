@@ -1761,10 +1761,13 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     where
         A: Clone,
     {
+        // Clone the allocator first in case it panics, so we don't leak the weak ref.
+        let alloc = this.alloc.clone();
+
         this.inner().inc_weak();
         // Make sure we do not create a dangling Weak
         debug_assert!(!is_dangling(this.ptr.as_ptr()));
-        Weak { ptr: this.ptr, alloc: this.alloc.clone() }
+        Weak { ptr: this.ptr, alloc }
     }
 
     /// Gets the number of [`Weak`] pointers to this allocation.
@@ -2497,9 +2500,11 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Rc<T, A> {
     /// ```
     #[inline]
     fn clone(&self) -> Self {
+        // Clone the allocator first in case it panics, so we don't leak the strong ref.
+        let alloc = self.alloc.clone();
         unsafe {
             self.inner().inc_strong();
-            Self::from_inner_in(self.ptr, self.alloc.clone())
+            Self::from_inner_in(self.ptr, alloc)
         }
     }
 }
@@ -3527,9 +3532,11 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
         if inner.strong() == 0 {
             None
         } else {
+            // Clone the allocator first in case it panics, so we don't leak the strong ref.
+            let alloc = self.alloc.clone();
             unsafe {
                 inner.inc_strong();
-                Some(Rc::from_inner_in(self.ptr, self.alloc.clone()))
+                Some(Rc::from_inner_in(self.ptr, alloc))
             }
         }
     }
@@ -3679,10 +3686,13 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Weak<T, A> {
     /// ```
     #[inline]
     fn clone(&self) -> Weak<T, A> {
+        // Clone the allocator first in case it panics, so we don't leak the weak ref.
+        let alloc = self.alloc.clone();
+
         if let Some(inner) = self.inner() {
             inner.inc_weak()
         }
-        Weak { ptr: self.ptr, alloc: self.alloc.clone() }
+        Weak { ptr: self.ptr, alloc }
     }
 }
 
@@ -4394,12 +4404,14 @@ impl<T: ?Sized, A: Allocator + Clone> UniqueRc<T, A> {
     /// to a [`Rc`] using [`UniqueRc::into_rc`].
     #[unstable(feature = "unique_rc_arc", issue = "112566")]
     pub fn downgrade(this: &Self) -> Weak<T, A> {
+        // Clone the allocator first in case it panics, so we don't leak the weak ref.
+        let alloc = this.alloc.clone();
         // SAFETY: This pointer was allocated at creation time and we guarantee that we only have
         // one strong reference before converting to a regular Rc.
         unsafe {
             this.ptr.as_ref().inc_weak();
         }
-        Weak { ptr: this.ptr, alloc: this.alloc.clone() }
+        Weak { ptr: this.ptr, alloc }
     }
 }
 

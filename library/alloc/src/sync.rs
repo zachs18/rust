@@ -1925,6 +1925,9 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
     where
         A: Clone,
     {
+        // Clone the allocator first in case it panics, so we don't leak the weak ref.
+        let alloc = this.alloc.clone();
+
         // This Relaxed is OK because we're checking the value in the CAS
         // below.
         let mut cur = this.inner().weak.load(Relaxed);
@@ -1951,7 +1954,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
                 Ok(_) => {
                     // Make sure we do not create a dangling Weak
                     debug_assert!(!is_dangling(this.ptr.as_ptr()));
-                    return Weak { ptr: this.ptr, alloc: this.alloc.clone() };
+                    return Weak { ptr: this.ptr, alloc };
                 }
                 Err(old) => cur = old,
             }
@@ -2385,6 +2388,9 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Arc<T, A> {
     /// ```
     #[inline]
     fn clone(&self) -> Arc<T, A> {
+        // Clone the allocator first in case it panics, so we don't leak the strong ref.
+        let alloc = self.alloc.clone();
+
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
         // the object.
@@ -2417,7 +2423,7 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Arc<T, A> {
             abort();
         }
 
-        unsafe { Self::from_inner_in(self.ptr, self.alloc.clone()) }
+        unsafe { Self::from_inner_in(self.ptr, alloc) }
     }
 }
 
@@ -3270,6 +3276,9 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
             Some(n + 1)
         }
 
+        // Clone the allocator first in case it panics, so we don't leak the strong ref.
+        let alloc = self.alloc.clone();
+
         // We use a CAS loop to increment the strong count instead of a
         // fetch_add as this function should never take the reference count
         // from zero to one.
@@ -3280,7 +3289,7 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
         // expect to observe the fully initialized value.
         if self.inner()?.strong.try_update(Acquire, Relaxed, checked_increment).is_ok() {
             // SAFETY: pointer is not null, verified in checked_increment
-            unsafe { Some(Arc::from_inner_in(self.ptr, self.alloc.clone())) }
+            unsafe { Some(Arc::from_inner_in(self.ptr, alloc)) }
         } else {
             None
         }
@@ -3406,6 +3415,9 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Weak<T, A> {
     /// ```
     #[inline]
     fn clone(&self) -> Weak<T, A> {
+        // Clone the allocator first in case it panics, so we don't leak the weak ref.
+        let alloc = self.alloc.clone();
+
         if let Some(inner) = self.inner() {
             // See comments in Arc::clone() for why this is relaxed. This can use a
             // fetch_add (ignoring the lock) because the weak count is only locked
@@ -3419,7 +3431,7 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Weak<T, A> {
             }
         }
 
-        Weak { ptr: self.ptr, alloc: self.alloc.clone() }
+        Weak { ptr: self.ptr, alloc }
     }
 }
 
@@ -4830,6 +4842,9 @@ impl<T: ?Sized, A: Allocator + Clone> UniqueArc<T, A> {
     #[unstable(feature = "unique_rc_arc", issue = "112566")]
     #[must_use]
     pub fn downgrade(this: &Self) -> Weak<T, A> {
+        // Clone the allocator first in case it panics, so we don't leak the weak ref.
+        let alloc = this.alloc.clone();
+
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
         // the object or converting the object to a normal `Arc<T, A>`.
@@ -4846,7 +4861,7 @@ impl<T: ?Sized, A: Allocator + Clone> UniqueArc<T, A> {
             abort();
         }
 
-        Weak { ptr: this.ptr, alloc: this.alloc.clone() }
+        Weak { ptr: this.ptr, alloc }
     }
 }
 
