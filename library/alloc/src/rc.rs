@@ -1555,7 +1555,7 @@ impl<T: ?Sized> Rc<T> {
     #[inline]
     #[stable(feature = "rc_mutate_strong_count", since = "1.53.0")]
     pub unsafe fn increment_strong_count(ptr: *const T) {
-        unsafe { Self::increment_strong_count_in(ptr, Global) }
+        unsafe { Self::increment_strong_count_in(ptr, &Global) }
     }
 
     /// Decrements the strong reference count on the `Rc<T>` associated with the
@@ -1592,7 +1592,7 @@ impl<T: ?Sized> Rc<T> {
     #[inline]
     #[stable(feature = "rc_mutate_strong_count", since = "1.53.0")]
     pub unsafe fn decrement_strong_count(ptr: *const T) {
-        unsafe { Self::decrement_strong_count_in(ptr, Global) }
+        unsafe { Self::decrement_strong_count_in(ptr, &Global) }
     }
 }
 
@@ -1841,12 +1841,9 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     /// ```
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
-    pub unsafe fn increment_strong_count_in(ptr: *const T, alloc: A)
-    where
-        A: Clone,
-    {
+    pub unsafe fn increment_strong_count_in(ptr: *const T, alloc: &A) {
         // Retain Rc, but don't touch refcount by wrapping in ManuallyDrop
-        let rc = unsafe { mem::ManuallyDrop::new(Rc::<T, A>::from_raw_in(ptr, alloc)) };
+        let rc = unsafe { mem::ManuallyDrop::new(Rc::<T, &A>::from_raw_in(ptr, alloc)) };
         // Now increase refcount, but don't drop new refcount either
         let _rc_clone: mem::ManuallyDrop<_> = rc.clone();
     }
@@ -1887,7 +1884,7 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     /// ```
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
-    pub unsafe fn decrement_strong_count_in(ptr: *const T, alloc: A) {
+    pub unsafe fn decrement_strong_count_in(ptr: *const T, alloc: &A) {
         unsafe { drop(Rc::from_raw_in(ptr, alloc)) };
     }
 

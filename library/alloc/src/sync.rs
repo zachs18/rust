@@ -1712,7 +1712,7 @@ impl<T: ?Sized> Arc<T> {
     #[inline]
     #[stable(feature = "arc_mutate_strong_count", since = "1.51.0")]
     pub unsafe fn increment_strong_count(ptr: *const T) {
-        unsafe { Arc::increment_strong_count_in(ptr, Global) }
+        unsafe { Arc::increment_strong_count_in(ptr, &Global) }
     }
 
     /// Decrements the strong reference count on the `Arc<T>` associated with the
@@ -1752,7 +1752,7 @@ impl<T: ?Sized> Arc<T> {
     #[inline]
     #[stable(feature = "arc_mutate_strong_count", since = "1.51.0")]
     pub unsafe fn decrement_strong_count(ptr: *const T) {
-        unsafe { Arc::decrement_strong_count_in(ptr, Global) }
+        unsafe { Arc::decrement_strong_count_in(ptr, &Global) }
     }
 }
 
@@ -2055,10 +2055,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
     /// ```
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
-    pub unsafe fn increment_strong_count_in(ptr: *const T, alloc: A)
-    where
-        A: Clone,
-    {
+    pub unsafe fn increment_strong_count_in(ptr: *const T, alloc: &A) {
         // Retain Arc, but don't touch refcount by wrapping in ManuallyDrop
         let arc = unsafe { mem::ManuallyDrop::new(Arc::from_raw_in(ptr, alloc)) };
         // Now increase refcount, but don't drop new refcount either
@@ -2104,7 +2101,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
     /// ```
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
-    pub unsafe fn decrement_strong_count_in(ptr: *const T, alloc: A) {
+    pub unsafe fn decrement_strong_count_in(ptr: *const T, alloc: &A) {
         unsafe { drop(Arc::from_raw_in(ptr, alloc)) };
     }
 
