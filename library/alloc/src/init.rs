@@ -114,6 +114,14 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
         BuildError { kind: self.kind.map_err(f), alloc: self.alloc }
     }
 
+    #[cfg(not(no_rc))]
+    pub(crate) fn map_metadata<U: ?Sized>(
+        self,
+        f: impl FnOnce(Metadata<T>) -> Metadata<U>,
+    ) -> BuildError<U, E, A> {
+        BuildError { kind: self.kind.map_metadata(f), alloc: self.alloc }
+    }
+
     #[inline]
     pub(crate) fn layout_overflow(metadata: Metadata<T>, alloc: A) -> Self {
         Self { kind: BuildErrorKind::LayoutOverflow(metadata), alloc }

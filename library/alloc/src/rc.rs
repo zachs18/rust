@@ -378,15 +378,16 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
         (this.ptr, unsafe { ptr::read(&this.alloc) })
     }
 
-    #[cfg(not(no_global_oom_handling))]
+    /// # Safety
+    ///
+    /// The [`RcInner::strong`] and [`RcInner::weak`] must both be `1`.
+    ///
+    /// There is an implicit weak pointer owned by all the strong
+    /// pointers, which ensures that the weak destructor never frees
+    /// the allocation while the strong destructor is running, even
+    /// if the weak pointer is stored inside the strong one.
     #[inline]
-    fn from_boxed_inner(mut bx: Box<RcInner<T>, A>) -> Self {
-        // There is an implicit weak pointer owned by all the strong
-        // pointers, which ensures that the weak destructor never frees
-        // the allocation while the strong destructor is running, even
-        // if the weak pointer is stored inside the strong one.
-        bx.strong = Cell::new(1);
-        bx.weak = Cell::new(1);
+    unsafe fn from_boxed_inner_unchecked(bx: Box<RcInner<T>, A>) -> Self {
         let (ptr, alloc) = Box::into_unique(bx);
         unsafe { Self::from_inner_in(ptr.into(), alloc) }
     }
@@ -430,11 +431,9 @@ impl<T> Rc<T> {
     #[cfg(not(no_global_oom_handling))]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn new(value: T) -> Rc<T> {
-        Self::from_boxed_inner(Box::new(RcInner {
-            strong: Cell::new(1),
-            weak: Cell::new(1),
-            value,
-        }))
+        let bx = Box::new(RcInner { strong: Cell::new(1), weak: Cell::new(1), value });
+        // SAFETY: we set the strong and weak counts to 1.
+        unsafe { Self::from_boxed_inner_unchecked(bx) }
     }
 
     /// Constructs a new `Rc<T>` while giving you a `Weak<T>` to the allocation,
@@ -517,11 +516,7 @@ impl<T> Rc<T> {
     #[stable(feature = "new_uninit", since = "1.82.0")]
     #[must_use]
     pub fn new_uninit() -> Rc<mem::MaybeUninit<T>> {
-        unsafe {
-            Rc::from_inner(Rc::allocate_for_metadata(Metadata::default(), |layout| {
-                Global.allocate(layout)
-            }))
-        }
+        Rc::build(core::init::uninit())
     }
 
     /// Constructs a new `Rc` with uninitialized contents, with the memory
@@ -546,11 +541,7 @@ impl<T> Rc<T> {
     #[stable(feature = "new_zeroed_alloc", since = "1.92.0")]
     #[must_use]
     pub fn new_zeroed() -> Rc<mem::MaybeUninit<T>> {
-        unsafe {
-            Rc::from_inner(Rc::allocate_for_metadata(Metadata::default(), |layout| {
-                Global.allocate_zeroed(layout)
-            }))
-        }
+        Rc::build(core::init::zeroed())
     }
 
     /// Constructs a new `Rc<T>`, returning an error if the allocation fails
@@ -566,20 +557,9 @@ impl<T> Rc<T> {
     /// ```
     #[unstable(feature = "allocator_api", issue = "32838")]
     pub fn try_new(value: T) -> Result<Rc<T>, AllocError> {
-        // There is an implicit weak pointer owned by all the strong
-        // pointers, which ensures that the weak destructor never frees
-        // the allocation while the strong destructor is running, even
-        // if the weak pointer is stored inside the strong one.
-        unsafe {
-            Ok(Self::from_inner(
-                Box::leak(Box::try_new(RcInner {
-                    strong: Cell::new(1),
-                    weak: Cell::new(1),
-                    value,
-                })?)
-                .into(),
-            ))
-        }
+        let bx = Box::try_new(RcInner { strong: Cell::new(1), weak: Cell::new(1), value })?;
+        // SAFETY: we set the strong and weak counts to 1.
+        unsafe { Ok(Self::from_boxed_inner_unchecked(bx)) }
     }
 
     /// Constructs a new `Rc` with uninitialized contents, returning an error if the allocation fails
@@ -765,12 +745,9 @@ impl<T, A: Allocator> Rc<T, A> {
     #[unstable(feature = "allocator_api", issue = "32838")]
     #[inline]
     pub fn new_in(value: T, alloc: A) -> Rc<T, A> {
-        // NOTE: Prefer match over unwrap_or_else since closure sometimes not inlineable.
-        // That would make code size bigger.
-        match Self::try_new_in(value, alloc) {
-            Ok(m) => m,
-            Err(_) => handle_alloc_error(Layout::new::<RcInner<T>>()),
-        }
+        let bx = Box::new_in(RcInner { strong: Cell::new(1), weak: Cell::new(1), value }, alloc);
+        // SAFETY: we set the strong and weak counts to 1.
+        unsafe { Self::from_boxed_inner_unchecked(bx) }
     }
 
     /// Constructs a new `Rc` with uninitialized contents in the provided allocator.
@@ -896,15 +873,10 @@ impl<T, A: Allocator> Rc<T, A> {
     #[unstable(feature = "allocator_api", issue = "32838")]
     #[inline]
     pub fn try_new_in(value: T, alloc: A) -> Result<Self, AllocError> {
-        // There is an implicit weak pointer owned by all the strong
-        // pointers, which ensures that the weak destructor never frees
-        // the allocation while the strong destructor is running, even
-        // if the weak pointer is stored inside the strong one.
-        let (ptr, alloc) = Box::into_unique(Box::try_new_in(
-            RcInner { strong: Cell::new(1), weak: Cell::new(1), value },
-            alloc,
-        )?);
-        Ok(unsafe { Self::from_inner_in(ptr.into(), alloc) })
+        let bx =
+            Box::try_new_in(RcInner { strong: Cell::new(1), weak: Cell::new(1), value }, alloc)?;
+        // SAFETY: we set the strong and weak counts to 1.
+        Ok(unsafe { Self::from_boxed_inner_unchecked(bx) })
     }
 
     /// Constructs a new `Rc` with uninitialized contents, in the provided allocator, returning an
@@ -1084,7 +1056,33 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Rc<T, A> {
-        UniqueRc::into_rc(UniqueRc::build_in(init, alloc))
+        let bx = Box::build_in(
+            core::init::do_init!(struct RcInner { strong: Cell::new(1), weak: Cell::new(1), value: init }),
+            alloc,
+        );
+        // SAFETY: we set the strong and weak counts to 1.
+        unsafe { Self::from_boxed_inner_unchecked(bx) }
+    }
+
+    /// Fallibly allocates and initializes an `Rc<T, A>`
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn try_build_in<Error>(
+        init: impl InitOnce<T, Error>,
+        alloc: A,
+    ) -> Result<Rc<T, A>, BuildError<T, Error, A>> {
+        match Box::try_build_in(
+            core::init::do_init!(struct
+            RcInner {
+                strong: Cell::new(1),
+                weak: Cell::new(1),
+                value: init,
+            }),
+            alloc,
+        ) {
+            // SAFETY: we set the strong and weak counts to 1.
+            Ok(bx) => Ok(unsafe { Self::from_boxed_inner_unchecked(bx) }),
+            Err(err) => Err(err.map_metadata(|m| m as Metadata<T>)),
+        }
     }
 
     /// Constructs a new `Rc<T, A>` in the given allocator while giving you a `Weak<T, A>` to the allocation,
@@ -1172,7 +1170,13 @@ impl<T: ?Sized> Rc<T> {
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> Rc<T> {
-        UniqueRc::into_rc(UniqueRc::build(init))
+        let bx = Box::build(core::init::do_init!(struct RcInner {
+            strong: Cell::new(1),
+            weak: Cell::new(1),
+            value: init,
+        }));
+        // SAFETY: we set the strong and weak counts to 1.
+        unsafe { Self::from_boxed_inner_unchecked(bx) }
     }
 
     /// Constructs a new `Rc<T>` while giving you a `Weak<T>` to the allocation,
@@ -1488,18 +1492,8 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
     #[unstable(feature = "clone_from_ref", issue = "149075")]
     //#[unstable(feature = "allocator_api", issue = "32838")]
     pub fn clone_from_ref_in(value: &T, alloc: A) -> Rc<T, A> {
-        // `in_progress` drops the allocation if we panic before finishing initializing it.
-        let mut in_progress: UniqueRcUninit<T, A> = UniqueRcUninit::new(value, alloc);
-
-        // Initialize with clone of value.
-        let initialized_clone = unsafe {
-            // Clone. If the clone panics, `in_progress` will be dropped and clean up.
-            value.clone_to_uninit(in_progress.data_ptr().cast());
-            // Cast type of pointer, now that it is initialized.
-            in_progress.into_rc()
-        };
-
-        initialized_clone
+        // `&T` implements `Init<T>` when `T: CloneToUninit`
+        Self::build_in(value, alloc)
     }
 
     /// Constructs a new `Rc<T>` with a clone of `value` in the provided allocator, returning an error if allocation fails
@@ -1521,18 +1515,8 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Rc<T, A> {
     //#[unstable(feature = "allocator_api", issue = "32838")]
     //#[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_clone_from_ref_in(value: &T, alloc: A) -> Result<Rc<T, A>, BuildError<T, !, A>> {
-        // `in_progress` drops the allocation if we panic before finishing initializing it.
-        let mut in_progress: UniqueRcUninit<T, A> = UniqueRcUninit::try_new(value, alloc)?;
-
-        // Initialize with clone of value.
-        let initialized_clone = unsafe {
-            // Clone. If the clone panics, `in_progress` will be dropped and clean up.
-            value.clone_to_uninit(in_progress.data_ptr().cast());
-            // Cast type of pointer, now that it is initialized.
-            in_progress.into_rc()
-        };
-
-        Ok(initialized_clone)
+        // `&T` implements `Init<T>` when `T: CloneToUninit`
+        Self::try_build_in(value, alloc)
     }
 }
 
@@ -1908,10 +1892,13 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     where
         A: Clone,
     {
+        // Clone the allocator first so the weak ref doesn't get leaked
+        // if cloning panics.
+        let alloc = this.alloc.clone();
         this.inner().inc_weak();
         // Make sure we do not create a dangling Weak
         debug_assert!(!is_dangling(this.ptr.as_ptr()));
-        Weak { ptr: this.ptr, alloc: this.alloc.clone() }
+        Weak { ptr: this.ptr, alloc }
     }
 
     /// Gets the number of [`Weak`] pointers to this allocation.
@@ -2227,15 +2214,17 @@ impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Rc<T, A> {
 
             // We don't need panic-protection like the above branch does, but we might as well
             // use the same mechanism.
-            let mut in_progress: UniqueRcUninit<T, A> =
-                UniqueRcUninit::new(&**this, this.alloc.clone());
+            let mut in_progress: UniqueRc<MaybeUninit<T>, A> = UniqueRc::build_in(
+                core::init::uninit_with_metadata(core::ptr::metadata::<T>(&**this)),
+                this.alloc.clone(),
+            );
             unsafe {
                 // Initialize `in_progress` with move of **this.
                 // We have to express this in terms of bytes because `T: ?Sized`; there is no
                 // operation that just copies a value based on its `size_of_val()`.
                 ptr::copy_nonoverlapping(
                     ptr::from_ref(&**this).cast::<u8>(),
-                    in_progress.data_ptr().cast::<u8>(),
+                    in_progress.as_mut_ptr().cast::<u8>(),
                     size_of_val,
                 );
 
@@ -2244,7 +2233,8 @@ impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Rc<T, A> {
                 // Weak here -- we know other Weaks can clean up for us)
                 this.inner().dec_weak();
                 // Replace `this` with newly constructed Rc that has the moved data.
-                ptr::write(this, in_progress.into_rc());
+                // FIXME: this leaks `this`'s allocator. Also `make_mut` really shouldn't even need `A: Clone`.
+                ptr::write(this, UniqueRc::into_rc(in_progress).assume_init());
             }
         }
         // This unsafety is ok because we're guaranteed that the pointer
@@ -4640,35 +4630,40 @@ impl<T, A: Allocator> UniqueRc<T, A> {
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "unique_rc_arc", issue = "112566")]
     pub fn new_in(value: T, alloc: A) -> Self {
-        let (ptr, alloc) = Box::into_unique(Box::new_in(
-            RcInner {
-                strong: Cell::new(0),
-                // keep one weak reference so if all the weak pointers that are created are dropped
-                // the UniqueRc still stays valid.
-                weak: Cell::new(1),
-                value,
-            },
-            alloc,
-        ));
-        Self { ptr: ptr.into(), _marker: PhantomData, _marker2: PhantomData, alloc }
+        let bx = Box::new_in(RcInner { strong: Cell::new(0), weak: Cell::new(1), value }, alloc);
+        // SAFETY: the strong count is 0 and the weak count is 1
+        unsafe { Self::from_boxed_inner_unchecked(bx) }
     }
 }
 
 impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
+    /// # Safety
+    ///
+    /// The [`RcInner::strong`] must be `0`, and [`RcInner::weak`] must be `1`.
+    ///
+    /// Keep one weak reference so if all the weak pointers that are created are dropped
+    /// the UniqueRc still stays valid.
+    #[inline]
+    unsafe fn from_boxed_inner_unchecked(bx: Box<RcInner<T>, A>) -> Self {
+        let (ptr, alloc) = Box::into_unique(bx);
+        unsafe { Self::from_inner_in(ptr.into(), alloc) }
+    }
+
     /// Allocates and initializes a `UniqueRc<T, A>`
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> UniqueRc<T, A> {
-        let metadata = PinInitOnce::metadata(&init);
-        let pre_zeroed = PinInitOnce::should_zero(&init);
-
-        let mut this = Self::new_uninit_with_metadata_in(metadata, alloc, pre_zeroed);
-
-        unsafe {
-            let Ok(_) = PinInitOnce::init_once(init, &mut *this, (), pre_zeroed);
-        }
-
-        unsafe { UniqueRc::assume_init(this) }
+        let bx = Box::build_in(
+            core::init::do_init!(struct
+            RcInner {
+                strong: Cell::new(0),
+                weak: Cell::new(1),
+                value: init,
+            }),
+            alloc,
+        );
+        // SAFETY: the strong count is 0 and the weak count is 1
+        unsafe { Self::from_boxed_inner_unchecked(bx) }
     }
 
     /// Drops `this` and returns the allocator
@@ -4685,17 +4680,19 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
         init: impl InitOnce<T, E>,
         alloc: A,
     ) -> Result<UniqueRc<T, A>, BuildError<T, E, A>> {
-        let metadata = PinInitOnce::metadata(&init);
-        let pre_zeroed = PinInitOnce::should_zero(&init);
-
-        let mut this = Self::try_new_uninit_with_metadata_in(metadata, alloc, pre_zeroed)
-            .map_err(|err| err.map_err(|never| match never {}))?;
-
-        if let Err(err) = unsafe { PinInitOnce::init_once(init, &mut *this, (), pre_zeroed) } {
-            return Err(BuildError::init_error(err, UniqueRc::into_allocator(this)));
+        match Box::try_build_in(
+            core::init::do_init!(struct
+            RcInner {
+                strong: Cell::new(0),
+                weak: Cell::new(1),
+                value: init,
+            }),
+            alloc,
+        ) {
+            // SAFETY: the strong count is 0 and the weak count is 1
+            Ok(bx) => Ok(unsafe { Self::from_boxed_inner_unchecked(bx) }),
+            Err(err) => Err(err.map_metadata(|m| m as Metadata<T>)),
         }
-
-        Ok(unsafe { UniqueRc::assume_init(this) })
     }
 
     /// Allocates a `UniqueRc<MaybeUninit<T>, A>` for a particular pointer metadata.
@@ -5029,12 +5026,15 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     where
         A: Clone,
     {
+        // Clone the allocator first so the weak ref doesn't get leaked if
+        // cloning panics.
+        let alloc = this.alloc.clone();
         // SAFETY: This pointer was allocated at creation time and we guarantee that we only have
         // one strong reference before converting to a regular Rc.
         unsafe {
             this.ptr.as_ref().inc_weak();
         }
-        Weak { ptr: this.ptr, alloc: this.alloc.clone() }
+        Weak { ptr: this.ptr, alloc }
     }
 }
 
@@ -5108,48 +5108,6 @@ unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for UniqueRc<T, A> {
                 self.alloc.deallocate(self.ptr.cast(), Layout::for_value_raw(self.ptr.as_ptr()));
             }
         }
-    }
-}
-
-/// A unique owning pointer to a [`RcInner`] **that does not imply the contents are initialized,**
-/// but will deallocate it (without dropping the value) when dropped.
-///
-/// This is a helper for [`Rc::make_mut()`] to ensure correct cleanup on panic.
-/// It is nearly a duplicate of `UniqueRc<MaybeUninit<T>, A>` except that it allows `T: !Sized`,
-/// which `MaybeUninit` does not.
-struct UniqueRcUninit<T: ?Sized, A: Allocator> {
-    inner: UniqueRc<MaybeUninit<T>, A>,
-}
-
-impl<T: ?Sized, A: Allocator> UniqueRcUninit<T, A> {
-    /// Allocates a RcInner with layout suitable to contain `for_value` or a clone of it.
-    #[cfg(not(no_global_oom_handling))]
-    fn new(for_value: &T, alloc: A) -> UniqueRcUninit<T, A> {
-        Self {
-            inner: UniqueRc::new_uninit_with_metadata_in(ptr::metadata(for_value), alloc, false),
-        }
-    }
-
-    /// Allocates a RcInner with layout suitable to contain `for_value` or a clone of it,
-    /// returning an error if allocation fails.
-    fn try_new(for_value: &T, alloc: A) -> Result<UniqueRcUninit<T, A>, BuildError<T, !, A>> {
-        UniqueRc::try_new_uninit_with_metadata_in(ptr::metadata(for_value), alloc, false)
-            .map(|inner| Self { inner })
-    }
-
-    /// Returns the pointer to be written into to initialize the [`Rc`].
-    fn data_ptr(&mut self) -> *mut T {
-        UniqueRc::as_mut_ptr(&mut self.inner).cast_init()
-    }
-
-    /// Upgrade this into a normal [`Rc`].
-    ///
-    /// # Safety
-    ///
-    /// The data must have been initialized (by writing to [`Self::data_ptr()`]).
-    unsafe fn into_rc(self) -> Rc<T, A> {
-        // SAFETY: The caller is responsible for having initialized the data.
-        UniqueRc::into_rc(unsafe { UniqueRc::assume_init(self.inner) })
     }
 }
 
