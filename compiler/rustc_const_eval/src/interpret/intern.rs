@@ -366,7 +366,10 @@ pub fn intern_const_alloc_for_constprop<'tcx, M: CompileTimeMachine<'tcx>>(
         // We are not doing recursive interning, so we don't currently support provenance.
         // (If this assertion ever triggers, we should just implement a
         // proper recursive interning loop -- or just call `intern_const_alloc_recursive`.
-        panic!("`intern_const_alloc_for_constprop` called on allocation with nested provenance")
+        panic!(
+            "`intern_const_alloc_for_constprop` called on allocation with nested provenance {alloc_id:?}: {}",
+            ecx.print_alloc_bytes_for_diagnostics(alloc_id)
+        )
     }
     interp_ok(())
 }
