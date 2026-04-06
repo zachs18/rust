@@ -530,8 +530,11 @@ fn fn_abi_sanity_check<'tcx>(
                 // With metadata. Must be unsized and not on the stack.
                 assert!(arg.layout.is_unsized() && !on_stack);
                 // Also, must not be `extern` type.
-                // FIXME(more_unsized): reintroduce the `ty::Foreign` check,
-                // expanded to make this fail on all `T: !MetaSized`.
+                assert!(
+                    arg.layout.ty.is_meta_sized(cx.tcx(), cx.typing_env),
+                    "unsized arguments must implement `MetaSized`"
+                );
+                // FIXME(more_unsized): Could these be allowed actually?
             }
         }
     }
