@@ -3,6 +3,10 @@
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{AsBytes, as_bytes};
 #[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{ByMut, by_mut};
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{ByRef, by_ref};
+#[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{Chain, chain};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{FnNoArg, FnWithArg, FromFn, from_fn, from_fn_with_arg};
