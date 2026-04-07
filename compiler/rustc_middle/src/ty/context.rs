@@ -100,14 +100,6 @@ impl<'tcx> rustc_type_ir::inherent::InitAdtInfo<TyCtxt<'tcx>> for InitAdtInfo<'t
         self.0.adt_ty
     }
 
-    fn arg_ty(self) -> Ty<'tcx> {
-        self.0.arg_ty
-    }
-
-    fn error_ty(self) -> Ty<'tcx> {
-        self.0.error_ty
-    }
-
     fn component_tys(self) -> &'tcx List<Ty<'tcx>> {
         self.0.component_tys
     }
@@ -127,8 +119,6 @@ impl<'tcx> rustc_type_ir::inherent::InitAdtInfo<TyCtxt<'tcx>> for InitAdtInfo<'t
     fn new(
         tcx: TyCtxt<'tcx>,
         adt_ty: Ty<'tcx>,
-        arg_ty: Ty<'tcx>,
-        error_ty: Ty<'tcx>,
         variant_idx: VariantIdx,
         component_tys: &'tcx List<Ty<'tcx>>,
         component_infos: &'tcx List<InitAdtComponentInfo<'tcx>>,
@@ -136,8 +126,6 @@ impl<'tcx> rustc_type_ir::inherent::InitAdtInfo<TyCtxt<'tcx>> for InitAdtInfo<'t
     ) -> Self {
         let data = InitAdtInfoData {
             adt_ty,
-            arg_ty,
-            error_ty,
             variant: variant_idx,
             component_tys,
             component_infos,

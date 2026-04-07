@@ -861,8 +861,6 @@ impl<'tcx> Rvalue<'tcx> {
                 AggregateKind::InitAdt {
                     adt_def,
                     adt_args,
-                    arg_ty,
-                    error_ty,
                     variant_idx,
                     component_infos,
                     pinned,
@@ -870,8 +868,6 @@ impl<'tcx> Rvalue<'tcx> {
                     let adt_ty = tcx.type_of(adt_def).instantiate(tcx, adt_args);
                     let info = tcx.mk_init_adt_info(ty::InitAdtInfoData {
                         adt_ty,
-                        arg_ty,
-                        error_ty,
                         variant: variant_idx,
                         component_tys: tcx
                             .mk_type_list_from_iter(ops.iter().map(|op| op.ty(local_decls, tcx))),

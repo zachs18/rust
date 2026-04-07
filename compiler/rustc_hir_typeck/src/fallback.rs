@@ -135,7 +135,6 @@ impl<'tcx> FnCtxt<'_, 'tcx> {
             DivergingFallbackBehavior::ToUnit => self.tcx.types.unit,
             DivergingFallbackBehavior::ToNever => self.tcx.types.never,
             DivergingFallbackBehavior::NoFallback => {
-                dbg!();
                 // the type doesn't matter, since no fallback will occur
                 return (UnordSet::new(), self.tcx.types.unit);
             }

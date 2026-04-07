@@ -649,16 +649,12 @@ impl Rvalue {
                     adt_def,
                     variant_idx,
                     ref adt_args,
-                    arg_ty,
-                    error_ty,
                     ref component_infos,
                     pinned,
                 } => Ok({
                     let adt_ty = Ty::from_rigid_kind(RigidTy::Adt(adt_def, adt_args.clone()));
                     let info = InitAdtInfo {
                         adt_ty,
-                        arg_ty,
-                        error_ty,
                         variant: variant_idx,
                         component_tys: ops
                             .iter()
@@ -695,8 +691,6 @@ pub enum AggregateKind {
         adt_def: AdtDef,
         variant_idx: VariantIdx,
         adt_args: GenericArgs,
-        arg_ty: Ty,
-        error_ty: Ty,
         component_infos: Vec<InitAdtComponentInfo>,
         pinned: bool,
     },
