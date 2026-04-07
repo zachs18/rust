@@ -1333,7 +1333,7 @@ where
             ty::InitArray(fields) => self.open_drop_for_tuple(fields),
             ty::InitArrayRepeat(elem, _len) => self.open_drop_for_tuple(&[*elem]),
             ty::InitSliceRepeat(elem) => self.open_drop_for_tuple(&[self.tcx().types.usize, *elem]),
-            ty::InitAdt(..) => todo!(),
+            ty::InitAdt(info) => self.open_drop_for_tuple(&info.component_tys[..]),
             ty::InitTuple(fields) => self.open_drop_for_tuple(fields),
             ty::Adt(def, args) => self.open_drop_for_adt(*def, args),
             ty::Dynamic(..) => self.complete_drop(self.succ, self.unwind),
