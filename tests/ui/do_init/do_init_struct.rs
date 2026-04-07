@@ -173,15 +173,17 @@ fn complicated() {
         _ (with ptr name): std::init::from_fn_with_arg(|p: *mut str| {
             unsafe {&mut *p}.make_ascii_uppercase();
         }),
-        callback(with arg): std::init::unsize(std::init::from_fn_with_arg(|weak: &std::rc::Weak<Complicated>| {
-            let this = weak.clone();
-            move |n: usize, v: &mut Vec<usize>| {
-                v.push(n);
-                if n > 0 {
-                    (this.upgrade().unwrap().callback)(n-1, v)
+        callback(with arg): std::init::unsize(
+            std::init::from_fn_with_arg(|weak: &std::rc::Weak<Complicated>| {
+                let this = weak.clone();
+                move |n: usize, v: &mut Vec<usize>| {
+                    v.push(n);
+                    if n > 0 {
+                        (this.upgrade().unwrap().callback)(n-1, v)
+                    }
                 }
-            }
-        })),
+            })
+        ),
         this(with arg): std::init::from_fn_with_arg(Clone::clone)
     }));
     assert_eq!(&rc.name, "COMPLICATED");
