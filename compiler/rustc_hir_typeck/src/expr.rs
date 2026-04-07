@@ -2974,13 +2974,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         // Make sure the programmer specified correct number of fields.
         if adt_kind == AdtKind::Union && seen_fields.len() != 1 {
-            struct_span_code_err!(
+            let guar = struct_span_code_err!(
                 self.dcx(),
                 path_span,
                 E0784,
                 "union initializer expressions should have exactly one field",
             )
             .emit();
+            error_happened = Some(guar);
         }
 
         // If check_expr_init_struct_fields hit an error, do not attempt to populate
