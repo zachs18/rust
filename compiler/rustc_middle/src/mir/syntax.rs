@@ -1538,8 +1538,6 @@ pub enum AggregateKind<'tcx> {
     InitAdt {
         adt_def: DefId,
         adt_args: GenericArgsRef<'tcx>,
-        arg_ty: Ty<'tcx>,
-        error_ty: Ty<'tcx>,
         variant_idx: VariantIdx,
         component_infos: &'tcx ty::List<ty::InitAdtComponentInfo<'tcx>>,
         pinned: bool,
@@ -1748,7 +1746,7 @@ mod size_asserts {
 
     use super::*;
     // tidy-alphabetical-start
-    static_assert_size!(AggregateKind<'_>, 48);
+    static_assert_size!(AggregateKind<'_>, 32);
     static_assert_size!(Operand<'_>, 24);
     static_assert_size!(Place<'_>, 16);
     static_assert_size!(PlaceElem<'_>, 24);

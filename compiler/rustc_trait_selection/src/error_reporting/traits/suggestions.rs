@@ -3171,9 +3171,6 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
             ObligationCauseCode::InitElem => {
                 err.note("initializer elements must have `Sized` type");
             }
-            ObligationCauseCode::InitArgClone => {
-                err.note("the argument type of a `do init` expression must have `Clone` type if the argument is used multiple times");
-            }
             ObligationCauseCode::SliceOrArrayElem => {
                 err.note("slice and array elements must have `Sized` type");
             }

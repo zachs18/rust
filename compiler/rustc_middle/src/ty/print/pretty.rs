@@ -1096,11 +1096,7 @@ pub trait PrettyPrinter<'tcx>: Printer<'tcx> + fmt::Write {
             ty::InitAdt(info) => {
                 write!(self, "{{InitAdt for ")?;
                 info.adt_ty.print(self)?;
-                write!(self, " variant {:?} arg ", info.variant)?;
-                info.arg_ty.print(self)?;
-                write!(self, " error ")?;
-                info.error_ty.print(self)?;
-                write!(self, " with (")?;
+                write!(self, " variant {:?} with (", info.variant)?;
                 for (ty, info) in std::iter::zip(info.component_tys, info.component_infos) {
                     ty.print(self)?;
                     if let Some(adt_field) = info.field {
