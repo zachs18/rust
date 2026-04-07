@@ -747,20 +747,22 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                 pinned: info.pinned,
                                 fields,
                                 base: match base {
-                                    hir::StructTailExpr::Base(..) => {
-                                        todo!("do init struct Foo {{..base}}")
+                                    hir::StructTailExpr::Base(base) => {
+                                        InitAdtExprBase::Base(FruInfo {
+                                            base: self.mirror_expr(base),
+                                            field_types: self.typeck_results.fru_field_types()
+                                                [expr.hir_id]
+                                                .iter()
+                                                .copied()
+                                                .collect(),
+                                        })
                                     }
                                     hir::StructTailExpr::None
                                     | hir::StructTailExpr::NoneWithError(..) => {
                                         InitAdtExprBase::None
                                     }
                                     hir::StructTailExpr::DefaultFields(_) => {
-                                        InitAdtExprBase::DefaultFields(
-                                            self.typeck_results.fru_field_types()[expr.hir_id]
-                                                .iter()
-                                                .copied()
-                                                .collect(),
-                                        )
+                                        InitAdtExprBase::DefaultFields
                                     }
                                 },
                             }))
@@ -794,15 +796,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                         fields,
                                         base: match base {
                                             hir::StructTailExpr::DefaultFields(_) => {
-                                                InitAdtExprBase::DefaultFields(
-                                                    self.typeck_results.fru_field_types()
-                                                        [expr.hir_id]
-                                                        .iter()
-                                                        .copied()
-                                                        .collect(),
-                                                )
+                                                InitAdtExprBase::DefaultFields
                                             }
                                             hir::StructTailExpr::Base(base) => {
+                                                // should have hit `assert!` above, enums can't do FRU
                                                 span_bug!(base.span, "unexpected res: {:?}", res);
                                             }
                                             hir::StructTailExpr::None

@@ -3603,6 +3603,9 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
             ObligationCauseCode::InitInitializerSized => {
                 err.note("`do init` values must have a statically known size to be initialized");
             }
+            ObligationCauseCode::InitAdtFruSized => {
+                err.note("in `do init struct Struct { ..place }`, values moved from `place` must have a statically known size");
+            }
             ObligationCauseCode::StructInitializerSized => {
                 err.note("structs must have a statically known size to be initialized");
             }

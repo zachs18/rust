@@ -157,7 +157,9 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
             for field in &**fields {
                 visitor.visit_expr(&visitor.thir()[field.expr]);
             }
-            let (InitAdtExprBase::DefaultFields(..) | InitAdtExprBase::None) = base;
+            if let InitAdtExprBase::Base(base) = base {
+                visitor.visit_expr(&visitor.thir()[base.base]);
+            }
         }
         PtrMetadata(box PtrMetadataExpr { ref fields, ref base, user_ty: _ }) => {
             for field in &**fields {
