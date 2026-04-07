@@ -266,6 +266,8 @@ pub enum ObligationCauseCode<'tcx> {
     },
     /// `do init` field initializers must be `Sized`.
     InitInitializerSized,
+    /// `do init struct` FRU field initializers must be `Sized`.
+    InitAdtFruSized,
 
     /// Types of fields (other than the last, except for packed structs) in a struct must be sized.
     FieldSized {
