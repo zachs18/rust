@@ -644,12 +644,16 @@ impl<'tcx> Stable<'tcx> for mir::AggregateKind<'tcx> {
                 adt_def,
                 adt_args,
                 variant_idx,
+                arg_ty,
+                error_ty,
                 component_infos,
                 pinned,
             } => crate::mir::AggregateKind::InitAdt {
                 adt_def: tables.adt_def(*adt_def),
                 variant_idx: variant_idx.stable(tables, cx),
                 adt_args: adt_args.stable(tables, cx),
+                arg_ty: arg_ty.stable(tables, cx),
+                error_ty: error_ty.stable(tables, cx),
                 component_infos: component_infos
                     .iter()
                     .map(|component_info| component_info.stable(tables, cx))

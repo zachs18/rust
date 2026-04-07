@@ -239,8 +239,18 @@ impl Visitable for FnSig {
 
 impl Visitable for InitAdtInfo {
     fn super_visit<V: Visitor>(&self, visitor: &mut V) -> ControlFlow<V::Break> {
-        let Self { adt_ty, variant: _, component_tys, component_infos: _, pinned: _ } = self;
+        let Self {
+            adt_ty,
+            arg_ty,
+            error_ty,
+            variant: _,
+            component_tys,
+            component_infos: _,
+            pinned: _,
+        } = self;
         adt_ty.visit(visitor)?;
+        arg_ty.visit(visitor)?;
+        error_ty.visit(visitor)?;
         // `variant` is `VariantIdx` and contains no `Ty`/`Const`/`Region`s to visit.
         component_tys.visit(visitor)?;
         // `component_infos` is `InitAdtComponentInfo` and contains no `Ty`/`Const`/`Region`s, only `FieldIdx`s.
