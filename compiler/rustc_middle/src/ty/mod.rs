@@ -2354,6 +2354,8 @@ pub struct InitAdtComponentInfo<'tcx> {
 #[derive(TypeFoldable, TypeVisitable)]
 pub struct InitAdtInfoData<'tcx> {
     pub adt_ty: Ty<'tcx>,
+    pub error_ty: Ty<'tcx>,
+    pub arg_ty: Ty<'tcx>,
     pub variant: VariantIdx,
     pub component_tys: &'tcx List<Ty<'tcx>>,
     pub component_infos: &'tcx List<InitAdtComponentInfo<'tcx>>,

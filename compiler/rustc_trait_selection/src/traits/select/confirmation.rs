@@ -1391,6 +1391,21 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     bug!("BuiltinInitCandidate for non-Init-family trait {trait_def_id:?}")
                 };
 
+                nested.extend(
+                    self.infcx
+                        .at(&obligation.cause, obligation.param_env)
+                        .eq(DefineOpaqueTypes::No, arg_ty, info.arg_ty)
+                        .map(|InferOk { obligations, .. }| obligations)
+                        .map_err(|_| SelectionError::Unimplemented)?,
+                );
+                nested.extend(
+                    self.infcx
+                        .at(&obligation.cause, obligation.param_env)
+                        .eq(DefineOpaqueTypes::No, error_ty, info.error_ty)
+                        .map(|InferOk { obligations, .. }| obligations)
+                        .map_err(|_| SelectionError::Unimplemented)?,
+                );
+
                 if info.pinned {
                     match trait_kind {
                         InitTraitKind::PinInitOnce

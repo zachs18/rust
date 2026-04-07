@@ -581,6 +581,8 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
                 return Err(TypeError::Mismatch);
             }
             let adt_ty = relation.relate(a_info.adt_ty(), b_info.adt_ty())?;
+            let arg_ty = relation.relate(a_info.arg_ty(), b_info.arg_ty())?;
+            let error_ty = relation.relate(a_info.error_ty(), b_info.error_ty())?;
             let component_tys = cx.mk_type_list_from_iter(
                 std::iter::zip(a_components.iter(), b_components.iter())
                     .map(|(a_component, b_component)| relation.relate(a_component, b_component)),
@@ -589,6 +591,8 @@ pub fn structurally_relate_tys<I: Interner, R: TypeRelation<I>>(
             let info = I::InitAdtInfo::new(
                 cx,
                 adt_ty,
+                arg_ty,
+                error_ty,
                 a_info.variant_idx(),
                 component_tys,
                 a_info.component_infos(),

@@ -1101,6 +1101,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                     adt_def: _,
                     adt_args: _,
                     variant_idx: _,
+                    arg_ty: _,
+                    error_ty: _,
                     component_infos,
                     pinned: _,
                 } => {

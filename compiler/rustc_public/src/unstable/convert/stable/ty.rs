@@ -176,10 +176,19 @@ impl<'tcx> Stable<'tcx> for ty::InitAdtInfo<'tcx> {
         tables: &mut Tables<'cx, BridgeTys>,
         cx: &CompilerCtxt<'cx, BridgeTys>,
     ) -> Self::T {
-        let ty::InitAdtInfoData { adt_ty, variant, component_tys, component_infos, pinned } =
-            *self.0;
+        let ty::InitAdtInfoData {
+            adt_ty,
+            arg_ty,
+            error_ty,
+            variant,
+            component_tys,
+            component_infos,
+            pinned,
+        } = *self.0;
         InitAdtInfo {
             adt_ty: adt_ty.stable(tables, cx),
+            arg_ty: arg_ty.stable(tables, cx),
+            error_ty: error_ty.stable(tables, cx),
             variant: variant.stable(tables, cx),
             component_tys: component_tys
                 .iter()

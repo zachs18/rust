@@ -604,9 +604,12 @@ impl RustcInternal for InitAdtInfo {
         tables: &mut Tables<'_, BridgeTys>,
         tcx: impl InternalCx<'tcx>,
     ) -> Self::T<'tcx> {
-        let Self { adt_ty, variant, component_tys, component_infos, pinned } = self;
+        let Self { adt_ty, arg_ty, error_ty, variant, component_tys, component_infos, pinned } =
+            self;
         tcx.mk_init_adt_info(rustc_ty::InitAdtInfoData {
             adt_ty: adt_ty.internal(tables, tcx),
+            arg_ty: arg_ty.internal(tables, tcx),
+            error_ty: error_ty.internal(tables, tcx),
             variant: variant.internal(tables, tcx),
             component_tys: tcx.mk_type_list(&component_tys.internal(tables, tcx)),
             component_infos: tcx
