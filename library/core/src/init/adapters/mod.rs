@@ -1,4 +1,6 @@
 pub use as_bytes::AsBytes;
+pub use by_mut::ByMut;
+pub use by_ref::ByRef;
 pub use chain::Chain;
 pub use from_fn::{FnNoArg, FnWithArg, FromFn};
 pub use repeat::Repeat;
@@ -8,11 +10,13 @@ pub use with_arg::WithArg;
 pub use zeroed::Zeroed;
 
 use crate::init::{ConstLength, RuntimeLength};
-use crate::marker::{MetaSized, Unsize as UnsizeTrait};
+use crate::marker::{MetaSized, PointeeSized, Unsize as UnsizeTrait};
 use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, Thin, build_metadata};
 
 mod as_bytes;
+mod by_mut;
+mod by_ref;
 mod chain;
 mod from_fn;
 mod repeat;
@@ -179,4 +183,16 @@ pub const fn with_arg<T: MetaSized, I, Arg>(init: I, arg: Arg) -> WithArg<T, I, 
 /// can be unsized-coerced into the type of that place.
 pub const fn unsize<U: MetaSized, T: MetaSized + UnsizeTrait<U>, I>(init: I) -> Unsize<U, T, I> {
     Unsize::new(init)
+}
+
+// `ByRef`/`ByMut`
+
+/// Create an initializer that wraps a reference to an initializer that can be reused.
+pub const fn by_ref<T: MetaSized, I: PointeeSized>(init: &I) -> &ByRef<T, I> {
+    ByRef::new(init)
+}
+
+/// Create an initializer that wraps a mutable reference to an initializer that can be reused.
+pub const fn by_mut<T: MetaSized, I: PointeeSized>(init: &mut I) -> &mut ByMut<T, I> {
+    ByMut::new(init)
 }
