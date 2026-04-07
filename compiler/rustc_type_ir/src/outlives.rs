@@ -130,10 +130,6 @@ impl<I: Interner> TypeVisitor<I> for OutlivesCollector<'_, I> {
             // higher-ranked outlives components currently.
             ty::CoroutineWitness(..) => {}
 
-            ty::InitAdt(_info) => {
-                todo!()
-            }
-
             // OutlivesTypeParameterEnv -- the actual checking that `X:'a`
             // is implied by the environment is done in regionck.
             ty::Param(p) => {
@@ -211,6 +207,7 @@ impl<I: Interner> TypeVisitor<I> for OutlivesCollector<'_, I> {
             | ty::UnsafeBinder(_)
             | ty::Dynamic(_, _)
             | ty::Tuple(_)
+            | ty::InitAdt(..)
             | ty::InitArray(..)
             | ty::InitArrayRepeat(..)
             | ty::InitSliceRepeat(..)
