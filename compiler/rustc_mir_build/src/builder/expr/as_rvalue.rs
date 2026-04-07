@@ -402,10 +402,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     }
                 }
 
-                let ty::InitAdt(info) = expr.ty.kind() else {
-                    unreachable!("InitAdt expr should have type InitAdt")
-                };
-
                 block.and(Rvalue::Aggregate(
                     Box::new(AggregateKind::InitAdt {
                         variant_idx: variant_index,
@@ -413,8 +409,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         pinned,
                         adt_def: adt_def.did(),
                         adt_args: args,
-                        arg_ty: info.arg_ty,
-                        error_ty: info.error_ty,
                     }),
                     fields,
                 ))

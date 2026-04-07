@@ -806,18 +806,8 @@ macro_rules! make_mir_visitor {
                             AggregateKind::InitSliceRepeat(ty) => {
                                 self.visit_ty($(& $mutability)? *ty, TyContext::Location(location));
                             }
-                            AggregateKind::InitAdt {
-                                adt_def: _,
-                                adt_args,
-                                arg_ty,
-                                error_ty,
-                                variant_idx: _,
-                                component_infos: _,
-                                pinned: _,
-                            } => {
+                            AggregateKind::InitAdt { adt_def: _, adt_args, variant_idx: _, component_infos: _, pinned: _ } => {
                                 self.visit_args(adt_args, location);
-                                self.visit_ty($(& $mutability)? *arg_ty, TyContext::Location(location));
-                                self.visit_ty($(& $mutability)? *error_ty, TyContext::Location(location));
                             }
                             AggregateKind::Adt(
                                 _adt_def,

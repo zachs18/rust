@@ -199,9 +199,6 @@ pub enum ObligationCauseCode<'tcx> {
     /// A `do init` initializer is WF only if its elements are `Sized`.
     InitElem,
 
-    /// A `do init` initializer that uses its argument multiple times is WF only if its argument type is `Clone`.
-    InitArgClone,
-
     /// Represents a clause that comes from a specific item.
     /// The span corresponds to the clause.
     WhereClause(DefId, Span),
