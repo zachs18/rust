@@ -989,6 +989,8 @@ impl AdtKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct InitAdtInfo {
     pub adt_ty: Ty,
+    pub arg_ty: Ty,
+    pub error_ty: Ty,
     pub variant: VariantIdx,
     pub component_tys: Vec<Ty>,
     pub component_infos: Vec<InitAdtComponentInfo>,

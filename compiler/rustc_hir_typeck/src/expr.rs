@@ -26,6 +26,7 @@ use rustc_hir_analysis::NoVariantNamed;
 use rustc_hir_analysis::errors::NoFieldOnType;
 use rustc_hir_analysis::hir_ty_lowering::HirTyLowerer as _;
 use rustc_infer::infer::{self, DefineOpaqueTypes, InferOk, RegionVariableOrigin};
+use rustc_infer::traits::ObligationCause;
 use rustc_infer::traits::query::NoSolution;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AllowTwoPhase};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
@@ -2816,7 +2817,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         });
 
-        let ty::Adt(adt, args) = adt_ty.kind() else {
+        let ty::Adt(adt, adt_args) = adt_ty.kind() else {
             span_bug!(path_span, "non-ADT passed to check_expr_struct_fields");
         };
         let adt_kind = adt.adt_kind();
@@ -2842,6 +2843,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             error_happened = Some(guar);
         }
 
+        let (arg_ty, error_ty) = if let Some(info) = expected_info {
+            (info.arg_ty, info.error_ty)
+        } else {
+            (self.next_ty_var(expr.span), self.next_ty_var(expr.span))
+        };
+
         // Type-check each field and collect the initializer info.
         // If any component is pinned, the whole initializer must be pinned.
         let mut pinned = false;
@@ -2860,16 +2867,27 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         }
 
+        let mut arg_usages: usize = 0;
+
         let (mut component_tys, mut component_infos): (Vec<_>, Vec<_>) = hir_fields
             .iter()
             .enumerate()
             .map(|(hir_field_idx, field)| {
+                let expected_component_ty = if let Some(expected_info) = expected_info {
+                    expected_info.component_tys[hir_field_idx]
+                } else {
+                    self.next_ty_var(field.span)
+                };
+
+                let component_ty =
+                    self.check_expr_coercible_to_type(field.expr, expected_component_ty, None);
+
                 let ident = tcx.adjust_ident(field.ident, variant.def_id);
 
-                let dst_field_idx = if ident.name == kw::Underscore {
+                let (dst_field_idx, initializee_ty) = if ident.name == kw::Underscore {
                     // This is a `_` initializer with DST = () that runs (and can signal failure),
                     // but doesn't initialize any field.
-                    None
+                    (None, tcx.types.unit)
                 } else if let Some((i, v_field)) = remaining_fields.remove(&ident) {
                     seen_fields.insert(ident, field.span);
                     self.write_field_index(field.hir_id, i);
@@ -2881,14 +2899,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         tcx.check_stability(v_field.did, Some(field.hir_id), field.span, None);
                     }
 
+                    let field_ty = self.field_ty(field.span, v_field, adt_args);
+
                     // Check that the initializee field type is WF.
                     self.register_wf_obligation(
-                        self.field_ty(field.span, v_field, args).into(),
+                        field_ty.into(),
                         field.expr.span,
                         ObligationCauseCode::WellFormed(None),
                     );
 
-                    Some(i)
+                    (Some(i), field_ty)
                 } else {
                     let guar = if let Some(prev_span) = seen_fields.get(&ident) {
                         self.dcx().emit_err(FieldMultiplySpecifiedInInitializer {
@@ -2908,10 +2928,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     };
                     error_happened = Some(guar);
 
-                    None
+                    (None, Ty::new_error(tcx, guar))
                 };
 
-                let args = if let Some(init_info) = field.init_info {
+                let (args, elem_arg_ty) = if let Some(init_info) = field.init_info {
                     if init_info.pinned {
                         if let Some(dst_field_idx) = dst_field_idx
                             && referenced_unpinned[dst_field_idx.as_usize()]
@@ -2920,13 +2940,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         }
                         pinned = true;
                     }
-                    init_info
+                    let (elem_args, elem_arg_tys): (Vec<_>, Vec<_>) = init_info
                         .args
                         .iter()
                         .map(|arg| {
-                            let (cb, ident) = match *arg {
+                            let (arg_cb, ident, arg_ty_cb) = match *arg {
                                 rustc_hir::InitFieldArg::Arg => {
-                                    return ty::InitAdtComponentArg::Arg;
+                                    arg_usages += 1;
+                                    return (ty::InitAdtComponentArg::Arg, arg_ty);
                                 }
                                 rustc_hir::InitFieldArg::Ref(_ident)
                                 | rustc_hir::InitFieldArg::PinRef(_ident) => todo!(
@@ -2936,21 +2957,66 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                     are unsafe or disallowed"
                                 ),
                                 rustc_hir::InitFieldArg::Ptr(ident) => {
-                                    (ty::InitAdtComponentArg::Ptr, ident)
+                                    (ty::InitAdtComponentArg::Ptr, ident, |ty| {
+                                        Ty::new_mut_ptr(tcx, ty)
+                                    })
                                 }
                             };
                             let ident = tcx.adjust_ident(ident, variant.def_id);
 
-                            if let Some(&(refd_field, _)) = adt_fields_by_name.get(&ident) {
-                                cb(refd_field)
+                            if let Some(&(refd_field_idx, refd_field)) = adt_fields_by_name.get(&ident) {
+                                let field_ty = 
+self.normalize(expr.span, refd_field.ty(self.tcx, adt_args));
+                                let elem_arg = arg_cb(refd_field_idx);
+                                let elem_arg_ty = arg_ty_cb(field_ty);
+
+                                (elem_arg, elem_arg_ty)
                             } else {
                                 todo!("report unknown field");
                             }
                         })
-                        .collect()
+                        .unzip();
+
+                    let elem_arg_ty = if elem_arg_tys.len() == 1 {
+                        elem_arg_tys[0]
+                    } else {
+                        Ty::new_tup(tcx, tcx.mk_type_list(&elem_arg_tys))
+                    };
+
+                    (elem_args, elem_arg_ty)
                 } else {
-                    vec![]
+                    (vec![], tcx.types.unit)
                 };
+
+                let init_trait_def_id = if dst_field_idx
+                    .is_some_and(|dst_field_idx| referenced_unpinned[dst_field_idx.as_usize()])
+                {
+                    tcx.require_lang_item(LangItem::InitOnce, expr.span)
+                } else {
+                    tcx.require_lang_item(LangItem::PinInitOnce, expr.span)
+                };
+
+                // Require the initializer's type implements `(Pin)InitOnce<FieldTy`
+                if error_happened.is_none() {
+                    self.register_predicate(traits::PredicateObligation::new(
+                        tcx,
+                        ObligationCause::misc(expr.span, self.body_id),
+                        self.param_env,
+                        ty::ClauseKind::Trait(ty::TraitPredicate {
+                            trait_ref: ty::TraitRef::new(
+                                tcx,
+                                init_trait_def_id,
+                                tcx.mk_args(&[
+                                    component_ty.into(),
+                                    initializee_ty.into(),
+                                    error_ty.into(),
+                                    elem_arg_ty.into(),
+                                ]),
+                            ),
+                            polarity: ty::PredicatePolarity::Positive,
+                        }),
+                    ));
+                }
 
                 let component_info = ty::InitAdtComponentInfo {
                     field: dst_field_idx,
@@ -2959,18 +3025,20 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         .is_some_and(|dst_field_idx| referenced_unpinned[dst_field_idx.as_usize()]),
                 };
 
-                let expected_component_ty = if let Some(expected_info) = expected_info {
-                    expected_info.component_tys[hir_field_idx]
-                } else {
-                    self.next_ty_var(field.span)
-                };
-
-                let component_ty =
-                    self.check_expr_coercible_to_type(field.expr, expected_component_ty, None);
-
                 (component_ty, component_info)
             })
             .unzip();
+
+        match arg_usages {
+            0 => self.demand_eqtype(expr.span, tcx.types.unit, arg_ty),
+            1 => {}
+            _ => self.require_type_meets(
+                arg_ty,
+                expr.span,
+                ObligationCauseCode::InitArgClone,
+                tcx.require_lang_item(LangItem::Clone, expr.span),
+            ),
+        }
 
         // Make sure the programmer specified correct number of fields.
         if adt_kind == AdtKind::Union && seen_fields.len() != 1 {
@@ -3170,15 +3238,23 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             remaining_fields,
                             variant,
                             hir_fields,
-                            args,
+                            adt_args,
                         );
                     }
                 }
             }
         };
 
+        // TODO: hack
+        let error_ty = self.try_structurally_resolve_type(expr.span, error_ty);
+        if error_ty.is_ty_var() {
+            self.demand_eqtype(expr.span, tcx.types.never, error_ty);
+        };
+
         let info = ty::InitAdtInfoData {
             adt_ty,
+            arg_ty: self.structurally_resolve_type(expr.span, arg_ty),
+            error_ty: self.structurally_resolve_type(expr.span, error_ty),
             variant: variant_idx,
             component_tys: tcx.mk_type_list(&component_tys),
             component_infos: tcx.mk_init_adt_component_info_list(&component_infos),

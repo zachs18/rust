@@ -249,6 +249,10 @@ pub trait Abi<I: Interner<Abi = Self>>: Copy + Debug + Hash + Eq {
 pub trait InitAdtInfo<I: Interner<InitAdtInfo = Self>>: Copy + Debug + Hash + Eq {
     fn adt_ty(self) -> I::Ty;
 
+    fn arg_ty(self) -> I::Ty;
+
+    fn error_ty(self) -> I::Ty;
+
     fn variant_idx(self) -> VariantIdx;
 
     fn component_tys(self) -> I::Tys;
@@ -260,6 +264,8 @@ pub trait InitAdtInfo<I: Interner<InitAdtInfo = Self>>: Copy + Debug + Hash + Eq
     fn new(
         interner: I,
         adt_ty: I::Ty,
+        arg_ty: I::Ty,
+        error_ty: I::Ty,
         variant_idx: VariantIdx,
         component_tys: I::Tys,
         component_infos: I::InitAdtComponentInfos,
