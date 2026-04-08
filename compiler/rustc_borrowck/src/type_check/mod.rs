@@ -1461,7 +1461,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                                 vals => unreachable!("{vals:?}"),
                             };
 
-                        if self.infcx.type_is_sized_modulo_regions(self.infcx.param_env, dst) {
+                        if self.infcx.type_is_thin_modulo_regions(self.infcx.param_env, dst) {
                             // Wide to thin ptr cast. This may even occur in an env with
                             // impossible predicates, such as `where dyn Trait: Sized`.
                             // In this case, we don't want to fall into the case below,
@@ -1469,7 +1469,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                             // fine to perform this operation in an impossible env.
                             let trait_ref = ty::TraitRef::new(
                                 tcx,
-                                tcx.require_lang_item(LangItem::Sized, self.last_span),
+                                tcx.require_lang_item(LangItem::ThinPointeeTrait, self.last_span),
                                 [dst],
                             );
                             self.prove_trait_ref(
