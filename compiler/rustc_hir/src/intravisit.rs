@@ -1004,7 +1004,7 @@ pub fn walk_expr_field_init_info<'v, V: Visitor<'v>>(
     visitor: &mut V,
     init_info: &'v ExprFieldInitInfo<'v>,
 ) -> V::Result {
-    let ExprFieldInitInfo { pinned: _, args } = *init_info;
+    let ExprFieldInitInfo { args } = *init_info;
     for arg in args {
         match arg {
             InitFieldArg::Arg => {}
@@ -1493,6 +1493,7 @@ pub fn walk_field_def<'v, V: Visitor<'v>>(
         def_id: _,
         safety: _,
         unsizability: _,
+        pinned: _,
     }: &'v FieldDef<'v>,
 ) -> V::Result {
     try_visit!(visitor.visit_id(*hir_id));

@@ -1771,7 +1771,6 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
         init_info: &ExprFieldInitInfo,
     ) -> hir::ExprFieldInitInfo<'hir> {
         hir::ExprFieldInitInfo {
-            pinned: init_info.pinned,
             args: self.arena.alloc_from_iter(init_info.args.iter().map(|arg| match *arg {
                 InitFieldArg::Arg => hir::InitFieldArg::Arg,
                 InitFieldArg::Ref(ident) => hir::InitFieldArg::Ref(self.lower_ident(ident)),

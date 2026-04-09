@@ -210,9 +210,6 @@ impl<'a> State<'a> {
 
     fn print_expr_field_init_info(&mut self, init_info: &ExprFieldInitInfo) {
         self.word("(");
-        if init_info.pinned {
-            self.word_space("pinned,");
-        }
         self.word_space("with");
         self.word("(");
         for arg in &init_info.args {

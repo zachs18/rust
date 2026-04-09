@@ -623,11 +623,10 @@ impl RustcInternal for InitAdtComponentInfo {
         tables: &mut Tables<'_, BridgeTys>,
         tcx: impl InternalCx<'tcx>,
     ) -> Self::T<'tcx> {
-        let Self { field, ref args, referenced_unpinned } = *self;
+        let Self { field, ref args } = *self;
         rustc_ty::InitAdtComponentInfo {
             field: field.map(rustc_abi::FieldIdx::from_usize),
             args: tcx.mk_init_adt_component_arg_list(&args.internal(tables, tcx)),
-            referenced_unpinned,
         }
     }
 }

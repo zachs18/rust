@@ -6,7 +6,7 @@
 //! See [`rustc_hir_analysis::check`] for more context on type checking in general.
 
 use itertools::Either;
-use rustc_abi::{FIRST_VARIANT, FieldIdx, VariantIdx};
+use rustc_abi::{FIRST_VARIANT, FieldIdx, FieldPinnedness, VariantIdx};
 use rustc_ast as ast;
 use rustc_ast::util::parser::ExprPrecedence;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
@@ -2843,22 +2843,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
 
         // Type-check each field and collect the initializer info.
-        // If any component is pinned, the whole initializer must be pinned.
+
+        // If any structurally-pinned field is referenced as `pin ref` in another field's initializer,
+        // then the whole initialized value is pinned (unless the whole initialized value implements `Unpin`,
+        // but that's checked in the trait solver).
         let mut pinned = false;
-        // If a field is referenced unpinned in another component, it must not be pinned.
-        let mut referenced_unpinned = vec![false; variant.fields.len()];
-        for field in hir_fields {
-            let Some(init_info) = field.init_info else {
-                continue;
-            };
-            for arg in init_info.args {
-                if let hir::InitFieldArg::Ref(referenced_unpinned_field) = arg
-                    && let Some(&(idx, _)) = adt_fields_by_name.get(referenced_unpinned_field)
-                {
-                    referenced_unpinned[idx.as_usize()] = true;
-                }
-            }
-        }
 
         let (mut component_tys, mut component_infos): (Vec<_>, Vec<_>) = hir_fields
             .iter()
@@ -2912,37 +2901,105 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 };
 
                 let args = if let Some(init_info) = field.init_info {
-                    if init_info.pinned {
-                        if let Some(dst_field_idx) = dst_field_idx
-                            && referenced_unpinned[dst_field_idx.as_usize()]
-                        {
-                            todo!("error message for pinned field referenced as unpinned")
-                        }
-                        pinned = true;
-                    }
+                    // `referenced_fields[ident] == None`: this field is not referenced by this component.
+                    // `referenced_fields[ident] == Some(false)`: this field is referenced by this component by raw pointer.
+                    // `referenced_fields[ident] == Some(true)`: this field is referenced by this component by maybe-pinned mutable reference.
+                    let mut referenced_fields: UnordMap<Ident, bool> =
+                        UnordMap::with_capacity(adt_fields_by_name.len());
                     init_info
                         .args
                         .iter()
                         .map(|arg| {
-                            let (cb, ident) = match *arg {
+                            let (ref_pinnedness, cb, ident) = match *arg {
                                 rustc_hir::InitFieldArg::Arg => {
                                     return ty::InitAdtComponentArg::Arg;
                                 }
-                                rustc_hir::InitFieldArg::Ref(_ident)
-                                | rustc_hir::InitFieldArg::PinRef(_ident) => todo!(
-                                    "handle pinnedness and make sure we don't pass two \
-                                    refs (or a ref and a ptr) to the same field,\
-                                    and make sure that for unions, `ref` or `ref mut` \
-                                    are unsafe or disallowed"
+                                rustc_hir::InitFieldArg::Ref(ident) => {
+                                    (Some(false), ty::InitAdtComponentArg::Ref as fn(_) -> _, ident)
+                                }
+                                rustc_hir::InitFieldArg::PinRef(ident) => (
+                                    Some(true),
+                                    ty::InitAdtComponentArg::PinRef as fn(_) -> _,
+                                    ident,
                                 ),
                                 rustc_hir::InitFieldArg::Ptr(ident) => {
-                                    (ty::InitAdtComponentArg::Ptr, ident)
+                                    (None, ty::InitAdtComponentArg::Ptr as fn(_) -> _, ident)
                                 }
                             };
                             let ident = tcx.adjust_ident(ident, variant.def_id);
 
-                            if let Some(&(refd_field, _)) = adt_fields_by_name.get(&ident) {
-                                cb(refd_field)
+                            if adt_kind == AdtKind::Union {
+                                todo!("FIXME: disallow ref and ref mut for union, disallow ptr when dst_field_idx.is_some(), etc");
+                            }
+
+                            if let Some(&(refd_field_idx, refd_field)) =
+                                adt_fields_by_name.get(&ident)
+                            {
+                                if dst_field_idx == Some(refd_field_idx) {
+                                    todo!("error on taking ptr/ref to field being initialized")
+                                }
+
+                                let refd_field_is_structurally_pinned =
+                                    if adt.has_explicitly_pinned_fields() {
+                                        refd_field.pinned == FieldPinnedness::Yes
+                                    } else {
+                                        true
+                                    };
+                                let refd_field_ty = self.field_ty(ident.span, refd_field, args);
+                                match ref_pinnedness {
+                                    // no pinning requirements to refer to a field by pointer
+                                    None => {
+                                        if matches!(
+                                            referenced_fields.insert(ident, false),
+                                            Some(true)
+                                        ) {
+                                            todo!("error on a ref and a ptr to the same field")
+                                        }
+                                    }
+                                    // to refer to a field by pinned ref, it must either implement `Unpin`,
+                                    // or be structurally pinned (and this makes the whole initializer not implement `Init`).
+                                    Some(true) => {
+                                        if referenced_fields.insert(ident, true).is_some() {
+                                            todo!(
+                                                "error on multiple references (or a ref and a ptr) \
+                                                to the same field"
+                                            )
+                                        } else if !seen_fields.contains_key(&ident) {
+                                            todo!("error on ref to not-yet-initialized field")
+                                        }
+                                        if refd_field_is_structurally_pinned {
+                                            pinned = true;
+                                        } else {
+                                            self.require_type_meets(
+                                                refd_field_ty,
+                                                ident.span,
+                                                ObligationCauseCode::InitFieldPinnedMisc,
+                                                tcx.require_lang_item(LangItem::Unpin, ident.span),
+                                            );
+                                        }
+                                    }
+                                    // to refer to a field by unpinned ref, it must either implement `Unpin`,
+                                    // or NOT be structurally pinned.
+                                    Some(false) => {
+                                        if referenced_fields.insert(ident, true).is_some() {
+                                            todo!(
+                                                "error on multiple references (or a ref and a ptr) \
+                                                to the same field"
+                                            )
+                                        } else if !seen_fields.contains_key(&ident) {
+                                            todo!("error on ref to not-yet-initialized field")
+                                        }
+                                        if refd_field_is_structurally_pinned {
+                                            self.require_type_meets(
+                                                refd_field_ty,
+                                                ident.span,
+                                                ObligationCauseCode::InitFieldPinnedMisc,
+                                                tcx.require_lang_item(LangItem::Unpin, ident.span),
+                                            );
+                                        }
+                                    }
+                                }
+                                cb(refd_field_idx)
                             } else {
                                 todo!("report unknown field");
                             }
@@ -2955,8 +3012,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let component_info = ty::InitAdtComponentInfo {
                     field: dst_field_idx,
                     args: tcx.mk_init_adt_component_arg_list(&args),
-                    referenced_unpinned: dst_field_idx
-                        .is_some_and(|dst_field_idx| referenced_unpinned[dst_field_idx.as_usize()]),
                 };
 
                 let expected_component_ty = if let Some(expected_info) = expected_info {
@@ -3100,7 +3155,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                 component_infos.push(InitAdtComponentInfo {
                                     field: Some(idx),
                                     args: tcx.mk_init_adt_component_arg_list(&[]),
-                                    referenced_unpinned: false,
                                 });
 
                                 self.require_type_is_sized(

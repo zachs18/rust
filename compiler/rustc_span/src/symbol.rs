@@ -1822,6 +1822,7 @@ symbols! {
         rustc_peek_liveness,
         rustc_peek_maybe_init,
         rustc_peek_maybe_uninit,
+        rustc_pinned_field,
         rustc_preserve_ub_checks,
         rustc_private,
         rustc_proc_macro_decls,

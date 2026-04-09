@@ -1,6 +1,6 @@
 use std::mem;
 
-use rustc_abi::{ExternAbi, FieldUnsizability};
+use rustc_abi::{ExternAbi, FieldPinnedness, FieldUnsizability};
 use rustc_ast::visit::AssocCtxt;
 use rustc_ast::*;
 use rustc_data_structures::fx::FxIndexMap;
@@ -973,13 +973,16 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 .map(|v| self.lower_anon_const_to_anon_const(v, v.value.span)),
             ty,
             safety: self.lower_safety(f.safety, hir::Safety::Safe),
-            unsizability: {
-                if find_attr!(attrs, RustcUnsizableField(..)) {
-                    FieldUnsizability::Yes
-                } else {
-                    // FIXME(more_unsized): check `#[rustc_unsizable_field]` and `#[rustc_non_unsizable_field]` attributes
-                    FieldUnsizability::Default
-                }
+            unsizability: if find_attr!(attrs, RustcUnsizableField(..)) {
+                FieldUnsizability::Yes
+            } else {
+                // FIXME(more_unsized): add `#[rustc_non_unsizable_field]` attribute
+                FieldUnsizability::Default
+            },
+            pinned: if find_attr!(attrs, RustcPinnedField(..)) {
+                FieldPinnedness::Yes
+            } else {
+                FieldPinnedness::Default
             },
         }
     }

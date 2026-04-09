@@ -3171,6 +3171,11 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
             ObligationCauseCode::InitElem => {
                 err.note("initializer elements must have `Sized` type");
             }
+            ObligationCauseCode::InitFieldPinnedMisc => {
+                err.note(
+                    "fields of `do init` initializee types must have `Unpin` type in some cases",
+                );
+            }
             ObligationCauseCode::SliceOrArrayElem => {
                 err.note("slice and array elements must have `Sized` type");
             }

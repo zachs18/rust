@@ -9,6 +9,7 @@
 
 use std::ops::ControlFlow;
 
+use rustc_abi::FieldPinnedness;
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_hir::lang_items::LangItem;
 use rustc_infer::infer::{BoundRegionConversionTime, DefineOpaqueTypes, InferOk};
@@ -1397,9 +1398,16 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         | InitTraitKind::PinInitMut
                         | InitTraitKind::PinInit => {}
                         InitTraitKind::InitOnce | InitTraitKind::InitMut | InitTraitKind::Init => {
-                            // FIXME(in_place_init): give better error message when user passes
-                            // pinned initializer to `Box::build` etc.
-                            return Err(SelectionError::Unimplemented);
+                            // Require the initializee to be `Unpin` if we take any `pin ref`
+                            // to fields.
+                            nested.push(obligation.with(
+                                tcx,
+                                obligation.predicate.rebind(ty::TraitRef::new(
+                                    tcx,
+                                    tcx.require_lang_item(LangItem::Unpin, obligation.cause.span),
+                                    [info.adt_ty],
+                                )),
+                            ));
                         }
                     }
                 }
@@ -1409,15 +1417,30 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 for (component_ty, component_info) in
                     std::iter::zip(info.component_tys, info.component_infos)
                 {
-                    let component_trait_kind = if component_info.referenced_unpinned {
+                    let (component_dst_ty, field_is_structurally_pinned) =
+                        match component_info.field {
+                            Some(adt_field_idx) => {
+                                let field = &adt_variant.fields[adt_field_idx];
+
+                                let field_is_structurally_pinned =
+                                    if adt_def.has_explicitly_pinned_fields() {
+                                        field.pinned == FieldPinnedness::Yes
+                                    } else {
+                                        true
+                                    };
+
+                                let field_ty = field.ty(tcx, adt_args);
+
+                                (field_ty, field_is_structurally_pinned)
+                            }
+                            None => (tcx.types.unit, true),
+                        };
+
+                    let component_trait_kind = if !field_is_structurally_pinned {
+                        // non-structurally-pinned fields must be initialized with `Init*`, not `PinInit*`.
                         trait_kind.to_non_pinned()
                     } else {
                         trait_kind
-                    };
-
-                    let component_dst_ty = match component_info.field {
-                        Some(adt_field_idx) => adt_variant.fields[adt_field_idx].ty(tcx, adt_args),
-                        None => tcx.types.unit,
                     };
 
                     let component_arg_tys = tcx.mk_type_list_from_iter(
@@ -1469,8 +1492,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                             .map(|InferOk { obligations, .. }| obligations)
                             .map_err(|_| SelectionError::Unimplemented)?,
                     ),
-                    // FIXME(in_place_init): once the mir shim works, re-enable this
-                    1 if false => {}
+                    1 => {}
                     _ => {
                         let arg_clone = obligation.with(
                             tcx,

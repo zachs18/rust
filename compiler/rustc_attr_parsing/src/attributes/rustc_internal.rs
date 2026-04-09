@@ -626,6 +626,15 @@ impl<S: Stage> NoArgsAttributeParser<S> for RustcUnsizableFieldParser {
     const CREATE: fn(Span) -> AttributeKind = AttributeKind::RustcUnsizableField;
 }
 
+pub(crate) struct RustcPinnedFieldParser;
+
+impl<S: Stage> NoArgsAttributeParser<S> for RustcPinnedFieldParser {
+    const PATH: &[Symbol] = &[sym::rustc_pinned_field];
+    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+    const ALLOWED_TARGETS: AllowedTargets = AllowedTargets::AllowList(&[Allow(Target::Field)]);
+    const CREATE: fn(Span) -> AttributeKind = AttributeKind::RustcPinnedField;
+}
+
 pub(crate) struct LangParser;
 
 impl<S: Stage> SingleAttributeParser<S> for LangParser {

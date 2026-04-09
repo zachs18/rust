@@ -1544,6 +1544,9 @@ pub enum AttributeKind {
     /// Represents `#[rustc_pass_indirectly_in_non_rustic_abis]`
     RustcPassIndirectlyInNonRusticAbis(Span),
 
+    /// Represents `#[rustc_pinned_field]`.
+    RustcPinnedField(Span),
+
     /// Represents `#[rustc_preserve_ub_checks]`
     RustcPreserveUbChecks,
 

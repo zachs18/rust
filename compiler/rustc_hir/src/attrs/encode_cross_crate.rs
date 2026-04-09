@@ -173,6 +173,7 @@ impl AttributeKind {
             RustcParenSugar(..) => No,
             RustcPassByValue(..) => Yes,
             RustcPassIndirectlyInNonRusticAbis(..) => No,
+            RustcPinnedField(..) => No, // included in `FieldDef`
             RustcPreserveUbChecks => No,
             RustcProcMacroDecls => No,
             RustcPubTransparent(..) => Yes,

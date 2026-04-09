@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::ops::Not;
 
-use rustc_abi::{ExternAbi, FieldUnsizability};
+use rustc_abi::{ExternAbi, FieldPinnedness, FieldUnsizability};
 use rustc_ast::attr::AttributeExt;
 use rustc_ast::token::DocFragmentKind;
 use rustc_ast::util::parser::ExprPrecedence;
@@ -2141,7 +2141,6 @@ pub struct ExprField<'hir> {
 
 #[derive(Debug, Clone, Copy, HashStable_Generic)]
 pub struct ExprFieldInitInfo<'hir> {
-    pub pinned: bool,
     pub args: &'hir [InitFieldArg],
 }
 
@@ -4239,6 +4238,7 @@ pub struct FieldDef<'hir> {
     pub safety: Safety,
     pub default: Option<&'hir AnonConst>,
     pub unsizability: FieldUnsizability,
+    pub pinned: FieldPinnedness,
 }
 
 impl FieldDef<'_> {

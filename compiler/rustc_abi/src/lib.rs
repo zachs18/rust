@@ -162,6 +162,20 @@ pub enum FieldUnsizability {
     No,
 }
 
+/// The pinnedness of a field.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[cfg_attr(
+    feature = "nightly",
+    derive(Encodable_NoContext, Decodable_NoContext, HashStable_Generic)
+)]
+pub enum FieldPinnedness {
+    /// The field was not explicitly marked `#[rustc_pinned_field]`
+    /// or `#[rustc_non_pinned_field]`.
+    Default,
+    /// The field was explicitly marked `#[rustc_pinned_field]`.
+    Yes,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(
     feature = "nightly",

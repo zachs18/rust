@@ -408,6 +408,7 @@ define_tables! {
     constness: Table<DefIndex, hir::Constness>,
     safety: Table<DefIndex, hir::Safety>,
     field_unsizability: Table<DefIndex, Option<rustc_abi::FieldUnsizability>>,
+    field_pinnedness: Table<DefIndex, Option<rustc_abi::FieldPinnedness>>,
     defaultness: Table<DefIndex, hir::Defaultness>,
 
 - optional:
