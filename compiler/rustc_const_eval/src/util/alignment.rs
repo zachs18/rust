@@ -22,13 +22,8 @@ where
     };
 
     let ty = place.ty(local_decls, tcx).ty;
-    let unsized_tail = || tcx.struct_or_union_tail_for_codegen(ty, typing_env);
     match tcx.layout_of(typing_env.as_query_input(ty)) {
-        Ok(layout)
-            if layout.align.abi <= pack
-                && (layout.is_sized()
-                    || matches!(unsized_tail().kind(), ty::Slice(..) | ty::Str)) =>
-        {
+        Ok(layout) if layout.align.abi <= pack && layout.layout.align_is_exact => {
             // If the packed alignment is greater or equal to the field alignment, the type won't be
             // further unaligned.
             // However we need to ensure the field is sized; for unsized fields, `layout.align` is

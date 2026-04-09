@@ -502,23 +502,26 @@ fn impl_self_is_guaranteed_unsized<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) 
     let cause = traits::ObligationCause::dummy();
     let param_env = tcx.param_env(impl_def_id);
 
-    let tail = tcx.struct_or_union_tail_raw(
+    let reduced = tcx.reduce_pointee_raw(
         tcx.type_of(impl_def_id).instantiate_identity().skip_norm_wip(),
         &cause,
-        |ty| {
+        &mut |ty| {
             ocx.structurally_normalize_ty(&cause, param_env, Unnormalized::new_wip(ty))
                 .unwrap_or_else(|_| {
                     Ty::new_error_with_message(
                         tcx,
                         tcx.def_span(impl_def_id),
-                        "struct tail should be computable",
+                        "struct reduction should be computable",
                     )
                 })
         },
-        || (),
+        SizedTraitKind::Sized,
+        None::<&mut dyn Fn(_, _)>,
     );
 
-    match tail.kind() {
+    let Some(reduced) = reduced else { return false };
+
+    match reduced.kind() {
         ty::Dynamic(_, _) | ty::Slice(_) | ty::Str => true,
         ty::Bool
         | ty::Char

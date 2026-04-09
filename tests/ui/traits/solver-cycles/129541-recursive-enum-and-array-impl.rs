@@ -1,5 +1,5 @@
 // Regression test for #129541
-//~^ ERROR cycle detected when computing layout of `<[Hello] as Normalize>::Assoc` [E0391]
+//~? ERROR recursive type `Hello` has infinite size
 
 //@ revisions: current next
 //@ ignore-compare-mode-next-solver (explicit revisions)
