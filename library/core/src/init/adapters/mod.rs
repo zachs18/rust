@@ -2,7 +2,9 @@ pub use as_bytes::AsBytes;
 pub use by_mut::ByMut;
 pub use by_ref::ByRef;
 pub use chain::Chain;
+pub use from_arg::FromArg;
 pub use from_fn::{FnNoArg, FnWithArg, FromFn};
+pub use map_arg::MapArg;
 pub use repeat::Repeat;
 pub use uninit::Uninit;
 pub use unsize::Unsize;
@@ -18,7 +20,9 @@ mod as_bytes;
 mod by_mut;
 mod by_ref;
 mod chain;
+mod from_arg;
 mod from_fn;
+mod map_arg;
 mod repeat;
 mod uninit;
 mod unsize;
@@ -170,11 +174,25 @@ pub const fn from_fn_with_arg<T, F>(func: F) -> FromFn<T, F, FnWithArg> {
     FromFn::new_with_arg(func)
 }
 
+// `FromArg`
+
+/// Create an initializer that initializes a place by using the initializer argument as an initializer.
+pub const fn from_arg<T: MetaSized + Thin>() -> FromArg<T> {
+    FromArg::new()
+}
+
 // `WithArg`
 
 /// Create an initializer that initializes a place with an initializer and a pre-provided argument.
 pub const fn with_arg<T: MetaSized, I, Arg>(init: I, arg: Arg) -> WithArg<T, I, Arg> {
     WithArg::new(init, arg)
+}
+
+// `MapArg`
+
+/// Create an initializer that initializes a place with an initializer by passing it a computed argument.
+pub const fn map_arg<T: MetaSized, I, F>(init: I, f: F) -> MapArg<T, I, F> {
+    MapArg::new(init, f)
 }
 
 // `Unsize`

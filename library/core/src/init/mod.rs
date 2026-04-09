@@ -11,6 +11,10 @@ pub use adapters::{Chain, chain};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{FnNoArg, FnWithArg, FromFn, from_fn, from_fn_with_arg};
 #[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{FromArg, from_arg};
+#[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{MapArg, map_arg};
+#[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{Repeat, repeat_array, repeat_slice};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{
