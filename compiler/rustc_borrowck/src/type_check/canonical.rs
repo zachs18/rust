@@ -259,7 +259,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                                 param_env,
                                 ty,
                             )
-                            .unwrap_or_else(|_| bug!("struct tail should have been computable, since we computed it in HIR"))
+                            .unwrap_or_else(|_| bug!("struct reduction should have been computable, since we computed it in HIR"))
                         };
 
                         let reduced = tcx.reduce_pointee_raw(
@@ -267,17 +267,24 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                             &cause,
                             &mut structurally_normalize,
                             sizedness,
+                            None::<&mut dyn Fn(_, _)>
                         );
 
                         Ok(reduced)
                     },
-                    "normalizing struct tail",
+                    "normalizing struct reduction",
                 ),
             )
             .unwrap_or_else(|guar| Some(Ty::new_error(tcx, guar)))
         } else {
             let mut normalize = |ty| self.normalize(ty, location);
-            let reduced = tcx.reduce_pointee_raw(ty, &cause, &mut normalize, sizedness);
+            let reduced = tcx.reduce_pointee_raw(
+                ty,
+                &cause,
+                &mut normalize,
+                sizedness,
+                None::<&mut dyn Fn(_, _)>,
+            );
             reduced.map(normalize)
         }
     }

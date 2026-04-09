@@ -411,6 +411,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
                         ),
                     },
                     SizedTraitKind::Thin,
+                    None::<&mut dyn Fn(_, _)>,
                 );
 
                 let Some(reduced) = reduced else {

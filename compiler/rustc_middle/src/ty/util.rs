@@ -2,7 +2,7 @@
 
 use std::{fmt, iter};
 
-use rustc_abi::{Float, Integer, IntegerType, Size};
+use rustc_abi::{FieldIdx, Float, Integer, IntegerType, Size, VariantIdx};
 use rustc_apfloat::Float as _;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::stable_hasher::{HashStable, StableHasher};
@@ -250,6 +250,7 @@ impl<'tcx> TyCtxt<'tcx> {
             &ObligationCause::dummy(),
             &mut |ty| tcx.normalize_erasing_regions(typing_env, ty),
             sizedness,
+            None::<&mut dyn Fn(_, _)>,
         )
     }
 
@@ -387,14 +388,40 @@ impl<'tcx> TyCtxt<'tcx> {
     /// during codegen.
     pub fn reduce_pointee_raw(
         self,
+        ty: Ty<'tcx>,
+        cause: &ObligationCause<'tcx>,
+        normalize: &mut (impl FnMut(Ty<'tcx>) -> Ty<'tcx> + ?Sized),
+        sizedness: SizedTraitKind,
+        // This is currently used to allow us to walk a ValTree
+        // in lockstep with the type in order to get the ValTree branch that
+        // corresponds to an unsized field.
+        // Only important when `sizedness == Sized`.
+        f: Option<&mut (impl ?Sized + FnMut(VariantIdx, FieldIdx) -> ())>,
+    ) -> Option<Ty<'tcx>> {
+        let mut seen = FxHashSet::default();
+        self.reduce_pointee_inner(ty, cause, normalize, sizedness, f, &mut seen)
+    }
+    fn reduce_pointee_inner(
+        self,
         mut ty: Ty<'tcx>,
         cause: &ObligationCause<'tcx>,
         normalize: &mut (impl FnMut(Ty<'tcx>) -> Ty<'tcx> + ?Sized),
         sizedness: SizedTraitKind,
+        // This is currently used to allow us to walk a ValTree
+        // in lockstep with the type in order to get the ValTree branch that
+        // corresponds to an unsized field.
+        // Only important when `sizedness == Sized`.
+        mut f: Option<&mut (impl ?Sized + FnMut(VariantIdx, FieldIdx) -> ())>,
+        seen: &mut FxHashSet<Ty<'tcx>>,
     ) -> Option<Ty<'tcx>> {
         let recursion_limit = self.recursion_limit();
         let mut iteration = 0;
         loop {
+            if !seen.insert(ty) {
+                let reported = self.dcx().err(format!("recursive type `{}` has infinite size", ty));
+                return Some(Ty::new_error(self, reported));
+            }
+
             if !recursion_limit.value_within_limit(iteration) {
                 let suggested_limit = match recursion_limit {
                     Limit(0) => Limit(2),
@@ -467,62 +494,94 @@ impl<'tcx> TyCtxt<'tcx> {
                 },
 
                 ty::Adt(def, args) => {
-                    let mut single_wide_field = None;
-                    for variant in def.variants() {
-                        for field in &variant.fields {
+                    let mut single_reduced_field = None;
+                    for (variant_idx, variant) in def.variants().iter_enumerated() {
+                        for (field_idx, field) in variant.fields.iter_enumerated() {
                             let field_ty = field.ty(self, args);
-                            let field_reduction =
-                                self.reduce_pointee_raw(field_ty, cause, normalize, sizedness);
-                            if field_reduction.is_some() {
-                                if single_wide_field.is_some() {
+                            let field_reduction = self.reduce_pointee_inner(
+                                field_ty,
+                                cause,
+                                normalize,
+                                sizedness,
+                                None::<&mut dyn Fn(_, _)>,
+                                &mut seen.clone(),
+                            );
+                            if let Some(reduced_field) = field_reduction {
+                                if single_reduced_field.is_some() {
                                     // ADT has multiple relevant fields,
                                     // so ADT itself is the most-reduced type
                                     return Some(ty);
                                 }
-                                single_wide_field = field_reduction;
+                                single_reduced_field =
+                                    Some((reduced_field, variant_idx, field_idx));
                             }
                         }
                     }
-                    return single_wide_field;
+                    // Only call the `valtree` callback if we know there is a single unsized field.
+                    let single_reduced_field =
+                        single_reduced_field.map(|(reduced_field, variant_idx, field_idx)| {
+                            if let Some(f) = f.as_deref_mut() {
+                                f(variant_idx, field_idx);
+                            }
+                            reduced_field
+                        });
+                    return single_reduced_field;
                 }
 
                 ty::Tuple(tys) => {
                     // FIXME(more_unsized): maybe use a manual stack instead of recursion
-                    let mut single_wide_field = None;
-                    for field_ty in tys {
-                        let field_reduction =
-                            self.reduce_pointee_raw(field_ty, cause, normalize, sizedness);
-                        if field_reduction.is_some() {
-                            if single_wide_field.is_some() {
+                    let mut single_reduced_field = None;
+                    for (field_idx, field_ty) in tys.iter().enumerate() {
+                        let field_reduction = self.reduce_pointee_inner(
+                            field_ty,
+                            cause,
+                            normalize,
+                            sizedness,
+                            None::<&mut dyn Fn(_, _)>,
+                            &mut seen.clone(),
+                        );
+                        if let Some(reduced_field) = field_reduction {
+                            if single_reduced_field.is_some() {
                                 // tuple has multiple relevant fields,
                                 // so tuple itself is the most-reduced type
                                 return Some(ty);
                             }
-                            single_wide_field = field_reduction;
+                            single_reduced_field = Some((reduced_field, field_idx));
                         }
                     }
-                    return single_wide_field;
+                    // Only call the `valtree` callback if we know there is a single unsized field.
+                    let single_reduced_field =
+                        single_reduced_field.map(|(reduced_field, field_idx)| {
+                            if let Some(f) = f.as_deref_mut() {
+                                f(VariantIdx::ZERO, FieldIdx::from_usize(field_idx));
+                            }
+                            reduced_field
+                        });
+                    return single_reduced_field;
                 }
 
                 ty::Pat(inner, _) | ty::Array(inner, _) => {
                     ty = inner;
+                    if let Some(f) = f.as_deref_mut() {
+                        f(VariantIdx::ZERO, FieldIdx::ZERO);
+                    }
                 }
 
                 ty::UnsafeBinder(binder) => {
                     ty = binder.skip_binder();
                 }
 
-                ty::Alias(..)
-                | ty::Param(..)
-                | ty::Bound(..)
-                | ty::Placeholder(..)
-                | ty::Infer(..) => {
+                ty::Alias(..) => {
                     let normalized = normalize(ty);
                     if ty == normalized {
                         return Some(ty);
                     } else {
                         ty = normalized;
                     }
+                }
+
+                ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
+                    return Some(ty);
                 }
             }
         }

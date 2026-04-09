@@ -23,7 +23,6 @@ use ty::util::IntTypeExt;
 
 use super::GenericParamDefKind;
 use crate::infer::canonical::Canonical;
-use crate::traits::ObligationCause;
 use crate::ty::InferTy::*;
 use crate::ty::{
     self, AdtDef, Const, Discr, GenericArg, GenericArgs, GenericArgsRef, InitAdtInfo, List,
@@ -1831,84 +1830,6 @@ impl<'tcx> Ty<'tcx> {
             | ty::Infer(FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
                 bug!("`discriminant_ty` applied to unexpected type: {:?}", self)
             }
-        }
-    }
-
-    /// Returns the type of metadata for (potentially wide) pointers to this type,
-    /// or the struct tail if the metadata type cannot be determined.
-    pub fn ptr_metadata_ty_or_tail(
-        self,
-        tcx: TyCtxt<'tcx>,
-        normalize: impl FnMut(Ty<'tcx>) -> Ty<'tcx>,
-    ) -> Result<Ty<'tcx>, Ty<'tcx>> {
-        // FIXME(ptr_metadata_v2): remove all uses of this function
-        let tail = tcx.struct_or_union_tail_raw(self, &ObligationCause::dummy(), normalize, || {});
-        match tail.kind() {
-            // Sized types
-            ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
-            | ty::Uint(_)
-            | ty::Int(_)
-            | ty::Bool
-            | ty::Float(_)
-            | ty::FnDef(..)
-            | ty::FnPtr(..)
-            | ty::RawPtr(..)
-            | ty::UntypedPtr { .. }
-            | ty::PtrMetadata(..)
-            | ty::Char
-            | ty::Ref(..)
-            | ty::Coroutine(..)
-            | ty::CoroutineWitness(..)
-            | ty::Array(..)
-            | ty::Closure(..)
-            | ty::CoroutineClosure(..)
-            | ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) | ty::InitAdt(..) | ty::InitTuple(..)
-            | ty::Never
-            | ty::Error(_)
-            // Extern types have metadata = ().
-            | ty::Foreign(..)
-            // If returned by `struct_or_union_tail_raw` this is a unit struct
-            // without any fields, or an enum, and therefore is Sized.
-            | ty::Adt(..)
-            // If returned by `struct_or_union_tail_raw` this is the empty tuple,
-            // a.k.a. unit type, which is Sized
-            | ty::Tuple(..) => Ok(tcx.types.unit),
-
-            ty::Str | ty::Slice(_) => Ok(tcx.types.usize),
-
-            ty::Dynamic(_, _) => {
-                let dyn_metadata = tcx.require_lang_item(LangItem::DynMetadata, DUMMY_SP);
-                Ok(tcx.type_of(dyn_metadata).instantiate(tcx, &[tail.into()]))
-            }
-
-            // We don't know the metadata of `self`, but it must be equal to the
-            // metadata of `tail`.
-            ty::Param(_) | ty::Alias(..) => Err(tail),
-
-            | ty::UnsafeBinder(_) => todo!("FIXME(unsafe_binder)"),
-
-            ty::Infer(ty::TyVar(_))
-            | ty::Pat(..)
-            | ty::Bound(..)
-            | ty::Placeholder(..)
-            | ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => bug!(
-                "`ptr_metadata_ty_or_tail` applied to unexpected type: {self:?} (tail = {tail:?})"
-            ),
-        }
-    }
-
-    /// Returns the "underlying" type of metadata for (potentially wide) pointers to this type.
-    /// Causes an ICE if the metadata type cannot be determined.
-    pub fn ptr_metadata_ty(
-        self,
-        tcx: TyCtxt<'tcx>,
-        normalize: impl FnMut(Ty<'tcx>) -> Ty<'tcx>,
-    ) -> Ty<'tcx> {
-        match self.ptr_metadata_ty_or_tail(tcx, normalize) {
-            Ok(metadata) => metadata,
-            Err(tail) => bug!(
-                "`ptr_metadata_ty` failed to get metadata for type: {self:?} (tail = {tail:?})"
-            ),
         }
     }
 
