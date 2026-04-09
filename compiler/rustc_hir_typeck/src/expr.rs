@@ -2935,8 +2935,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             if let Some(&(refd_field_idx, refd_field)) =
                                 adt_fields_by_name.get(&ident)
                             {
-                                if dst_field_idx == Some(refd_field_idx) {
-                                    todo!("error on taking ptr/ref to field being initialized")
+                                if dst_field_idx == Some(refd_field_idx) && ref_pinnedness.is_some() {
+                                    todo!("error on taking ref to field being initialized")
                                 }
 
                                 let refd_field_is_structurally_pinned =
