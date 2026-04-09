@@ -462,11 +462,14 @@ impl<T: ?Sized> Mutex<T> {
     /// let mutex_init = Mutex::build("hello");
     /// let box_mutex: Box<Mutex<str>> = Box::build(mutex_init);
     /// ```
-    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
     #[unstable(feature = "in_place_init", issue = "none")]
     #[inline]
-    pub const fn build<E, A: Clone>(t: impl InitOnce<T, E, A>) -> impl InitOnce<Mutex<T>, E, A> {
-        core::init::do_init!(struct Mutex { inner: sys::Mutex::new(), poison: poison::Flag::new(), data (with arg): UnsafeCell::build(t) })
+    pub const fn build<E, A>(t: impl InitOnce<T, E, A>) -> impl InitOnce<Mutex<T>, E, A> {
+        core::init::do_init!(struct Mutex {
+            inner: sys::Mutex::new(),
+            poison: poison::Flag::new(),
+            data (with arg): UnsafeCell::build(t),
+        })
     }
 
     /// Acquires a mutex, blocking the current thread until it is able to do so.

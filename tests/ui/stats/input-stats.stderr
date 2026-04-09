@@ -52,12 +52,12 @@ ast-stats ForeignItem               80 (NN.N%)             1            80
 ast-stats - Fn                        80 (NN.N%)             1
 ast-stats WherePredicate            72 (NN.N%)             1            72
 ast-stats - BoundPredicate            72 (NN.N%)             1
-ast-stats ExprField                 64 (NN.N%)             1            64
+ast-stats ExprField                 56 (NN.N%)             1            56
 ast-stats GenericArgs               40 (NN.N%)             1            40
 ast-stats - AngleBracketed            40 (NN.N%)             1
 ast-stats Crate                     40 (NN.N%)             1            40
 ast-stats ----------------------------------------------------------------
-ast-stats Total                  7_576                   127
+ast-stats Total                  7_568                   127
 ast-stats ================================================================
 hir-stats ================================================================
 hir-stats HIR STATS: input_stats
@@ -112,12 +112,12 @@ hir-stats Local                     64 (NN.N%)             1            64
 hir-stats GenericArg                64 (NN.N%)             4            16
 hir-stats - Type                      16 (NN.N%)             1
 hir-stats - Lifetime                  48 (NN.N%)             3
-hir-stats ExprField                 64 (NN.N%)             1            64
+hir-stats ExprField                 56 (NN.N%)             1            56
 hir-stats Mod                       32 (NN.N%)             1            32
 hir-stats Lifetime                  28 (NN.N%)             1            28
 hir-stats TraitItemId                8 (NN.N%)             2             4
 hir-stats ImplItemId                 8 (NN.N%)             2             4
 hir-stats ForeignItemId              4 (NN.N%)             1             4
 hir-stats ----------------------------------------------------------------
-hir-stats Total                  8_600                   172
+hir-stats Total                  8_592                   172
 hir-stats ================================================================

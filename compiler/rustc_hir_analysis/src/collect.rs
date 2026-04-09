@@ -812,6 +812,7 @@ fn lower_variant<'tcx>(
             safety: f.safety,
             value: f.default.map(|v| v.def_id.to_def_id()),
             unsizability: f.unsizability,
+            pinned: f.pinned,
         })
         .collect();
     let recovered = match def {

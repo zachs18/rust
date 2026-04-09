@@ -1372,7 +1372,6 @@ pub struct ExprField {
 /// A single field in a `do init struct` expression
 #[derive(Clone, Encodable, Decodable, Debug, Walkable)]
 pub struct ExprFieldInitInfo {
-    pub pinned: bool,
     pub args: ThinVec<InitFieldArg>,
 }
 

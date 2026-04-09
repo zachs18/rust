@@ -7,7 +7,7 @@ use std::sync::{Arc, OnceLock};
 use std::{io, mem};
 
 pub(super) use cstore_impl::provide;
-use rustc_abi::FieldUnsizability;
+use rustc_abi::{FieldPinnedness, FieldUnsizability};
 use rustc_ast as ast;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxIndexMap;
@@ -1115,6 +1115,7 @@ impl CrateMetadata {
                         safety: self.get_safety(did.index),
                         value: self.get_default_field(tcx, did.index),
                         unsizability: self.get_field_unsizability(did.index),
+                        pinned: self.get_field_pinnedness(did.index),
                     })
                     .collect(),
                 parent_did,
@@ -1190,6 +1191,14 @@ impl CrateMetadata {
             .field_unsizability
             .get(self, id)
             .unwrap_or_else(|| self.missing("field_unsizability", id))
+    }
+
+    fn get_field_pinnedness(&self, id: DefIndex) -> FieldPinnedness {
+        self.root
+            .tables
+            .field_pinnedness
+            .get(self, id)
+            .unwrap_or_else(|| self.missing("field_pinnedness", id))
     }
 
     fn get_expn_that_defined(&self, tcx: TyCtxt<'_>, id: DefIndex) -> ExpnId {

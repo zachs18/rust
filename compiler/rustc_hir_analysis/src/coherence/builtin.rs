@@ -199,7 +199,9 @@ fn visit_implementation_of_unpin(checker: &Checker<'_>) -> Result<(), ErrorGuara
     if tcx.features().pin_ergonomics() {
         match self_type.kind() {
             // Soundness concerns: a type `T` annotated with `#[pin_v2]` is allowed to project
-            // `Pin<&mut T>` to its field `Pin<&mut U>` safely (even if `U: !Unpin`).
+            // `Pin<&mut T>` to its field `Pin<&mut U>` safely (even if `U: !Unpin`),
+            // if either: `T` has no fields marked `#[rustc_pinned_field]`, or the given field is
+            // marked `#[rustc_pinned_field]`.
             // If `T` is allowed to impl `Unpin` manually (note that `Unpin` is a safe trait,
             // which cannot carry safety properties), then `&mut U` could be obtained from
             // `&mut T` that dereferenced by `Pin<&mut T>`, which breaks the safety contract of

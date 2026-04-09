@@ -247,6 +247,13 @@ fixed_size_enum! {
 }
 
 fixed_size_enum! {
+    rustc_abi::FieldPinnedness {
+        ( Default )
+        ( Yes     )
+    }
+}
+
+fixed_size_enum! {
     hir::CoroutineKind {
         ( Coroutine(hir::Movability::Movable)                                          )
         ( Coroutine(hir::Movability::Static)                                           )

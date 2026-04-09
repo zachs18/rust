@@ -73,6 +73,7 @@ trivially_parameterized_over_tcx! {
     crate::rmeta::RawDefId,
     crate::rmeta::TraitImpls,
     crate::rmeta::VariantData,
+    rustc_abi::FieldPinnedness,
     rustc_abi::FieldUnsizability,
     rustc_abi::ReprOptions,
     rustc_ast::DelimArgs,

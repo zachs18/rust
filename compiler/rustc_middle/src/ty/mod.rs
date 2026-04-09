@@ -25,8 +25,8 @@ pub use generic_args::{GenericArgKind, TermKind, *};
 pub use generics::*;
 pub use intrinsic::IntrinsicDef;
 use rustc_abi::{
-    Align, FieldIdx, FieldUnsizability, Integer, IntegerType, ReprFlags, ReprOptions, ScalableElt,
-    VariantIdx,
+    Align, FieldIdx, FieldPinnedness, FieldUnsizability, Integer, IntegerType, ReprFlags,
+    ReprOptions, ScalableElt, VariantIdx,
 };
 use rustc_ast as ast;
 use rustc_ast::expand::typetree::{FncTree, Kind, Type, TypeTree};
@@ -1388,6 +1388,7 @@ pub struct FieldDef {
     pub safety: hir::Safety,
     pub value: Option<DefId>,
     pub unsizability: FieldUnsizability,
+    pub pinned: FieldPinnedness,
 }
 
 impl PartialEq for FieldDef {
@@ -1400,9 +1401,11 @@ impl PartialEq for FieldDef {
         // of `FieldDef` changes, a compile-error will be produced, reminding
         // us to revisit this assumption.
 
-        let Self { did: lhs_did, name: _, vis: _, safety: _, value: _, unsizability: _ } = &self;
+        let Self { did: lhs_did, name: _, vis: _, safety: _, value: _, unsizability: _, pinned: _ } =
+            &self;
 
-        let Self { did: rhs_did, name: _, vis: _, safety: _, value: _, unsizability: _ } = other;
+        let Self { did: rhs_did, name: _, vis: _, safety: _, value: _, unsizability: _, pinned: _ } =
+            other;
 
         let res = lhs_did == rhs_did;
 
@@ -1411,7 +1414,8 @@ impl PartialEq for FieldDef {
             let deep = self.name == other.name
                 && self.vis == other.vis
                 && self.safety == other.safety
-                && self.unsizability == other.unsizability;
+                && self.unsizability == other.unsizability
+                && self.pinned == other.pinned;
             assert!(deep, "FieldDef for the same def-id has differing data");
         }
 
@@ -1431,7 +1435,7 @@ impl Hash for FieldDef {
         // of `FieldDef` changes, a compile-error will be produced, reminding
         // us to revisit this assumption.
 
-        let Self { did, name: _, vis: _, safety: _, value: _, unsizability: _ } = &self;
+        let Self { did, name: _, vis: _, safety: _, value: _, unsizability: _, pinned: _ } = &self;
 
         did.hash(s)
     }
@@ -2372,9 +2376,6 @@ pub enum InitAdtComponentArg {
 pub struct InitAdtComponentInfo<'tcx> {
     pub field: Option<FieldIdx>,
     pub args: &'tcx List<InitAdtComponentArg>,
-    /// If this field is referenced using `with (ref x)` in another component,
-    /// it must not be pinned.
-    pub referenced_unpinned: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TyEncodable, TyDecodable, StableHash)]

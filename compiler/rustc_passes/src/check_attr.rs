@@ -339,6 +339,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::RustcParenSugar(..)
                     | AttributeKind::RustcPassByValue (..)
                     | AttributeKind::RustcPassIndirectlyInNonRusticAbis(..)
+                    | AttributeKind::RustcPinnedField(..)
                     | AttributeKind::RustcPreserveUbChecks
                     | AttributeKind::RustcProcMacroDecls
                     | AttributeKind::RustcReallocator
