@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::str;
 
-use rustc_abi::{FIRST_VARIANT, FieldIdx, ReprOptions, VariantIdx};
+use rustc_abi::{FIRST_VARIANT, FieldIdx, FieldPinnedness, ReprOptions, VariantIdx};
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::intern::Interned;
@@ -29,9 +29,9 @@ use crate::ty::util::{Discr, IntTypeExt};
 use crate::ty::{self, ConstKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, HashStable, TyEncodable, TyDecodable)]
-pub struct AdtFlags(u16);
+pub struct AdtFlags(u32);
 bitflags::bitflags! {
-    impl AdtFlags: u16 {
+    impl AdtFlags: u32 {
         const NO_ADT_FLAGS        = 0;
         /// Indicates whether the ADT is an enum.
         const IS_ENUM             = 1 << 0;
@@ -58,7 +58,7 @@ bitflags::bitflags! {
         const IS_UNSAFE_PINNED              = 1 << 10;
         /// Indicates whether the type is `Pin`.
         const IS_PIN                        = 1 << 11;
-        /// Indicates whether the type is `#[pin_project]`.
+        /// Indicates whether the type is `#[pin_v2]`.
         const IS_PIN_PROJECT                = 1 << 12;
         /// Indicates whether the type is `FieldRepresentingType`.
         const IS_FIELD_REPRESENTING_TYPE    = 1 << 13;
@@ -66,6 +66,9 @@ bitflags::bitflags! {
         const IS_MAYBE_DANGLING             = 1 << 14;
         /// Indicates whether the ADT is an `unsized type`.
         const IS_UNSIZED_TYPE           = 1 << 15;
+        /// Indicates whether the ADT has any fields explicitly marked `#[rustc_pinned_field]`.
+        /// If this is the case, then the `Unpin` impl for `Self` is only bounded on such fields.
+        const HAS_PINNED_FIELDS         = 1 << 16;
     }
 }
 rustc_data_structures::external_bitflags_debug! { AdtFlags }
@@ -412,6 +415,15 @@ impl AdtDefData {
             flags |= AdtFlags::IS_FIELD_REPRESENTING_TYPE;
         }
 
+        if variants.iter().any(|variant| {
+            variant.fields.iter().any(|field| field.pinned != FieldPinnedness::Default)
+        }) {
+            debug!("found type with pinned fields {:?}", did);
+            flags |= AdtFlags::HAS_PINNED_FIELDS;
+            // FIXME: should we require `#[pin_v2]` instead of implying it?
+            flags |= AdtFlags::IS_PIN_PROJECT;
+        }
+
         AdtDefData { did, variants, flags, repr }
     }
 }
@@ -553,6 +565,13 @@ impl<'tcx> AdtDef<'tcx> {
     #[inline]
     pub fn is_pin_project(self) -> bool {
         self.flags().contains(AdtFlags::IS_PIN_PROJECT)
+    }
+
+    /// Returns `true` is this type has any fields marked `#[rustc_pinned_field]`.
+    /// This changes structural pinning to only apply to such fields.
+    #[inline]
+    pub fn has_explicitly_pinned_fields(self) -> bool {
+        self.flags().contains(AdtFlags::HAS_PINNED_FIELDS)
     }
 
     pub fn is_field_representing_type(self) -> bool {

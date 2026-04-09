@@ -594,10 +594,9 @@ impl<T: ?Sized> Cell<T> {
     /// let c_init = Cell::build([1, 2, 3, 4]);
     /// let box_c: Box<Cell<[u8]>> = Box::build(c_init);
     /// ```
-    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
     #[unstable(feature = "in_place_init", issue = "none")]
     #[inline]
-    pub const fn build<E, A: Clone>(value: impl InitOnce<T, E, A>) -> impl InitOnce<Cell<T>, E, A> {
+    pub const fn build<E, A>(value: impl InitOnce<T, E, A>) -> impl InitOnce<Cell<T>, E, A> {
         core::init::do_init!(struct Cell {
             value (with arg): UnsafeCell::build(value),
         })
@@ -1116,12 +1115,9 @@ impl<T: ?Sized> RefCell<T> {
     /// let c_init = RefCell::build("hello");
     /// let box_c: Box<RefCell<str>> = Box::build(c_init);
     /// ```
-    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
     #[unstable(feature = "in_place_init", issue = "none")]
     #[inline]
-    pub const fn build<E, A: Clone>(
-        value: impl InitOnce<T, E, A>,
-    ) -> impl InitOnce<RefCell<T>, E, A> {
+    pub const fn build<E, A>(value: impl InitOnce<T, E, A>) -> impl InitOnce<RefCell<T>, E, A> {
         core::init::do_init!(struct RefCell {
             value (with arg): UnsafeCell::build(value),
             borrow: Cell::new(UNUSED),
@@ -2460,12 +2456,9 @@ impl<T: ?Sized> UnsafeCell<T> {
     /// let uc_init = UnsafeCell::build("hello");
     /// let box_uc: Box<UnsafeCell<str>> = Box::build(uc_init);
     /// ```
-    // FIXME(in_place_init): remove `A: Clone` once InitAdt typeck is more accurate
     #[unstable(feature = "in_place_init", issue = "none")]
     #[inline(always)]
-    pub const fn build<E, A: Clone>(
-        value: impl InitOnce<T, E, A>,
-    ) -> impl InitOnce<UnsafeCell<T>, E, A> {
+    pub const fn build<E, A>(value: impl InitOnce<T, E, A>) -> impl InitOnce<UnsafeCell<T>, E, A> {
         core::init::do_init!(struct UnsafeCell { value (with arg): value })
     }
 

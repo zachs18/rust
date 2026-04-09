@@ -251,8 +251,7 @@ fn push_debuginfo_type_name<'tcx>(
                 push_debuginfo_type_name(tcx, component_ty, true, output, visited);
 
                 push_arg_separator(cpp_like_debuginfo, output);
-                let ty::InitAdtComponentInfo { field, args, referenced_unpinned: _ } =
-                    component_info;
+                let ty::InitAdtComponentInfo { field, args } = component_info;
                 push_debuginfo_const_name(
                     tcx,
                     ty::Const::from_target_usize(tcx, field.map_or(0, |f| 1 + f.as_u32() as u64)),

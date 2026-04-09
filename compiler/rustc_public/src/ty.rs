@@ -999,7 +999,6 @@ pub struct InitAdtInfo {
 pub struct InitAdtComponentInfo {
     pub field: Option<usize>,
     pub args: Vec<InitAdtComponentArg>,
-    pub referenced_unpinned: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]

@@ -4322,19 +4322,12 @@ impl<'a> Parser<'a> {
                     this.parse_field_name()?
                 };
                 let init_info = if has_init_info {
-                    // `(pinned)` or `(with ETC)` or `(pinned, with ETC)`,
+                    // `(with ETC)`,
                     // each with optional trailing comma
-                    let mut pinned = false;
                     let mut args = None;
 
                     let _ = this.parse_paren_comma_seq(|this| {
-                        if this.eat_keyword(exp!(Pinned)) {
-                            if pinned {
-                                todo!("error on multiple `pinned`")
-                            }
-                            pinned = true;
-                            Ok(())
-                        } else if this.eat_keyword(exp!(With)) {
+                        if this.eat_keyword(exp!(With)) {
                             if args.is_some() {
                                 todo!("error on multiple `with`")
                             }
@@ -4355,7 +4348,7 @@ impl<'a> Parser<'a> {
                         }
                     })?;
 
-                    Some(ExprFieldInitInfo { pinned, args: args.unwrap_or_default() })
+                    Some(ExprFieldInitInfo { args: args.unwrap_or_default() })
                 } else {
                     None
                 };

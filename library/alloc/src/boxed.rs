@@ -881,6 +881,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator> Box<T, A> {
 
 impl<T: ?Sized, A: Allocator> Box<T, A> {
     /// Allocates and initializes a `Box<T, A>`
+    #[inline]
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Box<T, A> {
@@ -890,10 +891,52 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
         }
     }
 
+    /// Allocates and initializes a `Pin<Box<T, A>>`
+    #[inline]
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn build_pinned_in(init: impl PinInitOnce<T>, alloc: A) -> Pin<Box<T, A>>
+    where
+        A: 'static,
+    {
+        match Self::try_build_pinned_in(init, alloc) {
+            Ok(bx) => bx,
+            Err(err) => err.handle_alloc_error(),
+        }
+    }
+
     /// Allocates and initializes a `Box<T, A>`
+    #[inline]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_build_in<E>(
         init: impl InitOnce<T, E>,
+        alloc: A,
+    ) -> Result<Box<T, A>, BuildError<T, E, A>> {
+        // SAFETY: `init: impl InitOnce<T, E>`
+        unsafe { Self::try_build_in_unchecked(init, alloc) }
+    }
+
+    /// Allocates and initializes a `Box<T, A>`
+    #[inline]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn try_build_pinned_in<E>(
+        init: impl PinInitOnce<T, E>,
+        alloc: A,
+    ) -> Result<Pin<Box<T, A>>, BuildError<T, E, A>>
+    where
+        A: 'static,
+    {
+        // SAFETY: the returned `Box` will be immediately pinned
+        unsafe { Self::try_build_in_unchecked(init, alloc) }.map(Box::into_pin)
+    }
+
+    /// Allocates and initializes a `Box<T, A>`.
+    ///
+    /// # Safety
+    ///
+    /// Either `init: impl InitOnce<T, E>`, or the returned `Box` will be treated as  pinned.
+    unsafe fn try_build_in_unchecked<E>(
+        init: impl PinInitOnce<T, E>,
         alloc: A,
     ) -> Result<Box<T, A>, BuildError<T, E, A>> {
         let metadata = PinInitOnce::metadata(&init);
@@ -935,6 +978,7 @@ impl<T: ?Sized, A: Allocator> Box<T, A> {
 
 impl<T: ?Sized> Box<T> {
     /// Allocates and initializes a `Box<T>`
+    #[inline]
     #[cfg(not(no_global_oom_handling))]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn build(init: impl InitOnce<T>) -> Box<T> {
@@ -942,9 +986,27 @@ impl<T: ?Sized> Box<T> {
     }
 
     /// Allocates and initializes a `Box<T>`
+    #[inline]
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_build<E>(init: impl InitOnce<T, E>) -> Result<Box<T>, BuildError<T, E>> {
         Self::try_build_in(init, Global)
+    }
+
+    /// Allocates and initializes a `Pin<Box<T>>`
+    #[inline]
+    #[cfg(not(no_global_oom_handling))]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn build_pinned(init: impl PinInitOnce<T>) -> Pin<Box<T>> {
+        Self::build_pinned_in(init, Global)
+    }
+
+    /// Allocates and initializes a `Pin<Box<T>>`
+    #[inline]
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn try_build_pinned<E>(
+        init: impl PinInitOnce<T, E>,
+    ) -> Result<Pin<Box<T>>, BuildError<T, E>> {
+        Self::try_build_pinned_in(init, Global)
     }
 }
 
