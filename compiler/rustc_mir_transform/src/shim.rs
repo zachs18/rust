@@ -4529,8 +4529,9 @@ impl<'tcx> InitShimBuilder<'tcx> {
         arg: Place<'tcx>,
         mut cleanup: BasicBlock,
     ) -> (Operand<'tcx>, Ty<'tcx>) {
+        let tcx = self.tcx;
         let arg_ty = self.extra.arg_ty;
-        let mut mk_arg = |self_: &mut Self| -> (Option<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
+        let mut mk_arg = |self_: &mut Self| -> (Vec<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
             match *remaining_arg_uses {
                 0 => bug!("remaining_arg_uses was wrong?"),
                 1 => {
@@ -4543,7 +4544,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
                         false,
                     );
                     *remaining_arg_uses = 0;
-                    (None, arg, arg_ty)
+                    (vec![], arg, arg_ty)
                 }
                 _ => {
                     // Clone `arg` into a new place, and replace `cleanup` with a block that drops it then jumps to
@@ -4566,30 +4567,71 @@ impl<'tcx> InitShimBuilder<'tcx> {
                         true,
                     );
                     cleanup = new_cleanup;
-                    (None, elem_arg, arg_ty)
+                    (vec![], elem_arg, arg_ty)
                 }
             }
         };
         let mk_ptr = |self_: &mut Self,
                       field_idx: FieldIdx|
-         -> (Option<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
-            let field_ty = adt_variant.fields[field_idx].ty(self_.tcx, adt_args);
-            let component_arg_ty = Ty::new_mut_ptr(self_.tcx, field_ty);
+         -> (Vec<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
+            let field_ty = adt_variant.fields[field_idx].ty(tcx, adt_args);
+            let component_arg_ty = Ty::new_mut_ptr(tcx, field_ty);
             let component_arg = self_.make_place(Mutability::Not, component_arg_ty);
             let stmt = self_.make_assign(
                 component_arg,
                 Rvalue::RawPtr(
                     RawPtrKind::Mut,
-                    dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], self_.tcx),
+                    dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], tcx),
                 ),
             );
-            (Some(stmt), component_arg, component_arg_ty)
+            (vec![stmt], component_arg, component_arg_ty)
+        };
+        let mk_ref = |self_: &mut Self,
+                      field_idx: FieldIdx|
+         -> (Vec<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
+            let field_ty = adt_variant.fields[field_idx].ty(tcx, adt_args);
+            let component_arg_ty = Ty::new_mut_ref(tcx, tcx.lifetimes.re_erased, field_ty);
+            let component_arg = self_.make_place(Mutability::Not, component_arg_ty);
+            let stmt = self_.make_assign(
+                component_arg,
+                Rvalue::Ref(
+                    tcx.lifetimes.re_erased,
+                    BorrowKind::Mut { kind: MutBorrowKind::Default },
+                    dst_place.project_deeper(&[PlaceElem::Field(field_idx, field_ty)], tcx),
+                ),
+            );
+            (vec![stmt], component_arg, component_arg_ty)
+        };
+        let mk_pin_ref = |self_: &mut Self,
+                          field_idx: FieldIdx|
+         -> (Vec<Statement<'tcx>>, Place<'tcx>, Ty<'tcx>) {
+            let (mut stmts, ref_place, ref_ty) = mk_ref(self_, field_idx);
+            let pin_def_id = tcx.require_lang_item(LangItem::Pin, DUMMY_SP);
+            let pin = tcx.adt_def(pin_def_id);
+            let pin_args = tcx.mk_args(&[ref_ty.into()]);
+            let component_arg_ty = Ty::new_adt(tcx, pin, pin_args);
+            let component_arg = self_.make_place(Mutability::Not, component_arg_ty);
+            let stmt = self_.make_assign(
+                component_arg,
+                Rvalue::Aggregate(
+                    Box::new(AggregateKind::Adt(
+                        pin_def_id,
+                        VariantIdx::ZERO,
+                        pin_args,
+                        None,
+                        None,
+                    )),
+                    [Operand::Move(ref_place)].into(),
+                ),
+            );
+            stmts.push(stmt);
+            (stmts, component_arg, component_arg_ty)
         };
         let mut mk_elem_arg = |self_: &mut Self, arg: InitAdtComponentArg| match arg {
             InitAdtComponentArg::Arg => mk_arg(self_),
             InitAdtComponentArg::Ptr(field_idx) => mk_ptr(self_, field_idx),
-            InitAdtComponentArg::Ref(_field_idx) => todo!(),
-            InitAdtComponentArg::PinRef(_field_idx) => todo!(),
+            InitAdtComponentArg::Ref(field_idx) => mk_ref(self_, field_idx),
+            InitAdtComponentArg::PinRef(field_idx) => mk_pin_ref(self_, field_idx),
         };
 
         match component_info.args[..] {
@@ -4602,10 +4644,10 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 self.tcx.types.unit,
             ),
             [arg] => {
-                let (stmt, arg_place, arg_ty) = mk_elem_arg(self, arg);
-                if let Some(stmt) = stmt {
+                let (stmts, arg_place, arg_ty) = mk_elem_arg(self, arg);
+                if !stmts.is_empty() {
                     let target = self.block_index_offset(1);
-                    self.block(vec![stmt], TerminatorKind::Goto { target }, false);
+                    self.block(stmts, TerminatorKind::Goto { target }, false);
                 }
                 (Operand::Move(arg_place), arg_ty)
             }
@@ -4615,8 +4657,8 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 let mut ops = IndexVec::new();
                 let mut tys = vec![];
                 for &arg in args {
-                    let (stmt, place, ty) = mk_elem_arg(self, arg);
-                    stmts.extend(stmt);
+                    let (new_stmt, place, ty) = mk_elem_arg(self, arg);
+                    stmts.extend(new_stmt);
                     ops.push(Operand::Move(place));
                     tys.push(ty);
                 }
