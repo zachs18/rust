@@ -1,0 +1,26 @@
+error[E0597]: `x` does not live long enough
+  --> $DIR/do_init_struct_ref_arg_lifetime.rs:32:64
+   |
+LL |         let mut x: u32 = 42;
+   |             ----- binding `x` declared here
+LL |         let bx: Box<u32> = Box::build(std::init::with_arg(Foo, &mut x));
+   |                            ------------------------------------^^^^^^--
+   |                            |                                   |
+   |                            |                                   borrowed value does not live long enough
+   |                            argument requires that `x` is borrowed for `'static`
+...
+LL |     }
+   |     - `x` dropped here while still borrowed
+
+error: implementation of `InitOnce` is not general enough
+  --> $DIR/do_init_struct_ref_arg_lifetime.rs:43:28
+   |
+LL |         let bx: Box<Bar> = Box::<Bar>::build(do init struct Bar {
+   |                            ^^^^^^^^^^^^^^^^^ implementation of `InitOnce` is not general enough
+   |
+   = note: `Foo` must implement `InitOnce<u32, !, &'0 mut u32>`, for any lifetime `'0`...
+   = note: ...but it actually implements `InitOnce<u32, !, &'static mut u32>`
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0597`.
