@@ -5,6 +5,7 @@ pub use chain::Chain;
 pub use from_arg::FromArg;
 pub use from_fn::{FnNoArg, FnWithArg, FromFn};
 pub use map_arg::MapArg;
+pub use map_err::MapErr;
 pub use repeat::Repeat;
 pub use uninit::Uninit;
 pub use unsize::Unsize;
@@ -23,6 +24,7 @@ mod chain;
 mod from_arg;
 mod from_fn;
 mod map_arg;
+mod map_err;
 mod repeat;
 mod uninit;
 mod unsize;
@@ -193,6 +195,13 @@ pub const fn with_arg<T: MetaSized, I, Arg>(init: I, arg: Arg) -> WithArg<T, I, 
 /// Create an initializer that initializes a place with an initializer by passing it a computed argument.
 pub const fn map_arg<T: MetaSized, I, F>(init: I, f: F) -> MapArg<T, I, F> {
     MapArg::new(init, f)
+}
+
+// `MapErr`
+
+/// Create an initializer that initializes a place with an initializer with a different error type.
+pub const fn map_err<T: MetaSized, I, F, Error1>(init: I, f: F) -> MapErr<T, I, F, Error1> {
+    MapErr::new(init, f)
 }
 
 // `Unsize`

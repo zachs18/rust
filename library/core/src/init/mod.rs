@@ -15,6 +15,8 @@ pub use adapters::{FromArg, from_arg};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{MapArg, map_arg};
 #[unstable(feature = "in_place_init", issue = "none")]
+pub use adapters::{MapErr, map_err};
+#[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{Repeat, repeat_array, repeat_slice};
 #[unstable(feature = "in_place_init", issue = "none")]
 pub use adapters::{
