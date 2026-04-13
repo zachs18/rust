@@ -156,7 +156,7 @@ pub fn validate_trivial_unsize<'tcx>(
 ///
 /// The `old_info` argument is a bit odd. It is intended for use in an upcast,
 /// where the new vtable for an object will be derived from the old one.
-fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+pub(crate) fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     source: Ty<'tcx>,
     target: Ty<'tcx>,
@@ -217,52 +217,6 @@ fn unsized_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     }
 }
 
-/// Coerces `src` to `dst_ty`. `src_ty` must be a pointer.
-pub(crate) fn unsize_ptr<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
-    bx: &mut Bx,
-    src: Bx::Value,
-    src_ty: Ty<'tcx>,
-    dst_ty: Ty<'tcx>,
-    old_info: Option<Bx::Value>,
-) -> (Bx::Value, Bx::Value) {
-    debug!("unsize_ptr: {:?} => {:?}", src_ty, dst_ty);
-    match (src_ty.kind(), dst_ty.kind()) {
-        (&ty::Pat(a, _), &ty::Pat(b, _)) => unsize_ptr(bx, src, a, b, old_info),
-        (&ty::Ref(_, a, _), &ty::Ref(_, b, _) | &ty::RawPtr(b, _))
-        | (&ty::RawPtr(a, _), &ty::RawPtr(b, _)) => {
-            assert_eq!(bx.cx().type_is_sized(a), old_info.is_none());
-            (src, unsized_info(bx, a, b, old_info))
-        }
-        (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {
-            assert_eq!(def_a, def_b); // implies same number of fields
-            let src_layout = bx.cx().layout_of(src_ty);
-            let dst_layout = bx.cx().layout_of(dst_ty);
-            if src_ty == dst_ty {
-                return (src, old_info.unwrap());
-            }
-            let mut result = None;
-            for i in 0..src_layout.fields.count() {
-                let src_f = src_layout.field(bx.cx(), i);
-                if src_f.is_1zst() {
-                    // We are looking for the one non-1-ZST field; this is not it.
-                    continue;
-                }
-
-                assert_eq!(src_layout.fields.offset(i).bytes(), 0);
-                assert_eq!(dst_layout.fields.offset(i).bytes(), 0);
-                assert_eq!(src_layout.size, src_f.size);
-
-                let dst_f = dst_layout.field(bx.cx(), i);
-                assert_ne!(src_f.ty, dst_f.ty);
-                assert_eq!(result, None);
-                result = Some(unsize_ptr(bx, src, src_f.ty, dst_f.ty, old_info));
-            }
-            result.unwrap()
-        }
-        _ => bug!("unsize_ptr: called on bad types"),
-    }
-}
-
 /// Coerces `src`, which is a reference to a value of type `src_ty`,
 /// to a value of type `dst_ty`, and stores the result in `dst`.
 pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
@@ -272,14 +226,34 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 ) {
     let src_ty = src.layout.ty;
     let dst_ty = dst.layout.ty;
+    debug!("coerce_unsized_into: {src_ty:?} -> {dst_ty:?}");
     match (src_ty.kind(), dst_ty.kind()) {
-        (&ty::Ref(..), &ty::Ref(..) | &ty::RawPtr(..)) | (&ty::RawPtr(..), &ty::RawPtr(..)) => {
-            let (base, info) = match bx.load_operand(src).val {
-                OperandValue::Pair(base, info) => unsize_ptr(bx, base, src_ty, dst_ty, Some(info)),
-                OperandValue::Immediate(base) => unsize_ptr(bx, base, src_ty, dst_ty, None),
+        (&ty::Pat(_, s_pat), &ty::Pat(_, c_pat)) if s_pat == c_pat => {
+            let src_f = src.project_field(bx, 0);
+            let dst_f = dst.project_field(bx, 0);
+            coerce_unsized_into(bx, src_f, dst_f);
+        }
+        (
+            &ty::Ref(_, src_pointee_ty, _),
+            &ty::Ref(_, dst_pointee_ty, _) | &ty::RawPtr(dst_pointee_ty, _),
+        )
+        | (&ty::RawPtr(src_pointee_ty, _), &ty::RawPtr(dst_pointee_ty, _)) => {
+            let (base, old_info) = match bx.load_operand(src).val {
+                OperandValue::Pair(base, info) => (base, Some(info)),
+                OperandValue::Immediate(base) => (base, None),
                 OperandValue::Ref(..) | OperandValue::ZeroSized => bug!(),
             };
+            let info = unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
             OperandValue::Pair(base, info).store(bx, dst);
+        }
+        (&ty::PtrMetadata(src_pointee_ty), &ty::PtrMetadata(dst_pointee_ty)) => {
+            let old_info = match bx.load_operand(src).val {
+                OperandValue::Immediate(info) => Some(info),
+                OperandValue::ZeroSized => None,
+                OperandValue::Pair(..) | OperandValue::Ref(..) => bug!(),
+            };
+            let info = unsized_info(bx, src_pointee_ty, dst_pointee_ty, old_info);
+            OperandValue::Immediate(info).store(bx, dst);
         }
 
         (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) => {

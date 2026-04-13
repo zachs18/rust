@@ -292,12 +292,13 @@ fn visit_implementation_of_dispatch_from_dyn(checker: &Checker<'_>) -> Result<()
     let cause = ObligationCause::misc(span, impl_did);
 
     // Later parts of the compiler rely on all DispatchFromDyn types to be ABI-compatible with raw
-    // pointers. This is enforced here: we only allow impls for references, raw pointers, and things
-    // that are effectively repr(transparent) newtypes around types that already hav a
-    // DispatchedFromDyn impl. We cannot literally use repr(transparent) on those types since some
-    // of them support an allocator, but we ensure that for the cases where the type implements this
-    // trait, they *do* satisfy the repr(transparent) rules, and then we assume that everything else
-    // in the compiler (in particular, all the call ABI logic) will treat them as repr(transparent)
+    // pointers or pointer metadata. This is enforced here: we only allow impls for references,
+    // raw pointers, pointer metadata, and things that are effectively repr(transparent) newtypes
+    // around types that already hav a DispatchedFromDyn impl. We cannot literally use
+    // repr(transparent) on those types since some of them support an allocator, but we ensure
+    // that for the cases where the type implements this trait, they *do* satisfy the
+    // repr(transparent) rules, and then we assume that everything else in the compiler
+    // (in particular, all the call ABI logic) will treat them as repr(transparent)
     // even if they do not carry that attribute.
     match (source.kind(), target.kind()) {
         (&ty::Pat(_, pat_a), &ty::Pat(_, pat_b)) => {
@@ -318,6 +319,7 @@ fn visit_implementation_of_dispatch_from_dyn(checker: &Checker<'_>) -> Result<()
             Ok(())
         }
         (&ty::RawPtr(_, a_mutbl), &ty::RawPtr(_, b_mutbl)) if a_mutbl == b_mutbl => Ok(()),
+        (&ty::PtrMetadata(_), &ty::PtrMetadata(_)) => Ok(()),
         (&ty::Adt(def_a, args_a), &ty::Adt(def_b, args_b))
             if def_a.is_struct() && def_b.is_struct() =>
         {
