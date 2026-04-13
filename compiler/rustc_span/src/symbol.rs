@@ -2183,6 +2183,7 @@ symbols! {
         unsized_fn_params,
         unsized_locals,
         unsized_tuple_coercion,
+        unsized_unions,
         unstable,
         unstable_feature_bound,
         unstable_location_reason_default: "this crate is being loaded from the sysroot, an \

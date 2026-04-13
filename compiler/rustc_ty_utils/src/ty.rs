@@ -122,8 +122,8 @@ fn adt_sizedness_constraint<'tcx>(
 
     let def = tcx.adt_def(def_id);
 
-    if !def.is_struct() {
-        bug!("`adt_sizedness_constraint` called on non-struct type: {def:?}");
+    if !def.is_struct() && !def.is_union() {
+        bug!("`adt_sizedness_constraint` called on non-struct non-union type: {def:?}");
     }
 
     let tail_def = def.non_enum_variant().tail_opt()?;
@@ -355,7 +355,7 @@ fn impl_self_is_guaranteed_unsized<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) 
     let cause = traits::ObligationCause::dummy();
     let param_env = tcx.param_env(impl_def_id);
 
-    let tail = tcx.struct_tail_raw(
+    let tail = tcx.struct_or_union_tail_raw(
         tcx.type_of(impl_def_id).instantiate_identity(),
         &cause,
         |ty| {

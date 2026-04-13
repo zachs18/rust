@@ -1159,7 +1159,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
             }
 
-            // `Struct<T>` -> `Struct<U>`
+            // `Struct<T>` -> `Struct<U>` or `Union<T>` -> `Union<U>`
             (&ty::Adt(def, args_a), &ty::Adt(_, args_b)) => {
                 let unsizing_params = tcx.unsizing_params_for_adt(def.did());
                 if unsizing_params.is_empty() {
@@ -1197,11 +1197,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     tcx.mk_args_from_iter(args_a.iter().enumerate().map(|(i, k)| {
                         if unsizing_params.contains(i as u32) { args_b[i] } else { k }
                     }));
-                let new_struct = Ty::new_adt(tcx, def, args);
+                let new_adt = Ty::new_adt(tcx, def, args);
                 let InferOk { obligations, .. } = self
                     .infcx
                     .at(&obligation.cause, obligation.param_env)
-                    .eq(DefineOpaqueTypes::Yes, target, new_struct)
+                    .eq(DefineOpaqueTypes::Yes, target, new_adt)
                     .map_err(|_| SelectionError::Unimplemented)?;
                 nested.extend(obligations);
 

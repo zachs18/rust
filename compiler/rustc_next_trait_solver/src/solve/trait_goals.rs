@@ -841,10 +841,10 @@ where
 
                 // `Struct<T>` -> `Struct<U>` where `T: Unsize<U>`
                 (ty::Adt(a_def, a_args), ty::Adt(b_def, b_args))
-                    if a_def.is_struct() && a_def == b_def =>
+                    if (a_def.is_struct() || a_def.is_union()) && a_def == b_def =>
                 {
                     result_to_single(
-                        ecx.consider_builtin_struct_unsize(goal, a_def, a_args, b_args),
+                        ecx.consider_builtin_struct_or_union_unsize(goal, a_def, a_args, b_args),
                     )
                 }
 
@@ -1149,7 +1149,7 @@ where
             .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
     }
 
-    /// We generate a builtin `Unsize` impls for structs with generic parameters only
+    /// We generate a builtin `Unsize` impls for structs and unions with generic parameters only
     /// mentioned by the last field.
     /// ```ignore (builtin impl example)
     /// struct Foo<T, U: ?Sized> {
@@ -1162,7 +1162,7 @@ where
     ///     Box<U>: Unsize<Box<V>>,
     /// {}
     /// ```
-    fn consider_builtin_struct_unsize(
+    fn consider_builtin_struct_or_union_unsize(
         &mut self,
         goal: Goal<I, (I::Ty, I::Ty)>,
         def: I::AdtDef,
@@ -1179,7 +1179,7 @@ where
             return Err(NoSolution);
         }
 
-        let tail_field_ty = def.struct_tail_ty(cx).unwrap();
+        let tail_field_ty = def.struct_or_union_tail_ty(cx).unwrap();
 
         let a_tail_ty = tail_field_ty.instantiate(cx, a_args);
         let b_tail_ty = tail_field_ty.instantiate(cx, b_args);

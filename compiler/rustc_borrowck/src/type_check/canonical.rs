@@ -224,7 +224,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
     }
 
     #[instrument(skip(self), level = "debug")]
-    pub(super) fn struct_tail(
+    pub(super) fn struct_or_union_tail(
         &mut self,
         ty: Ty<'tcx>,
         location: impl NormalizeLocation,
@@ -254,7 +254,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                             .unwrap_or_else(|_| bug!("struct tail should have been computable, since we computed it in HIR"))
                         };
 
-                        let tail = tcx.struct_tail_raw(
+                        let tail = tcx.struct_or_union_tail_raw(
                             ty,
                             &cause,
                             structurally_normalize,
@@ -269,7 +269,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
             .unwrap_or_else(|guar| Ty::new_error(tcx, guar))
         } else {
             let mut normalize = |ty| self.normalize(ty, location);
-            let tail = tcx.struct_tail_raw(ty, &cause, &mut normalize, || {});
+            let tail = tcx.struct_or_union_tail_raw(ty, &cause, &mut normalize, || {});
             normalize(tail)
         }
     }

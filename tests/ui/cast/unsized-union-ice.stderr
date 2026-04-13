@@ -18,6 +18,13 @@ help: the `Box` type always has a statically known size and allocates its conten
 LL |     val: Box<std::mem::ManuallyDrop<[u8]>>,
    |          ++++                            +
 
-error: aborting due to 1 previous error
+error[E0607]: cannot cast thin pointer `*const ()` to wide pointer `*const Union`
+  --> $DIR/unsized-union-ice.rs:11:5
+   |
+LL |     ptr as _
+   |     ^^^^^^^^
 
-For more information about this error, try `rustc --explain E0277`.
+error: aborting due to 2 previous errors
+
+Some errors have detailed explanations: E0277, E0607.
+For more information about an error, try `rustc --explain E0277`.

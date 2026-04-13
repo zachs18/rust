@@ -721,8 +721,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // Obtain the underlying trait we are working on, and the adjusted receiver argument.
                 // Doesn't have to be a `dyn Trait`, but the unsized tail must be `dyn Trait`.
                 // (For that reason we also cannot use `unpack_dyn_trait`.)
-                let receiver_tail =
-                    self.tcx.struct_tail_for_codegen(receiver_place.layout.ty, self.typing_env);
+                let receiver_tail = self
+                    .tcx
+                    .struct_or_union_tail_for_codegen(receiver_place.layout.ty, self.typing_env);
                 let ty::Dynamic(receiver_trait, _) = receiver_tail.kind() else {
                     span_bug!(self.cur_span(), "dynamic call on non-`dyn` type {}", receiver_tail)
                 };

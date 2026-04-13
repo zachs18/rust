@@ -105,13 +105,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         Ok(match *t.kind() {
             ty::Slice(_) | ty::Str => Some(PointerKind::Length),
             ty::Dynamic(tty, _) => Some(PointerKind::VTable(tty)),
-            ty::Adt(def, args) if def.is_struct() => match def.non_enum_variant().tail_opt() {
-                None => Some(PointerKind::Thin),
-                Some(f) => {
-                    let field_ty = self.field_ty(span, f, args);
-                    self.pointer_kind(field_ty, span)?
+            ty::Adt(def, args) if def.is_struct() || def.is_union() => {
+                match def.non_enum_variant().tail_opt() {
+                    None => Some(PointerKind::Thin),
+                    Some(f) => {
+                        let field_ty = self.field_ty(span, f, args);
+                        self.pointer_kind(field_ty, span)?
+                    }
                 }
-            },
+            }
             ty::Tuple(fields) => match fields.last() {
                 None => Some(PointerKind::Thin),
                 Some(&f) => self.pointer_kind(f, span)?,

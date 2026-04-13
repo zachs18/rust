@@ -570,13 +570,15 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn def_id(self) -> I::AdtId;
 
     fn is_struct(self) -> bool;
+    fn is_union(self) -> bool;
+    fn is_enum(self) -> bool;
 
     fn is_packed(self) -> bool;
 
-    /// Returns the type of the struct tail.
+    /// Returns the type of the struct tail, or last field of the union.
     ///
-    /// Expects the `AdtDef` to be a struct. If it is not, then this will panic.
-    fn struct_tail_ty(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
+    /// Expects the `AdtDef` to be a struct or union. If it is not, then this will panic.
+    fn struct_or_union_tail_ty(self, interner: I) -> Option<ty::EarlyBinder<I, I::Ty>>;
 
     fn is_phantom_data(self) -> bool;
 

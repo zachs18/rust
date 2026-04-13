@@ -211,13 +211,13 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Should only be called if `ty` has no inference variables and does not
     /// need its lifetimes preserved (e.g. as part of codegen); otherwise
     /// normalization attempt may cause compiler bugs.
-    pub fn struct_tail_for_codegen(
+    pub fn struct_or_union_tail_for_codegen(
         self,
         ty: Ty<'tcx>,
         typing_env: ty::TypingEnv<'tcx>,
     ) -> Ty<'tcx> {
         let tcx = self;
-        tcx.struct_tail_raw(
+        tcx.struct_or_union_tail_raw(
             ty,
             &ObligationCause::dummy(),
             |ty| tcx.normalize_erasing_regions(typing_env, ty),
@@ -231,7 +231,7 @@ impl<'tcx> TyCtxt<'tcx> {
             return false;
         }
 
-        let tail = self.struct_tail_for_codegen(ty, typing_env);
+        let tail = self.struct_or_union_tail_for_codegen(ty, typing_env);
         match tail.kind() {
             ty::Foreign(..) => false,
             ty::Str | ty::Slice(..) | ty::Dynamic(..) => true,
@@ -249,9 +249,9 @@ impl<'tcx> TyCtxt<'tcx> {
     /// you're doing, or you're within normalization code itself and will handle
     /// an unnormalized tail recursively.
     ///
-    /// See also `struct_tail_for_codegen`, which is suitable for use
+    /// See also `struct_or_union_tail_for_codegen`, which is suitable for use
     /// during codegen.
-    pub fn struct_tail_raw(
+    pub fn struct_or_union_tail_raw(
         self,
         mut ty: Ty<'tcx>,
         cause: &ObligationCause<'tcx>,
@@ -277,7 +277,7 @@ impl<'tcx> TyCtxt<'tcx> {
             }
             match *ty.kind() {
                 ty::Adt(def, args) => {
-                    if !def.is_struct() {
+                    if !def.is_struct() && !def.is_union() {
                         break;
                     }
                     match def.non_enum_variant().tail_opt() {
@@ -318,36 +318,36 @@ impl<'tcx> TyCtxt<'tcx> {
         ty
     }
 
-    /// Same as applying `struct_tail` on `source` and `target`, but only
+    /// Same as applying `struct_or_union_tail` on `source` and `target`, but only
     /// keeps going as long as the two types are instances of the same
     /// structure definitions.
     /// For `(Foo<Foo<T>>, Foo<dyn Trait>)`, the result will be `(Foo<T>, dyn Trait)`,
-    /// whereas struct_tail produces `T`, and `Trait`, respectively.
+    /// whereas struct_or_union_tail produces `T`, and `Trait`, respectively.
     ///
     /// Should only be called if the types have no inference variables and do
     /// not need their lifetimes preserved (e.g., as part of codegen); otherwise,
     /// normalization attempt may cause compiler bugs.
-    pub fn struct_lockstep_tails_for_codegen(
+    pub fn struct_or_union_lockstep_tails_for_codegen(
         self,
         source: Ty<'tcx>,
         target: Ty<'tcx>,
         typing_env: ty::TypingEnv<'tcx>,
     ) -> (Ty<'tcx>, Ty<'tcx>) {
         let tcx = self;
-        tcx.struct_lockstep_tails_raw(source, target, |ty| {
+        tcx.struct_or_union_lockstep_tails_raw(source, target, |ty| {
             tcx.normalize_erasing_regions(typing_env, ty)
         })
     }
 
-    /// Same as applying `struct_tail` on `source` and `target`, but only
+    /// Same as applying `struct_or_union_tail` on `source` and `target`, but only
     /// keeps going as long as the two types are instances of the same
     /// structure definitions.
     /// For `(Foo<Foo<T>>, Foo<dyn Trait>)`, the result will be `(Foo<T>, Trait)`,
-    /// whereas struct_tail produces `T`, and `Trait`, respectively.
+    /// whereas struct_or_union_tail produces `T`, and `Trait`, respectively.
     ///
-    /// See also `struct_lockstep_tails_for_codegen`, which is suitable for use
+    /// See also `struct_or_union_lockstep_tails_for_codegen`, which is suitable for use
     /// during codegen.
-    pub fn struct_lockstep_tails_raw(
+    pub fn struct_or_union_lockstep_tails_raw(
         self,
         source: Ty<'tcx>,
         target: Ty<'tcx>,
@@ -357,7 +357,7 @@ impl<'tcx> TyCtxt<'tcx> {
         loop {
             match (a.kind(), b.kind()) {
                 (&ty::Adt(a_def, a_args), &ty::Adt(b_def, b_args))
-                    if a_def == b_def && a_def.is_struct() =>
+                    if a_def == b_def && (a_def.is_struct() || a_def.is_union()) =>
                 {
                     if let Some(f) = a_def.non_enum_variant().tail_opt() {
                         a = f.ty(self, a_args);

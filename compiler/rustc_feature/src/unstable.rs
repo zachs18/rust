@@ -261,6 +261,8 @@ declare_features! (
     (incomplete, test_incomplete_feature, "CURRENT_RUSTC_VERSION", None),
     /// Added for testing unstable lints; perma-unstable.
     (internal, test_unstable_lint, "1.60.0", None),
+    /// Allows unsized tail fields in `union`s.
+    (unstable, unsized_unions, "CURRENT_RUSTC_VERSION", None),
     /// Use for stable + negative coherence and strict coherence depending on trait's
     /// rustc_strict_coherence value.
     (unstable, with_negative_coherence, "1.60.0", None),

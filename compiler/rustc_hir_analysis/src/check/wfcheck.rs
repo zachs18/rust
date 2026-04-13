@@ -314,7 +314,7 @@ pub(super) fn check_item<'tcx>(
         }
         hir::ItemKind::Fn { sig, .. } => check_item_fn(tcx, def_id, sig.decl),
         hir::ItemKind::Struct(..) => check_type_defn(tcx, item, false),
-        hir::ItemKind::Union(..) => check_type_defn(tcx, item, true),
+        hir::ItemKind::Union(..) => check_type_defn(tcx, item, false),
         hir::ItemKind::Enum(..) => check_type_defn(tcx, item, true),
         hir::ItemKind::Trait(..) => check_trait(tcx, item),
         hir::ItemKind::TraitAlias(..) => check_trait(tcx, item),
@@ -1088,8 +1088,12 @@ fn check_type_defn<'tcx>(
                     ty.needs_drop(tcx, wfcx.infcx.typing_env(wfcx.param_env))
                 }
             };
-            // All fields (except for possibly the last) should be sized.
-            let all_sized = all_sized || variant.fields.is_empty() || needs_drop_copy();
+            // All fields (except for possibly the last) of structs and unions should be sized.
+            // The last field of unions can only be unsized under `feature(unsized_unions)`.
+            let all_sized = all_sized
+                || variant.fields.is_empty()
+                || needs_drop_copy()
+                || (matches!(item.kind, ItemKind::Union(..)) && !tcx.features().unsized_unions());
             let unsized_len = if all_sized { 0 } else { 1 };
             for (idx, field) in
                 variant.fields.raw[..variant.fields.len() - unsized_len].iter().enumerate()
@@ -1257,7 +1261,7 @@ pub(crate) fn check_static_item<'tcx>(
 
         let is_foreign_item = tcx.is_foreign_item(item_id);
         let is_structurally_foreign_item = || {
-            let tail = tcx.struct_tail_raw(
+            let tail = tcx.struct_or_union_tail_raw(
                 item_ty,
                 &ObligationCause::dummy(),
                 |ty| wfcx.deeply_normalize(span, loc, ty),

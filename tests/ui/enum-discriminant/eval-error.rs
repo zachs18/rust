@@ -6,7 +6,9 @@ union Foo {
 
 enum Bar {
     Boo = {
-        let _: Option<Foo> = None; //~ ERROR `Foo` has an unknown layout
+        let _: Option<Foo> = None;
+        //~^ ERROR the size for values of type `str` cannot
+        //~| ERROR the size for values of type `str` cannot
         0
     },
 }
