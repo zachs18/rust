@@ -225,6 +225,17 @@ impl fmt::Display for ValidityRequirement {
     }
 }
 
+#[derive(Clone, Copy, Debug, HashStable)]
+pub enum MetadataFields<'tcx> {
+    /// This type is monomorphic enough to know its pointer metadata's fields.
+    KnownFields(&'tcx ty::List<(rustc_span::Ident, ty::Visibility<DefId>, Ty<'tcx>)>),
+    /// This type is known to be thin, so its pointer metadata is a trivial 1-ZST,
+    /// but it is too generic to know the fields specifically.
+    ThinUnknownFields,
+    /// This type is too generic to know the fields or size of its pointer metadata.
+    TooGeneric,
+}
+
 #[derive(Copy, Clone, Debug, HashStable, TyEncodable, TyDecodable)]
 pub enum SimdLayoutError {
     /// The vector has 0 lanes.
@@ -388,7 +399,25 @@ impl<'tcx> SizeSkeleton<'tcx> {
                 );
 
                 match tail.kind() {
+                    _ if tail.is_sized(tcx, typing_env) => {
+                        let layout = tcx
+                            .layout_of(
+                                typing_env.as_query_input(Ty::new_mut_ptr(tcx, tcx.types.unit)),
+                            )
+                            .expect("concrete type");
+                        Ok(SizeSkeleton::Known(layout.size, Some(layout.align.abi)))
+                    }
+                    ty::Slice(elem) if elem.is_sized(tcx, typing_env) => {
+                        let layout = tcx
+                            .layout_of(typing_env.as_query_input(Ty::new_mut_ptr(
+                                tcx,
+                                Ty::new_slice(tcx, tcx.types.unit),
+                            )))
+                            .expect("concrete type");
+                        Ok(SizeSkeleton::Known(layout.size, Some(layout.align.abi)))
+                    }
                     ty::Param(_)
+                    | ty::Slice(_)
                     | ty::Alias(ty::AliasTy {
                         kind: ty::Projection { .. } | ty::Inherent { .. },
                         ..
@@ -850,36 +879,24 @@ where
                 }
 
                 ty::PtrMetadata(pointee) => {
-                    assert_eq!(
-                        this.fields.count(),
-                        1,
-                        "all `builtin # ptr_metadata(T)` currently should have one field: the actual pointer metadata"
+                    let fields =
+                        match pointee.metadata_fields_for_pointee(tcx, Some(cx.typing_env())) {
+                            MetadataFields::KnownFields(fields) => fields,
+                            MetadataFields::ThinUnknownFields | MetadataFields::TooGeneric => {
+                                cx.tcx().dcx().delayed_bug(format!(
+                                    "TyAndLayout::field({this:?}): not applicable",
+                                ));
+                                ty::List::empty()
+                            }
+                        };
+                    assert_eq!(this.fields.count(), fields.len(),);
+                    assert!(
+                        i < fields.len(),
+                        "TyAndLayout::field({this:?}): {i} out of range {:?}",
+                        fields
                     );
-                    assert!(i < 1);
 
-                    let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type()
-                        // Projection eagerly bails out when the pointee references errors,
-                        // fall back to structurally deducing metadata.
-                        && !pointee.references_error()
-                    {
-                        tcx.normalize_erasing_regions(
-                            cx.typing_env(),
-                            Ty::new_projection(tcx, metadata_def_id, [pointee]),
-                        )
-                    } else {
-                        let tail = tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env());
-                        match tail.kind() {
-                            ty::Slice(_) | ty::Str => tcx.types.usize,
-                            ty::Dynamic(_, _) => Ty::new_adt(
-                                tcx,
-                                tcx.adt_def(tcx.require_lang_item(LangItem::DynMetadata, DUMMY_SP)),
-                                tcx.mk_args(&[tail.into()]),
-                            ),
-                            _ => bug!("TyAndLayout::field({:?}): not applicable", this),
-                        }
-                    };
-
-                    TyMaybeWithLayout::Ty(metadata)
+                    TyMaybeWithLayout::Ty(fields[i].2)
                 }
 
                 // Arrays and slices.

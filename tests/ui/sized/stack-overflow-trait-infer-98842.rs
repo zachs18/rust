@@ -2,7 +2,7 @@
 // issue: rust-lang/rust#98842
 //@ check-fail
 //@ edition:2021
-//~^^^^ ERROR cycle detected when computing layout of `Foo`
+//~^^^^ ERROR cycle detected when computing layout of `{ptr metadata for Foo}`
 
 // If the inner `Foo` is named through an associated type,
 // the "infinite size" error does not occur.

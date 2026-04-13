@@ -13,7 +13,7 @@ use rustc_hir as hir;
 use rustc_hir::LangItem;
 use rustc_hir::def_id::DefId;
 use rustc_macros::{HashStable, TyDecodable, TyEncodable, TypeFoldable, extension};
-use rustc_span::{DUMMY_SP, Span, Symbol, kw, sym};
+use rustc_span::{DUMMY_SP, Ident, Span, Symbol, kw, sym};
 use rustc_type_ir::TyKind::*;
 use rustc_type_ir::solve::SizedTraitKind;
 use rustc_type_ir::walk::TypeWalker;
@@ -1618,6 +1618,11 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn is_ptr_metadata(self) -> bool {
+        matches!(self.kind(), PtrMetadata(..))
+    }
+
+    #[inline]
     pub fn is_opaque(self) -> bool {
         matches!(self.kind(), Alias(ty::AliasTy { kind: ty::Opaque { .. }, .. }))
     }
@@ -1819,6 +1824,116 @@ impl<'tcx> Ty<'tcx> {
         }
     }
 
+    /// Given a type `T`, returns the fields of `builtin # ptr_metadata(T)`, if known.
+    ///
+    /// If `typing_env` is `None`, this may return `TooGeneric` instead of `ThinUnknownFields`
+    /// when the type could otherwise be known to be `Thin`.
+    pub fn metadata_fields_for_pointee(
+        self,
+        tcx: TyCtxt<'tcx>,
+        typing_env: Option<ty::TypingEnv<'tcx>>,
+    ) -> ty::layout::MetadataFields<'tcx> {
+        use ty::layout::MetadataFields;
+        let pointee = self;
+        // FIXME(ptr_metadtata_fields): use Ident::with_dummy_span(sym::*) here, or maybe just use `(Symbol, Option<Span>)`
+        let id_len = Ident::from_str("len");
+        let id_elem = Ident::from_str("elem");
+        let id_vtable = Ident::from_str("vtable");
+        MetadataFields::KnownFields(match pointee.kind() {
+            // Known-sized types with no metadata fields, and Foreign which has no metadata fields.
+            ty::Bool
+            | ty::Char
+            | ty::Int(..)
+            | ty::Uint(..)
+            | ty::Float(..)
+            | ty::Infer(ty::IntVar(..) | ty::FloatVar(..))
+            | ty::Foreign(..)
+            | ty::RawPtr(..)
+            | ty::Ref(..)
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(..)
+            | ty::FnDef(..)
+            | ty::FnPtr(..)
+            | ty::Closure(..)
+            | ty::CoroutineClosure(..)
+            | ty::Coroutine(..)
+            | ty::CoroutineWitness(..)
+            | ty::Never => ty::List::empty(),
+
+            ty::Pat(base_ty, ..) => {
+                return base_ty.metadata_fields_for_pointee(tcx, typing_env);
+            }
+
+            ty::UnsafeBinder(..) => todo!("FIXME(unsafe_binders)"),
+
+            ty::Str => {
+                tcx.mk_metadata_field_list(&[(id_len, ty::Visibility::Public, tcx.types.usize)])
+            }
+            ty::Array(elem, _len) => tcx.mk_metadata_field_list(&[(
+                id_elem,
+                ty::Visibility::Public,
+                Ty::new_ptr_metadata(tcx, *elem),
+            )]),
+            ty::Slice(elem) => tcx.mk_metadata_field_list(&[
+                (id_len, ty::Visibility::Public, tcx.types.usize),
+                (id_elem, ty::Visibility::Public, Ty::new_ptr_metadata(tcx, *elem)),
+            ]),
+            ty::Dynamic(_, _) => {
+                let dyn_metadata =
+                    tcx.require_lang_item(hir::lang_items::LangItem::DynMetadata, DUMMY_SP);
+                let dyn_metadata_ty = tcx.type_of(dyn_metadata).instantiate(tcx, &[pointee.into()]);
+                tcx.mk_metadata_field_list(&[(id_vtable, ty::Visibility::Public, dyn_metadata_ty)])
+            }
+            ty::Adt(adt_def, _) if adt_def.is_enum() => ty::List::empty(),
+            ty::Adt(adt_def, args) => {
+                // FIXME(ptr_metadata_v2): visibility
+                let field_metadatas: Vec<_> = adt_def
+                    .non_enum_variant()
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        (
+                            field.ident(tcx),
+                            field.vis,
+                            Ty::new_ptr_metadata(tcx, field.ty(tcx, args)),
+                        )
+                    })
+                    .collect();
+                tcx.mk_metadata_field_list(&field_metadatas)
+            }
+
+            ty::Tuple(tys) => {
+                let field_metadatas: Vec<_> = tys
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, field_ty)| {
+                        (
+                            Ident::new(sym::integer(idx), DUMMY_SP),
+                            ty::Visibility::Public,
+                            Ty::new_ptr_metadata(tcx, field_ty),
+                        )
+                    })
+                    .collect();
+                tcx.mk_metadata_field_list(&field_metadatas)
+            }
+
+            ty::Error(..) => return MetadataFields::ThinUnknownFields,
+
+            ty::Alias(..) | ty::Param(..) | ty::Placeholder(..) | ty::Bound(..) | ty::Infer(..) => {
+                if let Some(typing_env) = typing_env
+                    // If `pointee` has infer vars, then we can't feed it in to the `is_thin_raw`
+                    // query, so just fall back to TooGeneric.
+                    && !pointee.has_infer()
+                    && pointee.is_thin(tcx, typing_env)
+                {
+                    return MetadataFields::ThinUnknownFields;
+                } else {
+                    return MetadataFields::TooGeneric;
+                }
+            }
+        })
+    }
+
     /// Given a pointer or reference type, returns the type of the *pointee*'s
     /// metadata. If it can't be determined exactly (perhaps due to still
     /// being generic) then a projection through `ptr::Pointee` will be returned.
@@ -1962,12 +2077,13 @@ impl<'tcx> Ty<'tcx> {
             | ty::PtrMetadata(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
-            | ty::Array(..)
             | ty::Pat(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
             | ty::Never
             | ty::Error(_) => true,
+
+            ty::Array(elem, _len) => elem.has_trivial_sizedness(tcx, sizedness),
 
             ty::Str | ty::Slice(_) | ty::Dynamic(_, _) => match sizedness {
                 SizedTraitKind::Sized | SizedTraitKind::Thin => false,

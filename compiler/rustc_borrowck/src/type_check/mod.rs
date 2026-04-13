@@ -2175,23 +2175,18 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 }
             }
             AggregateKind::PtrMetadata(pointee_ty, _) => {
-                // FIXME(ptr_metadata_v2_fields): implement this using TyCtxt::ptr_metadata_fields_for_pointee once that is implemented
-                // For now, `builtin # ptr_metadata(for ty; ptr_metadata: metadata_expr)` where metadata_expr is
-                // of type `<T as Pointee>::Metadata` is all that is supported.
-                if field_index.as_usize() != 0 {
-                    return Err(FieldAccessError::OutOfRange { field_count: 1 });
-                }
-                let field_ty = match pointee_ty.ptr_metadata_ty_or_tail(tcx, |x| x) {
-                    Ok(metadata_ty) => metadata_ty,
-                    Err(tail_ty) => {
-                        let metadata_def_id = tcx.require_lang_item(
-                            LangItem::Metadata,
-                            self.body.source_info(location).span,
-                        );
-                        Ty::new_projection(tcx, metadata_def_id, [tail_ty])
-                    }
+                let ty::layout::MetadataFields::KnownFields(fields) = pointee_ty
+                    .metadata_fields_for_pointee(
+                        tcx,
+                        Some(self.infcx.typing_env(self.infcx.param_env)),
+                    )
+                else {
+                    panic!("FIXME(ptr_metadata_fields): is this reachable?")
                 };
-                Ok(self.normalize(field_ty, location))
+                let Some(field) = fields.get(field_index.as_usize()) else {
+                    return Err(FieldAccessError::OutOfRange { field_count: fields.len() });
+                };
+                Ok(self.normalize(field.2, location))
             }
             AggregateKind::Closure(_, args) => {
                 match args.as_closure().upvar_tys().get(field_index.as_usize()) {

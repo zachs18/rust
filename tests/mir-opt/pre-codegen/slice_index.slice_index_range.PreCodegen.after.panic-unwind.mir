@@ -68,7 +68,7 @@ fn slice_index_range(_1: &[u32], _2: std::ops::Range<usize>) -> &[u32] {
         _11 = copy _10 as *const u32 (PtrToPtr);
         _12 = Offset(copy _11, copy _3);
         StorageLive(_13);
-        _13 = builtin # ptr_metadata([u32]) from (copy _6,);
+        _13 = builtin # ptr_metadata([u32]) from (copy _6, const ZeroSized: {ptr metadata for u32});
         _14 = *const [u32] from (copy _12, move _13);
         StorageDead(_13);
         StorageDead(_12);

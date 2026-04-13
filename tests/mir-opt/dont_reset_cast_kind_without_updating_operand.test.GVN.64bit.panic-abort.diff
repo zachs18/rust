@@ -84,7 +84,7 @@
           StorageLive(_14);
           _14 = const 1_usize;
           StorageLive(_15);
--         _15 = builtin # ptr_metadata([()]) from (copy _14,);
+-         _15 = builtin # ptr_metadata([()]) from (copy _14, const ZeroSized: {ptr metadata for ()});
 -         _6 = *const [()] from (copy _7, copy _15);
 +         _15 = const {transmute(0x0000000000000001): {ptr metadata for [()]}};
 +         _6 = *const [()] from (copy _5, const {transmute(0x0000000000000001): {ptr metadata for [()]}});

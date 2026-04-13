@@ -19,6 +19,6 @@ pub unsafe fn thin_ptr_via_aggregate(p: *const ()) {
     // CHECK: %mem = alloca
     // CHECK: store ptr %p, ptr %mem
     // CHECK: call {{.+}}aggregate_thin_pointer{{.+}} %mem)
-    let mem = aggregate_raw_ptr(p, build_metadata!(for i32; ptr_metadata: ()));
+    let mem = aggregate_raw_ptr(p, build_metadata!(for i32; ..));
     opaque(&mem);
 }

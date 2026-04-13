@@ -40,7 +40,7 @@ pub unsafe fn slice_get_unchecked_mut_range(slice: &mut [u32], index: Range<usiz
     // CHECK: precondition_check
     // CHECK: [[LEN:_[0-9]+]] = SubUnchecked(copy [[END]], copy [[START]]);
     // CHECK: [[PTR:_[0-9]+]] = Offset(copy {{_[0-9]+}}, copy [[START]]);
-    // CHECK: [[META:_[0-9]+]] = builtin # ptr_metadata([u32]) from (copy [[LEN]],);
+    // CHECK: [[META:_[0-9]+]] = builtin # ptr_metadata([u32]) from (copy [[LEN]], const ZeroSized: {ptr metadata for u32});
     // CHECK: [[SLICE:_[0-9]+]] = *mut [u32] from (copy [[PTR]], move [[META]])
     // CHECK: _0 = &mut (*[[SLICE]]);
     slice.get_unchecked_mut(index)
@@ -57,7 +57,7 @@ pub unsafe fn slice_ptr_get_unchecked_range(
     // CHECK: precondition_check
     // CHECK: [[LEN:_[0-9]+]] = SubUnchecked(copy [[END]], copy [[START]]);
     // CHECK: [[PTR:_[0-9]+]] = Offset(copy {{_[0-9]+}}, copy [[START]]);
-    // CHECK: [[META:_[0-9]+]] = builtin # ptr_metadata([u32]) from (copy [[LEN]],);
+    // CHECK: [[META:_[0-9]+]] = builtin # ptr_metadata([u32]) from (copy [[LEN]], const ZeroSized: {ptr metadata for u32});
     // CHECK: _0 = *const [u32] from (copy [[PTR]], move [[META]])
     slice.get_unchecked(index)
 }

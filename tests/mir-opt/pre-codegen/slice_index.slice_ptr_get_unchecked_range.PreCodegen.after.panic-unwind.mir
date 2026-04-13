@@ -50,7 +50,7 @@ fn slice_ptr_get_unchecked_range(_1: *const [u32], _2: std::ops::Range<usize>) -
         _9 = copy _1 as *const u32 (PtrToPtr);
         _10 = Offset(copy _9, copy _3);
         StorageLive(_11);
-        _11 = builtin # ptr_metadata([u32]) from (copy _8,);
+        _11 = builtin # ptr_metadata([u32]) from (copy _8, const ZeroSized: {ptr metadata for u32});
         _0 = *const [u32] from (copy _10, move _11);
         StorageDead(_11);
         StorageDead(_10);

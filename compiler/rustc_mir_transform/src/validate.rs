@@ -803,19 +803,18 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                         check_equal(self, location, f_ty);
                     }
                     ty::PtrMetadata(pointee_ty) => {
-                        if f.as_usize() != 0 {
-                            fail_out_of_bounds(self, location);
-                        }
-                        let f_ty = match pointee_ty.ptr_metadata_ty_or_tail(self.tcx, |x| x) {
-                            Ok(metadata_ty) => metadata_ty,
-                            Err(tail_ty) => {
-                                let metadata_def_id = self.tcx.require_lang_item(
-                                    rustc_hir::LangItem::Metadata,
-                                    self.body.source_info(location).span,
-                                );
-                                Ty::new_projection(self.tcx, metadata_def_id, [tail_ty])
+                        use ty::layout::MetadataFields;
+
+                        let metadata_fields =
+                            pointee_ty.metadata_fields_for_pointee(self.tcx, Some(self.typing_env));
+                        let metadata_fields = match metadata_fields {
+                            MetadataFields::KnownFields(fields) => fields,
+                            MetadataFields::ThinUnknownFields | MetadataFields::TooGeneric => {
+                                fail_out_of_bounds(self, location);
+                                return;
                             }
                         };
+                        let f_ty = metadata_fields[f.as_usize()].2;
 
                         check_equal(self, location, f_ty);
                     }
@@ -1086,30 +1085,24 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                     }
                 }
                 AggregateKind::PtrMetadata(pointee_ty, _) => {
-                    // FIXME(ptr_metadata_v2_fields): implement multiple fields
-                    if let [field] = fields.raw.as_slice() {
+                    let expected_fields =
+                        pointee_ty.metadata_fields_for_pointee(self.tcx, Some(self.typing_env));
+                    let ty::layout::MetadataFields::KnownFields(expected_fields) = expected_fields
+                    else {
+                        bug!(
+                            "AggregateKind::PtrMetadata(..) should only be used for monomorphic-enough \
+                            pointees, not {pointee_ty}: {expected_fields:?}"
+                        )
+                    };
+                    for (field, expected) in itertools::zip_eq(fields, expected_fields) {
                         let src_ty = field.ty(self.body, self.tcx);
-                        let dest_ty = match pointee_ty.ptr_metadata_ty_or_tail(self.tcx, |x| x) {
-                            Ok(metadata_ty) => metadata_ty,
-                            Err(tail_ty) => {
-                                let metadata_def_id = self.tcx.require_lang_item(
-                                    LangItem::Metadata,
-                                    self.body.source_info(location).span,
-                                );
-                                Ty::new_projection(self.tcx, metadata_def_id, [tail_ty])
-                            }
-                        };
+                        let dest_ty = expected.2;
                         if !self.mir_assign_valid_types(src_ty, dest_ty) {
                             self.fail(
                                 location,
                                 "builtin # ptr_metadata () field has the wrong type",
                             );
                         }
-                    } else {
-                        self.fail(
-                            location,
-                            "builtin # ptr_metadata () should have one initialized field (for now)",
-                        );
                     }
                 }
                 AggregateKind::Closure(_, args) => {

@@ -250,7 +250,7 @@
           StorageLive(_33);
           StorageLive(_34);
           _34 = copy (((*_27).0: std::vec::Vec<u8>).1: usize);
-          _33 = builtin # ptr_metadata([u8]) from (move _34,);
+          _33 = builtin # ptr_metadata([u8]) from (move _34, const ZeroSized: {ptr metadata for u8});
           StorageDead(_34);
           _31 = *const [u8] from (copy _32, move _33);
           StorageDead(_33);
@@ -321,7 +321,7 @@
           StorageLive(_56);
           StorageLive(_57);
           _57 = copy (((*_50).0: std::vec::Vec<u8>).1: usize);
-          _56 = builtin # ptr_metadata([u8]) from (move _57,);
+          _56 = builtin # ptr_metadata([u8]) from (move _57, const ZeroSized: {ptr metadata for u8});
           StorageDead(_57);
           _54 = *const [u8] from (copy _55, move _56);
           StorageDead(_56);

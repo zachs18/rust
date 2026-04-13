@@ -1460,7 +1460,7 @@ impl<T> *const [T] {
     #[stable(feature = "slice_ptr_len", since = "1.79.0")]
     #[rustc_const_stable(feature = "const_slice_ptr_len", since = "1.79.0")]
     pub const fn len(self) -> usize {
-        metadata(self).ptr_metadata
+        metadata(self).len
     }
 
     /// Returns `true` if the raw slice has a length of 0.
