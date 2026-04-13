@@ -54,7 +54,7 @@
 )]
 
 use crate::ffi::va_list::{VaArgSafe, VaList};
-use crate::marker::{ConstParamTy, DiscriminantKind, PointeeSized, Tuple};
+use crate::marker::{ConstParamTy, DiscriminantKind, MetaSized, PointeeSized, Tuple};
 use crate::{mem, ptr};
 
 mod bounds;
@@ -500,7 +500,7 @@ pub const fn select_unpredictable<T>(b: bool, true_val: T, false_val: T) -> T {
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
-pub const fn assert_inhabited<T>();
+pub const fn assert_inhabited<T: MetaSized>();
 
 /// A guard for unsafe functions that cannot ever be executed if `T` does not permit
 /// zero-initialization: This will statically either panic, or do nothing. It does not *guarantee*
