@@ -4,7 +4,7 @@ use crate::marker::{Destruct, MetaSized, PointeeSized, Unsize};
 use crate::mem::{MaybeUninit, SizedTypeProperties, transmute};
 use crate::num::NonZero;
 use crate::ops::{CoerceUnsized, DispatchFromDyn};
-use crate::ptr::{Thin, Unique};
+use crate::ptr::{Metadata, Thin, Unique};
 use crate::slice::{self, SliceIndex};
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{fmt, hash, intrinsics, mem, ptr};
@@ -321,7 +321,7 @@ impl<T: PointeeSized> NonNull<T> {
     #[inline]
     pub const fn from_raw_parts(
         data_pointer: NonNull<impl super::Thin>,
-        metadata: <T as super::Pointee>::Metadata,
+        metadata: Metadata<T>,
     ) -> NonNull<T> {
         // SAFETY: The result of `ptr::from::raw_parts_mut` is non-null because `data_pointer` is.
         unsafe {
@@ -336,7 +336,7 @@ impl<T: PointeeSized> NonNull<T> {
     #[must_use = "this returns the result of the operation, \
                   without modifying the original"]
     #[inline]
-    pub const fn to_raw_parts(self) -> (NonNull<()>, <T as super::Pointee>::Metadata) {
+    pub const fn to_raw_parts(self) -> (NonNull<()>, Metadata<T>) {
         (self.cast(), super::metadata(self.as_ptr()))
     }
 

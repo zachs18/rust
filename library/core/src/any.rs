@@ -89,7 +89,8 @@
 use crate::intrinsics::{self, type_id_vtable};
 use crate::mem::transmute;
 use crate::mem::type_info::{TraitImpl, TypeKind};
-use crate::{fmt, hash, ptr};
+use crate::ptr::{self, build_metadata};
+use crate::{fmt, hash};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Any trait
@@ -1016,7 +1017,7 @@ pub const fn try_as_dyn<
         const { TypeId::of::<T>().trait_info_of::<U>().as_ref().map(TraitImpl::get_vtable) };
     match vtable {
         Some(dyn_metadata) => {
-            let pointer = ptr::from_raw_parts(t, dyn_metadata);
+            let pointer = ptr::from_raw_parts(t, build_metadata!(ptr_metadata: dyn_metadata));
             // SAFETY: `t` is a reference to a type, so we know it is valid.
             // `dyn_metadata` is a vtable for T, implementing the trait of `U`.
             Some(unsafe { &*pointer })
@@ -1070,7 +1071,7 @@ pub const fn try_as_dyn_mut<
         const { TypeId::of::<T>().trait_info_of::<U>().as_ref().map(TraitImpl::get_vtable) };
     match vtable {
         Some(dyn_metadata) => {
-            let pointer = ptr::from_raw_parts_mut(t, dyn_metadata);
+            let pointer = ptr::from_raw_parts_mut(t, build_metadata!(ptr_metadata: dyn_metadata));
             // SAFETY: `t` is a reference to a type, so we know it is valid.
             // `dyn_metadata` is a vtable for T, implementing the trait of `U`.
             Some(unsafe { &mut *pointer })

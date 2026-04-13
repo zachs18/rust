@@ -53,9 +53,9 @@ fn main() {
     // only the discriminant, nothing about the data.
     assert_eq!(discriminant(&Some(false)), discriminant(&Some(true)));
 
-    let () = intrinsics::ptr_metadata(&[1, 2, 3]);
-    let len = intrinsics::ptr_metadata(&[1, 2, 3][..]);
+    let () = intrinsics::ptr_metadata(&[1, 2, 3]).ptr_metadata;
+    let len = intrinsics::ptr_metadata(&[1, 2, 3][..]).ptr_metadata;
     assert_eq!(len, 3);
-    let dyn_meta = intrinsics::ptr_metadata(&[1, 2, 3] as &dyn std::fmt::Debug);
+    let dyn_meta = intrinsics::ptr_metadata(&[1, 2, 3] as &dyn std::fmt::Debug).ptr_metadata;
     assert_eq!(dyn_meta.size_of(), 12);
 }

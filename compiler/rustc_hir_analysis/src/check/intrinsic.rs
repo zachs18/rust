@@ -298,16 +298,13 @@ pub(crate) fn check_intrinsic_type(
         }
         sym::offset_of => (1, 0, vec![tcx.types.u32, tcx.types.u32], tcx.types.usize),
         sym::field_offset => (1, 0, vec![], tcx.types.usize),
-        sym::unchecked_size_for_meta | sym::unchecked_align_for_meta => (
-            1,
-            0,
-            vec![Ty::new_imm_ptr(tcx, param(0)).pointee_metadata_ty_or_projection(tcx)],
-            tcx.types.usize,
-        ),
+        sym::unchecked_size_for_meta | sym::unchecked_align_for_meta => {
+            (1, 0, vec![Ty::new_ptr_metadata(tcx, param(0))], tcx.types.usize)
+        }
         sym::checked_size_for_meta | sym::checked_align_for_meta => (
             1,
             0,
-            vec![Ty::new_imm_ptr(tcx, param(0)).pointee_metadata_ty_or_projection(tcx)],
+            vec![Ty::new_ptr_metadata(tcx, param(0))],
             Ty::new_tup(tcx, &[tcx.types.bool, tcx.types.usize]),
         ),
         sym::rustc_peek => (1, 0, vec![param(0)], param(0)),
@@ -710,8 +707,12 @@ pub(crate) fn check_intrinsic_type(
 
         // This type check is not particularly useful, but the `where` bounds
         // on the definition in `core` do the heavy lifting for checking it.
-        sym::aggregate_raw_ptr => (3, 0, vec![param(1), param(2)], param(0)),
-        sym::ptr_metadata => (2, 0, vec![Ty::new_imm_ptr(tcx, param(0))], param(1)),
+        sym::aggregate_raw_ptr => {
+            (3, 0, vec![param(1), Ty::new_ptr_metadata(tcx, param(2))], param(0))
+        }
+        sym::ptr_metadata => {
+            (1, 0, vec![Ty::new_imm_ptr(tcx, param(0))], Ty::new_ptr_metadata(tcx, param(0)))
+        }
 
         sym::ub_checks | sym::overflow_checks => (0, 0, Vec::new(), tcx.types.bool),
 

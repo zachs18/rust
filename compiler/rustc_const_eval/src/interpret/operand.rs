@@ -819,7 +819,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             ) {
                 span_bug!(
                     self.cur_span(),
-                    "eval_place of a MIR place with type {} produced an interpreter operand with type {}",
+                    "eval_place of a MIR place ({:?}) with type {} produced an interpreter operand with type {}",
+                    mir_place,
                     normalized_place_ty,
                     op.layout.ty,
                 )

@@ -84,7 +84,7 @@ use core::marker::Destruct;
 use core::marker::{Freeze, PhantomData};
 use core::mem::{self, Assume, ManuallyDrop, MaybeUninit, SizedTypeProperties, TransmuteFrom};
 use core::ops::{self, Index, IndexMut, Range, RangeBounds};
-use core::ptr::{self, NonNull};
+use core::ptr::{self, NonNull, build_metadata};
 use core::slice::{self, SliceIndex};
 use core::{cmp, fmt, hint, intrinsics, ub_checks};
 
@@ -1837,7 +1837,10 @@ impl<T, A: Allocator> Vec<T, A> {
         unsafe {
             // normally this would use `slice::from_raw_parts`, but it's
             // instantiated often enough that avoiding the UB check is worth it
-            &*core::intrinsics::aggregate_raw_ptr::<*const [T], _, _>(self.as_ptr(), self.len)
+            &*core::intrinsics::aggregate_raw_ptr::<*const [T], _, _>(
+                self.as_ptr(),
+                build_metadata!(ptr_metadata: self.len),
+            )
         }
     }
 
@@ -1873,7 +1876,10 @@ impl<T, A: Allocator> Vec<T, A> {
         unsafe {
             // normally this would use `slice::from_raw_parts_mut`, but it's
             // instantiated often enough that avoiding the UB check is worth it
-            &mut *core::intrinsics::aggregate_raw_ptr::<*mut [T], _, _>(self.as_mut_ptr(), self.len)
+            &mut *core::intrinsics::aggregate_raw_ptr::<*mut [T], _, _>(
+                self.as_mut_ptr(),
+                build_metadata!(ptr_metadata: self.len),
+            )
         }
     }
 

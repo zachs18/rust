@@ -2701,11 +2701,8 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
 
         match in_elem.kind() {
             ty::RawPtr(p_ty, _) => {
-                let metadata = p_ty.ptr_metadata_ty(bx.tcx, |ty| {
-                    bx.tcx.normalize_erasing_regions(bx.typing_env(), ty)
-                });
                 require!(
-                    metadata.is_unit(),
+                    p_ty.is_thin(bx.tcx, bx.typing_env()),
                     InvalidMonomorphization::CastWidePointer { span, name, ty: in_elem }
                 );
             }
@@ -2715,11 +2712,8 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
         }
         match out_elem.kind() {
             ty::RawPtr(p_ty, _) => {
-                let metadata = p_ty.ptr_metadata_ty(bx.tcx, |ty| {
-                    bx.tcx.normalize_erasing_regions(bx.typing_env(), ty)
-                });
                 require!(
-                    metadata.is_unit(),
+                    p_ty.is_thin(bx.tcx, bx.typing_env()),
                     InvalidMonomorphization::CastWidePointer { span, name, ty: out_elem }
                 );
             }

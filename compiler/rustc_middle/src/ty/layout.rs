@@ -152,8 +152,11 @@ impl Primitive {
         match *self {
             Primitive::Int(i, signed) => i.to_ty(tcx, signed),
             Primitive::Float(f) => f.to_ty(tcx),
+            // Don't use `*mut _` here, since it has two fields (data ptr, ptr metadata),
+            // and that causes issues if we end up with a `FieldsShape::Primitive`
+            // `TyAndLayout` with `ty = *mut _`.
             // FIXME(erikdesjardins): handle non-default addrspace ptr sizes
-            Primitive::Pointer(_) => Ty::new_mut_ptr(tcx, tcx.types.unit),
+            Primitive::Pointer(_) => Ty::new_untyped_ptr(tcx, /* is_nonnull */ false),
         }
     }
 
@@ -820,73 +823,28 @@ where
                 ty::Ref(_, pointee, _) | ty::RawPtr(pointee, _) => {
                     assert!(i < this.fields.count());
 
-                    // Reuse the wide `*T` type as its own thin pointer data field.
-                    // This provides information about, e.g., DST struct pointees
-                    // (which may have no non-DST form), and will work as long
-                    // as the `Abi` or `FieldsShape` is checked by users.
+                    // FIXME(ptr_metadata_v2): Previously, we reused the wide `*T` type as its own
+                    // thin pointer data field. This provideed information about, e.g., DST struct
+                    // pointees (which may have no non-DST form). We no longer do this since we
+                    // have an untyped pointer type. FIXME: are there places where we need to
+                    // change anything else due to that change?
                     if i == 0 {
-                        let nil = tcx.types.unit;
-                        let unit_ptr_ty = if this.ty.is_raw_ptr() {
-                            Ty::new_mut_ptr(tcx, nil)
+                        let untyped_ptr_ty = if this.ty.is_raw_ptr() {
+                            Ty::new_untyped_ptr(tcx, false)
                         } else {
-                            Ty::new_mut_ref(tcx, tcx.lifetimes.re_static, nil)
+                            Ty::new_untyped_ptr(tcx, true)
                         };
 
                         // NOTE: using an fully monomorphized typing env and `unwrap`-ing
                         // the `Result` should always work because the type is always either
-                        // `*mut ()` or `&'static mut ()`.
+                        // `builtin # untyped_ptr(nullable)` or `builtin # untyped_ptr(nonnull)`.
                         let typing_env = ty::TypingEnv::fully_monomorphized();
-                        return TyMaybeWithLayout::TyAndLayout(TyAndLayout {
-                            ty: this.ty,
-                            ..tcx.layout_of(typing_env.as_query_input(unit_ptr_ty)).unwrap()
-                        });
+                        return TyMaybeWithLayout::TyAndLayout(
+                            tcx.layout_of(typing_env.as_query_input(untyped_ptr_ty)).unwrap(),
+                        );
                     }
 
-                    let mk_dyn_vtable = |principal: Option<ty::PolyExistentialTraitRef<'tcx>>| {
-                        let min_count = ty::vtable_min_entries(
-                            tcx,
-                            principal.map(|principal| {
-                                tcx.instantiate_bound_regions_with_erased(principal)
-                            }),
-                        );
-                        Ty::new_imm_ref(
-                            tcx,
-                            tcx.lifetimes.re_static,
-                            // FIXME: properly type (e.g. usize and fn pointers) the fields.
-                            Ty::new_array(tcx, tcx.types.usize, min_count.try_into().unwrap()),
-                        )
-                    };
-
-                    let metadata = if let Some(metadata_def_id) = tcx.lang_items().metadata_type()
-                        // Projection eagerly bails out when the pointee references errors,
-                        // fall back to structurally deducing metadata.
-                        && !pointee.references_error()
-                    {
-                        let metadata = tcx.normalize_erasing_regions(
-                            cx.typing_env(),
-                            Ty::new_projection(tcx, metadata_def_id, [pointee]),
-                        );
-
-                        // Map `Metadata = DynMetadata<dyn Trait>` back to a vtable, since it
-                        // offers better information than `std::ptr::metadata::VTable`,
-                        // and we rely on this layout information to trigger a panic in
-                        // `std::mem::uninitialized::<&dyn Trait>()`, for example.
-                        if let ty::Adt(def, args) = metadata.kind()
-                            && tcx.is_lang_item(def.did(), LangItem::DynMetadata)
-                            && let ty::Dynamic(data, _) = args.type_at(0).kind()
-                        {
-                            mk_dyn_vtable(data.principal())
-                        } else {
-                            metadata
-                        }
-                    } else {
-                        match tcx.struct_or_union_tail_for_codegen(pointee, cx.typing_env()).kind()
-                        {
-                            ty::Slice(_) | ty::Str => tcx.types.usize,
-                            ty::Dynamic(data, _) => mk_dyn_vtable(data.principal()),
-                            _ => bug!("TyAndLayout::field({:?}): not applicable", this),
-                        }
-                    };
+                    let metadata = Ty::new_ptr_metadata(tcx, pointee);
 
                     TyMaybeWithLayout::Ty(metadata)
                 }

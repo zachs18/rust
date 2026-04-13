@@ -630,6 +630,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 let pointer = self.eval_to_const(pointer)?;
                 let metadata = self.eval_to_const(metadata)?;
 
+                // FIXME(ptr_metadata_v2): use project_field here.
                 // Pointers don't have fields, so don't `project_field` them.
                 let data = self.ecx.read_pointer(pointer).discard_err()?;
                 let meta = if metadata.layout.is_zst() {
@@ -1199,8 +1200,7 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 let field = *fields.first()?;
                 return Some(self.insert(ty, Value::Union(active_field, field)));
             }
-            // FIXME(ptr_metadata_v2): Do not track non-empty PtrMetadata for now.
-            AggregateKind::PtrMetadata(..) => return None,
+            AggregateKind::PtrMetadata(..) => FIRST_VARIANT,
             AggregateKind::RawPtr(..) => {
                 assert_eq!(field_ops.len(), 2);
                 let [mut pointer, metadata] = fields.try_into().unwrap();
@@ -1265,6 +1265,8 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
             let mut was_updated = false;
             loop {
                 arg_index = match self.get(arg_index) {
+                    // FIXME(ptr_metadata_v2): re-enable this in some form? disabled because
+                    // pointees have different pointer metadata types now.
                     // Pointer casts that preserve metadata, such as
                     // `*const [i32]` <-> `*mut [i32]` <-> `*mut [f32]`.
                     // It's critical that this not eliminate cases like
@@ -1274,12 +1276,14 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                     // To allow things like `*mut (?A, ?T)` <-> `*mut (?B, ?T)`,
                     // it's fine to get a projection as the type.
                     Value::Cast { kind: CastKind::PtrToPtr, value: inner }
-                        if self.pointers_have_same_metadata(self.ty(inner), arg_ty) =>
+                        if false && self.pointers_have_same_metadata(self.ty(inner), arg_ty) =>
                     {
                         inner
                     }
 
-                    // We have an unsizing cast, which assigns the length to wide pointer metadata.
+                    // FIXME(ptr_metadata_fields): change how this works once ptr metadata fields
+                    // are implemented.
+                    // We have an unsizing cast, which creates wide pointer metadata with the length.
                     Value::Cast {
                         kind: CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize, _),
                         value: from,
@@ -1288,7 +1292,14 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                         && let Some(to) = self.ty(arg_index).builtin_deref(true)
                         && let ty::Slice(..) = to.kind() =>
                     {
-                        return Some(self.insert_constant(Const::Ty(self.tcx.types.usize, *len)));
+                        let slice_meta_ty = Ty::new_ptr_metadata(self.tcx, to);
+
+                        let const_len = self.insert_constant(Const::Ty(self.tcx.types.usize, *len));
+
+                        let slice_meta =
+                            Value::Aggregate(FIRST_VARIANT, self.arena.alloc_slice(&[const_len]));
+
+                        return Some(self.insert(slice_meta_ty, slice_meta));
                     }
 
                     // `&mut *p`, `&raw *p`, etc don't change metadata.
@@ -1318,17 +1329,27 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 Value::BinaryOp(BinOp::Eq, lhs, rhs)
             }
             (UnOp::PtrMetadata, Value::RawPtr { metadata, .. }) => return Some(metadata),
-            // We have an unsizing cast, which assigns the length to wide pointer metadata.
+            // FIXME(ptr_metadata_fields): change how this works once ptr metadata fields
+            // are implemented.
+            // We have an unsizing cast, which creates wide pointer metadata with the length.
             (
                 UnOp::PtrMetadata,
                 Value::Cast {
                     kind: CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize, _),
                     value: inner,
                 },
-            ) if let ty::Slice(..) = arg_ty.builtin_deref(true).unwrap().kind()
+            ) if let to = arg_ty.builtin_deref(true).unwrap()
+                && let ty::Slice(..) = to.kind()
                 && let ty::Array(_, len) = self.ty(inner).builtin_deref(true).unwrap().kind() =>
             {
-                return Some(self.insert_constant(Const::Ty(self.tcx.types.usize, *len)));
+                let slice_meta_ty = Ty::new_ptr_metadata(self.tcx, to);
+
+                let const_len = self.insert_constant(Const::Ty(self.tcx.types.usize, *len));
+
+                let slice_meta =
+                    Value::Aggregate(FIRST_VARIANT, self.arena.alloc_slice(&[const_len]));
+
+                return Some(self.insert(slice_meta_ty, slice_meta));
             }
             _ => Value::UnaryOp(op, arg_index),
         };

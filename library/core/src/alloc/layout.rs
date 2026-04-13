@@ -7,7 +7,7 @@
 use crate::error::Error;
 use crate::intrinsics::{unchecked_add, unchecked_mul, unchecked_sub};
 use crate::mem::{Alignment, SizedTypeProperties};
-use crate::ptr::{NonNull, Pointee};
+use crate::ptr::NonNull;
 use crate::{assert_unsafe_precondition, fmt, mem};
 
 /// Layout of a block of memory.
@@ -280,7 +280,7 @@ impl Layout {
     #[unstable(feature = "checked_layout_for_meta", issue = "69835")]
     //#[unstable(feature = "ptr_metadata", issue = "81513")]
     #[must_use]
-    pub const fn for_meta<T: ?Sized>(t: <T as Pointee>::Metadata) -> Option<Self> {
+    pub const fn for_meta<T: ?Sized>(t: core::ptr::Metadata<T>) -> Option<Self> {
         let (Some(size), Some(align)) =
             (mem::checked_size_for_meta::<T>(t), mem::checked_align_for_meta::<T>(t))
         else {

@@ -1257,6 +1257,7 @@ where
     fn drop_loop_trio_for_slice(&mut self, ety: Ty<'tcx>) -> BasicBlock {
         debug!("drop_loop_trio_for_slice({:?})", ety);
         let tcx = self.tcx();
+        let meta = self.new_temp(Ty::new_ptr_metadata(tcx, Ty::new_slice(tcx, ety)));
         let len = self.new_temp(tcx.types.usize);
         let cur = self.new_temp(tcx.types.usize);
 
@@ -1281,11 +1282,19 @@ where
         let block = BasicBlockData::new_stmts(
             vec![
                 self.assign(
-                    len.into(),
+                    meta.into(),
                     Rvalue::UnaryOp(
                         UnOp::PtrMetadata,
                         Operand::Copy(Place::from(self.place.local)),
                     ),
+                ),
+                self.assign(
+                    len.into(),
+                    Rvalue::Use(Operand::Move(Place::from(meta).project_deeper(
+                        // FIXME(ptr_metadata_v2_fields): implement multiple fields
+                        &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
+                        tcx,
+                    ))),
                 ),
                 self.assign(cur.into(), Rvalue::Use(zero)),
             ],
