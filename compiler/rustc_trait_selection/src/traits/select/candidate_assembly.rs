@@ -92,6 +92,13 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // `Pointee` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate);
                 }
+                Some(LangItem::ThinPointeeTrait) => {
+                    self.assemble_builtin_sized_candidate(
+                        obligation.predicate.self_ty().skip_binder(),
+                        &mut candidates,
+                        SizedTraitKind::Thin,
+                    );
+                }
                 Some(LangItem::Sized) => {
                     self.assemble_builtin_sized_candidate(
                         obligation.predicate.self_ty().skip_binder(),
@@ -1290,16 +1297,21 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates.vec.push(SizedCandidate);
             }
 
-            // `MetaSized` but not `Sized`.
+            // `MetaSized` but not `Sized` or `Thin`.
             ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
-                SizedTraitKind::Sized => {}
+                SizedTraitKind::Sized | SizedTraitKind::Thin => {}
                 SizedTraitKind::MetaSized => {
                     candidates.vec.push(SizedCandidate);
                 }
             },
 
-            // Not `MetaSized` or `Sized`.
-            ty::Foreign(..) => {}
+            // `Thin` but not `MetaSized` or `Sized`.
+            ty::Foreign(..) => match sizedness {
+                SizedTraitKind::Sized | SizedTraitKind::MetaSized => {}
+                SizedTraitKind::Thin => {
+                    candidates.vec.push(SizedCandidate);
+                }
+            },
 
             ty::Alias(..) | ty::Param(_) | ty::Placeholder(..) => {}
 

@@ -168,7 +168,7 @@ unsafe impl<T: Sync + PointeeSized> Send for &T {}
 // and we know that the supertraits are always implemented if the subtrait is just by looking at
 // the builtin impls.
 #[rustc_coinductive]
-pub trait Sized: MetaSized {
+pub trait Sized: MetaSized + crate::ptr::Thin {
     // Empty.
 }
 

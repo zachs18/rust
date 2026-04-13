@@ -576,8 +576,8 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn def_id(self) -> I::AdtId;
 
     fn is_struct(self) -> bool;
-    fn is_union(self) -> bool;
     fn is_enum(self) -> bool;
+    fn is_union(self) -> bool;
 
     fn is_packed(self) -> bool;
 

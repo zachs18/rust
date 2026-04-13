@@ -986,7 +986,10 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     pub fn is_sizedness_trait(self, def_id: DefId) -> bool {
-        matches!(self.as_lang_item(def_id), Some(LangItem::Sized | LangItem::MetaSized))
+        matches!(
+            self.as_lang_item(def_id),
+            Some(LangItem::Sized | LangItem::MetaSized | LangItem::ThinPointeeTrait)
+        )
     }
 
     /// Returns a range of the start/end indices specified with the

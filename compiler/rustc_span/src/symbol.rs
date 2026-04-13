@@ -2041,6 +2041,7 @@ symbols! {
         test_removed_feature,
         test_runner,
         test_unstable_lint,
+        thin_pointee_trait,
         thread,
         thread_local,
         three_way_compare,

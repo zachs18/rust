@@ -462,7 +462,7 @@ pub enum AdtDestructorKind {
 }
 
 /// Which sizedness trait - `Sized`, `MetaSized`? `PointeeSized` is omitted as it is removed during
-/// lowering.
+/// lowering. This also includes `Thin` for thin pointees as it shares a lot of code.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "nightly", derive(HashStable_NoContext))]
 pub enum SizedTraitKind {
@@ -470,6 +470,8 @@ pub enum SizedTraitKind {
     Sized,
     /// `MetaSized` trait
     MetaSized,
+    /// `Thin` trait for thin pointees.
+    Thin,
 }
 
 impl SizedTraitKind {
@@ -478,6 +480,7 @@ impl SizedTraitKind {
         cx.require_trait_lang_item(match self {
             SizedTraitKind::Sized => SolverTraitLangItem::Sized,
             SizedTraitKind::MetaSized => SolverTraitLangItem::MetaSized,
+            SizedTraitKind::Thin => SolverTraitLangItem::ThinPointeeTrait,
         })
     }
 }

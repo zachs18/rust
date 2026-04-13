@@ -60,7 +60,10 @@ pub trait MetaSized: PointeeSized {}
     message = "the size for values of type `{Self}` cannot be known at compilation time",
     label = "doesn't have a size known at compile-time"
 )]
-pub trait Sized: MetaSized {}
+pub trait Sized: MetaSized + Thin {}
+
+#[lang = "thin_pointee_trait"]
+pub trait Thin: PointeeSized {}
 
 #[lang = "destruct"]
 #[diagnostic::on_unimplemented(message = "can't drop `{Self}`")]

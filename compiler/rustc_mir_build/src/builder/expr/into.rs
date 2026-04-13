@@ -747,7 +747,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                         ),
                                     };
                                     if field_pointee_ty
-                                        .is_sized(this.tcx, this.infcx.typing_env(this.param_env))
+                                        .is_thin(this.tcx, this.infcx.typing_env(this.param_env))
                                     {
                                         Operand::Constant(Box::new(ConstOperand {
                                             span: expr_span,

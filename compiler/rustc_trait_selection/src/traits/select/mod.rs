@@ -2173,10 +2173,21 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
 
             ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
                 SizedTraitKind::Sized => unreachable!("tried to assemble `Sized` for unsized type"),
+                SizedTraitKind::Thin => {
+                    unreachable!("tried to assemble `Thin` for a wide-pointee type")
+                }
                 SizedTraitKind::MetaSized => ty::Binder::dummy(vec![]),
             },
 
-            ty::Foreign(..) => unreachable!("tried to assemble `Sized` for unsized type"),
+            ty::Foreign(..) => match sizedness {
+                SizedTraitKind::Thin => ty::Binder::dummy(vec![]),
+                SizedTraitKind::Sized => {
+                    unreachable!("tried to assemble `Sized` for foreign type")
+                }
+                SizedTraitKind::MetaSized => {
+                    unreachable!("tried to assemble `MetaSized` for foreign type")
+                }
+            },
 
             ty::Tuple(tys) => {
                 ty::Binder::dummy(tys.last().map_or_else(Vec::new, |&last| vec![last]))
@@ -2199,7 +2210,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::Placeholder(..)
             | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_))
             | ty::Bound(..) => {
-                bug!("asked to assemble `Sized` of unexpected type: {:?}", self_ty);
+                bug!("asked to assemble `{sizedness:?}` of unexpected type: {:?}", self_ty);
             }
         }
     }
