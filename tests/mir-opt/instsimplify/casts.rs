@@ -30,5 +30,5 @@ pub fn cast_thin_via_aggregate(x: *const u8) -> *const () {
     // CHECK-LABEL: fn cast_thin_via_aggregate(
     // CHECK: _2 = copy _1;
     // CHECK: _0 = move _2 as *const () (PtrToPtr);
-    std::intrinsics::aggregate_raw_ptr(x, ())
+    std::intrinsics::aggregate_raw_ptr(x, core::ptr::build_metadata!(ptr_metadata: ()))
 }

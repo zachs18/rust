@@ -9,8 +9,8 @@ use std::ops::Range;
 // EMIT_MIR slice_index.slice_index_usize.PreCodegen.after.mir
 pub fn slice_index_usize(slice: &[u32], index: usize) -> u32 {
     // CHECK-LABEL: slice_index_usize
-    // CHECK: [[LEN:_[0-9]+]] = PtrMetadata(copy _1)
-    // CHECK: Lt(copy _2, copy [[LEN]])
+    // CHECK: [[META:_[0-9]+]] = PtrMetadata(copy _1)
+    // CHECK: Lt(copy _2, copy ([[META]].0: usize))
     // CHECK-NOT: precondition_check
     // CHECK: _0 = copy (*_1)[_2];
     slice[index]
@@ -19,7 +19,8 @@ pub fn slice_index_usize(slice: &[u32], index: usize) -> u32 {
 // EMIT_MIR slice_index.slice_get_mut_usize.PreCodegen.after.mir
 pub fn slice_get_mut_usize(slice: &mut [u32], index: usize) -> Option<&mut u32> {
     // CHECK-LABEL: slice_get_mut_usize
-    // CHECK: [[LEN:_[0-9]+]] = PtrMetadata(copy _1)
+    // CHECK: [[META:_[0-9]+]] = PtrMetadata(copy _1)
+    // CHECK: [[LEN:_[0-9]+]] = copy ([[META]].0: usize);
     // CHECK: Lt(copy _2, move [[LEN]])
     // CHECK-NOT: precondition_check
     slice.get_mut(index)
@@ -39,7 +40,8 @@ pub unsafe fn slice_get_unchecked_mut_range(slice: &mut [u32], index: Range<usiz
     // CHECK: precondition_check
     // CHECK: [[LEN:_[0-9]+]] = SubUnchecked(copy [[END]], copy [[START]]);
     // CHECK: [[PTR:_[0-9]+]] = Offset(copy {{_[0-9]+}}, copy [[START]]);
-    // CHECK: [[SLICE:_[0-9]+]] = *mut [u32] from (copy [[PTR]], copy [[LEN]])
+    // CHECK: [[META:_[0-9]+]] = builtin # ptr_metadata([u32]) from (copy [[LEN]],);
+    // CHECK: [[SLICE:_[0-9]+]] = *mut [u32] from (copy [[PTR]], move [[META]])
     // CHECK: _0 = &mut (*[[SLICE]]);
     slice.get_unchecked_mut(index)
 }
@@ -55,6 +57,7 @@ pub unsafe fn slice_ptr_get_unchecked_range(
     // CHECK: precondition_check
     // CHECK: [[LEN:_[0-9]+]] = SubUnchecked(copy [[END]], copy [[START]]);
     // CHECK: [[PTR:_[0-9]+]] = Offset(copy {{_[0-9]+}}, copy [[START]]);
-    // CHECK: _0 = *const [u32] from (copy [[PTR]], copy [[LEN]])
+    // CHECK: [[META:_[0-9]+]] = builtin # ptr_metadata([u32]) from (copy [[LEN]],);
+    // CHECK: _0 = *const [u32] from (copy [[PTR]], move [[META]])
     slice.get_unchecked(index)
 }

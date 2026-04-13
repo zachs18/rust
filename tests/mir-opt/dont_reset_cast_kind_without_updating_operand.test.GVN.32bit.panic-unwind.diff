@@ -25,10 +25,11 @@
                       debug _x => _8;
                   }
                   scope 7 (inlined foo) {
-                      let mut _13: *const [()];
+                      let mut _14: *const [()];
                   }
               }
               scope 5 (inlined slice_from_raw_parts::<()>) {
+                  let mut _13: {ptr metadata for [()]};
                   scope 6 (inlined std::ptr::from_raw_parts::<[()], ()>) {
                   }
               }
@@ -62,19 +63,23 @@
           _7 = copy _5;
           StorageLive(_12);
           _12 = const 1_usize;
--         _6 = *const [()] from (copy _7, copy _12);
-+         _6 = *const [()] from (copy _5, const 1_usize);
+          StorageLive(_13);
+-         _13 = builtin # ptr_metadata([()]) from (copy _12,);
+-         _6 = *const [()] from (copy _7, copy _13);
++         _13 = const {transmute(0x00000001): {ptr metadata for [()]}};
++         _6 = *const [()] from (copy _5, const {transmute(0x00000001): {ptr metadata for [()]}});
+          StorageDead(_13);
           StorageDead(_12);
           StorageDead(_7);
           StorageLive(_8);
           StorageLive(_9);
           _9 = copy _6;
-          StorageLive(_13);
--         _13 = copy _9;
+          StorageLive(_14);
+-         _14 = copy _9;
 -         _8 = copy _9 as *mut () (PtrToPtr);
-+         _13 = copy _6;
++         _14 = copy _6;
 +         _8 = copy _5 as *mut () (PtrToPtr);
-          StorageDead(_13);
+          StorageDead(_14);
           StorageDead(_9);
           _0 = const ();
           StorageDead(_8);

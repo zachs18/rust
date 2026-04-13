@@ -30,9 +30,9 @@ fn index_const_generic_array<const N: usize>(array: &[i32; N], index: usize) -> 
 fn index_slice(slice: &[i32], index: usize) -> &i32 {
     // CHECK: bb0:
     // CHECK: _3 = copy _2;
-    // CHECK: [[LEN:_.+]] = PtrMetadata(copy _1);
-    // CHECK: [[LT:_.+]] = Lt(copy _3, copy [[LEN]]);
-    // CHECK: assert(move [[LT]], "index out of bounds{{.+}}", move [[LEN]], copy _3) -> [success: bb1,
+    // CHECK: [[META:_.+]] = PtrMetadata(copy _1);
+    // CHECK: [[LT:_.+]] = Lt(copy _3, copy ([[META]].0: usize));
+    // CHECK: assert(move [[LT]], "index out of bounds{{.+}}", move ([[META]].0: usize), copy _3) -> [success: bb1,
 
     // CHECK: bb1:
     // CHECK: _6 = &(*_1)[_3];
@@ -48,9 +48,9 @@ fn index_mut_slice(slice: &mut [i32], index: usize) -> &i32 {
     // CHECK: bb0:
     // CHECK: _3 = copy _2;
     // CHECK: _4 = &raw const (fake) (*_1);
-    // CHECK: [[LEN:_.+]] = PtrMetadata(move _4);
-    // CHECK: [[LT:_.+]] = Lt(copy _3, copy [[LEN]]);
-    // CHECK: assert(move [[LT]], "index out of bounds{{.+}}", move [[LEN]], copy _3) -> [success: bb1,
+    // CHECK: [[META:_.+]] = PtrMetadata(move _4);
+    // CHECK: [[LT:_.+]] = Lt(copy _3, copy ([[META]].0: usize));
+    // CHECK: assert(move [[LT]], "index out of bounds{{.+}}", move ([[META]].0: usize), copy _3) -> [success: bb1,
 
     // CHECK: bb1:
     // CHECK: _7 = &(*_1)[_3];
@@ -65,9 +65,9 @@ fn index_custom(custom: &WithSliceTail, index: usize) -> &i32 {
     // CHECK: bb0:
     // CHECK: _3 = copy _2;
     // CHECK: [[PTR:_.+]] = &raw const (fake) ((*_1).1: [i32]);
-    // CHECK: [[LEN:_.+]] = PtrMetadata(move [[PTR]]);
-    // CHECK: [[LT:_.+]] = Lt(copy _3, copy [[LEN]]);
-    // CHECK: assert(move [[LT]], "index out of bounds{{.+}}", move [[LEN]], copy _3) -> [success: bb1,
+    // CHECK: [[META:_.+]] = PtrMetadata(move [[PTR]]);
+    // CHECK: [[LT:_.+]] = Lt(copy _3, copy ([[META]].0: usize));
+    // CHECK: assert(move [[LT]], "index out of bounds{{.+}}", move ([[META]].0: usize), copy _3) -> [success: bb1,
 
     // CHECK: bb1:
     // CHECK: _7 = &((*_1).1: [i32])[_3];

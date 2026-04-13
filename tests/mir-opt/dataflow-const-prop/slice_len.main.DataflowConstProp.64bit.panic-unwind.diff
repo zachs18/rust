@@ -9,11 +9,11 @@
       let _4: &[u32; 3];
       let _5: [u32; 3];
       let _6: usize;
-      let mut _7: usize;
+      let mut _7: {ptr metadata for [u32]};
       let mut _8: bool;
       let mut _10: &[u32];
       let _11: usize;
-      let mut _12: usize;
+      let mut _12: {ptr metadata for [u32]};
       let mut _13: bool;
       let mut _14: &[u32; 3];
       scope 1 {
@@ -37,11 +37,11 @@
           StorageLive(_6);
           _6 = const 1_usize;
 -         _7 = PtrMetadata(copy _2);
--         _8 = Lt(copy _6, copy _7);
--         assert(move _8, "index out of bounds: the length is {} but the index is {}", move _7, copy _6) -> [success: bb1, unwind continue];
-+         _7 = const 3_usize;
-+         _8 = const true;
-+         assert(const true, "index out of bounds: the length is {} but the index is {}", const 3_usize, const 1_usize) -> [success: bb1, unwind continue];
+-         _8 = Lt(copy _6, copy (_7.0: usize));
+-         assert(move _8, "index out of bounds: the length is {} but the index is {}", move (_7.0: usize), copy _6) -> [success: bb1, unwind continue];
++         _7 = const {transmute(0x0000000000000003): {ptr metadata for [u32]}};
++         _8 = Lt(const 1_usize, copy (_7.0: usize));
++         assert(move _8, "index out of bounds: the length is {} but the index is {}", move (_7.0: usize), const 1_usize) -> [success: bb1, unwind continue];
       }
   
       bb1: {
@@ -56,11 +56,11 @@
           StorageLive(_11);
           _11 = const 1_usize;
 -         _12 = PtrMetadata(copy _10);
--         _13 = Lt(copy _11, copy _12);
--         assert(move _13, "index out of bounds: the length is {} but the index is {}", move _12, copy _11) -> [success: bb2, unwind continue];
-+         _12 = const 3_usize;
-+         _13 = const true;
-+         assert(const true, "index out of bounds: the length is {} but the index is {}", const 3_usize, const 1_usize) -> [success: bb2, unwind continue];
+-         _13 = Lt(copy _11, copy (_12.0: usize));
+-         assert(move _13, "index out of bounds: the length is {} but the index is {}", move (_12.0: usize), copy _11) -> [success: bb2, unwind continue];
++         _12 = const {transmute(0x0000000000000003): {ptr metadata for [u32]}};
++         _13 = Lt(const 1_usize, copy (_12.0: usize));
++         assert(move _13, "index out of bounds: the length is {} but the index is {}", move (_12.0: usize), const 1_usize) -> [success: bb2, unwind continue];
       }
   
       bb2: {

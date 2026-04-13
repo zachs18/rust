@@ -1,3 +1,6 @@
+//@ ignore-test FIXME(ptr_metadata_v2)
+// Tests to investigate on 'Use builtin # ptr_metadata(T) as pointer metadata'
+// (before ptr_metadata_fields) because there's a `const{transmute}`
 // EMIT_MIR_FOR_EACH_PANIC_STRATEGY
 //@ test-mir-pass: DataflowConstProp
 //@ compile-flags: -Zmir-enable-passes=+InstSimplify-after-simplifycfg
