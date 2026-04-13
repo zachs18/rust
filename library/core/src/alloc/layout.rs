@@ -7,7 +7,7 @@
 use crate::error::Error;
 use crate::intrinsics::{unchecked_add, unchecked_mul, unchecked_sub};
 use crate::mem::{Alignment, SizedTypeProperties};
-use crate::ptr::NonNull;
+use crate::ptr::{NonNull, Pointee};
 use crate::{assert_unsafe_precondition, fmt, mem};
 
 /// Layout of a block of memory.
@@ -255,6 +255,39 @@ impl Layout {
         let (size, alignment) = unsafe { (mem::size_of_val_raw(t), Alignment::of_val_raw(t)) };
         // SAFETY: see rationale in `new` for why this is using the unsafe variant
         unsafe { Layout::from_size_alignment_unchecked(size, alignment) }
+    }
+
+    /// Produces layout describing a record that could be used to
+    /// allocate backing structure for a `T` with the given pointer metadata
+    /// (which could be a trait or other unsized type like a slice).
+    ///
+    /// # Safety
+    ///
+    /// This function is always safe to call.
+    ///
+    /// - If `T` is `Sized`, this function is returns `Some(Layout::of::<T>())`.
+    /// - If the unsized tail of `T` is:
+    ///     - a [slice], then this function will return `Some` if the size of the
+    ///       *entire value* (dynamic tail length + statically sized prefix) fits
+    ///       in `isize`.
+    ///     - a [trait object], then the vtable part of the pointer must point
+    ///       to a valid vtable for the type `T` acquired by an unsizing coercion,
+    ///       and this function will return `Some` if the size of the *entire value*
+    ///       (dynamic tail length + statically sized prefix) fits in `isize`.
+    ///
+    /// [trait object]: ../../book/ch17-02-trait-objects.html
+    /// [extern type]: ../../unstable-book/language-features/extern-types.html
+    #[unstable(feature = "checked_layout_for_meta", issue = "69835")]
+    //#[unstable(feature = "ptr_metadata", issue = "81513")]
+    #[must_use]
+    pub const fn for_meta<T: ?Sized>(t: <T as Pointee>::Metadata) -> Option<Self> {
+        let (Some(size), Some(align)) =
+            (mem::checked_size_for_meta::<T>(t), mem::checked_align_for_meta::<T>(t))
+        else {
+            return None;
+        };
+        // SAFETY: see rationale in `new` for why this is using the unsafe variant
+        Some(unsafe { Layout::from_size_align_unchecked(size, align) })
     }
 
     /// Creates a `NonNull` that is dangling, but well-aligned for this Layout.

@@ -86,6 +86,8 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::ceilf32
         | sym::ceilf64
         | sym::ceilf128
+        | sym::checked_align_for_meta
+        | sym::checked_size_for_meta
         | sym::cold_path
         | sym::const_eval_select
         | sym::contract_check_ensures
@@ -296,6 +298,18 @@ pub(crate) fn check_intrinsic_type(
         }
         sym::offset_of => (1, 0, vec![tcx.types.u32, tcx.types.u32], tcx.types.usize),
         sym::field_offset => (1, 0, vec![], tcx.types.usize),
+        sym::unchecked_size_for_meta | sym::unchecked_align_for_meta => (
+            1,
+            0,
+            vec![Ty::new_imm_ptr(tcx, param(0)).pointee_metadata_ty_or_projection(tcx)],
+            tcx.types.usize,
+        ),
+        sym::checked_size_for_meta | sym::checked_align_for_meta => (
+            1,
+            0,
+            vec![Ty::new_imm_ptr(tcx, param(0)).pointee_metadata_ty_or_projection(tcx)],
+            Ty::new_tup(tcx, &[tcx.types.bool, tcx.types.usize]),
+        ),
         sym::rustc_peek => (1, 0, vec![param(0)], param(0)),
         sym::caller_location => (0, 0, vec![], tcx.caller_location_ty()),
         sym::assert_inhabited | sym::assert_zero_valid | sym::assert_mem_uninitialized_valid => {

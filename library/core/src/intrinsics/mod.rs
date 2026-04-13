@@ -2871,6 +2871,69 @@ pub const unsafe fn size_of_val<T: ?Sized>(ptr: *const T) -> usize;
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn align_of_val<T: ?Sized>(ptr: *const T) -> usize;
 
+/// Returns `true` and the size of a value with the given pointer metadata,
+/// or `false` and an arbitrary value if the size or alignment would overflow `isize`
+/// or the layout is otherwise uncomputable.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// The to-be-stabilized version of this intrinsic is [`core::mem::checked_size_for_meta`].
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[rustc_intrinsic_const_stable_indirect]
+pub const fn checked_size_for_meta<T: ?Sized>(meta: <T as ptr::Pointee>::Metadata)
+-> (bool, usize);
+
+/// Returns `true` and the required alignment of a value with the given pointer metadata,
+/// or `false` and an arbitrary value if the size or alignment would overflow `isize`
+/// or the layout is otherwise uncomputable.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+///
+/// The to-be-stabilized version of this intrinsic is [`core::mem::checked_align_for_meta`].
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[rustc_intrinsic_const_stable_indirect]
+pub const fn checked_align_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> (bool, usize);
+
+/// Returns the size of a value with the given pointer metadata.
+///
+/// Undefined behavior if the size or alignment would overflow `isize` or
+/// the layout is otherwise uncomputable.
+///
+/// The to-be-stabilized version of this intrinsic is [`core::mem::checked_size_for_meta`].
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[rustc_intrinsic_const_stable_indirect]
+pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> usize;
+
+/// Returns the required alignment of a value with the given pointer metadata.
+///
+/// Undefined behavior if the size or alignment would overflow `isize` or
+/// the layout is otherwise uncomputable.
+///
+/// The to-be-stabilized version of this intrinsic is [`core::mem::unchecked_align_for_meta`].
+#[rustc_nounwind]
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[rustc_intrinsic]
+#[rustc_intrinsic_const_stable_indirect]
+pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(
+    meta: <T as ptr::Pointee>::Metadata,
+) -> usize;
+
 #[rustc_intrinsic]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 /// Check if a type represented by a `TypeId` implements a trait represented by a `TypeId`.
