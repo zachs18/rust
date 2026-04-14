@@ -238,6 +238,14 @@ defaulted_enum! {
 }
 
 fixed_size_enum! {
+    hir::FieldUnsizability {
+        ( Default )
+        ( Yes     )
+        ( No      )
+    }
+}
+
+fixed_size_enum! {
     hir::CoroutineKind {
         ( Coroutine(hir::Movability::Movable)                                          )
         ( Coroutine(hir::Movability::Static)                                           )
