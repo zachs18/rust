@@ -1425,6 +1425,18 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                             ty::RawPtr(..)
                         );
                     }
+                    CastKind::PtrMetadataToPtrMetadata => {
+                        check_kinds!(
+                            op_ty,
+                            "CastKind::{kind:?} input must be pointer metadata, not {:?}",
+                            ty::PtrMetadata(..)
+                        );
+                        check_kinds!(
+                            target_type,
+                            "CastKind::{kind:?} output must be pointer metadata, not {:?}",
+                            ty::PtrMetadata(..)
+                        );
+                    }
                     CastKind::FloatToFloat | CastKind::FloatToInt => {
                         if !op_ty.is_floating_point() || !target_type.is_numeric() {
                             self.fail(

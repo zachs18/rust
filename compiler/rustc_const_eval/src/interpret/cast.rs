@@ -61,7 +61,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 self.write_immediate(*res, dest)?;
             }
 
-            CastKind::FnPtrToPtr | CastKind::PtrToPtr => {
+            CastKind::FnPtrToPtr | CastKind::PtrToPtr | CastKind::PtrMetadataToPtrMetadata => {
+                // FIXME(ptr_metadata_v2): make this work for multiple-wide pointers and metadata
                 let src = self.read_immediate(src)?;
                 let res = self.ptr_to_ptr(&src, cast_layout)?;
                 self.write_immediate(*res, dest)?;

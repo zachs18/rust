@@ -1,5 +1,5 @@
 use itertools::Itertools as _;
-use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx};
+use rustc_abi::{self as abi, BackendRepr, FIRST_VARIANT, FieldIdx, Size};
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -466,6 +466,17 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             } else {
                                 operand.extract_field(self, bx, 0).val
                             }
+                        } else {
+                            // Otherwise transmute compatible metadata
+                            self.codegen_transmute_operand(bx, operand, cast)
+                        }
+                    }
+                    mir::CastKind::PtrMetadataToPtrMetadata => {
+                        if cast.layout.size < operand.layout.size {
+                            // Cast of wide-ptr-metadata to thin-ptr-metadata just discards input
+                            // and returns zst thin metadata
+                            assert_eq!(cast.layout.size, Size::ZERO);
+                            OperandValue::ZeroSized
                         } else {
                             // Otherwise transmute compatible metadata
                             self.codegen_transmute_operand(bx, operand, cast)

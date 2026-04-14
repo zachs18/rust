@@ -828,7 +828,13 @@ impl<'a, 'tcx> CastCheck<'tcx> {
             }
 
             // ptr -> ptr
-            (Ptr(m_e), Ptr(m_c)) => self.check_ptr_ptr_cast(fcx, m_e, m_c), // ptr-ptr-cast
+            (Ptr(m_e), Ptr(m_c)) => self.check_ptr_ptr_cast(fcx, m_e.ty, m_c.ty), // ptr-ptr-cast
+
+            // ptr metadata -> ptr metadata
+            (PtrMetadata(m_e), PtrMetadata(m_c)) => self.check_ptr_ptr_cast(fcx, m_e, m_c), // ptr-metadata-to-ptr-metadata-cast
+            // cannot otherwise cast to or from ptr metadata
+            // FIXME(ptr_metadata_v2): consider allowing casting `usize` to `Metadata<[impl Thin]>`
+            (PtrMetadata(_), _) | (_, PtrMetadata(_)) => Err(CastError::IllegalCast),
 
             // ptr-addr-cast
             (Ptr(m_expr), Int(t_c)) => {
@@ -858,17 +864,20 @@ impl<'a, 'tcx> CastCheck<'tcx> {
         }
     }
 
+    /// Pointer-to-pointer cast, or pointer-metadata-to-pointer-metadata cast.
     fn check_ptr_ptr_cast(
         &self,
         fcx: &FnCtxt<'a, 'tcx>,
-        m_src: ty::TypeAndMut<'tcx>,
-        m_dst: ty::TypeAndMut<'tcx>,
+        src_pointee: Ty<'tcx>,
+        dst_pointee: Ty<'tcx>,
     ) -> Result<CastKind, CastError<'tcx>> {
-        debug!("check_ptr_ptr_cast m_src={m_src:?} m_dst={m_dst:?}");
+        debug!("check_ptr_ptr_cast src_pointee={src_pointee:?} dst_pointee={dst_pointee:?}");
         // ptr-ptr cast. metadata must match.
 
-        let src_kind = fcx.tcx.erase_and_anonymize_regions(fcx.pointer_kind(m_src.ty, self.span)?);
-        let dst_kind = fcx.tcx.erase_and_anonymize_regions(fcx.pointer_kind(m_dst.ty, self.span)?);
+        let src_kind =
+            fcx.tcx.erase_and_anonymize_regions(fcx.pointer_kind(src_pointee, self.span)?);
+        let dst_kind =
+            fcx.tcx.erase_and_anonymize_regions(fcx.pointer_kind(dst_pointee, self.span)?);
 
         // We can't cast if target pointer kind is unknown
         let Some(dst_kind) = dst_kind else {
@@ -904,7 +913,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                         let tcx = fcx.tcx;
 
                         // We need to reconstruct trait object types.
-                        // `m_src` and `m_dst` won't work for us here because they will potentially
+                        // `src_pointee` and `dst_pointee` won't work for us here because they will potentially
                         // contain wrappers, which we do not care about.
                         //
                         // e.g. we want to allow `dyn T -> (dyn T,)`, etc.
