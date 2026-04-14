@@ -5,11 +5,9 @@ LL | fn unsize_sized<T: 'static>(x: Box<T>) -> Box<dyn Sized> {
    |                                               ^^^^^^^^^ `Sized` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error[E0038]: the trait `Foo` is not dyn compatible
   --> $DIR/sized-3.rs:13:27
@@ -17,6 +15,7 @@ error[E0038]: the trait `Foo` is not dyn compatible
 LL | fn unsize_subtrait(x: Box<dyn Foo>) -> Box<dyn Sized> {
    |                           ^^^^^^^ `Foo` is not dyn compatible
    |
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/sized-3.rs:4:30
@@ -25,9 +24,6 @@ LL | trait Foo: std::fmt::Debug + Sized {}
    |       ---                    ^^^^^ ...because it requires `Self: Sized`
    |       |
    |       this trait is not dyn compatible...
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: ...because it opted out of dyn-compatibility
 
 error[E0038]: the trait `Sized` is not dyn compatible
   --> $DIR/sized-3.rs:13:44
@@ -36,11 +32,9 @@ LL | fn unsize_subtrait(x: Box<dyn Foo>) -> Box<dyn Sized> {
    |                                            ^^^^^^^^^ `Sized` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error[E0038]: the trait `Sized` is not dyn compatible
   --> $DIR/sized-3.rs:20:15
@@ -49,11 +43,9 @@ LL |     let _bx = unsize_sized(Box::new(vec![1, 2, 3]));
    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Sized` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error[E0038]: the trait `Foo` is not dyn compatible
   --> $DIR/sized-3.rs:23:21
@@ -61,6 +53,7 @@ error[E0038]: the trait `Foo` is not dyn compatible
 LL |     let bx: Box<dyn Foo> = Box::new(vec![1, 2, 3]);
    |                     ^^^ `Foo` is not dyn compatible
    |
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/sized-3.rs:4:30
@@ -69,9 +62,6 @@ LL | trait Foo: std::fmt::Debug + Sized {}
    |       ---                    ^^^^^ ...because it requires `Self: Sized`
    |       |
    |       this trait is not dyn compatible...
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: ...because it opted out of dyn-compatibility
 
 error[E0038]: the trait `Foo` is not dyn compatible
   --> $DIR/sized-3.rs:26:31
@@ -79,6 +69,7 @@ error[E0038]: the trait `Foo` is not dyn compatible
 LL |     let _bx = unsize_subtrait(bx);
    |                               ^^ `Foo` is not dyn compatible
    |
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
   --> $DIR/sized-3.rs:4:30
@@ -87,9 +78,6 @@ LL | trait Foo: std::fmt::Debug + Sized {}
    |       ---                    ^^^^^ ...because it requires `Self: Sized`
    |       |
    |       this trait is not dyn compatible...
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: ...because it opted out of dyn-compatibility
 
 error[E0038]: the trait `Sized` is not dyn compatible
   --> $DIR/sized-3.rs:26:15
@@ -98,11 +86,9 @@ LL |     let _bx = unsize_subtrait(bx);
    |               ^^^^^^^^^^^^^^^^^^^ `Sized` is not dyn compatible
    |
    = note: the trait is not dyn compatible because it requires `Self: Sized`
-note: for a trait to be dyn compatible it needs to allow building a vtable
-      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $SRC_DIR/core/src/ptr/metadata.rs:LL:COL
-   |
-   = note: the trait is not dyn compatible because it opted out of dyn-compatibility
+   = note: the trait is not dyn compatible because it requires `Self: Thin`
+   = note: for a trait to be dyn compatible it needs to allow building a vtable
+           for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
 
 error: aborting due to 7 previous errors
 
