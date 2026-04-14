@@ -495,7 +495,7 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 let ty::layout::MetadataFields::KnownFields(fields) = fields else {
                     bug!("ValidityVisitor should be called on monomorphic data(?)")
                 };
-                PathElem::Field(fields[field].0.name)
+                PathElem::Field(fields[field].0)
             }
 
             // arrays/slices

@@ -5,6 +5,7 @@
 //!
 //! See [`rustc_hir_analysis::check`] for more context on type checking in general.
 
+use itertools::Either;
 use rustc_abi::{FIRST_VARIANT, FieldIdx};
 use rustc_ast as ast;
 use rustc_ast::util::parser::ExprPrecedence;
@@ -1958,10 +1959,25 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let mut remaining_fields = expected_fields
             .iter()
             .enumerate()
-            .map(|(i, field @ (name, ..))| {
-                (name.normalize_to_macros_2_0(), (FieldIdx::from_usize(i), field))
+            .map(|(i, field @ (name, span, ..))| {
+                let name = match span {
+                    Some(span) => Either::Left(Ident::new(name, span).normalize_to_macros_2_0()),
+                    None => Either::Right(name),
+                };
+                (name, (FieldIdx::from_usize(i), field))
             })
             .collect::<UnordMap<_, _>>();
+
+        let remove_field =
+            |remaining_fields: &mut UnordMap<_, _>, name: Symbol, span: Option<Span>| {
+                if let Some(span) = span {
+                    let name = Ident::new(name, span);
+                    if let Some(val) = remaining_fields.remove(&Either::Left(name)) {
+                        return Some(val);
+                    }
+                }
+                remaining_fields.remove(&Either::Right(name))
+            };
 
         let mut seen_fields = FxHashMap::default();
 
@@ -1979,14 +1995,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         for (idx, field) in hir_fields.iter().enumerate() {
             // FIXME(ptr_metadata_fields): tcx.adjust_ident(field.ident, variant.def_id); from check_struct_expr_fields?
             let ident = field.ident;
-            let field_type = if let Some((i, v_field)) = remaining_fields.remove(&ident) {
+            let field_type = if let Some((i, v_field)) =
+                remove_field(&mut remaining_fields, ident.name, Some(ident.span))
+            {
                 seen_fields.insert(ident, field.span);
                 self.write_field_index(field.hir_id, i);
 
                 // FIXME(ptr_metadata_fields): look at stability of struct fields to get stability of their metadata fields.
                 // Probably will require more info from MetadataFields::KnownFields.
 
-                v_field.2
+                v_field.3
             } else {
                 error_happened = true;
                 let guar = if let Some(prev_span) = seen_fields.get(&ident) {
@@ -1996,6 +2014,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         ident,
                     })
                 } else {
+                    tracing::warn!(
+                        "expected one of {expected_fields:?}, got {:?}; seen = {seen_fields:?}",
+                        field.ident
+                    );
                     struct_span_code_err!(
                         self.dcx(),
                         field.ident.span,
@@ -2048,10 +2070,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         if let hir::StructTailExpr::DefaultFields(span) = *base_expr {
             let mut missing_mandatory_fields = Vec::new();
             let mut missing_optional_fields = Vec::new();
-            for (ident, _vis, ty) in expected_fields {
+            for (name, span, _vis, ty) in expected_fields {
                 // FIXME(ptr_metadata_fields): tcx.adjust_ident from check_struct_expr_fields?
                 // let ident = self.tcx.adjust_ident(f.ident(self.tcx), variant.def_id);
-                if let Some(_) = remaining_fields.remove(&ident) {
+                if let Some(_) = remove_field(&mut remaining_fields, name, span) {
                     let field_is_required = match ty.kind() {
                         ty::PtrMetadata(field_pointee) => {
                             !field_pointee.is_thin(tcx, self.infcx.typing_env(self.param_env))
@@ -2059,9 +2081,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         _ => true,
                     };
                     if field_is_required {
-                        missing_mandatory_fields.push(ident);
+                        missing_mandatory_fields.push(name);
                     } else {
-                        missing_optional_fields.push(ident);
+                        missing_optional_fields.push(name);
                     }
                 }
             }
@@ -2082,18 +2104,20 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 return ptr_metadata_ty;
             }
             let fru_tys =
-                expected_fields.iter().map(|(_, _, ty)| self.normalize(span, ty)).collect();
+                expected_fields.iter().map(|(_, _, _, ty)| self.normalize(span, ty)).collect();
             self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
         } else if let hir::StructTailExpr::Base(_) = base_expr {
             // FIXME(ptr_metadata_v2): Interaction with type_changing_struct_update feature
             let fru_tys =
-                expected_fields.iter().map(|(_, _, ty)| self.normalize(expr.span, ty)).collect();
+                expected_fields.iter().map(|(_, _, _, ty)| self.normalize(expr.span, ty)).collect();
             self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
         } else if !remaining_fields.is_empty() {
             debug!(?remaining_fields);
             let private_fields: Vec<_> = expected_fields
                 .iter()
-                .filter(|(_, vis, _)| !vis.is_accessible_from(tcx.parent_module(expr.hir_id), tcx))
+                .filter(|(_, _, vis, _)| {
+                    !vis.is_accessible_from(tcx.parent_module(expr.hir_id), tcx)
+                })
                 .collect();
 
             if !private_fields.is_empty() {
@@ -2110,7 +2134,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
                 let displayable_field_names: Vec<&str> = remaining_fields
                     .items()
-                    .map(|(ident, _)| ident.as_str())
+                    .map(|(name, _)| match name {
+                        Either::Left(ident) => ident.as_str(),
+                        Either::Right(sym) => sym.as_str(),
+                    })
                     .into_sorted_stable_ord();
 
                 let mut truncated_fields_error = String::new();
@@ -3111,14 +3138,18 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
                     match metadata_fields {
                         ty::layout::MetadataFields::KnownFields(fields) => {
-                            for (i, metadata_field) in fields.iter().enumerate() {
+                            for (i, (mfname, mfspan, _mfvis, mfty)) in fields.iter().enumerate() {
                                 // FIXME(ptr_metadata_v2): visibility
-                                if field == metadata_field.0 {
+                                let is_field = match mfspan {
+                                    Some(mfspan) => field == Ident::new(mfname, mfspan),
+                                    None => field.name == mfname,
+                                };
+                                if is_field {
                                     let adjustments = self.adjust_steps(&autoderef);
                                     self.apply_adjustments(base, adjustments);
                                     self.register_predicates(autoderef.into_obligations());
                                     self.write_field_index(expr.hir_id, FieldIdx::from_usize(i));
-                                    return metadata_field.2;
+                                    return mfty;
                                 }
                             }
                         }

@@ -2186,7 +2186,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                 let Some(field) = fields.get(field_index.as_usize()) else {
                     return Err(FieldAccessError::OutOfRange { field_count: fields.len() });
                 };
-                Ok(self.normalize(field.2, location))
+                Ok(self.normalize(field.3, location))
             }
             AggregateKind::Closure(_, args) => {
                 match args.as_closure().upvar_tys().get(field_index.as_usize()) {

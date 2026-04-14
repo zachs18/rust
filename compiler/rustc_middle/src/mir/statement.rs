@@ -179,7 +179,7 @@ impl<'tcx> PlaceTy<'tcx> {
                             bug!("field {f:?} out of range for {self_ty}")
                         }
                     };
-                    metadata_fields[f.as_usize()].2
+                    metadata_fields[f.as_usize()].3
                 }
                 _ => bug!("can't project out of {self_ty:?}"),
             }

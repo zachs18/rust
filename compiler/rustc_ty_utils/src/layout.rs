@@ -426,7 +426,7 @@ fn layout_of_uncached<'tcx>(
                     }
                 };
 
-            let metadata_field_tys = metadata_fields.iter().map(|(_name, _vis, ty)| ty);
+            let metadata_field_tys = metadata_fields.iter().map(|(_name, _span, _vis, ty)| ty);
             let metadata_field_ty_layouts =
                 metadata_field_tys.map(|ty| cx.layout_of(ty)).collect::<Result<Vec<_>, _>>()?;
             let repr = ReprOptions { flags: ReprFlags::IS_LINEAR, ..ReprOptions::default() };

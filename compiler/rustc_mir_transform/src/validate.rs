@@ -814,7 +814,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                                 return;
                             }
                         };
-                        let f_ty = metadata_fields[f.as_usize()].2;
+                        let f_ty = metadata_fields[f.as_usize()].3;
 
                         check_equal(self, location, f_ty);
                     }
@@ -1096,7 +1096,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                     };
                     for (field, expected) in itertools::zip_eq(fields, expected_fields) {
                         let src_ty = field.ty(self.body, self.tcx);
-                        let dest_ty = expected.2;
+                        let dest_ty = expected.3;
                         if !self.mir_assign_valid_types(src_ty, dest_ty) {
                             self.fail(
                                 location,
