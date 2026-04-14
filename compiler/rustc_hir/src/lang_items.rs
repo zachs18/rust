@@ -269,6 +269,7 @@ language_item_table! {
     PartialOrd,              sym::partial_ord,         partial_ord_trait,          Target::Trait,          GenericRequirement::Exact(1);
     Ord,                     sym::Ord,                 ord_trait,                  Target::Trait,          GenericRequirement::Exact(0);
     OrdCmp,                  sym::ord_cmp_method,      ord_cmp_method,             Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    HashTrait,               sym::Hash,                hash_trait,                 Target::Trait,          GenericRequirement::Exact(0);
     HashMethod,              sym::hash_method,         hash_method,                Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
     DebugTrait,              sym::debug_trait,         debug_trait,                Target::Trait,          GenericRequirement::None;
     FormatterDebugStructMethod, sym::formatter_debug_struct_method, formatter_debug_struct_method, Target::Method(MethodKind::Inherent), GenericRequirement::None;

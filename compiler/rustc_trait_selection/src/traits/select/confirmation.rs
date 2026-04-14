@@ -264,6 +264,13 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     unreachable!("tried to assemble `Debug` for non-PtrMetadata type");
                 }
             }
+            Some(LangItem::HashTrait) => {
+                if self_ty.is_ptr_metadata() {
+                    ty::Binder::dummy(vec![])
+                } else {
+                    unreachable!("tried to assemble `Debug` for non-PtrMetadata type");
+                }
+            }
             Some(LangItem::FusedIterator) => {
                 if self.coroutine_is_gen(self_ty) {
                     ty::Binder::dummy(vec![])

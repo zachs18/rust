@@ -180,8 +180,9 @@ pub enum InstanceKind<'tcx> {
     ///
     /// Automatically generated for all `T`.
     ///
-    /// The `DefId` is for `Hash::hash`, the `Ty` is the type `T`.
-    PtrMetadataHashShim(DefId, Ty<'tcx>),
+    /// The `DefId` is for `Hash::hash`, the first `Ty` is the pointee type `T`, the second `Ty`
+    /// is the hasher type (the `H` in `fn hash<H: Hasher>(&self, hasher: &mut H)`).
+    PtrMetadataHashShim(DefId, Ty<'tcx>, Ty<'tcx>),
 
     /// Compiler-generated `<builtin # ptr_metadata(T) as Debug>::fmt` implementation.
     ///
@@ -277,7 +278,7 @@ impl<'tcx> InstanceKind<'tcx> {
             | InstanceKind::DropGlue(def_id, _)
             | InstanceKind::CloneShim(def_id, _)
             | InstanceKind::PtrMetadataCmpShim(def_id, _)
-            | InstanceKind::PtrMetadataHashShim(def_id, _)
+            | InstanceKind::PtrMetadataHashShim(def_id, _, _)
             | InstanceKind::PtrMetadataDebugShim(def_id, _)
             | InstanceKind::FnPtrAddrShim(def_id, _)
             | InstanceKind::FutureDropPollShim(def_id, _, _)

@@ -393,8 +393,8 @@ impl<'tcx, P: Printer<'tcx> + std::fmt::Write> Print<'tcx, P> for ty::Instance<'
             ty::InstanceKind::PtrMetadataDebugShim(_, ty) => {
                 cx.write_str(&format!(" - ptr_metadata_debug_fmt_shim({ty})"))?
             }
-            ty::InstanceKind::PtrMetadataHashShim(_, ty) => {
-                cx.write_str(&format!(" - ptr_metadata_hash_shim({ty})"))?
+            ty::InstanceKind::PtrMetadataHashShim(_, pointee_ty, hasher_ty) => {
+                cx.write_str(&format!(" - ptr_metadata_hash_shim({pointee_ty}-{hasher_ty})"))?
             }
             ty::InstanceKind::FnPtrAddrShim(_, ty) => cx.write_str(&format!(" - shim({ty})"))?,
             ty::InstanceKind::FutureDropPollShim(_, proxy_ty, impl_ty) => {

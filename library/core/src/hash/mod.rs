@@ -181,6 +181,7 @@ mod sip;
 /// [`hash`]: Hash::hash
 /// [impl]: ../../std/primitive.str.html#impl-Hash-for-str
 #[stable(feature = "rust1", since = "1.0.0")]
+#[lang = "Hash"]
 #[rustc_diagnostic_item = "Hash"]
 pub trait Hash: marker::PointeeSized {
     /// Feeds this value into the given [`Hasher`].
@@ -973,14 +974,5 @@ mod impls {
         }
     }
 
-    #[stable(feature = "rust1", since = "1.0.0")]
-    impl<T: ?Sized + marker::PointeeSized> Hash for core::ptr::Metadata<T> {
-        #[inline]
-        fn hash<H: Hasher>(&self, _state: &mut H) {
-            // FIXME(ptr_metadata_v2): make this a builtin impl that actually hashes
-            // the metadata fields. The current (empty) impl is just a hack to avoid panicking.
-            // An empty Hash impl is technically correct, so this shouldn't cause issues
-            // other than hash collisions.
-        }
-    }
+    // impl Hash for core::ptr::Metadata<T> is a builtin impl
 }

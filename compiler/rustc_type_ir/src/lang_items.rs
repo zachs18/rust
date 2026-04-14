@@ -46,6 +46,7 @@ pub enum SolverTraitLangItem {
     FnPtrTrait,
     FusedIterator,
     Future,
+    HashTrait,
     Iterator,
     MetaSized,
     Ord,
