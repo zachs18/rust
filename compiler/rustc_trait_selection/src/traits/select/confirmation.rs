@@ -1183,6 +1183,35 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
             }
 
+            // `[T; N]` -> `[U; M]` where `T: Unsize<U>` and `N == M`
+            (&ty::Array(a, a_len), &ty::Array(b, b_len)) => {
+                // N == M
+                let InferOk { mut obligations, .. } = self
+                    .infcx
+                    .at(&obligation.cause, obligation.param_env)
+                    .eq(DefineOpaqueTypes::Yes, b_len, a_len)
+                    .map_err(|_| SelectionError::Unimplemented)?;
+
+                // Construct the nested element `T: Unsize<U>` predicate
+                let elem_obligation = obligation
+                    .with(tcx, ty::TraitRef::new(tcx, obligation.predicate.def_id(), [a, b]));
+                obligations.push(elem_obligation);
+
+                ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+            }
+
+            // `[T]` -> `[U]` where `T: Unsize<U>`
+            (&ty::Slice(a), &ty::Slice(b)) => {
+                let mut obligations = PredicateObligations::new();
+
+                // Construct the nested element `T: Unsize<U>` predicate
+                let elem_obligation = obligation
+                    .with(tcx, ty::TraitRef::new(tcx, obligation.predicate.def_id(), [a, b]));
+                obligations.push(elem_obligation);
+
+                ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+            }
+
             // `Struct<T>` -> `Struct<U>` or `Union<T>` -> `Union<U>`
             (&ty::Adt(def, args_a), &ty::Adt(_, args_b)) => {
                 let unsizing_params = tcx.unsizing_params_for_adt(def.did());
