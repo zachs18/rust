@@ -2165,11 +2165,13 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::PtrMetadata(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
-            | ty::Array(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
             | ty::Never
             | ty::Error(_) => ty::Binder::dummy(vec![]),
+
+            // Array is Sized/Thin/MetaSized exactly when the element type is.
+            ty::Array(elem, ..) => ty::Binder::dummy(vec![*elem]),
 
             ty::Str | ty::Slice(_) | ty::Dynamic(..) => match sizedness {
                 SizedTraitKind::Sized => unreachable!("tried to assemble `Sized` for unsized type"),
