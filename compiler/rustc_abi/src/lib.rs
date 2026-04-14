@@ -1688,6 +1688,9 @@ pub enum FieldsShape<FieldIdx: Idx> {
         /// Offsets for the first byte of each field,
         /// ordered to match the source definition order.
         /// This vector does not go in increasing order.
+        /// This is exact for `Sized` fields that are not after an unsized field.
+        /// For the first in-memory-order unsized field, the offset is this value rounded up to its effective alignment.
+        /// For any field after the first in-memory-order unsized field, this is a lower bound.
         // FIXME(eddyb) use small vector optimization for the common case.
         offsets: IndexVec<FieldIdx, Size>,
 
