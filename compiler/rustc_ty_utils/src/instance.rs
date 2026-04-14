@@ -460,6 +460,7 @@ fn resolve_associated_item<'tcx>(
             }
         }
         traits::ImplSource::Param(..)
+        | traits::ImplSource::Builtin(BuiltinImplSource::Unsize { .. }, _)
         | traits::ImplSource::Builtin(BuiltinImplSource::TraitUpcasting { .. }, _) => None,
     })
 }

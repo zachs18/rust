@@ -177,7 +177,11 @@ pub enum SelectionCandidate<'tcx> {
 
     BuiltinObjectCandidate,
 
-    BuiltinUnsizeCandidate,
+    BuiltinUnsizeCandidate {
+        /// We can unsize `[T; N]` to `[T]` or `[U] where T: Unsize<U>`.
+        /// This keeps track of which is being done, if applicable.
+        array_keep_elem: bool,
+    },
 
     BikeshedGuaranteedNoDropCandidate,
 }

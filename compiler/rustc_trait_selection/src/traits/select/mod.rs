@@ -2003,6 +2003,19 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             None => return None,
         }
 
+        // We prefer `[T; 0] -> [T]` over `[T; 0] -> [U] where T: Unsize<U>` where both apply
+        // for type inference reasons.
+        // FIXME(more_unsized): This seems like a hack... is there a better way to do this?
+        // or are we stuck with multiple unsizing steps?
+        if candidates
+            .iter()
+            .any(|c| matches!(c.candidate, BuiltinUnsizeCandidate { array_keep_elem: true }))
+        {
+            candidates.retain(|c| {
+                !matches!(c.candidate, BuiltinUnsizeCandidate { array_keep_elem: false })
+            });
+        }
+
         // Finally, handle overlapping user-written impls.
         let impls = candidates.iter().filter_map(|c| {
             if let ImplCandidate(def_id) = c.candidate {
@@ -2044,7 +2057,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 | TraitAliasCandidate
                 | TraitUpcastingUnsizeCandidate(_)
                 | BuiltinObjectCandidate
-                | BuiltinUnsizeCandidate
+                | BuiltinUnsizeCandidate { .. }
                 | BikeshedGuaranteedNoDropCandidate => false,
                 // Non-global param candidates have already been handled, global
                 // where-bounds get ignored.

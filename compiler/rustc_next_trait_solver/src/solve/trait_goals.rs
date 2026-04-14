@@ -893,10 +893,10 @@ where
                     ecx.consider_builtin_unsize_to_dyn_candidate(goal, b_region, b_data),
                 ),
 
-                // `[T; N]` -> `[T]` unsizing
-                (ty::Array(a_elem_ty, ..), ty::Slice(b_elem_ty)) => result_to_single(
-                    ecx.consider_builtin_array_to_slice_unsize(goal, a_elem_ty, b_elem_ty),
-                ),
+                // `[T; N]` -> `[U]` unsizing, where `T = U`, or `T: Unsize<U>`
+                (ty::Array(a_elem_ty, ..), ty::Slice(b_elem_ty)) => {
+                    ecx.consider_builtin_array_to_slice_unsize(goal, a_elem_ty, b_elem_ty)
+                }
 
                 // `[T]` -> `[U]` is only unsizing if `T: Unsize<U>`
                 (ty::Slice(a_elem_ty), ty::Slice(b_elem_ty)) => result_to_single(
@@ -1201,11 +1201,12 @@ where
         })
     }
 
-    /// We have the following builtin impl for arrays:
+    /// We have the following builtin impls for arrays:
     /// ```ignore (builtin impl example)
     /// impl<T: ?Sized, const N: usize> Unsize<[T]> for [T; N] {}
+    /// impl<T: ?Sized, U: ?Sized + Unsize<T>, const N: usize> Unsize<[T]> for [U; N] {}
     /// ```
-    /// While the impl itself could theoretically not be builtin,
+    /// While the impls themselves could theoretically not be builtin,
     /// the actual unsizing behavior is builtin. Its also easier to
     /// make all impls of `Unsize` builtin as we're able to use
     /// `#[rustc_deny_explicit_impl]` in this case.
@@ -1214,10 +1215,29 @@ where
         goal: Goal<I, (I::Ty, I::Ty)>,
         a_elem_ty: I::Ty,
         b_elem_ty: I::Ty,
-    ) -> Result<Candidate<I>, NoSolution> {
-        self.eq(goal.param_env, a_elem_ty, b_elem_ty)?;
-        self.probe_builtin_trait_candidate(BuiltinImplSource::Misc)
-            .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
+    ) -> Vec<Candidate<I>> {
+        let keep_elem_candidate = self.probe(|_| ProbeKind::UnsizeAssembly).enter(|ecx| {
+            ecx.eq(goal.param_env, a_elem_ty, b_elem_ty)?;
+            ecx.probe_builtin_trait_candidate(BuiltinImplSource::Unsize { array_keep_elem: true })
+                .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
+        });
+        let unsize_elem_candidate = self.probe(|_| ProbeKind::UnsizeAssembly).enter(|ecx| {
+            let cx = ecx.cx();
+            ecx.add_goal(
+                GoalSource::ImplWhereBound,
+                goal.with(
+                    cx,
+                    ty::TraitRef::new(
+                        cx,
+                        cx.require_trait_lang_item(SolverTraitLangItem::Unsize),
+                        [a_elem_ty, b_elem_ty],
+                    ),
+                ),
+            );
+            ecx.probe_builtin_trait_candidate(BuiltinImplSource::Unsize { array_keep_elem: false })
+                .enter(|ecx| ecx.evaluate_added_goals_and_make_canonical_response(Certainty::Yes))
+        });
+        [keep_elem_candidate, unsize_elem_candidate].into_iter().flatten().collect()
     }
 
     /// We have the following builtin impl for slices:
@@ -1654,6 +1674,26 @@ where
 
         self.filter_specialized_impls(AllowInferenceConstraints::No, &mut candidates);
         self.unsound_prefer_builtin_dyn_impl(&mut candidates);
+
+        // We prefer `[T; 0] -> [T]` over `[T; 0] -> [U] where T: Unsize<U>` where both apply
+        // for type inference reasons.
+        // FIXME(more_unsized): This seems like a hack... is there a better way to do this?
+        // or are we stuck with multiple unsizing steps?
+        if candidates.iter().any(|c| {
+            matches!(
+                c.source,
+                CandidateSource::BuiltinImpl(BuiltinImplSource::Unsize { array_keep_elem: true })
+            )
+        }) {
+            candidates.retain(|c| {
+                !matches!(
+                    c.source,
+                    CandidateSource::BuiltinImpl(BuiltinImplSource::Unsize {
+                        array_keep_elem: false
+                    })
+                )
+            });
+        }
 
         // If there are *only* global where bounds, then make sure to return that this
         // is still reported as being proven-via the param-env so that rigid projections
