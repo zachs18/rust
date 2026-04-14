@@ -1,7 +1,7 @@
 //! Indexing implementations for `[T]`.
 
 use crate::intrinsics::slice_get_unchecked;
-use crate::marker::Destruct;
+use crate::marker::{Destruct, MetaSized};
 use crate::panic::const_panic;
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{ops, range};
@@ -10,6 +10,7 @@ use crate::{ops, range};
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 impl<T, I> const ops::Index<I> for [T]
 where
+    T: MetaSized,
     I: [const] SliceIndex<[T]>,
 {
     type Output = I::Output;
@@ -24,6 +25,7 @@ where
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 impl<T, I> const ops::IndexMut<I> for [T]
 where
+    T: MetaSized,
     I: [const] SliceIndex<[T]>,
 {
     #[inline(always)]
@@ -79,27 +81,29 @@ const fn slice_index_fail(start: usize, end: usize, len: usize) -> ! {
 // which use intrinsics directly to get *no* extra checks.
 
 #[inline(always)]
-const unsafe fn get_offset_len_noubcheck<T>(
+const unsafe fn get_offset_len_noubcheck<T: MetaSized>(
     ptr: *const [T],
     offset: usize,
     len: usize,
 ) -> *const [T] {
-    let ptr = ptr as *const T;
+    let ptr = ptr.as_ptr();
     // SAFETY: The caller already checked these preconditions
     let ptr = unsafe { crate::intrinsics::offset(ptr, offset) };
-    crate::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(for [T]; len, ..))
+    let (ptr, elem) = ptr.to_raw_parts();
+    crate::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(for [T]; len, elem, ..))
 }
 
 #[inline(always)]
-const unsafe fn get_offset_len_mut_noubcheck<T>(
+const unsafe fn get_offset_len_mut_noubcheck<T: MetaSized>(
     ptr: *mut [T],
     offset: usize,
     len: usize,
 ) -> *mut [T] {
-    let ptr = ptr as *mut T;
+    let ptr = ptr.as_mut_ptr();
     // SAFETY: The caller already checked these preconditions
     let ptr = unsafe { crate::intrinsics::offset(ptr, offset) };
-    crate::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(for [T]; len, ..))
+    let (ptr, elem) = ptr.to_raw_parts();
+    crate::intrinsics::aggregate_raw_ptr(ptr, core::ptr::build_metadata!(for [T]; len, elem, ..))
 }
 
 mod private_slice_index {
@@ -211,7 +215,7 @@ pub const unsafe trait SliceIndex<T: ?Sized>: private_slice_index::Sealed {
 /// The methods `index` and `index_mut` panic if the index is out of bounds.
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for usize {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for usize {
     type Output = T;
 
     #[inline]
@@ -282,7 +286,7 @@ unsafe impl<T> const SliceIndex<[T]> for usize {
 /// Because `IndexRange` guarantees `start <= end`, fewer checks are needed here
 /// than there are for a general `Range<usize>` (which might be `100..3`).
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::IndexRange {
     type Output = [T];
 
     #[inline]
@@ -359,7 +363,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
 /// - the end of the range is out of bounds.
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::Range<usize> {
     type Output = [T];
 
     #[inline]
@@ -460,7 +464,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
 
 #[stable(feature = "new_range_api", since = "CURRENT_RUSTC_VERSION")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for range::Range<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for range::Range<usize> {
     type Output = [T];
 
     #[inline]
@@ -499,7 +503,7 @@ unsafe impl<T> const SliceIndex<[T]> for range::Range<usize> {
 /// The methods `index` and `index_mut` panic if the end of the range is out of bounds.
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::RangeTo<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::RangeTo<usize> {
     type Output = [T];
 
     #[inline]
@@ -538,7 +542,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeTo<usize> {
 /// The methods `index` and `index_mut` panic if the start of the range is out of bounds.
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::RangeFrom<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::RangeFrom<usize> {
     type Output = [T];
 
     #[inline]
@@ -590,7 +594,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeFrom<usize> {
 
 #[stable(feature = "new_range_from_api", since = "CURRENT_RUSTC_VERSION")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for range::RangeFrom<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for range::RangeFrom<usize> {
     type Output = [T];
 
     #[inline]
@@ -628,7 +632,7 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeFrom<usize> {
 
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::RangeFull {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::RangeFull {
     type Output = [T];
 
     #[inline]
@@ -667,7 +671,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeFull {
 /// - the end of the range is out of bounds.
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
     type Output = [T];
 
     #[inline]
@@ -725,7 +729,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
 
 #[stable(feature = "new_range_inclusive_api", since = "1.95.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for range::RangeInclusive<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for range::RangeInclusive<usize> {
     type Output = [T];
 
     #[inline]
@@ -764,7 +768,7 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeInclusive<usize> {
 /// The methods `index` and `index_mut` panic if the end of the range is out of bounds.
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for ops::RangeToInclusive<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for ops::RangeToInclusive<usize> {
     type Output = [T];
 
     #[inline]
@@ -803,7 +807,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeToInclusive<usize> {
 /// The methods `index` and `index_mut` panic if the end of the range is out of bounds.
 #[stable(feature = "new_range_to_inclusive_api", since = "CURRENT_RUSTC_VERSION")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
-unsafe impl<T> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
+unsafe impl<T: MetaSized> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
     type Output = [T];
 
     #[inline]
@@ -1038,7 +1042,7 @@ pub(crate) const fn into_slice_range(
 }
 
 #[stable(feature = "slice_index_with_ops_bound_pair", since = "1.53.0")]
-unsafe impl<T> SliceIndex<[T]> for (ops::Bound<usize>, ops::Bound<usize>) {
+unsafe impl<T: MetaSized> SliceIndex<[T]> for (ops::Bound<usize>, ops::Bound<usize>) {
     type Output = [T];
 
     #[inline]

@@ -255,9 +255,9 @@ pub trait Machine<'tcx>: Sized {
         reason: mir::UnwindTerminateReason,
     ) -> InterpResult<'tcx>;
 
-    /// Called for all binary operations where the LHS has pointer type.
+    /// Called for all binary operations where the LHS has pointer type that fits in `ImmTy`.
     ///
-    /// Returns a (value, overflowed) pair if the operation succeeded
+    /// Returns the result of the operation.
     fn binary_ptr_op(
         ecx: &InterpCx<'tcx, Self>,
         bin_op: mir::BinOp,

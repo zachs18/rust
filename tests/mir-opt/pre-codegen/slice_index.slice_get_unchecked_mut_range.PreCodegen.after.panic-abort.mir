@@ -15,11 +15,31 @@ fn slice_get_unchecked_mut_range(_1: &mut [u32], _2: std::ops::Range<usize>) -> 
             let _8: usize;
             scope 3 {
                 scope 6 (inlined core::slice::index::get_offset_len_mut_noubcheck::<u32>) {
-                    let mut _9: *mut u32;
+                    let _9: *mut u32;
                     let mut _11: {ptr metadata for [u32]};
                     scope 7 {
                         let _10: *mut u32;
                         scope 8 {
+                            scope 9 {
+                            }
+                            scope 16 (inlined std::ptr::mut_ptr::<impl *mut u32>::to_raw_parts) {
+                                scope 17 (inlined std::ptr::mut_ptr::<impl *mut u32>::cast::<()>) {
+                                }
+                                scope 18 (inlined std::ptr::metadata::<u32>) {
+                                }
+                            }
+                        }
+                    }
+                    scope 10 (inlined std::ptr::mut_ptr::<impl *mut [u32]>::as_mut_ptr) {
+                        scope 11 {
+                            scope 15 (inlined std::ptr::from_raw_parts_mut::<u32, ()>) {
+                            }
+                        }
+                        scope 12 (inlined std::ptr::mut_ptr::<impl *mut [u32]>::to_raw_parts) {
+                            scope 13 (inlined std::ptr::mut_ptr::<impl *mut [u32]>::cast::<()>) {
+                            }
+                            scope 14 (inlined std::ptr::metadata::<[u32]>) {
+                            }
                         }
                     }
                 }
@@ -35,7 +55,6 @@ fn slice_get_unchecked_mut_range(_1: &mut [u32], _2: std::ops::Range<usize>) -> 
         _3 = move (_2.0: usize);
         _4 = move (_2.1: usize);
         StorageLive(_12);
-        StorageLive(_5);
         _5 = &raw mut (*_1);
         StorageLive(_8);
         StorageLive(_6);
@@ -47,17 +66,14 @@ fn slice_get_unchecked_mut_range(_1: &mut [u32], _2: std::ops::Range<usize>) -> 
         StorageDead(_6);
         _8 = SubUnchecked(copy _4, copy _3);
         StorageLive(_9);
-        StorageLive(_10);
         _9 = copy _5 as *mut u32 (PtrToPtr);
         _10 = Offset(copy _9, copy _3);
         StorageLive(_11);
         _11 = builtin # ptr_metadata([u32]) from (copy _8, const ZeroSized: {ptr metadata for u32});
         _12 = *mut [u32] from (copy _10, move _11);
         StorageDead(_11);
-        StorageDead(_10);
         StorageDead(_9);
         StorageDead(_8);
-        StorageDead(_5);
         _0 = &mut (*_12);
         StorageDead(_12);
         return;

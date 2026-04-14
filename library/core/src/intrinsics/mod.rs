@@ -933,7 +933,7 @@ pub const unsafe fn arith_offset<T>(dst: *const T, offset: isize) -> *const T;
 pub const unsafe fn slice_get_unchecked<
     ItemPtr: bounds::ChangePointee<[T], Pointee = T, Output = SlicePtr>,
     SlicePtr,
-    T,
+    T: MetaSized,
 >(
     slice_ptr: SlicePtr,
     index: usize,
