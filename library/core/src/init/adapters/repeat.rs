@@ -1,5 +1,7 @@
 use crate::init::util::InitializingSlice;
-use crate::init::{ConstLength, Init, Length, PinInit, RuntimeLength};
+use crate::init::{
+    ConstLength, Init, InitMut, InitOnce, Length, PinInit, PinInitMut, PinInitOnce, RuntimeLength,
+};
 use crate::marker::MetaSized;
 use crate::mem::MaybeUninit;
 use crate::ptr::{Metadata, build_metadata};
@@ -34,15 +36,19 @@ impl<I> Repeat<I, RuntimeLength> {
     }
 }
 
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: Clone + PinInit<T, Error, Arg>>
-    PinInit<[T], Error, Arg> for Repeat<I, L>
+unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
+    PinInitOnce<[T], Error, Arg> for Repeat<I, L>
 {
     fn metadata(this: &Self) -> Metadata<[T]> {
         build_metadata!(len: this.length.length(), elem: I::metadata(&this.elem), ..)
     }
 
-    unsafe fn init(
-        this: Self,
+    fn should_zero(this: &Self) -> bool {
+        <I as PinInitOnce<T, Error, Arg>>::should_zero(&this.elem)
+    }
+
+    unsafe fn init_once(
+        mut this: Self,
         dst: &mut MaybeUninit<[T]>,
         arg: Arg,
         pre_zeroed: bool,
@@ -52,10 +58,48 @@ unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: Clone + PinInit<T, Er
         debug_assert_eq!(dst.len(), count);
         // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
         let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
-        for (idx, (elem, arg)) in core::iter::repeat_n((this.elem, arg), count).enumerate() {
+        let elem = &mut this.elem;
+        for (idx, arg) in core::iter::repeat_n(arg, count).enumerate() {
+            // we do this so the last element can be initialized using `init_once`,
+            // which could avoid cloning.
+            if idx < count - 1 {
+                // SAFETY: delegated to caller
+                unsafe {
+                    I::init_mut(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                }
+                // SAFETY: we just initialized buf.data[idx]
+                buf.initialized_len += 1;
+            } else {
+                // SAFETY: delegated to caller
+                unsafe {
+                    I::init_once(this.elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                }
+                break;
+            }
+        }
+        core::mem::forget(buf);
+        Ok(())
+    }
+}
+unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
+    PinInitMut<[T], Error, Arg> for Repeat<I, L>
+{
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<[T]>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let dst = dst.transpose_mut();
+        let count = this.length.length();
+        debug_assert_eq!(dst.len(), count);
+        // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
+        let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
+        let elem = &mut this.elem;
+        for (idx, arg) in core::iter::repeat_n(arg, count).enumerate() {
             // SAFETY: delegated to caller
             unsafe {
-                I::init(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+                I::init_mut(elem, &mut buf.data[idx], arg, pre_zeroed)?;
             }
             // SAFETY: we just initialized buf.data[idx]
             buf.initialized_len += 1;
@@ -64,29 +108,102 @@ unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: Clone + PinInit<T, Er
         Ok(())
     }
 }
-unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: Clone + Init<T, Error, Arg>>
+unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: PinInit<T, Error, Arg>>
+    PinInit<[T], Error, Arg> for Repeat<I, L>
+{
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<[T]>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let dst = dst.transpose_mut();
+        let count = this.length.length();
+        debug_assert_eq!(dst.len(), count);
+        // SAFETY: we only modify `buf.initialized_len` after we have initialized the relevant parts of `buf.data`
+        let mut buf = unsafe { InitializingSlice::from_fully_uninit(dst) };
+        let elem = &this.elem;
+        for (idx, arg) in core::iter::repeat_n(arg, count).enumerate() {
+            // SAFETY: delegated to caller
+            unsafe {
+                I::init_ref(elem, &mut buf.data[idx], arg, pre_zeroed)?;
+            }
+            // SAFETY: we just initialized buf.data[idx]
+            buf.initialized_len += 1;
+        }
+        core::mem::forget(buf);
+        Ok(())
+    }
+}
+unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
+    InitOnce<[T], Error, Arg> for Repeat<I, L>
+{
+}
+unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
+    InitMut<[T], Error, Arg> for Repeat<I, L>
+{
+}
+unsafe impl<T: MetaSized, L: Length, Error, Arg: Clone, I: Init<T, Error, Arg>>
     Init<[T], Error, Arg> for Repeat<I, L>
 {
 }
 
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: Clone + Init<T, Error, Arg>>
-    PinInit<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
+unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
+    PinInitOnce<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
 {
     fn metadata(this: &Self) -> Metadata<[T; N]> {
         build_metadata!(elem: I::metadata(&this.elem), ..)
     }
 
-    unsafe fn init(
-        this: Self,
+    fn should_zero(this: &Self) -> bool {
+        <I as PinInitOnce<T, Error, Arg>>::should_zero(&this.elem)
+    }
+
+    unsafe fn init_once(
+        mut this: Self,
         dst: &mut MaybeUninit<[T; N]>,
         arg: Arg,
         pre_zeroed: bool,
     ) -> Result<(), Error> {
         // SAFETY: delegated to caller
-        unsafe { <Self as PinInit<[T], Error, Arg>>::init(this, dst, arg, pre_zeroed) }
+        unsafe { <Self as PinInitMut<[T], Error, Arg>>::init_mut(&mut this, dst, arg, pre_zeroed) }
     }
 }
-unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: Clone + Init<T, Error, Arg>>
+unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: PinInitMut<T, Error, Arg>>
+    PinInitMut<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
+{
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<[T; N]>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <Self as PinInitMut<[T], Error, Arg>>::init_mut(this, dst, arg, pre_zeroed) }
+    }
+}
+unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: PinInit<T, Error, Arg>>
+    PinInit<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
+{
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<[T; N]>,
+        arg: Arg,
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <Self as PinInit<[T], Error, Arg>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
+    InitOnce<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
+{
+}
+unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: InitMut<T, Error, Arg>>
+    InitMut<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
+{
+}
+unsafe impl<T: MetaSized, const N: usize, Error, Arg: Clone, I: Init<T, Error, Arg>>
     Init<[T; N], Error, Arg> for Repeat<I, ConstLength<N>>
 {
 }

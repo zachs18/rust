@@ -248,7 +248,7 @@ use core::clone::TrivialClone;
 use core::clone::{CloneToUninit, UseCloned};
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
-use core::init::{Init, PinInit};
+use core::init::{Init, InitMut, InitOnce, PinInit, PinInitMut, PinInitOnce};
 use core::intrinsics::abort;
 #[cfg(not(no_global_oom_handling))]
 use core::iter;
@@ -1115,7 +1115,7 @@ impl<T, A: Allocator> Rc<T, A> {
 impl<T: ?Sized, A: Allocator> Rc<T, A> {
     /// Allocates and initializes a `Rc<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build_in(init: impl Init<T>, alloc: A) -> Rc<T, A> {
+    pub fn build_in(init: impl InitOnce<T>, alloc: A) -> Rc<T, A> {
         UniqueRc::into_rc(UniqueRc::build_in(init, alloc))
     }
 }
@@ -1123,7 +1123,7 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
 impl<T: ?Sized> Rc<T> {
     /// Allocates and initializes a `Rc<T>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build(init: impl Init<T>) -> Rc<T> {
+    pub fn build(init: impl InitOnce<T>) -> Rc<T> {
         UniqueRc::into_rc(UniqueRc::build(init))
     }
 }
@@ -4544,14 +4544,14 @@ impl<T, A: Allocator> UniqueRc<T, A> {
 impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     /// Allocates and initializes a `UniqueRc<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build_in(init: impl Init<T>, alloc: A) -> UniqueRc<T, A> {
-        let metadata = PinInit::metadata(&init);
-        let pre_zeroed = PinInit::should_zero(&init);
+    pub fn build_in(init: impl InitOnce<T>, alloc: A) -> UniqueRc<T, A> {
+        let metadata = PinInitOnce::metadata(&init);
+        let pre_zeroed = PinInitOnce::should_zero(&init);
 
         let mut this = Self::new_uninit_with_metadata_in(metadata, alloc, pre_zeroed);
 
         unsafe {
-            let Ok(_) = PinInit::init(init, &mut *this, (), pre_zeroed);
+            let Ok(_) = PinInitOnce::init_once(init, &mut *this, (), pre_zeroed);
         }
 
         unsafe { UniqueRc::assume_init(this) }
@@ -4568,16 +4568,16 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
     /// Fallibly allocates and initializes a `UniqueRc<T, A>`
     #[unstable(feature = "in_place_init", issue = "none")]
     pub fn try_build_in<E>(
-        init: impl Init<T, E>,
+        init: impl InitOnce<T, E>,
         alloc: A,
     ) -> Result<UniqueRc<T, A>, BuildError<T, E, A>> {
-        let metadata = PinInit::metadata(&init);
-        let pre_zeroed = PinInit::should_zero(&init);
+        let metadata = PinInitOnce::metadata(&init);
+        let pre_zeroed = PinInitOnce::should_zero(&init);
 
         let mut this = Self::try_new_uninit_with_metadata_in(metadata, alloc, pre_zeroed)
             .map_err(|err| err.map_err(|never| match never {}))?;
 
-        if let Err(err) = unsafe { PinInit::init(init, &mut *this, (), pre_zeroed) } {
+        if let Err(err) = unsafe { PinInitOnce::init_once(init, &mut *this, (), pre_zeroed) } {
             return Err(BuildError::init_error(err, UniqueRc::into_allocator(this)));
         }
 
@@ -4632,7 +4632,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
 impl<T: ?Sized> UniqueRc<T> {
     /// Allocates and initializes a `UniqueRc<T>`
     #[unstable(feature = "in_place_init", issue = "none")]
-    pub fn build(init: impl Init<T>) -> UniqueRc<T> {
+    pub fn build(init: impl InitOnce<T>) -> UniqueRc<T> {
         Self::build_in(init, Global)
     }
 }
@@ -5087,3 +5087,121 @@ unsafe impl<T: ?Sized + Allocator, A: Allocator> Allocator for Rc<T, A> {
         unsafe { (**self).shrink(ptr, old_layout, new_layout) }
     }
 }
+
+/// Initialize a place by cloning from an `Rc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitOnce<T, Error> for Rc<T, A> {
+    fn metadata(this: &Self) -> Metadata<T> {
+        ptr::metadata::<T>(&**this)
+    }
+
+    unsafe fn init_once(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(&this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from an `Rc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitMut<T, Error> for Rc<T, A> {
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from an `Rc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInit<T, Error> for Rc<T, A> {
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from an `Rc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitOnce<T, Error> for Rc<T, A> {}
+/// Initialize a place by cloning from an `Rc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitMut<T, Error> for Rc<T, A> {}
+/// Initialize a place by cloning from an `Rc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> Init<T, Error> for Rc<T, A> {}
+
+/// Initialize a place by moving from a `UniqueRc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized, A: Allocator, Error> PinInitOnce<T, Error> for UniqueRc<T, A> {
+    fn metadata(this: &Self) -> Metadata<T> {
+        ptr::metadata::<T>(&**this)
+    }
+
+    unsafe fn init_once(
+        this: Self,
+        dst: &mut MaybeUninit<T>,
+        _arg: (),
+        _pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        let size = mem::size_of_val::<T>(&*this);
+        let (ptr, alloc) = UniqueRc::into_raw_with_allocator(this);
+        // Don't drop `T`, but still deallocate the `UniqueRc` when we've moved from it
+        let this = unsafe { UniqueRc::from_raw_in(ptr as *mut MaybeUninit<T>, alloc) };
+        unsafe {
+            ptr::copy_nonoverlapping(
+                UniqueRc::as_ptr(&this).cast::<u8>(),
+                dst.as_mut_ptr().cast::<u8>(),
+                size,
+            );
+        }
+        Ok(())
+    }
+}
+/// Initialize a place by cloning from a `UniqueRc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInitMut<T, Error>
+    for UniqueRc<T, A>
+{
+    unsafe fn init_mut(
+        this: &mut Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by cloning from a `UniqueRc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> PinInit<T, Error> for UniqueRc<T, A> {
+    unsafe fn init_ref(
+        this: &Self,
+        dst: &mut MaybeUninit<T>,
+        arg: (),
+        pre_zeroed: bool,
+    ) -> Result<(), Error> {
+        // SAFETY: delegated to caller
+        unsafe { <T as PinInit<T, Error>>::init_ref(this, dst, arg, pre_zeroed) }
+    }
+}
+/// Initialize a place by moving from a `UniqueRc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized, A: Allocator, Error> InitOnce<T, Error> for UniqueRc<T, A> {}
+/// Initialize a place by cloning from a `UniqueRc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> InitMut<T, Error> for UniqueRc<T, A> {}
+/// Initialize a place by cloning from a `UniqueRc`.
+#[unstable(feature = "in_place_init", issue = "none")]
+unsafe impl<T: ?Sized + CloneToUninit, A: Allocator, Error> Init<T, Error> for UniqueRc<T, A> {}
