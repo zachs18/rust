@@ -455,27 +455,26 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     ) => {
                         bug!("{kind:?} is for borrowck, and should never appear in codegen");
                     }
-                    mir::CastKind::PtrToPtr
-                        if bx.cx().is_backend_scalar_pair(operand.layout) =>
-                    {
-                        if let OperandValue::Pair(data_ptr, meta) = operand.val {
-                            if bx.cx().is_backend_scalar_pair(cast) {
-                                OperandValue::Pair(data_ptr, meta)
+                    mir::CastKind::PtrToPtr => {
+                        if cast.layout.size < operand.layout.size {
+                            // Cast of wide-ptr to thin-ptr is an extraction of data-ptr
+                            assert_eq!(cast.layout.size, bx.data_layout().pointer_size());
+                            if let OperandValue::Ref(place_value) = operand.val {
+                                let place_ref = PlaceRef{val:place_value, layout:operand.layout};
+                                let data_ref = place_ref.project_field(bx, 0);
+                                bx.load_operand(data_ref).val
                             } else {
-                                // Cast of wide-ptr to thin-ptr is an extraction of data-ptr.
-                                OperandValue::Immediate(data_ptr)
+                                operand.extract_field(self, bx, 0).val
                             }
                         } else {
-                            // FIXME(ptr_metadata_v2): this will probably get hit when multi-wide pointers exist,
-                            // and we cast from a multi-wide pointer to a thin pointer (discarding the metadata).
-                            bug!("unexpected non-pair operand");
+                            // Otherwise transmute compatible metadata
+                            self.codegen_transmute_operand(bx, operand, cast)
                         }
                     }
                     | mir::CastKind::IntToInt
                     | mir::CastKind::FloatToInt
                     | mir::CastKind::FloatToFloat
                     | mir::CastKind::IntToFloat
-                    | mir::CastKind::PtrToPtr
                     | mir::CastKind::FnPtrToPtr
                     // Since int2ptr can have arbitrary integer types as input (so we have to do
                     // sign extension and all that), it is currently best handled in the same code
