@@ -9,8 +9,7 @@ use std::ops::Range;
 // EMIT_MIR slice_index.slice_index_usize.PreCodegen.after.mir
 pub fn slice_index_usize(slice: &[u32], index: usize) -> u32 {
     // CHECK-LABEL: slice_index_usize
-    // CHECK: [[META:_[0-9]+]] = PtrMetadata(copy _1)
-    // CHECK: Lt(copy _2, copy ([[META]].0: usize))
+    // CHECK: Lt(copy _2, copy ((_1.1: {ptr metadata for [u32]}).0: usize))
     // CHECK-NOT: precondition_check
     // CHECK: _0 = copy (*_1)[_2];
     slice[index]
@@ -19,8 +18,7 @@ pub fn slice_index_usize(slice: &[u32], index: usize) -> u32 {
 // EMIT_MIR slice_index.slice_get_mut_usize.PreCodegen.after.mir
 pub fn slice_get_mut_usize(slice: &mut [u32], index: usize) -> Option<&mut u32> {
     // CHECK-LABEL: slice_get_mut_usize
-    // CHECK: [[META:_[0-9]+]] = PtrMetadata(copy _1)
-    // CHECK: [[LEN:_[0-9]+]] = copy ([[META]].0: usize);
+    // CHECK: [[LEN:_[0-9]+]] = copy ((_1.1: {ptr metadata for [u32]}).0: usize);
     // CHECK: Lt(copy _2, move [[LEN]])
     // CHECK-NOT: precondition_check
     slice.get_mut(index)

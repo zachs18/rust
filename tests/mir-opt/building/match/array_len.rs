@@ -21,7 +21,8 @@ fn const_array_len<T>(x: [T; 5]) {
 fn slice_len<T>(x: &[T]) {
     // CHECK-LABEL: fn slice_len(
     // CHECK-NOT: Len
-    // CHECK: = PtrMetadata(copy _1);
+    // CHECK-NOT: PtrMetadata
+    // CHECK: = copy ((_1.1: {ptr metadata for [T]}).0: usize);
     if let [a, b, rest @ .., e] = x {
         opaque(a);
         opaque(b);

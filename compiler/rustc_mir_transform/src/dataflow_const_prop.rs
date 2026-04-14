@@ -8,9 +8,7 @@ use std::fmt::Formatter;
 
 use rustc_abi::{BackendRepr, FIRST_VARIANT, FieldIdx, Size, VariantIdx};
 use rustc_const_eval::const_eval::{DummyMachine, throw_machine_stop_str};
-use rustc_const_eval::interpret::{
-    ImmTy, Immediate, InterpCx, OpTy, PlaceTy, Projectable, interp_ok,
-};
+use rustc_const_eval::interpret::{ImmTy, Immediate, InterpCx, OpTy, PlaceTy, interp_ok};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def::DefKind;
 use rustc_middle::bug;
@@ -446,24 +444,16 @@ impl<'a, 'tcx> ConstAnalysis<'a, 'tcx> {
                 let (val, _overflow) = self.binary_op(state, *op, left, right);
                 val
             }
-            Rvalue::UnaryOp(op, operand) => {
-                if let UnOp::PtrMetadata = op
-                    && let Some(place) = operand.place()
-                    && let Some(len) = self.map.find_len(place.as_ref())
-                {
-                    return ValueOrPlace::Place(len);
-                }
-                match self.eval_operand(operand, state) {
-                    FlatSet::Elem(value) => self
-                        .ecx
-                        .borrow()
-                        .unary_op(*op, &value)
-                        .discard_err()
-                        .map_or(FlatSet::Top, |val| self.wrap_immediate(*val)),
-                    FlatSet::Bottom => FlatSet::Bottom,
-                    FlatSet::Top => FlatSet::Top,
-                }
-            }
+            Rvalue::UnaryOp(op, operand) => match self.eval_operand(operand, state) {
+                FlatSet::Elem(value) => self
+                    .ecx
+                    .borrow()
+                    .unary_op(*op, &value)
+                    .discard_err()
+                    .map_or(FlatSet::Top, |val| self.wrap_immediate(*val)),
+                FlatSet::Bottom => FlatSet::Bottom,
+                FlatSet::Top => FlatSet::Top,
+            },
             Rvalue::Discriminant(place) => state.get_discr(place.as_ref(), &self.map),
             Rvalue::Use(operand) => return self.handle_operand(operand, state),
             Rvalue::CopyForDeref(_) => bug!("`CopyForDeref` in runtime MIR"),
@@ -604,15 +594,6 @@ impl<'a, 'tcx> ConstAnalysis<'a, 'tcx> {
                         .discriminant_for_variant(op.layout.ty, variant)
                         .discard_err()?;
                     Some(discr_value.into())
-                }
-                TrackElem::DerefLen => {
-                    let op: OpTy<'_> = self.ecx.borrow().deref_pointer(op).discard_err()?.into();
-                    let len_usize = op.len(&self.ecx.borrow()).discard_err()?;
-                    let layout = self
-                        .tcx
-                        .layout_of(self.typing_env.as_query_input(self.tcx.types.usize))
-                        .unwrap();
-                    Some(ImmTy::from_uint(len_usize, layout).into())
                 }
             },
             &mut |place, op| {

@@ -6,26 +6,36 @@
       let mut _0: usize;
       let _2: *const [i32];
       let mut _3: *const i32;
-      let mut _4: *const [i32];
+      let mut _4: {ptr metadata for [i32]};
+      let mut _5: {ptr metadata for [i32]};
+      let mut _6: *const [i32];
       scope 1 {
           debug ptr => _2;
       }
   
       bb0: {
--         StorageLive(_2);
-+         nop;
+          StorageLive(_2);
           StorageLive(_3);
           _3 = copy _1;
--         _2 = *const [i32] from (move _3, const 1_usize);
-+         _2 = *const [i32] from (copy _1, const 1_usize);
-          StorageDead(_3);
-          StorageLive(_4);
-          _4 = copy _2;
--         _0 = PtrMetadata(move _4);
-+         _0 = const 1_usize;
-          StorageDead(_4);
--         StorageDead(_2);
+-         StorageLive(_4);
+-         _4 = builtin # ptr_metadata([i32]) from (const 1_usize, const ZeroSized: {ptr metadata for i32});
+-         _2 = *const [i32] from (move _3, move _4);
+-         StorageDead(_4);
 +         nop;
++         _4 = const {transmute(0x0000000000000001): {ptr metadata for [i32]}};
++         _2 = *const [i32] from (copy _1, const {transmute(0x0000000000000001): {ptr metadata for [i32]}});
++         nop;
+          StorageDead(_3);
+          StorageLive(_5);
+          StorageLive(_6);
+          _6 = copy _2;
+-         _5 = copy (_6.1: {ptr metadata for [i32]});
++         _5 = const {transmute(0x0000000000000001): {ptr metadata for [i32]}};
+          StorageDead(_6);
+-         _0 = copy (_5.0: usize);
++         _0 = const 1_usize;
+          StorageDead(_2);
+          StorageDead(_5);
           return;
       }
   }

@@ -243,7 +243,14 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
                 let offset = self.parse_operand(args[1])?;
                 Ok(Rvalue::BinaryOp(BinOp::Offset, Box::new((ptr, offset))))
             },
-            @call(mir_ptr_metadata, args) => Ok(Rvalue::UnaryOp(UnOp::PtrMetadata, self.parse_operand(args[0])?)),
+            @call(mir_ptr_metadata, args) => {
+                let (ptr, ptr_ty) = self.parse_place_inner(args[0])?;
+                let field = FieldIdx::ONE;
+                let field_ty = PlaceTy::field_ty(self.tcx, ptr_ty.ty, ptr_ty.variant_index, field);
+                let proj = PlaceElem::Field(field, field_ty);
+                let place = ptr.project_deeper(&[proj], self.tcx);
+                Ok(Rvalue::Use(Operand::Copy(place)))
+            },
             ExprKind::Borrow { borrow_kind, arg } => Ok(
                 Rvalue::Ref(self.tcx.lifetimes.re_erased, *borrow_kind, self.parse_place(*arg)?)
             ),

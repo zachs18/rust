@@ -2,13 +2,12 @@
 
 fn drop_in_place(_1: *mut [String]) -> () {
     let mut _0: ();
-    let mut _2: {ptr metadata for [std::string::String]};
+    let mut _2: usize;
     let mut _3: usize;
-    let mut _4: usize;
-    let mut _5: *mut std::string::String;
-    let mut _6: bool;
-    let mut _7: *mut std::string::String;
-    let mut _8: bool;
+    let mut _4: *mut std::string::String;
+    let mut _5: bool;
+    let mut _6: *mut std::string::String;
+    let mut _7: bool;
 
     bb0: {
         goto -> bb8;
@@ -23,31 +22,30 @@ fn drop_in_place(_1: *mut [String]) -> () {
     }
 
     bb3 (cleanup): {
-        _5 = &raw mut (*_1)[_4];
-        _4 = Add(move _4, const 1_usize);
-        drop((*_5)) -> [return: bb4, unwind terminate(cleanup)];
+        _4 = &raw mut (*_1)[_3];
+        _3 = Add(move _3, const 1_usize);
+        drop((*_4)) -> [return: bb4, unwind terminate(cleanup)];
     }
 
     bb4 (cleanup): {
-        _6 = Eq(copy _4, copy _3);
-        switchInt(move _6) -> [0: bb3, otherwise: bb2];
+        _5 = Eq(copy _3, copy _2);
+        switchInt(move _5) -> [0: bb3, otherwise: bb2];
     }
 
     bb5: {
-        _7 = &raw mut (*_1)[_4];
-        _4 = Add(move _4, const 1_usize);
-        drop((*_7)) -> [return: bb6, unwind: bb4];
+        _6 = &raw mut (*_1)[_3];
+        _3 = Add(move _3, const 1_usize);
+        drop((*_6)) -> [return: bb6, unwind: bb4];
     }
 
     bb6: {
-        _8 = Eq(copy _4, copy _3);
-        switchInt(move _8) -> [0: bb5, otherwise: bb1];
+        _7 = Eq(copy _3, copy _2);
+        switchInt(move _7) -> [0: bb5, otherwise: bb1];
     }
 
     bb7: {
-        _2 = PtrMetadata(copy _1);
-        _3 = move (_2.0: usize);
-        _4 = const 0_usize;
+        _2 = copy ((_1.1: {ptr metadata for [std::string::String]}).0: usize);
+        _3 = const 0_usize;
         goto -> bb6;
     }
 

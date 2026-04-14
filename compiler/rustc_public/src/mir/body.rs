@@ -388,7 +388,6 @@ impl BinOp {
 pub enum UnOp {
     Not,
     Neg,
-    PtrMetadata,
 }
 
 impl UnOp {

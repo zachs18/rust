@@ -7,8 +7,7 @@
       let mut _0: ();
       let _3: std::simd::Simd<u8, 16>;
       let _4: usize;
-      let mut _5: {ptr metadata for [std::simd::Simd<u8, 16>]};
-      let mut _6: bool;
+      let mut _5: bool;
       scope 1 {
           debug a => _3;
       }
@@ -17,9 +16,8 @@
           StorageLive(_3);
           StorageLive(_4);
           _4 = const 0_usize;
-          _5 = PtrMetadata(copy _1);
-          _6 = Lt(copy _4, copy (_5.0: usize));
-          assert(move _6, "index out of bounds: the length is {} but the index is {}", move (_5.0: usize), copy _4) -> [success: bb1, unwind continue];
+          _5 = Lt(copy _4, copy ((_1.1: {ptr metadata for [std::simd::Simd<u8, 16>]}).0: usize));
+          assert(move _5, "index out of bounds: the length is {} but the index is {}", copy ((_1.1: {ptr metadata for [std::simd::Simd<u8, 16>]}).0: usize), copy _4) -> [success: bb1, unwind continue];
       }
   
       bb1: {

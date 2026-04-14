@@ -181,6 +181,19 @@ impl<'tcx> PlaceTy<'tcx> {
                     };
                     metadata_fields[f.as_usize()].3
                 }
+                ty::Ref(_, pointee_ty, _) | ty::RawPtr(pointee_ty, _) => {
+                    if f == FieldIdx::ZERO {
+                        if self_ty.is_raw_ptr() {
+                            Ty::new_untyped_ptr(tcx, /* is_nonnull */ false)
+                        } else {
+                            Ty::new_untyped_ptr(tcx, /* is_nonnull */ true)
+                        }
+                    } else if f == FieldIdx::ONE {
+                        Ty::new_ptr_metadata(tcx, *pointee_ty)
+                    } else {
+                        bug!("field {f:?} out of range for {self_ty}")
+                    }
+                }
                 _ => bug!("can't project out of {self_ty:?}"),
             }
         }
@@ -882,15 +895,9 @@ impl BorrowKind {
 }
 
 impl<'tcx> UnOp {
-    pub fn ty(&self, tcx: TyCtxt<'tcx>, arg_ty: Ty<'tcx>) -> Ty<'tcx> {
+    pub fn ty(&self, _tcx: TyCtxt<'tcx>, arg_ty: Ty<'tcx>) -> Ty<'tcx> {
         match self {
             UnOp::Not | UnOp::Neg => arg_ty,
-            UnOp::PtrMetadata => {
-                let Some(pointee_ty) = arg_ty.builtin_deref(true) else {
-                    bug!("Type {self:?} is not a pointer or reference type")
-                };
-                Ty::new_ptr_metadata(tcx, pointee_ty)
-            }
         }
     }
 }

@@ -60,7 +60,6 @@
 +         StorageLive(_7);
 +         _6 = &mut (*_4);
 +         StorageLive(_10);
-+         StorageLive(_12);
 +         StorageLive(_8);
 +         StorageLive(_9);
 +         StorageLive(_11);
@@ -68,8 +67,10 @@
 +         _9 = copy _11 as *mut A (Transmute);
 +         StorageDead(_11);
 +         _10 = copy ((*_6).1: usize);
++         StorageLive(_12);
 +         _12 = builtin # ptr_metadata([A]) from (copy _10, const ZeroSized: {ptr metadata for A});
 +         _8 = *mut [A] from (copy _9, copy _12);
++         StorageDead(_12);
 +         StorageDead(_9);
 +         StorageLive(_13);
 +         StorageLive(_14);
@@ -96,7 +97,6 @@
 +         StorageDead(_14);
 +         StorageDead(_13);
 +         StorageDead(_8);
-+         StorageDead(_12);
 +         StorageDead(_10);
 +         drop(((*_4).0: alloc::raw_vec::RawVec<A>)) -> [return: bb1, unwind unreachable];
 +     }

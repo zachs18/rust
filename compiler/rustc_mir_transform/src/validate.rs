@@ -1,6 +1,6 @@
 //! Validates the MIR to ensure that invariants are upheld.
 
-use rustc_abi::{ExternAbi, FIRST_VARIANT, Size};
+use rustc_abi::{ExternAbi, FIRST_VARIANT, FieldIdx, Size};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_hir::LangItem;
 use rustc_hir::attrs::InlineAttr;
@@ -818,6 +818,21 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
 
                         check_equal(self, location, f_ty);
                     }
+                    ty::Ref(_, pointee_ty, _) | ty::RawPtr(pointee_ty, _) => {
+                        let f_ty = if f == FieldIdx::ZERO {
+                            if parent_ty.ty.is_raw_ptr() {
+                                Ty::new_untyped_ptr(self.tcx, /* is_nonnull */ false)
+                            } else {
+                                Ty::new_untyped_ptr(self.tcx, /* is_nonnull */ true)
+                            }
+                        } else if f == FieldIdx::ONE {
+                            Ty::new_ptr_metadata(self.tcx, *pointee_ty)
+                        } else {
+                            bug!("field {f:?} out of range for {}", parent_ty.ty)
+                        };
+
+                        check_equal(self, location, f_ty);
+                    }
                     _ => {
                         self.fail(location, format!("{:?} does not have fields", parent_ty.ty));
                     }
@@ -1282,13 +1297,6 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                             a,
                             "Cannot binary not type {:?}",
                             ty::Int(..) | ty::Uint(..) | ty::Bool
-                        );
-                    }
-                    UnOp::PtrMetadata => {
-                        check_kinds!(
-                            a,
-                            "Cannot PtrMetadata non-pointer non-reference type {:?}",
-                            ty::RawPtr(..) | ty::Ref(..)
                         );
                     }
                 }

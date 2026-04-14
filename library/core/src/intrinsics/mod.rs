@@ -3007,7 +3007,7 @@ pub const fn aggregate_raw_ptr<Ptr: bounds::BuiltinDeref, D, T: PointeeSized>(
 where
     Ptr: bounds::BuiltinDeref<Pointee = T>;
 
-/// Lowers in MIR to `Rvalue::UnaryOp` with `UnOp::PtrMetadata`.
+/// Lowers in MIR to a copy from `ptr`'s metadata field.
 ///
 /// This is used to implement functions like `ptr::metadata`.
 #[rustc_nounwind]

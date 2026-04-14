@@ -8,23 +8,21 @@ fn slice_index_range(_1: &[u32], _2: std::ops::Range<usize>) -> &[u32] {
     let mut _4: usize;
     scope 1 (inlined #[track_caller] core::slice::index::<impl Index<std::ops::Range<usize>> for [u32]>::index) {
         scope 2 (inlined #[track_caller] <std::ops::Range<usize> as SliceIndex<[u32]>>::index) {
-            let mut _7: {ptr metadata for [u32]};
-            let mut _8: usize;
-            let mut _9: bool;
-            let mut _10: *const [u32];
-            let _14: *const [u32];
-            let mut _15: {ptr metadata for [u32]};
-            let mut _16: usize;
-            let mut _17: !;
+            let mut _7: usize;
+            let mut _8: bool;
+            let mut _9: *const [u32];
+            let _13: *const [u32];
+            let mut _14: usize;
+            let mut _15: !;
             scope 3 (inlined core::num::<impl usize>::checked_sub) {
                 let mut _5: bool;
                 let mut _6: usize;
             }
             scope 4 (inlined core::slice::index::get_offset_len_noubcheck::<u32>) {
-                let mut _11: *const u32;
-                let mut _13: {ptr metadata for [u32]};
+                let mut _10: *const u32;
+                let mut _12: {ptr metadata for [u32]};
                 scope 5 {
-                    let _12: *const u32;
+                    let _11: *const u32;
                     scope 6 {
                     }
                 }
@@ -35,8 +33,6 @@ fn slice_index_range(_1: &[u32], _2: std::ops::Range<usize>) -> &[u32] {
     bb0: {
         _3 = move (_2.0: usize);
         _4 = move (_2.1: usize);
-        StorageLive(_7);
-        StorageLive(_15);
         StorageLive(_5);
         _5 = Lt(copy _4, copy _3);
         switchInt(move _5) -> [0: bb1, otherwise: bb4];
@@ -45,40 +41,37 @@ fn slice_index_range(_1: &[u32], _2: std::ops::Range<usize>) -> &[u32] {
     bb1: {
         _6 = SubUnchecked(copy _4, copy _3);
         StorageDead(_5);
-        StorageLive(_9);
         StorageLive(_8);
-        _7 = PtrMetadata(copy _1);
-        _8 = copy (_7.0: usize);
-        _9 = Le(copy _4, move _8);
-        switchInt(move _9) -> [0: bb2, otherwise: bb3];
+        StorageLive(_7);
+        _7 = copy ((_1.1: {ptr metadata for [u32]}).0: usize);
+        _8 = Le(copy _4, move _7);
+        switchInt(move _8) -> [0: bb2, otherwise: bb3];
     }
 
     bb2: {
-        StorageDead(_8);
+        StorageDead(_7);
         goto -> bb5;
     }
 
     bb3: {
-        StorageDead(_8);
-        StorageLive(_14);
-        StorageLive(_10);
-        _10 = &raw const (*_1);
-        StorageLive(_11);
-        StorageLive(_12);
-        _11 = copy _10 as *const u32 (PtrToPtr);
-        _12 = Offset(copy _11, copy _3);
+        StorageDead(_7);
         StorageLive(_13);
-        _13 = builtin # ptr_metadata([u32]) from (copy _6, const ZeroSized: {ptr metadata for u32});
-        _14 = *const [u32] from (copy _12, move _13);
-        StorageDead(_13);
+        StorageLive(_9);
+        _9 = &raw const (*_1);
+        StorageLive(_10);
+        StorageLive(_11);
+        _10 = copy _9 as *const u32 (PtrToPtr);
+        _11 = Offset(copy _10, copy _3);
+        StorageLive(_12);
+        _12 = builtin # ptr_metadata([u32]) from (copy _6, const ZeroSized: {ptr metadata for u32});
+        _13 = *const [u32] from (copy _11, move _12);
         StorageDead(_12);
         StorageDead(_11);
         StorageDead(_10);
-        _0 = &(*_14);
-        StorageDead(_14);
         StorageDead(_9);
-        StorageDead(_15);
-        StorageDead(_7);
+        _0 = &(*_13);
+        StorageDead(_13);
+        StorageDead(_8);
         return;
     }
 
@@ -88,9 +81,8 @@ fn slice_index_range(_1: &[u32], _2: std::ops::Range<usize>) -> &[u32] {
     }
 
     bb5: {
-        StorageLive(_16);
-        _15 = PtrMetadata(copy _1);
-        _16 = copy (_15.0: usize);
-        _17 = core::slice::index::slice_index_fail(move _3, move _4, move _16) -> unwind unreachable;
+        StorageLive(_14);
+        _14 = copy ((_1.1: {ptr metadata for [u32]}).0: usize);
+        _15 = core::slice::index::slice_index_fail(move _3, move _4, move _14) -> unwind unreachable;
     }
 }

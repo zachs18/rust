@@ -36,7 +36,7 @@ fn slice_ptr_get_unchecked_range(_1: *const [u32], _2: std::ops::Range<usize>) -
         StorageLive(_8);
         StorageLive(_6);
         StorageLive(_5);
-        _5 = PtrMetadata(copy _1);
+        _5 = copy (_1.1: {ptr metadata for [u32]});
         _6 = copy (_5.0: usize);
         StorageDead(_5);
         _7 = <std::ops::Range<usize> as SliceIndex<[T]>>::get_unchecked::precondition_check(copy _3, copy _4, move _6) -> [return: bb1, unwind unreachable];

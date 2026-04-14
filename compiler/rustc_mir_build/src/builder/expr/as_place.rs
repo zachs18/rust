@@ -691,7 +691,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     // temporary and statement in those cases. Note that we can
                     // only do that for `Copy` types -- not `&mut [_]` -- because
                     // the MIR we're building here needs to pass NLL later.
-                    Operand::Copy(Place::from(place.local))
+                    Place::from(place.local)
                 } else {
                     let ptr_ty = Ty::new_imm_ptr(self.tcx, place_ty);
                     let slice_ptr = self.temp(ptr_ty, span);
@@ -701,23 +701,18 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         slice_ptr,
                         Rvalue::RawPtr(RawPtrKind::FakeForPtrMetadata, place),
                     );
-                    Operand::Move(slice_ptr)
+                    slice_ptr
                 };
-
                 let meta_ty = Ty::new_ptr_metadata(self.tcx, place_ty);
-                let meta = self.temp(meta_ty, span);
-                self.cfg.push_assign(
-                    block,
-                    source_info,
-                    meta,
-                    Rvalue::UnaryOp(UnOp::PtrMetadata, ptr_or_ref),
+                let len = ptr_or_ref.project_deeper(
+                    &[
+                        PlaceElem::Field(FieldIdx::ONE, meta_ty),
+                        PlaceElem::Field(FieldIdx::ZERO, self.tcx.types.usize),
+                    ],
+                    self.tcx,
                 );
 
-                // FIXME(ptr_metadata_v2_fields): implement multiple fields
-                Operand::Move(meta.project_deeper(
-                    &[PlaceElem::Field(FieldIdx::ZERO, self.tcx.types.usize)],
-                    self.tcx,
-                ))
+                Operand::Copy(len)
             }
             _ => {
                 span_bug!(span, "len called on place of type {place_ty:?}")

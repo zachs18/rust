@@ -657,10 +657,6 @@ impl<'tcx> Visitor<'tcx> for Checker<'_, 'tcx> {
                             );
                         }
                     }
-                    UnOp::PtrMetadata => {
-                        // Getting the metadata from a pointer is always const.
-                        // We already validated the type is valid in the validator.
-                    }
                 }
             }
 

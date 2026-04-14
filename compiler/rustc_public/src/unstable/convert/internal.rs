@@ -757,7 +757,6 @@ impl RustcInternal for UnOp {
         match self {
             UnOp::Not => rustc_middle::mir::UnOp::Not,
             UnOp::Neg => rustc_middle::mir::UnOp::Neg,
-            UnOp::PtrMetadata => rustc_middle::mir::UnOp::PtrMetadata,
         }
     }
 }

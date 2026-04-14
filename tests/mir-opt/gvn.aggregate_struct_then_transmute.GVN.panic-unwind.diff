@@ -46,7 +46,7 @@
       let mut _49: u16;
       let mut _50: [u16; 1];
       let mut _52: *const u8;
-      let mut _53: ();
+      let mut _53: {ptr metadata for i32};
       let _54: ();
       let mut _55: *const u8;
       let mut _56: *const i32;
@@ -295,10 +295,10 @@
           StorageLive(_52);
           _52 = copy _2;
           StorageLive(_53);
--         _53 = ();
+-         _53 = builtin # ptr_metadata(i32) from ();
 -         _51 = *const i32 from (move _52, move _53);
-+         _53 = const ();
-+         _51 = *const i32 from (copy _2, const ());
++         _53 = const ZeroSized: {ptr metadata for i32};
++         _51 = *const i32 from (copy _2, const ZeroSized: {ptr metadata for i32});
           StorageDead(_53);
           StorageDead(_52);
           StorageLive(_54);

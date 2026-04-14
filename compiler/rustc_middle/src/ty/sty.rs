@@ -1946,9 +1946,6 @@ impl<'tcx> Ty<'tcx> {
     /// metadata. If it can't be determined exactly (perhaps due to still
     /// being generic) then a projection through `ptr::Pointee` will be returned.
     ///
-    /// This is particularly useful for getting the type of the result of
-    /// [`UnOp::PtrMetadata`](crate::mir::UnOp::PtrMetadata).
-    ///
     /// Panics if `self` is not dereferenceable.
     ///
     /// FIXME(ptr_metadata_v2): audit/remove all uses
