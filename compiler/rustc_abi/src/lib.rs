@@ -1704,6 +1704,11 @@ impl FieldOffset {
         self.offset
     }
 
+    #[inline]
+    pub fn try_exact_offset(&self) -> Option<Size> {
+        matches!(self.accuracy, OffsetAccuracy::Exact).then_some(self.offset)
+    }
+
     /// Is this field offset guaranteed to be `Size::ZERO`?
     ///
     /// This is always accurate for `OffsetAccuracy::Exact`, and for `OffsetAccuracy::RoundedUp`
@@ -1797,6 +1802,11 @@ impl<FieldIdx: Idx> FieldsShape<FieldIdx> {
             "FieldsShape::exact_offset called for non-exact offset {i:?}: {offset:?}"
         );
         offset.offset
+    }
+
+    #[inline]
+    pub fn try_exact_offset(&self, i: usize) -> Option<Size> {
+        self.offset(i).try_exact_offset()
     }
 
     /// Gets source indices of the fields by increasing offsets.
