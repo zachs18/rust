@@ -18,9 +18,9 @@ use rustc_target::callconv::FnAbi;
 use tracing::{debug, trace};
 
 use super::{
-    Frame, FrameInfo, GlobalId, InterpErrorInfo, InterpErrorKind, InterpResult, MPlaceTy, Machine,
-    MemPlaceMeta, Memory, OpTy, Place, PlaceTy, PointerArithmetic, Projectable, Provenance,
-    err_inval, interp_ok, throw_inval, throw_ub, throw_ub_format,
+    AnyMemPlaceMeta, Frame, FrameInfo, GlobalId, InterpErrorInfo, InterpErrorKind, InterpResult,
+    MPlaceTy, Machine, MemPlaceMetadata, Memory, OpTy, Place, PlaceTy, PointerArithmetic,
+    Projectable, Provenance, err_inval, interp_ok, throw_inval, throw_ub, throw_ub_format,
 };
 use crate::{enter_trace_span, util};
 
@@ -431,7 +431,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     /// This can fail to provide an answer for extern types.
     pub(super) fn size_and_align_from_meta(
         &self,
-        metadata: &MemPlaceMeta<M::Provenance>,
+        metadata: &AnyMemPlaceMeta<'tcx, M::Provenance>,
         layout: &TyAndLayout<'tcx>,
     ) -> InterpResult<'tcx, Option<(Size, Align)>> {
         if layout.is_sized() {
@@ -493,13 +493,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 interp_ok(Some((full_size, full_align)))
             }
             ty::Dynamic(expected_trait, _) => {
-                let vtable = metadata.unwrap_meta().to_pointer(self)?;
+                let vtable = metadata.scalar().to_pointer(self)?;
                 // Read size and align from vtable (already checks size).
                 interp_ok(Some(self.get_vtable_size_and_align(vtable, Some(expected_trait))?))
             }
 
             ty::Slice(_) | ty::Str => {
-                let len = metadata.unwrap_meta().to_target_usize(self)?;
+                let len = metadata.scalar().to_target_usize(self)?;
                 let elem = layout.field(self, 0);
 
                 // Make sure the slice is not too big.
@@ -651,7 +651,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 /// Helper struct for the `dump_place` function.
 pub struct PlacePrinter<'a, 'tcx, M: Machine<'tcx>> {
     ecx: &'a InterpCx<'tcx, M>,
-    place: Place<M::Provenance>,
+    place: Place<'tcx, M::Provenance>,
 }
 
 impl<'a, 'tcx, M: Machine<'tcx>> std::fmt::Debug for PlacePrinter<'a, 'tcx, M> {

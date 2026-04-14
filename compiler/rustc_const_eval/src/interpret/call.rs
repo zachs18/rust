@@ -21,7 +21,7 @@ use super::{
     throw_ub_format,
 };
 use crate::enter_trace_span;
-use crate::interpret::EnteredTraceSpan;
+use crate::interpret::{EnteredTraceSpan, MemPlaceMetadata};
 
 /// An argument passed to a function.
 #[derive(Clone, Debug)]
@@ -320,7 +320,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             let meta = caller_arg_copy.meta();
             // `check_argument_compat` ensures that if metadata is needed, both have the same type,
             // so we know they will use the metadata the same way.
-            assert!(!meta.has_meta() || caller_arg_copy.layout.ty == callee_ty);
+            assert!(!meta.has_metadata() || caller_arg_copy.layout.ty == callee_ty);
 
             self.storage_live_dyn(local, meta)?;
         }
@@ -737,7 +737,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert!(receiver_place.layout.is_unsized());
 
                 // Get the required information from the vtable.
-                let vptr = receiver_place.meta().unwrap_meta().to_pointer(self)?;
+                let vptr = receiver_place.meta().scalar().to_pointer(self)?;
                 let dyn_ty = self.get_ptr_vtable_ty(vptr, Some(receiver_trait))?;
                 let adjusted_recv = receiver_place.ptr();
 

@@ -16,8 +16,8 @@ use tracing::field::Empty;
 use tracing::{info, instrument, trace};
 
 use super::{
-    FnArg, FnVal, ImmTy, Immediate, InterpCx, InterpResult, Machine, MemPlaceMeta, PlaceTy,
-    Projectable, interp_ok, throw_ub, throw_unsup_format,
+    FnArg, FnVal, ImmTy, Immediate, InterpCx, InterpResult, Machine, PlaceTy, Projectable,
+    interp_ok, throw_ub, throw_unsup_format,
 };
 use crate::interpret::EnteredTraceSpan;
 use crate::{enter_trace_span, util};
@@ -300,11 +300,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let data = self.eval_operand(data, None)?;
                 let data = self.read_pointer(&data)?;
                 let meta = self.eval_operand(meta, None)?;
-                let meta = if meta.layout.is_zst() {
-                    MemPlaceMeta::None
-                } else {
-                    MemPlaceMeta::Meta(self.read_scalar(&meta)?)
-                };
+                let meta = if meta.layout.is_zst() { None } else { Some(self.read_scalar(&meta)?) };
                 let ptr_imm = Immediate::new_pointer_with_meta(data, meta, self);
                 let ptr = ImmTy::from_immediate(ptr_imm, dest.layout);
                 self.copy_op(&ptr, dest)?;

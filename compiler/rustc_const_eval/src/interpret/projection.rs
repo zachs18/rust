@@ -17,9 +17,11 @@ use rustc_middle::{bug, mir, span_bug, ty};
 use tracing::{debug, instrument};
 
 use super::{
-    InterpCx, InterpResult, MPlaceTy, Machine, MemPlaceMeta, OpTy, Provenance, Scalar, err_ub,
-    interp_ok, throw_ub, throw_unsup,
+    InterpCx, InterpResult, MPlaceTy, Machine, OpTy, Provenance, Scalar, err_ub, interp_ok,
+    throw_ub, throw_unsup,
 };
+use crate::interpret::ImmTy;
+use crate::interpret::place::{AnyMemPlaceMeta, MemPlaceMetadata};
 
 /// Describes the constraints placed on offset-projections.
 #[derive(Copy, Clone, Debug)]
@@ -36,7 +38,7 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
     fn layout(&self) -> TyAndLayout<'tcx>;
 
     /// Get the metadata of a wide value.
-    fn meta(&self) -> MemPlaceMeta<Prov>;
+    fn meta(&self) -> AnyMemPlaceMeta<'tcx, Prov>;
 
     /// Get the length of a slice/string/array stored here.
     fn len<M: Machine<'tcx, Provenance = Prov>>(
@@ -47,7 +49,7 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
         if layout.is_unsized() {
             // We need to consult `meta` metadata
             match layout.ty.kind() {
-                ty::Slice(..) | ty::Str => self.meta().unwrap_meta().to_target_usize(ecx),
+                ty::Slice(..) | ty::Str => self.meta().scalar().to_target_usize(ecx),
                 _ => bug!("len not supported on unsized type {:?}", layout.ty),
             }
         } else {
@@ -65,7 +67,7 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
         &self,
         offset: Size,
         mode: OffsetMode,
-        meta: MemPlaceMeta<Prov>,
+        meta: AnyMemPlaceMeta<'tcx, Prov>,
         layout: TyAndLayout<'tcx>,
         ecx: &InterpCx<'tcx, M>,
     ) -> InterpResult<'tcx, Self>;
@@ -79,7 +81,7 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
         assert!(layout.is_sized());
         // We sometimes do pointer arithmetic with this function, disregarding the source type.
         // So we don't check the sizes here.
-        self.offset_with_meta(offset, OffsetMode::Inbounds, MemPlaceMeta::None, layout, ecx)
+        self.offset_with_meta(offset, OffsetMode::Inbounds, AnyMemPlaceMeta(None), layout, ecx)
     }
 
     /// This does an offset-by-zero, which is effectively a transmute. Note however that
@@ -93,7 +95,7 @@ pub trait Projectable<'tcx, Prov: Provenance>: Sized + std::fmt::Debug {
     ) -> InterpResult<'tcx, Self> {
         assert!(self.layout().is_sized() && layout.is_sized());
         assert_eq!(self.layout().size, layout.size);
-        self.offset_with_meta(Size::ZERO, OffsetMode::Wrapping, MemPlaceMeta::None, layout, ecx)
+        self.offset_with_meta(Size::ZERO, OffsetMode::Wrapping, AnyMemPlaceMeta(None), layout, ecx)
     }
 
     /// Convert this to an `OpTy`. This might be an irreversible transformation, but is useful for
@@ -126,7 +128,7 @@ impl<'a, 'tcx, Prov: Provenance, P: Projectable<'tcx, Prov>> ArrayIterator<'a, '
             self.base.offset_with_meta(
                 self.stride * idx,
                 OffsetMode::Wrapping,
-                MemPlaceMeta::None,
+                AnyMemPlaceMeta(None),
                 self.field_layout,
                 ecx,
             )?,
@@ -193,7 +195,7 @@ where
         } else {
             // base_meta could be present; we might be accessing a sized field of an unsized
             // struct.
-            (MemPlaceMeta::None, offset)
+            (AnyMemPlaceMeta(None), offset)
         };
 
         base.offset_with_meta(offset, OffsetMode::Inbounds, meta, field_layout, self)
@@ -214,7 +216,7 @@ where
         base: &P,
         variant: VariantIdx,
     ) -> InterpResult<'tcx, P> {
-        assert!(!base.meta().has_meta());
+        assert!(!base.meta().has_metadata());
         // Downcasts only change the layout.
         // (In particular, no check about whether this is even the active variant -- that's by design,
         // see https://github.com/rust-lang/rust/issues/93688#issuecomment-1032929496.)
@@ -364,11 +366,13 @@ where
             // It is not nice to match on the type, but that seems to be the only way to
             // implement this.
             ty::Array(inner, _) => {
-                (MemPlaceMeta::None, Ty::new_array(self.tcx.tcx, *inner, inner_len))
+                (AnyMemPlaceMeta(None), Ty::new_array(self.tcx.tcx, *inner, inner_len))
             }
             ty::Slice(..) => {
                 let len = Scalar::from_target_usize(inner_len, self);
-                (MemPlaceMeta::Meta(len), base.layout().ty)
+                let len = ImmTy::from_scalar(len, self.layout_of(self.tcx.types.usize)?);
+                let len = OpTy::from(len).expect_sized("ptr metadata must be sized");
+                (AnyMemPlaceMeta(Some(len)), base.layout().ty)
             }
             _ => {
                 span_bug!(

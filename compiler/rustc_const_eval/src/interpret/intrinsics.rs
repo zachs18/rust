@@ -19,8 +19,8 @@ use tracing::trace;
 use super::memory::MemoryKind;
 use super::util::ensure_monomorphic_enough;
 use super::{
-    AllocId, CheckInAllocMsg, ImmTy, Immediate, InterpCx, InterpResult, Machine, MemPlaceMeta,
-    OpTy, PlaceTy, Pointer, PointerArithmetic, Projectable, Provenance, Scalar, err_ub_format,
+    AllocId, AnyMemPlaceMeta, CheckInAllocMsg, ImmTy, InterpCx, InterpResult, Machine, OpTy,
+    PlaceTy, Pointer, PointerArithmetic, Projectable, Provenance, Scalar, err_ub_format,
     err_unsup_format, interp_ok, throw_inval, throw_ub, throw_ub_format, throw_unsup_format,
 };
 use crate::interpret::Writeable;
@@ -300,12 +300,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             sym::unchecked_align_for_meta | sym::unchecked_size_for_meta => {
                 let pointee_ty = instance.args.type_at(0);
                 let pointee_layout = self.layout_of(pointee_ty)?;
-                let meta = self.read_immediate(&args[0])?;
-                let meta = match *meta {
-                    Immediate::Scalar(meta) => MemPlaceMeta::Meta(meta),
-                    Immediate::Uninit => MemPlaceMeta::None,
-                    _ => return Err(err_unsup_format!("multi-wide pointers not yet possible"))?,
-                };
+                let meta =
+                    AnyMemPlaceMeta(Some(args[0].expect_sized("pointer metadata must be sized")));
                 let (size, align) = self
                     .size_and_align_from_meta(&meta, &pointee_layout)?
                     .ok_or_else(|| err_unsup_format!("`extern type` does not have known layout"))?;

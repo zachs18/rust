@@ -31,9 +31,9 @@ use tracing::trace;
 
 use super::machine::AllocMap;
 use super::{
-    AllocId, CheckInAllocMsg, GlobalAlloc, ImmTy, Immediate, InterpCx, InterpResult, MPlaceTy,
-    Machine, MemPlaceMeta, PlaceTy, Pointer, Projectable, Scalar, ValueVisitor, err_ub,
-    format_interp_error,
+    AllocId, AnyMemPlaceMeta, CheckInAllocMsg, GlobalAlloc, ImmTy, Immediate, InterpCx,
+    InterpResult, MPlaceTy, Machine, MemPlaceMetadata, PlaceTy, Pointer, Projectable, Scalar,
+    ValueVisitor, err_ub, format_interp_error,
 };
 use crate::enter_trace_span;
 
@@ -587,13 +587,42 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
 
     fn check_wide_ptr_meta(
         &mut self,
-        meta: MemPlaceMeta<M::Provenance>,
+        meta: impl MemPlaceMetadata<'tcx, M::Provenance>,
         pointee: TyAndLayout<'tcx>,
     ) -> InterpResult<'tcx> {
-        let tail = self.ecx.tcx.struct_or_union_tail_for_codegen(pointee.ty, self.ecx.typing_env);
-        match tail.kind() {
+        if pointee.ty.is_thin(*self.ecx.tcx, self.ecx.typing_env) {
+            return interp_ok(());
+        }
+        let meta = meta.to_unsized().0.unwrap().change_sizedness();
+        match pointee.ty.kind() {
+            ty::Adt(adt_def, ..) => {
+                for i in adt_def.non_enum_variant().fields.indices() {
+                    let field_ty = pointee.field(self.ecx, i.as_usize());
+                    if field_ty.ty.is_thin(*self.ecx.tcx, self.ecx.typing_env) {
+                        continue;
+                    }
+                    let field_meta = self
+                        .ecx
+                        .project_field(&meta, i)?
+                        .expect_sized("ptr metadata must be sized");
+                    self.check_wide_ptr_meta(AnyMemPlaceMeta(Some(field_meta)), field_ty)?;
+                }
+            }
+            ty::Tuple(tys) => {
+                for i in 0..tys.len() {
+                    let field_ty = pointee.field(self.ecx, i);
+                    if field_ty.ty.is_thin(*self.ecx.tcx, self.ecx.typing_env) {
+                        continue;
+                    }
+                    let field_meta = self
+                        .ecx
+                        .project_field(&meta, FieldIdx::from_usize(i))?
+                        .expect_sized("ptr metadata must be sized");
+                    self.check_wide_ptr_meta(AnyMemPlaceMeta(Some(field_meta)), field_ty)?;
+                }
+            }
             ty::Dynamic(data, _) => {
-                let vtable = meta.unwrap_meta().to_pointer(self.ecx)?;
+                let vtable = self.ecx.read_pointer(&meta)?;
                 // Make sure it is a genuine vtable pointer for the right trait.
                 try_validation!(
                     self.ecx.get_ptr_vtable_ty(vtable, Some(data)),
@@ -604,16 +633,36 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                         format!("using vtable for `{vtable_dyn_type}` but `{expected_dyn_type}` was expected"),
                 );
             }
-            ty::Slice(..) | ty::Str => {
-                let _len = meta.unwrap_meta().to_target_usize(self.ecx)?;
+            ty::Str => {
+                let _len = self.ecx.read_scalar(&meta)?.to_target_usize(self.ecx)?;
                 // We do not check that `len * elem_size <= isize::MAX`:
                 // that is only required for references, and there it falls out of the
                 // "dereferenceable" check performed by Stacked Borrows.
             }
-            ty::Foreign(..) => {
-                // Unsized, but not wide.
+            ty::Slice(elem) => {
+                let len = self.ecx.project_field(&meta, FieldIdx::ZERO)?;
+                let _len = self.ecx.read_immediate(&len)?.to_scalar().to_target_usize(self.ecx)?;
+                let elem_meta = self
+                    .ecx
+                    .project_field(&meta, FieldIdx::ONE)?
+                    .expect_sized("ptr metadata must be sized");
+                let elem_ty = self.ecx.layout_of(*elem)?;
+                self.check_wide_ptr_meta(AnyMemPlaceMeta(Some(elem_meta)), elem_ty)?;
+                // We do not check that `len * elem_size <= isize::MAX`:
+                // that is only required for references, and there it falls out of the
+                // "dereferenceable" check performed by Stacked Borrows.
             }
-            _ => bug!("Unexpected unsized type tail: {:?}", tail),
+            ty::Array(elem, _len) => {
+                let len = self.ecx.project_field(&meta, FieldIdx::ZERO)?;
+                let _len = self.ecx.read_immediate(&len)?.to_scalar().to_target_usize(self.ecx)?;
+                let elem_meta = self
+                    .ecx
+                    .project_field(&meta, FieldIdx::ONE)?
+                    .expect_sized("ptr metadata must be sized");
+                let elem_ty = self.ecx.layout_of(*elem)?;
+                self.check_wide_ptr_meta(AnyMemPlaceMeta(Some(elem_meta)), elem_ty)?;
+            }
+            _ => bug!("Unexpected wide pointee type: {:?}", pointee),
         }
 
         interp_ok(())

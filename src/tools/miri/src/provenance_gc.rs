@@ -114,11 +114,11 @@ impl VisitProvenance for Immediate<Provenance> {
     }
 }
 
-impl VisitProvenance for MemPlaceMeta<Provenance> {
+impl VisitProvenance for AnyMemPlaceMeta<'_, Provenance> {
     fn visit_provenance(&self, visit: &mut VisitWith<'_>) {
-        match self {
-            MemPlaceMeta::Meta(m) => m.visit_provenance(visit),
-            MemPlaceMeta::None => {}
+        match self.0 {
+            Some(m) => m.change_sizedness().visit_provenance(visit),
+            None => {}
         }
     }
 }

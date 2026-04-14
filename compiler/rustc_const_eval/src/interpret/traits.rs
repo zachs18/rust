@@ -4,9 +4,8 @@ use rustc_middle::ty::{self, ExistentialPredicateStableCmpExt, Ty, TyCtxt, VtblE
 use tracing::trace;
 
 use super::util::ensure_monomorphic_enough;
-use super::{
-    InterpCx, MPlaceTy, Machine, MemPlaceMeta, OffsetMode, Projectable, interp_ok, throw_ub,
-};
+use super::{InterpCx, MPlaceTy, Machine, OffsetMode, Projectable, interp_ok, throw_ub};
+use crate::interpret::{AnyMemPlaceMeta, MemPlaceMetadata};
 
 impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     /// Creates a dynamic vtable for the given type and vtable origin. This is used only for
@@ -112,7 +111,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             matches!(mplace.layout.ty.kind(), ty::Dynamic(_, _)),
             "`unpack_dyn_trait` only makes sense on `dyn*` types"
         );
-        let vtable = mplace.meta().unwrap_meta().to_pointer(self)?;
+        let vtable = mplace.meta().scalar().to_pointer(self)?;
         let ty = self.get_ptr_vtable_ty(vtable, Some(expected_trait))?;
         // This is a kind of transmute, from a place with unsized type and metadata to
         // a place with sized type and no metadata.
@@ -120,7 +119,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         let mplace = mplace.offset_with_meta(
             Size::ZERO,
             OffsetMode::Wrapping,
-            MemPlaceMeta::None,
+            AnyMemPlaceMeta(None),
             layout,
             self,
         )?;
