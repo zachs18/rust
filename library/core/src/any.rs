@@ -834,7 +834,7 @@ impl TypeId {
     pub const fn trait_info_of_trait_type_id(
         self,
         trait_represented_by_type_id: TypeId,
-    ) -> Option<TraitImpl<*const ()>> {
+    ) -> Option<TraitImpl<()>> {
         if self.info().size.is_none() {
             return None;
         }

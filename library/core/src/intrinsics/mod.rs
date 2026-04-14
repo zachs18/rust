@@ -2935,7 +2935,7 @@ pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) 
 pub const fn type_id_vtable(
     _id: crate::any::TypeId,
     _trait: crate::any::TypeId,
-) -> Option<ptr::DynMetadata<*const ()>> {
+) -> Option<ptr::DynMetadata<()>> {
     panic!(
         "`TypeId::trait_info_of` and `trait_info_of_trait_type_id` can only be called at compile-time"
     )

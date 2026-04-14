@@ -1015,6 +1015,8 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
             // DynMetadata is a library type, but its fields are a lie.
             // It has a `NonNull<extern type VTable>` field, but has validity requirements such
             // that it must point to a valid vtable for its type parameter.
+            // FIXME(ptr_metadata_v2) FIXME(reflection): as an exception, `DynMetadata<()>`
+            // is allowed, and returned by reflection APIs.
             ty::Adt(def, args) if self.ecx.tcx.is_lang_item(def.did(), LangItem::DynMetadata) => {
                 assert_eq!(
                     value.layout().fields.count(),
@@ -1036,20 +1038,23 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                 let vtable_scalar = self.read_scalar(&vtable_ptr, ExpectedKind::RawPtr)?;
                 let vtable = vtable_scalar.to_pointer(self.ecx)?;
 
-                // Reject values of type `DynMetadata<T>` where `T` is not a trait object.
+                // Reject values of type `DynMetadata<T>` where `T` is not a trait object,
+                // except for `()` for reflection.
                 let dyn_ty = args.type_at(0);
-                let ty::Dynamic(data, _) = dyn_ty.kind() else {
-                    throw_validation_failure!(
+                let data = match dyn_ty.kind() {
+                    &ty::Dynamic(data, _) => Some(data),
+                    _ if dyn_ty.is_unit() => None,
+                    _ => throw_validation_failure!(
                         self.path,
                         format!(
                             "wrong pointee for DynMetadata: expected a trait object type, but encountered `{dyn_ty}`"
                         )
-                    );
+                    ),
                 };
 
                 // Make sure it is a genuine vtable pointer for the right trait.
                 try_validation!(
-                    self.ecx.get_ptr_vtable_ty(vtable, Some(data)),
+                    self.ecx.get_ptr_vtable_ty(vtable, data),
                     self.path,
                     Ub(DanglingIntPointer{ .. } | InvalidVTablePointer(..)) =>
                         format!("encountered {vtable}, but expected a vtable pointer"),

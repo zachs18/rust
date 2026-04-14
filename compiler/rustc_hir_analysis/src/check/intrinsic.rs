@@ -336,8 +336,7 @@ pub(crate) fn check_intrinsic_type(
         sym::type_id_vtable => {
             let dyn_metadata = tcx.require_lang_item(LangItem::DynMetadata, span);
             let dyn_metadata_adt_ref = tcx.adt_def(dyn_metadata);
-            let dyn_metadata_args =
-                tcx.mk_args(&[Ty::new_ptr(tcx, tcx.types.unit, ty::Mutability::Not).into()]);
+            let dyn_metadata_args = tcx.mk_args(&[tcx.types.unit.into()]);
             let dyn_ty = Ty::new_adt(tcx, dyn_metadata_adt_ref, dyn_metadata_args);
 
             let option_did = tcx.require_lang_item(LangItem::Option, span);
