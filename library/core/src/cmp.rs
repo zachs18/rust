@@ -976,6 +976,7 @@ impl<T: Clone> Clone for Reverse<T> {
 #[doc(alias = "<=")]
 #[doc(alias = ">=")]
 #[stable(feature = "rust1", since = "1.0.0")]
+#[lang = "Ord"]
 #[rustc_diagnostic_item = "Ord"]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
@@ -996,6 +997,7 @@ pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "ord_cmp_method"]
+    #[lang = "ord_cmp_method"]
     fn cmp(&self, other: &Self) -> Ordering;
 
     /// Compares and returns the maximum of two values.

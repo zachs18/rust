@@ -267,6 +267,10 @@ language_item_table! {
     OrderingEnum,            sym::Ordering,            ordering_enum,              Target::Enum,           GenericRequirement::Exact(0);
     PartialEq,               sym::eq,                  eq_trait,                   Target::Trait,          GenericRequirement::Exact(1);
     PartialOrd,              sym::partial_ord,         partial_ord_trait,          Target::Trait,          GenericRequirement::Exact(1);
+    Ord,                     sym::Ord,                 ord_trait,                  Target::Trait,          GenericRequirement::Exact(0);
+    OrdCmp,                  sym::ord_cmp_method,      ord_cmp_method,             Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    HashMethod,              sym::hash_method,         hash_method,                Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    DebugTrait,              sym::debug_trait,         debug_trait,                Target::Trait,          GenericRequirement::None;
     CVoid,                   sym::c_void,              c_void,                     Target::Enum,           GenericRequirement::None;
 
     Type,                    sym::type_info,           type_struct,                Target::Struct,         GenericRequirement::None;

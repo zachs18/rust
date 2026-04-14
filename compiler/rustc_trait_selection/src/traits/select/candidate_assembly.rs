@@ -84,6 +84,16 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         &mut candidates,
                     );
                 }
+                Some(LangItem::Ord) => {
+                    // User-defined Ord impls are permitted for everything but `builtin # ptr_metadata(T)`
+                    self.assemble_candidates_from_impls(obligation, &mut candidates);
+
+                    // For `builtin # ptr_metadata(T)`, we'll use the builtin rule.
+                    self.assemble_builtin_ord_candidate(
+                        obligation.predicate.self_ty().skip_binder(),
+                        &mut candidates,
+                    );
+                }
                 Some(LangItem::DiscriminantKind) => {
                     // `DiscriminantKind` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate);
@@ -1326,6 +1336,20 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 bug!("asked to assemble builtin bounds of unexpected type: {:?}", self_ty);
             }
         }
+    }
+
+    /// Assembles the `Ord` trait candidate for `builtin # ptr_metadata(T)` which cannot be written
+    /// generically in the surface language.
+    #[instrument(level = "debug", skip(self, candidates))]
+    fn assemble_builtin_ord_candidate(
+        &mut self,
+        self_ty: Ty<'tcx>,
+        candidates: &mut SelectionCandidateSet<'tcx>,
+    ) {
+        let ty::PtrMetadata(..) = self_ty.kind() else {
+            return;
+        };
+        candidates.vec.push(BuiltinCandidate);
     }
 
     fn assemble_const_destruct_candidates(

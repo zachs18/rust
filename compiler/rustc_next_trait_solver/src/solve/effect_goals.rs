@@ -265,6 +265,13 @@ where
         })
     }
 
+    fn consider_builtin_ord_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        _goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution> {
+        todo!("<builtin # ptr_metadata(T) as Ord> is not yet const")
+    }
+
     fn consider_builtin_fn_ptr_trait_candidate(
         _ecx: &mut EvalCtxt<'_, D>,
         _goal: Goal<I, Self>,

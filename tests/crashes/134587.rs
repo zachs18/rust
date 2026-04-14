@@ -2,26 +2,26 @@
 
 use std::ops::Add;
 
-pub fn foo<T>(slf: *const T)
+pub fn foo<T>(slf: *const Box<T>)
 where
-    *const T: Add,
+    *const Box<T>: Add,
 {
     slf + slf;
 }
 
-pub fn foo2<T>(slf: *const T)
+pub fn foo2<T>(slf: *const Box<T>)
 where
-    *const T: Add<u8>,
+    *const Box<T>: Add<u8>,
 {
     slf + 1_u8;
 }
 
 
 pub trait TimesTwo
-   where *const Self: Add<*const Self>,
+   where *const Box<Self>: Add<*const Box<Self>>,
 {
-   extern "C" fn t2_ptr(slf: *const Self)
-   -> <*const Self as Add<*const Self>>::Output {
+   extern "C" fn t2_ptr(slf: *const Box<Self>)
+   -> <*const Box<Self> as Add<*const Box<Self>>>::Output {
        slf + slf
    }
 }

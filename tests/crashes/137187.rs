@@ -2,9 +2,9 @@
 use std::ops::Add;
 
 const trait A where
-    *const Self: Add,
+    *const Box<Self>: const Add,
 {
-    fn b(c: *const Self) -> <*const Self as Add>::Output {
+    fn b(c: *const Box<Self>) -> <*const Box<Self> as Add>::Output {
         c + c
     }
 }

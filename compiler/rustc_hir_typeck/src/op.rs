@@ -40,7 +40,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let category = BinOpCategory::from(op.node);
         let ty = if !lhs_ty.is_ty_var()
             && !rhs_ty.is_ty_var()
-            && is_builtin_binop(lhs_ty, rhs_ty, category)
+            && is_builtin_binop(self.tcx, lhs_ty, rhs_ty, category)
         {
             self.enforce_builtin_binop_types(lhs.span, lhs_ty, rhs.span, rhs_ty, category);
             self.tcx.types.unit
@@ -139,7 +139,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let category = BinOpCategory::from(op.node);
                 if !lhs_ty.is_ty_var()
                     && !rhs_ty.is_ty_var()
-                    && is_builtin_binop(lhs_ty, rhs_ty, category)
+                    && is_builtin_binop(self.tcx, lhs_ty, rhs_ty, category)
                 {
                     let builtin_return_ty = self.enforce_builtin_binop_types(
                         lhs_expr.span,
@@ -165,7 +165,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         rhs_ty: Ty<'tcx>,
         category: BinOpCategory,
     ) -> Ty<'tcx> {
-        debug_assert!(is_builtin_binop(lhs_ty, rhs_ty, category));
+        debug_assert!(is_builtin_binop(self.tcx, lhs_ty, rhs_ty, category));
 
         // Special-case a single layer of referencing, so that things like `5.0 + &6.0f32` work.
         // (See https://github.com/rust-lang/rust/issues/57447.)
@@ -1326,7 +1326,12 @@ fn deref_ty_if_possible(ty: Ty<'_>) -> Ty<'_> {
 /// Reason #2 is the killer. I tried for a while to always use
 /// overloaded logic and just check the types in constants/codegen after
 /// the fact, and it worked fine, except for SIMD types. -nmatsakis
-fn is_builtin_binop<'tcx>(lhs: Ty<'tcx>, rhs: Ty<'tcx>, category: BinOpCategory) -> bool {
+fn is_builtin_binop<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    lhs: Ty<'tcx>,
+    rhs: Ty<'tcx>,
+    category: BinOpCategory,
+) -> bool {
     // Special-case a single layer of referencing, so that things like `5.0 + &6.0f32` work.
     // (See https://github.com/rust-lang/rust/issues/57447.)
     let (lhs, rhs) = (deref_ty_if_possible(lhs), deref_ty_if_possible(rhs));
@@ -1352,7 +1357,17 @@ fn is_builtin_binop<'tcx>(lhs: Ty<'tcx>, rhs: Ty<'tcx>, category: BinOpCategory)
                 || lhs.is_bool() && rhs.is_bool()
         }
         BinOpCategory::Comparison => {
-            lhs.references_error() || rhs.references_error() || lhs.is_scalar() && rhs.is_scalar()
+            lhs.references_error()
+                || rhs.references_error()
+                || lhs.is_scalar() && rhs.is_scalar() && {
+                    if let ty::RawPtr(pointee_ty, _) = lhs.kind() {
+                        // Wide (and not-trivially-known-to-be-thin) pointers should go through the impl,
+                        // which compares by the address (as a trivially-thin `*mut ()`) then by the metadata
+                        pointee_ty.has_trivial_sizedness(tcx, ty::SizedTraitKind::Thin)
+                    } else {
+                        true
+                    }
+                }
         }
     }
 }

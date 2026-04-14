@@ -10,7 +10,7 @@ use tracing::{debug, instrument};
 use super::FunctionCx;
 use super::operand::{OperandRef, OperandRefBuilder, OperandValue};
 use super::place::{PlaceRef, PlaceValue, codegen_tag_value};
-use crate::common::{IntPredicate, TypeKind};
+use crate::common::TypeKind;
 use crate::traits::*;
 use crate::{MemFlags, base};
 
@@ -546,20 +546,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             mir::Rvalue::BinaryOp(op, box (ref lhs, ref rhs)) => {
                 let lhs = self.codegen_operand(bx, lhs);
                 let rhs = self.codegen_operand(bx, rhs);
-                let llresult = match (lhs.val, rhs.val) {
-                    (
-                        OperandValue::Pair(lhs_addr, lhs_extra),
-                        OperandValue::Pair(rhs_addr, rhs_extra),
-                    ) => self.codegen_wide_ptr_binop(
-                        bx,
-                        op,
-                        lhs_addr,
-                        lhs_extra,
-                        rhs_addr,
-                        rhs_extra,
-                        lhs.layout.ty,
-                    ),
 
+                let llresult = match (lhs.val, rhs.val) {
                     (OperandValue::Immediate(lhs_val), OperandValue::Immediate(rhs_val)) => self
                         .codegen_scalar_binop(
                             bx,
@@ -570,7 +558,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             rhs.layout.ty,
                         ),
 
-                    _ => bug!(),
+                    _ => unreachable!("wide pointer comparisons should be lowered to method calls"),
                 };
                 OperandRef {
                     val: OperandValue::Immediate(llresult),
@@ -929,48 +917,6 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             | mir::BinOp::SubWithOverflow
             | mir::BinOp::MulWithOverflow => {
                 bug!("{op:?} needs to return a pair, so call codegen_scalar_checked_binop instead")
-            }
-        }
-    }
-
-    fn codegen_wide_ptr_binop(
-        &mut self,
-        bx: &mut Bx,
-        op: mir::BinOp,
-        lhs_addr: Bx::Value,
-        lhs_extra: Bx::Value,
-        rhs_addr: Bx::Value,
-        rhs_extra: Bx::Value,
-        _input_ty: Ty<'tcx>,
-    ) -> Bx::Value {
-        match op {
-            mir::BinOp::Eq => {
-                let lhs = bx.icmp(IntPredicate::IntEQ, lhs_addr, rhs_addr);
-                let rhs = bx.icmp(IntPredicate::IntEQ, lhs_extra, rhs_extra);
-                bx.and(lhs, rhs)
-            }
-            mir::BinOp::Ne => {
-                let lhs = bx.icmp(IntPredicate::IntNE, lhs_addr, rhs_addr);
-                let rhs = bx.icmp(IntPredicate::IntNE, lhs_extra, rhs_extra);
-                bx.or(lhs, rhs)
-            }
-            mir::BinOp::Le | mir::BinOp::Lt | mir::BinOp::Ge | mir::BinOp::Gt => {
-                // a OP b ~ a.0 STRICT(OP) b.0 | (a.0 == b.0 && a.1 OP a.1)
-                let (op, strict_op) = match op {
-                    mir::BinOp::Lt => (IntPredicate::IntULT, IntPredicate::IntULT),
-                    mir::BinOp::Le => (IntPredicate::IntULE, IntPredicate::IntULT),
-                    mir::BinOp::Gt => (IntPredicate::IntUGT, IntPredicate::IntUGT),
-                    mir::BinOp::Ge => (IntPredicate::IntUGE, IntPredicate::IntUGT),
-                    _ => bug!(),
-                };
-                let lhs = bx.icmp(strict_op, lhs_addr, rhs_addr);
-                let and_lhs = bx.icmp(IntPredicate::IntEQ, lhs_addr, rhs_addr);
-                let and_rhs = bx.icmp(op, lhs_extra, rhs_extra);
-                let rhs = bx.and(and_lhs, and_rhs);
-                bx.or(lhs, rhs)
-            }
-            _ => {
-                bug!("unexpected wide ptr binop");
             }
         }
     }

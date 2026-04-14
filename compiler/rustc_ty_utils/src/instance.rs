@@ -402,6 +402,22 @@ fn resolve_associated_item<'tcx>(
                 } else {
                     bug!("unexpected associated associated item")
                 }
+            } else if tcx.is_lang_item(trait_ref.def_id, LangItem::Ord) {
+                let name = tcx.item_name(trait_item_id);
+                assert_eq!(name, sym::cmp);
+                let args = tcx.erase_and_anonymize_regions(rcvr_args);
+                let &ty::PtrMetadata(pointee_ty) = trait_ref.self_ty().kind() else {
+                    bug!("non-PtrMetadata self ty for builtin Ord impl")
+                };
+                let ty::layout::MetadataFields::KnownFields(..) =
+                    pointee_ty.metadata_fields_for_pointee(tcx, None)
+                else {
+                    return Ok(None);
+                };
+                Some(ty::Instance {
+                    def: ty::InstanceKind::PtrMetadataCmpShim(trait_item_id, pointee_ty),
+                    args,
+                })
             } else {
                 Instance::try_resolve_item_for_coroutine(tcx, trait_item_id, trait_id, rcvr_args)
             }

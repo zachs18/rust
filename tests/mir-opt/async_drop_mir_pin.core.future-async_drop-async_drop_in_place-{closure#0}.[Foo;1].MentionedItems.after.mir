@@ -110,7 +110,7 @@ yields ()
     }
 
     bb15: {
-        _6 = PtrMetadata(copy _5);
+        _6 = copy ((_5.1: {ptr metadata for [Foo]}).0: usize);
         _7 = const 0_usize;
         goto -> bb11;
     }
