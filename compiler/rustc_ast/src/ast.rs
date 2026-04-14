@@ -1874,11 +1874,16 @@ pub enum ExprKind {
     /// Output of the `asm!()` macro.
     InlineAsm(Box<InlineAsm>),
 
-    /// An `offset_of` expression (e.g., `builtin # offset_of(Struct, field)`).
+    /// An `offset_of` expression (e.g., `builtin # offset_of(Struct, field)` or
+    /// `builtin # offset_of(Struct, field, meta)`).
     ///
     /// Usually not written directly in user code but
-    /// indirectly via the macro `core::mem::offset_of!(...)`.
-    OffsetOf(Box<Ty>, Vec<Ident>),
+    /// indirectly via the macros `core::mem::offset_of!(...)` and
+    /// `core::mem::offset_for_meta!(...)`.
+    ///
+    /// The `Option<Box<Expr>>` is `None` for `offset_of!`, and is the metadata
+    /// given for `offset_for_meta!`.
+    OffsetOf(Box<Ty>, Box<[Ident]>, Option<Box<Expr>>),
 
     /// A `ptr_metadata` expression (e.g., `builtin # ptr_metadata(for [u8]; len: 42, ..)`
     /// or `builtin # ptr_metadata(len: 42, ..)`).

@@ -87,6 +87,7 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::ceilf64
         | sym::ceilf128
         | sym::checked_align_for_meta
+        | sym::checked_offset_for_meta
         | sym::checked_size_for_meta
         | sym::cold_path
         | sym::const_eval_select
@@ -297,6 +298,14 @@ pub(crate) fn check_intrinsic_type(
             (1, 0, vec![Ty::new_imm_ptr(tcx, param(0))], tcx.types.usize)
         }
         sym::offset_of => (1, 0, vec![tcx.types.u32, tcx.types.u32], tcx.types.usize),
+        sym::checked_offset_for_meta => {
+            let option_did = tcx.require_lang_item(LangItem::Option, span);
+            let option_adt_ref = tcx.adt_def(option_did);
+            let option_args = tcx.mk_args(&[tcx.types.usize.into()]);
+            let ret_ty = Ty::new_adt(tcx, option_adt_ref, option_args);
+
+            (1, 0, vec![tcx.types.u32, tcx.types.u32, Ty::new_ptr_metadata(tcx, param(0))], ret_ty)
+        }
         sym::field_offset => (1, 0, vec![], tcx.types.usize),
         sym::unchecked_size_for_meta | sym::unchecked_align_for_meta => {
             (1, 0, vec![Ty::new_ptr_metadata(tcx, param(0))], tcx.types.usize)

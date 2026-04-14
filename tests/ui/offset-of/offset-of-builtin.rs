@@ -11,7 +11,8 @@ fn t1() {
     builtin # offset_of(NotEnoughArgumentsWithAComma, ); //~ ERROR expected expression
 }
 fn t2() {
-    builtin # offset_of(S, f, too many arguments); //~ ERROR expected `)`, found `too`
+    builtin # offset_of(S, f, too many arguments); //~ ERROR cannot find value `too`
+    //~^ ERROR expected one of
 }
 fn t3() {
     builtin # offset_of(S, f); // compiles fine
@@ -21,12 +22,18 @@ fn t4() {
 }
 fn t5() {
     builtin # offset_of(S, f.,); //~ ERROR unexpected token
+    //~^ ERROR expected expression
 }
 fn t6() {
     builtin # offset_of(S, f..); //~ ERROR offset_of expects dot-separated field and variant names
 }
 fn t7() {
     builtin # offset_of(S, f..,); //~ ERROR offset_of expects dot-separated field and variant names
+    //~^ ERROR expected expression
+}
+fn t8() {
+    builtin # offset_of(S, f, too, many arguments); //~ ERROR expected `)`, found `many`
+    //~^ ERROR cannot find value `too`
 }
 
 struct S { f: u8, }

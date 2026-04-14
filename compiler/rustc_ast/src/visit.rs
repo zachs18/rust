@@ -1055,8 +1055,8 @@ macro_rules! common_visitor_and_walkers {
                     visit_visitable!($($mut)? vis, asm),
                 ExprKind::FormatArgs(f) =>
                     visit_visitable!($($mut)? vis, f),
-                ExprKind::OffsetOf(container, fields) =>
-                    visit_visitable!($($mut)? vis, container, fields),
+                ExprKind::OffsetOf(container, fields, opt_meta) =>
+                    visit_visitable!($($mut)? vis, container, fields, opt_meta),
                 ExprKind::PtrMetadata(pme) =>
                     visit_visitable!($($mut)? vis, pme),
                 ExprKind::Yield(kind) =>

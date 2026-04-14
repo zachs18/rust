@@ -293,6 +293,9 @@ impl<'cx, 'a> Context<'cx, 'a> {
                     this.manage_cond_expr(local_expr)
                 });
             }
+            ExprKind::OffsetOf(_, _, Some(meta_expr)) => {
+                self.manage_cond_expr(meta_expr);
+            }
             // Expressions that are not worth or can not be captured.
             //
             // Full list instead of `_` to catch possible future inclusions and to
@@ -317,7 +320,7 @@ impl<'cx, 'a> Context<'cx, 'a> {
             | ExprKind::Lit(_)
             | ExprKind::Loop(_, _, _)
             | ExprKind::MacCall(_)
-            | ExprKind::OffsetOf(_, _)
+            | ExprKind::OffsetOf(_, _, None)
             | ExprKind::Path(_, _)
             | ExprKind::Ret(_)
             | ExprKind::Try(_)
