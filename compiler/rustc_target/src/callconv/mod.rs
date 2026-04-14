@@ -1,8 +1,8 @@
 use std::{fmt, iter};
 
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, CanonAbi, ExternAbi, FieldsShape, HasDataLayout, Primitive,
-    Reg, RegKind, Scalar, Size, TyAbiInterface, TyAndLayout, Variants,
+    AddressSpace, Align, BackendRepr, CanonAbi, ExternAbi, FieldOffset, FieldsShape, HasDataLayout,
+    Primitive, Reg, RegKind, Scalar, Size, TyAbiInterface, TyAndLayout, Variants,
 };
 use rustc_macros::HashStable_Generic;
 
@@ -943,7 +943,7 @@ where
         if field.size == Size::ZERO {
             continue;
         }
-        if layout.fields.offset(i) != cursor {
+        if layout.fields.offset(i) != FieldOffset::exact(cursor) {
             return false;
         }
         if !layout_is_noundef(field, cx) {

@@ -615,9 +615,31 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         let place = self.codegen_place(bx, location.as_ref());
         let (args1, args2);
         let mut args = if let Some(llextra) = place.val.llextra.get_metadata() {
-            let llextra = llextra.change_sizedness().immediate();
-            args2 = [place.val.llval, llextra];
-            &args2[..]
+            match llextra.val {
+                Immediate(llextra) => {
+                    args2 = [place.val.llval, llextra];
+                    &args2[..]
+                }
+                ZeroSized => {
+                    args1 = [place.val.llval];
+                    &args1[..]
+                }
+                Ref(..) | Pair(..) => {
+                    // pass the pointer itself by-reference
+                    let ptr_ty = Ty::new_mut_ptr(bx.tcx(), ty);
+                    let ptr_layout = bx.layout_of(ptr_ty);
+                    let ptr_place = PlaceRef::alloca(bx, ptr_layout);
+
+                    let data_ptr_place = ptr_place.project_field(bx, 0);
+                    let ptr_meta_place = ptr_place.project_field(bx, 1);
+
+                    Immediate(place.val.llval).store(bx, data_ptr_place);
+                    llextra.change_sizedness().store_with_annotation(bx, ptr_meta_place);
+
+                    args1 = [ptr_place.val.llval];
+                    &args1[..]
+                }
+            }
         } else {
             args1 = [place.val.llval];
             &args1[..]

@@ -156,7 +156,7 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                 matches!(scalar.primitive(), Primitive::Float(Float::F32 | Float::F64))
             }
             BackendRepr::Memory { .. } => {
-                if self.fields.count() == 1 && self.fields.offset(0).bytes() == 0 {
+                if self.fields.count() == 1 && self.fields.offset(0).guaranteed_zero() {
                     self.field(cx, 0).is_single_fp_element(cx)
                 } else {
                     false
@@ -174,7 +174,7 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
         match self.backend_repr {
             BackendRepr::SimdVector { .. } => self.size == expected_size,
             BackendRepr::Memory { .. } => {
-                if self.fields.count() == 1 && self.fields.offset(0).bytes() == 0 {
+                if self.fields.count() == 1 && self.fields.offset(0).guaranteed_zero() {
                     self.field(cx, 0).is_single_vector_element(cx, expected_size)
                 } else {
                     false

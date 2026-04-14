@@ -9,9 +9,10 @@ use rustc_index::bit_set::BitMatrix;
 use tracing::{debug, trace};
 
 use crate::{
-    AbiAlign, Align, BackendRepr, FieldsShape, HasDataLayout, IndexSlice, IndexVec, Integer,
-    LayoutData, Niche, NonZeroUsize, NumScalableVectors, Primitive, ReprOptions, Scalar, Size,
-    StructPrefix, TagEncoding, TargetDataLayout, Variants, WrappingRange,
+    AbiAlign, Align, BackendRepr, FieldOffset, FieldsShape, HasDataLayout, IndexSlice, IndexVec,
+    Integer, LayoutData, Niche, NonZeroUsize, NumScalableVectors, OffsetAccuracy, Primitive,
+    ReprOptions, Scalar, Size, StructPrefix, TagEncoding, TargetDataLayout, Variants,
+    WrappingRange,
 };
 
 mod coroutine;
@@ -744,7 +745,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 match layout.fields {
                     FieldsShape::Arbitrary { ref mut offsets, .. } => {
                         for offset in offsets.iter_mut() {
-                            *offset += this_offset;
+                            offset.offset += this_offset;
                         }
                     }
                     FieldsShape::Primitive | FieldsShape::Array { .. } | FieldsShape::Union(..) => {
@@ -811,7 +812,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     variants: variant_layouts,
                 },
                 fields: FieldsShape::Arbitrary {
-                    offsets: [niche_offset].into(),
+                    offsets: [FieldOffset::exact(niche_offset)].into(),
                     in_memory_order: [FieldIdx::new(0)].into(),
                 },
                 backend_repr: abi,
@@ -995,9 +996,13 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 match variant.fields {
                     FieldsShape::Arbitrary { ref mut offsets, .. } => {
                         for i in offsets {
-                            if *i <= old_ity_size {
-                                assert_eq!(*i, old_ity_size);
-                                *i = new_ity_size;
+                            assert!(
+                                matches!(i.accuracy, OffsetAccuracy::Exact),
+                                "FIXME(more_unsized): implement unsized enums"
+                            );
+                            if i.offset <= old_ity_size {
+                                assert_eq!(i.offset, old_ity_size);
+                                i.offset = new_ity_size;
                             }
                         }
                         // We might be making the struct larger.
@@ -1114,8 +1119,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     }
                     _ => panic!("encountered a non-arbitrary layout during enum layout"),
                 };
-                if pair_offsets[FieldIdx::new(0)] == Size::ZERO
-                    && pair_offsets[FieldIdx::new(1)] == *offset
+                if pair_offsets[FieldIdx::new(0)].offset == Size::ZERO
+                    && pair_offsets[FieldIdx::new(1)].offset == offset.offset
                     && align == pair.align.abi
                     && size == pair.size
                 {
@@ -1160,7 +1165,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 variants: layout_variants,
             },
             fields: FieldsShape::Arbitrary {
-                offsets: [Size::ZERO].into(),
+                offsets: [FieldOffset::exact(Size::ZERO)].into(),
                 in_memory_order: [FieldIdx::new(0)].into(),
             },
             largest_niche,
@@ -1427,19 +1432,19 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         // This is exact for `Sized` fields that are not after an unsized field.
         // For the first in-memory-order unsized field, the offset is this value rounded up to its effective alignment.
         // For any field after the first in-memory-order unsized field, this is a lower bound.
-        let mut offsets = IndexVec::from_elem(Size::ZERO, fields);
+        let mut offsets = IndexVec::from_elem(FieldOffset::exact(Size::ZERO), fields);
         let mut past_unsized_field = false;
 
-        // If we have not seen an unsized field yet, then `min_offset` is accurate,
+        // If we have not seen an unsized field yet, then `offset` is accurate,
         // otherwise it is a lower-bound.
-        let mut min_offset = Size::ZERO;
+        let mut offset = FieldOffset::exact(Size::ZERO);
         let mut largest_niche = None;
         let mut largest_niche_available = 0;
         if let Some(StructPrefix(prefix_size, prefix_align)) = prefix {
             let prefix_align =
                 if let Some(pack) = pack { prefix_align.min(pack) } else { prefix_align };
             align = align.max(prefix_align);
-            min_offset = prefix_size.align_to(prefix_align);
+            offset.offset = prefix_size.align_to(prefix_align);
         }
 
         for &i in &in_memory_order {
@@ -1451,19 +1456,22 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             } else {
                 field.align
             };
-            min_offset = min_offset.align_to(field_align.abi);
+
+            if field.is_unsized() && matches!(offset.accuracy, OffsetAccuracy::Exact) {
+                offset.accuracy = OffsetAccuracy::RoundedUp;
+            }
+            offset.offset = offset.offset.align_to(field_align.abi);
             align = align.max(field_align.abi);
             max_repr_align = max_repr_align.max(field.max_repr_align);
 
             debug!(
                 "univariant offset: {:?} field: {:#?}, past_unsized: {:?}",
-                min_offset, field, past_unsized_field
+                offset, field, past_unsized_field
             );
-            offsets[i] = min_offset;
+            offsets[i] = offset;
 
             if let Some(mut niche) = field.largest_niche
-                && !past_unsized_field
-                && !field.is_unsized()
+                && matches!(offset.accuracy, OffsetAccuracy::Exact)
             {
                 let available = niche.available(dl);
                 // Pick up larger niches.
@@ -1474,16 +1482,18 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                 };
                 if prefer_new_niche {
                     largest_niche_available = available;
-                    niche.offset += min_offset;
+                    niche.offset += offset.offset;
                     largest_niche = Some(niche);
                 }
             }
 
-            min_offset = min_offset
+            offset.offset = offset
+                .offset
                 .checked_add(field.size, dl)
                 .ok_or(LayoutCalculatorError::SizeOverflow)?;
 
             if field.is_unsized() {
+                offset.accuracy = OffsetAccuracy::LowerBound;
                 past_unsized_field = true;
             }
         }
@@ -1497,8 +1507,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         // `align` must not be modified after this point, or `unadjusted_abi_align` could be inaccurate.
         let align = align;
 
-        debug!("univariant min_size: {:?}", min_offset);
-        let min_size = min_offset;
+        debug!("univariant min_size: {:?}", offset);
+        let min_size = offset.offset;
         let size = min_size.align_to(align);
         // FIXME(oli-obk): deduplicate and harden these checks
         if size.bytes() >= dl.obj_size_bound() {
@@ -1522,7 +1532,10 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     layout_of_single_non_zst_field = Some(field);
 
                     // Field fills the struct and it has a scalar or scalar pair ABI.
-                    if offsets[i].bytes() == 0 && align == field.align.abi && size == field.size {
+                    if offsets[i].guaranteed_zero()
+                        && align == field.align.abi
+                        && size == field.size
+                    {
                         match field.backend_repr {
                             // For plain scalars, or vectors of them, we can't unpack
                             // newtypes for `#[repr(C)]`, as that affects C ABIs.
@@ -1546,7 +1559,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     match (a.backend_repr, b.backend_repr) {
                         (BackendRepr::Scalar(a), BackendRepr::Scalar(b)) => {
                             // Order by the memory placement, not source order.
-                            let ((i, a), (j, b)) = if offsets[i] < offsets[j] {
+                            let ((i, a), (j, b)) = if offsets[i].offset < offsets[j].offset {
                                 ((i, a), (j, b))
                             } else {
                                 ((j, b), (i, a))
@@ -1567,8 +1580,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                                     panic!("encountered a non-arbitrary layout during enum layout")
                                 }
                             };
-                            if offsets[i] == pair_offsets[FieldIdx::new(0)]
-                                && offsets[j] == pair_offsets[FieldIdx::new(1)]
+                            if offsets[i].offset == pair_offsets[FieldIdx::new(0)].offset
+                                && offsets[j].offset == pair_offsets[FieldIdx::new(1)].offset
                                 && align == pair.align.abi
                                 && size == pair.size
                             {
@@ -1629,7 +1642,8 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         for i in layout.fields.index_by_increasing_offset() {
             let offset = layout.fields.offset(i);
             let f = &fields[FieldIdx::new(i)];
-            write!(s, "[o{}a{}s{}", offset.bytes(), f.align.bytes(), f.size.bytes()).unwrap();
+            write!(s, "[o{}a{}s{}", offset.offset.bytes(), f.align.bytes(), f.size.bytes())
+                .unwrap();
             if let Some(n) = f.largest_niche {
                 write!(
                     s,
@@ -1700,7 +1714,7 @@ where
     Ok(LayoutData {
         variants: Variants::Single { index: VariantIdx::new(0) },
         fields: FieldsShape::Arbitrary {
-            offsets: [Size::ZERO].into(),
+            offsets: [FieldOffset::exact(Size::ZERO)].into(),
             in_memory_order: [FieldIdx::new(0)].into(),
         },
         backend_repr: repr,

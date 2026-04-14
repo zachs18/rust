@@ -1015,7 +1015,7 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let dirent_ty = dest.layout.ty.builtin_deref(true).unwrap();
                 let dirent_layout = this.layout_of(dirent_ty)?;
                 let fields = &dirent_layout.fields;
-                let d_name_offset = fields.offset(fields.count().strict_sub(1)).bytes();
+                let d_name_offset = fields.exact_offset(fields.count().strict_sub(1)).bytes();
 
                 // Determine the size of the buffer we have to allocate.
                 let mut name = dir_entry.name; // not a Path as there are no separators!

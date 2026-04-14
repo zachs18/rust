@@ -8,7 +8,10 @@ error: layout_of(Result<[u32; 0], bool>) = Layout {
            },
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -46,7 +49,10 @@ error: layout_of(Result<[u32; 0], bool>) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(4 bytes),
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -71,7 +77,10 @@ error: layout_of(Result<[u32; 0], bool>) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -116,7 +125,10 @@ error: layout_of(MultipleAlignments) = Layout {
            },
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -154,7 +166,10 @@ error: layout_of(MultipleAlignments) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(2 bytes),
+                               FieldOffset {
+                                   offset: Size(2 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -179,7 +194,10 @@ error: layout_of(MultipleAlignments) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(4 bytes),
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -204,7 +222,10 @@ error: layout_of(MultipleAlignments) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -249,7 +270,10 @@ error: layout_of(Result<[u32; 0], Packed<NonZero<u16>>>) = Layout {
            },
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -287,7 +311,10 @@ error: layout_of(Result<[u32; 0], Packed<NonZero<u16>>>) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(4 bytes),
+                               FieldOffset {
+                                   offset: Size(4 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -312,7 +339,10 @@ error: layout_of(Result<[u32; 0], Packed<NonZero<u16>>>) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -357,7 +387,10 @@ error: layout_of(Result<[u32; 0], Packed<U16IsZero>>) = Layout {
            },
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -399,7 +432,10 @@ error: layout_of(Result<[u32; 0], Packed<U16IsZero>>) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(0 bytes),
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -424,7 +460,10 @@ error: layout_of(Result<[u32; 0], Packed<U16IsZero>>) = Layout {
                        },
                        fields: Arbitrary {
                            offsets: [
-                               Size(0 bytes),
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,

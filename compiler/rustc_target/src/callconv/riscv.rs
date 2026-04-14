@@ -130,6 +130,10 @@ where
                 }
             }
             FieldsShape::Arbitrary { .. } => {
+                assert!(
+                    arg_layout.is_sized(),
+                    "FIXME(more_unsized): determine if this needs to handle unsized, and fix if so"
+                );
                 match arg_layout.variants {
                     Variants::Multiple { .. } => return Err(CannotUseFpConv),
                     Variants::Single { .. } | Variants::Empty => (),
@@ -143,7 +147,7 @@ where
                         flen,
                         field1_kind,
                         field2_kind,
-                        offset_from_start + arg_layout.fields.offset(i),
+                        offset_from_start + arg_layout.fields.exact_offset(i),
                     )?;
                 }
             }

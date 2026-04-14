@@ -123,7 +123,7 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
                                 continue;
                             }
 
-                            if !is_union && total != layout.fields.offset(i) {
+                            if !is_union && total != layout.fields.exact_offset(i) {
                                 // This field isn't just after the previous one we considered, abort.
                                 return Err(Heterogeneous);
                             }

@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 use std::marker::PhantomData;
 use std::ops::Range;
 
-use rustc_abi::{BackendRepr, FieldIdx, FieldsShape, Size, VariantIdx};
+use rustc_abi::{BackendRepr, FieldIdx, FieldsShape, OffsetAccuracy, Size, VariantIdx};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_index::IndexVec;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
@@ -170,7 +170,7 @@ fn calculate_debuginfo_offset<
     bx: &mut Bx,
     projection: &[mir::PlaceElem<'tcx>],
     base: L,
-) -> DebugInfoOffset<L> {
+) -> Option<DebugInfoOffset<L>> {
     let mut direct_offset = Size::ZERO;
     // FIXME(eddyb) use smallvec here.
     let mut indirect_offsets = vec![];
@@ -184,7 +184,13 @@ fn calculate_debuginfo_offset<
             }
             mir::ProjectionElem::Field(field, _) => {
                 let offset = indirect_offsets.last_mut().unwrap_or(&mut direct_offset);
-                *offset += place.layout().fields.offset(field.index());
+                let field_offset = place.layout().fields.offset(field.index());
+                if !matches!(field_offset.accuracy, OffsetAccuracy::Exact) {
+                    // FIXME(more_unsized): maybe emit more complex debuginfo expression
+                    // for some after-unsized fields?
+                    return None;
+                }
+                *offset += field_offset.offset;
                 place = place.project_field(bx, field);
             }
             mir::ProjectionElem::Downcast(_, variant) => {
@@ -210,7 +216,7 @@ fn calculate_debuginfo_offset<
         }
     }
 
-    DebugInfoOffset { direct_offset, indirect_offsets, result: place }
+    Some(DebugInfoOffset { direct_offset, indirect_offsets, result: place })
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -272,8 +278,12 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             None => return,
         };
 
-        let DebugInfoOffset { direct_offset, indirect_offsets, result: _ } =
-            calculate_debuginfo_offset(bx, projection, base.layout);
+        let Some(DebugInfoOffset { direct_offset, indirect_offsets, result: _ }) =
+            calculate_debuginfo_offset(bx, projection, base.layout)
+        else {
+            self.debug_poison_to_local(bx, local);
+            return;
+        };
         for var in vars.iter() {
             let Some(dbg_var) = var.dbg_var else {
                 continue;
@@ -473,7 +483,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         let Some(dbg_loc) = self.dbg_loc(var.source_info) else { return };
 
         let DebugInfoOffset { direct_offset, indirect_offsets, result: _ } =
-            calculate_debuginfo_offset(bx, var.projection, base.layout);
+            calculate_debuginfo_offset(bx, var.projection, base.layout)
+                .expect("FIXME(more_unsized): can this ever encounter non-exact offsets?");
 
         // When targeting MSVC, create extra allocas for arguments instead of pointing multiple
         // dbg_var_addr() calls into the same alloca with offsets. MSVC uses CodeView records
@@ -491,7 +502,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         if should_create_individual_allocas {
             let DebugInfoOffset { direct_offset: _, indirect_offsets: _, result: place } =
-                calculate_debuginfo_offset(bx, var.projection, base);
+                calculate_debuginfo_offset(bx, var.projection, base)
+                    .expect("FIXME(more_unsized): can this ever encounter non-exact offsets?");
 
             // Create a variable which will be a pointer to the actual value
             let ptr_ty = Ty::new_mut_ptr(bx.tcx(), place.layout.ty);
@@ -626,7 +638,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let var_layout = self.cx.layout_of(var_ty);
 
                 let DebugInfoOffset { direct_offset, indirect_offsets, result: fragment_layout } =
-                    calculate_debuginfo_offset(bx, &fragment.projection, var_layout);
+                    calculate_debuginfo_offset(bx, &fragment.projection, var_layout)
+                        .expect("FIXME(more_unsized): can this ever encounter non-exact offsets?");
                 assert!(indirect_offsets.is_empty());
 
                 if fragment_layout.size == Size::ZERO {

@@ -1,6 +1,8 @@
 use std::assert_matches;
 
-use rustc_abi::{BackendRepr, FieldsShape, Scalar, Size, TagEncoding, Variants};
+use rustc_abi::{
+    BackendRepr, FieldOffset, FieldsShape, OffsetAccuracy, Scalar, Size, TagEncoding, Variants,
+};
 use rustc_middle::bug;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutCx, TyAndLayout};
 
@@ -39,7 +41,7 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
     fn non_zst_fields<'tcx, 'a>(
         cx: &'a LayoutCx<'tcx>,
         layout: &'a TyAndLayout<'tcx>,
-    ) -> impl Iterator<Item = (Size, TyAndLayout<'tcx>)> {
+    ) -> impl Iterator<Item = (FieldOffset, TyAndLayout<'tcx>)> {
         (0..layout.layout.fields().count()).filter_map(|i| {
             let field = layout.field(cx, i);
             // Also checking `align == 1` here leads to test failures in
@@ -63,7 +65,7 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
         };
         if fields.next().is_none() {
             let (offset, first) = first;
-            if offset == Size::ZERO && first.layout.size() == layout.size {
+            if offset.guaranteed_zero() && first.layout.size() == layout.size {
                 // This is a newtype, so keep recursing.
                 // FIXME(RalfJung): I don't think it would be correct to do any checks for
                 // alignment here, so we don't. Is that correct?
@@ -131,7 +133,7 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
                         let field = inner.field(cx, 0);
                         // The field should be at the right offset, and match the `scalar` layout.
                         assert_eq!(
-                            offset,
+                            offset.exact_offset(),
                             Size::ZERO,
                             "`Scalar` field at non-0 offset in {inner:#?}",
                         );
@@ -192,6 +194,18 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
                     None,
                     "`ScalarPair` layout for type with at least three non-ZST fields: {inner:#?}"
                 );
+                assert_eq!(
+                    offset1.accuracy,
+                    OffsetAccuracy::Exact,
+                    "`ScalarPair` layout had non-exact first field offset: {offset1:?}"
+                );
+                assert_eq!(
+                    offset2.accuracy,
+                    OffsetAccuracy::Exact,
+                    "`ScalarPair` layout had non-exact second field offset: {offset2:?}"
+                );
+                let offset1 = offset1.offset;
+                let offset2 = offset2.offset;
                 // The fields might be in opposite order.
                 let (offset1, field1, offset2, field2) = if offset1 <= offset2 {
                     (offset1, field1, offset2, field2)

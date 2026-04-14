@@ -3,9 +3,9 @@ use rustc_abi as abi;
 use rustc_abi::Integer::{I8, I32};
 use rustc_abi::Primitive::{self, Float, Int, Pointer};
 use rustc_abi::{
-    AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldsShape, HasDataLayout, Layout,
-    LayoutCalculatorError, LayoutData, Niche, ReprFlags, ReprOptions, Scalar, Size, StructPrefix,
-    TagEncoding, VariantIdx, Variants, WrappingRange,
+    AddressSpace, BackendRepr, FIRST_VARIANT, FieldIdx, FieldOffset, FieldsShape, HasDataLayout,
+    Layout, LayoutCalculatorError, LayoutData, Niche, ReprFlags, ReprOptions, Scalar, Size,
+    StructPrefix, TagEncoding, VariantIdx, Variants, WrappingRange,
 };
 use rustc_hashes::Hash64;
 use rustc_hir as hir;
@@ -374,7 +374,7 @@ fn layout_of_uncached<'tcx>(
             // single field transparent Adts, and only the parts of the compiler that
             // specifically care about pattern types will have to handle it.
             layout.fields = FieldsShape::Arbitrary {
-                offsets: [Size::ZERO].into_iter().collect(),
+                offsets: [FieldOffset::exact(Size::ZERO)].into_iter().collect(),
                 in_memory_order: [FieldIdx::new(0)].into_iter().collect(),
             };
             tcx.mk_layout(layout)
@@ -777,6 +777,7 @@ fn layout_of_uncached<'tcx>(
                 && def.is_struct() // FIXME(more_unsized): implement this check for unions and enums
                 && layout.is_sized()
             {
+                // FIXME(more_unsized): implement this check for multi-unsized structs
                 let mut variants = variants;
                 let unsized_replacement = cx.layout_of(Ty::new_slice(tcx, tcx.types.u8)).unwrap();
                 for (vidx, variant) in variants.iter_enumerated_mut() {
@@ -819,7 +820,9 @@ fn layout_of_uncached<'tcx>(
                         bug!(
                             "unsizing {ty:?} changed field order!\n{layout:?}\n{unsized_layout:?}"
                         );
-                    } else if variant_unsizabilities[FIRST_VARIANT][fidx] && sized_f < unsized_f {
+                    } else if variant_unsizabilities[FIRST_VARIANT][fidx]
+                        && sized_f.offset < unsized_f.offset
+                    {
                         bug!(
                             "unsizing {ty:?} moved tail backwards!\n{layout:?}\n{unsized_layout:?}"
                         );
@@ -931,11 +934,11 @@ fn variant_info_for_adt<'tcx>(
             .map(|(i, &name)| {
                 let field_layout = layout.field(cx, i);
                 let offset = layout.fields.offset(i);
-                min_size = min_size.max(offset + field_layout.size);
+                min_size = min_size.max(offset.offset + field_layout.size);
                 FieldInfo {
                     kind: FieldKind::AdtField,
                     name,
-                    offset: offset.bytes(),
+                    offset: offset.offset.bytes(), // FIXME(more_unsized): does this need to handle multi-unsized?
                     size: field_layout.size.bytes(),
                     align: field_layout.align.bytes(),
                     type_name: None,
@@ -1012,7 +1015,8 @@ fn variant_info_for_coroutine<'tcx>(
         .enumerate()
         .map(|(field_idx, (_, name))| {
             let field_layout = layout.field(cx, field_idx);
-            let offset = layout.fields.offset(field_idx);
+            // coroutines should never have unsized fields, so `exact_offset` is fine
+            let offset = layout.fields.exact_offset(field_idx);
             upvars_size = upvars_size.max(offset + field_layout.size);
             FieldInfo {
                 kind: FieldKind::Upvar,
@@ -1037,7 +1041,8 @@ fn variant_info_for_coroutine<'tcx>(
                 .map(|(field_idx, local)| {
                     let field_name = coroutine.field_names[*local];
                     let field_layout = variant_layout.field(cx, field_idx);
-                    let offset = variant_layout.fields.offset(field_idx);
+                    // coroutines should never have unsized fields, so `exact_offset` is fine
+                    let offset = variant_layout.fields.exact_offset(field_idx);
                     // The struct is as large as the last field's end
                     variant_size = variant_size.max(offset + field_layout.size);
                     FieldInfo {
@@ -1077,7 +1082,7 @@ fn variant_info_for_coroutine<'tcx>(
             // However, if the discriminant is placed past the end of the variant, then we need
             // to factor in the size of the discriminant manually. This really should be refactored
             // better, but this "works" for now.
-            if layout.fields.offset(tag_field.as_usize()) >= variant_size {
+            if layout.fields.exact_offset(tag_field.as_usize()) >= variant_size {
                 variant_size += match tag_encoding {
                     TagEncoding::Direct => tag.size(cx),
                     _ => Size::ZERO,

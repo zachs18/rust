@@ -2487,7 +2487,7 @@ fn typetree_from_ty_impl_inner<'tcx>(
                     let field_tree =
                         typetree_from_ty_impl_inner(tcx, field_ty, depth + 1, visited, false);
 
-                    let field_offset = layout.fields.offset(field_idx).bytes_usize();
+                    let field_offset = layout.fields.exact_offset(field_idx).bytes_usize();
 
                     for elem_type in &field_tree.0 {
                         types.push(Type {

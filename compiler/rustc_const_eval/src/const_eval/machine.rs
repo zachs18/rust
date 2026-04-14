@@ -617,7 +617,8 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
                 let cx = ty::layout::LayoutCx::new(ecx.tcx.tcx, ecx.typing_env());
 
                 let layout = layout.for_variant(&cx, variant);
-                let offset = layout.fields.offset(field.index()).bytes();
+                // FIXME(more_unsized): handle non-exact offsets somehow
+                let offset = layout.fields.offset(field.index()).offset.bytes();
 
                 ecx.write_scalar(Scalar::from_target_usize(offset, ecx), dest)?;
             }

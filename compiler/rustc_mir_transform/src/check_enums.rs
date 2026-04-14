@@ -227,7 +227,7 @@ impl<'a, 'tcx> Visitor<'tcx> for EnumFinder<'a, 'tcx> {
                         source_op: op.to_copy(),
                         discr,
                         op_size: op_layout.size,
-                        offset: enum_layout.fields.offset(tag_field.as_usize()),
+                        offset: enum_layout.fields.exact_offset(tag_field.as_usize()),
                         valid_range,
                     });
                 }

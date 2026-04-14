@@ -20,7 +20,10 @@ error: layout_of(MissingPayloadField) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -70,7 +73,10 @@ error: layout_of(MissingPayloadField) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -140,7 +146,10 @@ error: layout_of(CommonPayloadField) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -191,7 +200,10 @@ error: layout_of(CommonPayloadField) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -229,7 +241,10 @@ error: layout_of(CommonPayloadField) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -277,7 +292,10 @@ error: layout_of(CommonPayloadFieldIsMaybeUninit) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -327,7 +345,10 @@ error: layout_of(CommonPayloadFieldIsMaybeUninit) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -364,7 +385,10 @@ error: layout_of(CommonPayloadFieldIsMaybeUninit) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -412,7 +436,10 @@ error: layout_of(NicheFirst) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -467,8 +494,14 @@ error: layout_of(NicheFirst) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(0 bytes),
-                               Size(1 bytes),
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                0,
@@ -568,7 +601,10 @@ error: layout_of(NicheSecond) = Layout {
            ),
            fields: Arbitrary {
                offsets: [
-                   Size(0 bytes),
+                   FieldOffset {
+                       offset: Size(0 bytes),
+                       accuracy: Exact,
+                   },
                ],
                in_memory_order: [
                    0,
@@ -623,8 +659,14 @@ error: layout_of(NicheSecond) = Layout {
                        ),
                        fields: Arbitrary {
                            offsets: [
-                               Size(1 bytes),
-                               Size(0 bytes),
+                               FieldOffset {
+                                   offset: Size(1 bytes),
+                                   accuracy: Exact,
+                               },
+                               FieldOffset {
+                                   offset: Size(0 bytes),
+                                   accuracy: Exact,
+                               },
                            ],
                            in_memory_order: [
                                1,
