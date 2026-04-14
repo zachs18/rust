@@ -1,7 +1,9 @@
 use crate::any::type_name;
 use crate::clone::TrivialClone;
+use crate::init::{Init, PinInit};
 use crate::marker::{Destruct, MetaSized};
 use crate::mem::ManuallyDrop;
+use crate::ptr::Thin;
 use crate::{fmt, intrinsics, ptr, slice};
 
 /// A wrapper type to construct uninitialized instances of `T`.
@@ -1119,6 +1121,39 @@ impl<T: MetaSized> MaybeUninit<T> {
         let len = super::size_of_val(self);
         // SAFETY: MaybeUninit<u8> is always valid, even for padding bytes
         unsafe { slice::from_raw_parts_mut(self.as_mut_ptr().cast::<MaybeUninit<u8>>(), len) }
+    }
+
+    /// Fallibly initialize a `MaybeUninit<T>`.
+    ///
+    /// This overwrites any previous value without dropping it, so be careful
+    /// not to use this twice unless you want to skip running the destructor.
+    /// For your convenience, if initialization succeeds, this also returns
+    /// a mutable reference to the (now safely initialized) contents of `self`.
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn try_initialize<Error>(&mut self, init: impl Init<T, Error>) -> Result<&mut T, Error>
+    where
+        T: Thin,
+    {
+        // SAFETY: `T: Thin`
+        unsafe {
+            PinInit::init(init, self, ())?;
+        }
+        // SAFETY: `self` was just initialized
+        Ok(unsafe { self.assume_init_mut() })
+    }
+
+    /// Initialize a `MaybeUninit<T>`.
+    ///
+    /// This overwrites any previous value without dropping it, so be careful
+    /// not to use this twice unless you want to skip running the destructor.
+    /// For your convenience, this also returns a mutable reference to the
+    /// (now safely initialized) contents of `self`.
+    #[unstable(feature = "in_place_init", issue = "none")]
+    pub fn initialize(&mut self, init: impl Init<T>) -> &mut T
+    where
+        T: Thin,
+    {
+        self.try_initialize(init).unwrap_or_else(|never| match never {})
     }
 }
 
