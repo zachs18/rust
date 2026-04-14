@@ -136,9 +136,7 @@ impl<T: ?Sized> [T] {
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
-}
 
-impl<T> [T] {
     /// Returns the first element of the slice, or `None` if it is empty.
     ///
     /// # Examples
@@ -306,7 +304,9 @@ impl<T> [T] {
     pub const fn last_mut(&mut self) -> Option<&mut T> {
         if let [.., last] = self { Some(last) } else { None }
     }
+}
 
+impl<T> [T] {
     /// Returns an array reference to the first `N` items in the slice.
     ///
     /// If the slice is not at least `N` in length, this will return `None`.
