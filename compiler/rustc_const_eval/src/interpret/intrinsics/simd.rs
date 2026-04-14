@@ -534,7 +534,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         }
                         // Ptr-to-ptr cast
                         (ty::RawPtr(..), ty::RawPtr(..)) if ptr_cast =>
-                            self.ptr_to_ptr(&op, dest.layout)?,
+                            self.thin_ptr_to_ptr(&op, dest.layout)?,
                         // Int->Ptr casts
                         (ty::Int(_) | ty::Uint(_), ty::RawPtr(..)) if from_exposed_cast =>
                             self.pointer_with_exposed_provenance_cast(&op, dest.layout)?,

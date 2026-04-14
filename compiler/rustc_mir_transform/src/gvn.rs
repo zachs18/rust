@@ -744,7 +744,10 @@ impl<'body, 'a, 'tcx> VnState<'body, 'a, 'tcx> {
                 CastKind::FnPtrToPtr | CastKind::PtrToPtr => {
                     let src = self.eval_to_const(value)?;
                     let src = self.ecx.read_immediate(src).discard_err()?;
-                    let ret = self.ecx.ptr_to_ptr(&src, ty).discard_err()?;
+                    if !matches!(*src, Immediate::Scalar(_)) {
+                        return None;
+                    }
+                    let ret = self.ecx.thin_ptr_to_ptr(&src, ty).discard_err()?;
                     ret.into()
                 }
                 CastKind::PointerCoercion(ty::adjustment::PointerCoercion::UnsafeFnPointer, _) => {
