@@ -692,7 +692,9 @@ impl<T> [T] {
         // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
         unsafe { &mut *index.get_unchecked_mut(self) }
     }
+}
 
+impl<T: ?Sized> [T] {
     /// Returns a raw pointer to the slice's buffer.
     ///
     /// The caller must ensure that the slice outlives the pointer this
@@ -726,7 +728,9 @@ impl<T> [T] {
     #[inline(always)]
     #[must_use]
     pub const fn as_ptr(&self) -> *const T {
-        self as *const [T] as *const T
+        let elem_meta = ptr::metadata(self).elem;
+        let data_ptr = self as *const [T] as *const u8;
+        ptr::from_raw_parts(data_ptr, elem_meta)
     }
 
     /// Returns an unsafe mutable pointer to the slice's buffer.
@@ -757,9 +761,13 @@ impl<T> [T] {
     #[inline(always)]
     #[must_use]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        self as *mut [T] as *mut T
+        let elem_meta = ptr::metadata(self).elem;
+        let data_ptr = self as *mut [T] as *mut u8;
+        ptr::from_raw_parts_mut(data_ptr, elem_meta)
     }
+}
 
+impl<T> [T] {
     /// Returns the two raw pointers spanning the slice.
     ///
     /// The returned range is half-open, which means that the end pointer
