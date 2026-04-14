@@ -1863,8 +1863,8 @@ mod prim_ref {}
 ///
 /// - `*const T`, `*mut T`, `&T`, `&mut T`, `Box<T>` (specifically, only `Box<T, Global>`), and
 ///   `NonNull<T>` are all ABI-compatible with each other for all `T`. They are also ABI-compatible
-///   with each other for _different_ `T` if they have the same metadata type (`<T as
-///   Pointee>::Metadata`).
+///   with each other for _different_ `T` if they have the compatible metadata types
+// FIXME: expand on what "compatible metadata types" means.
 /// - `usize` is ABI-compatible with the `uN` integer type of the same size, and likewise `isize` is
 ///   ABI-compatible with the `iN` integer type of the same size.
 /// - `char` is ABI-compatible with `u32`.

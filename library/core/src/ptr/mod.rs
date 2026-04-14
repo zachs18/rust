@@ -420,8 +420,7 @@ pub type Alignment = mem::Alignment;
 mod metadata;
 #[unstable(feature = "ptr_metadata", issue = "81513")]
 pub use metadata::{
-    DynMetadata, Metadata, Pointee, Thin, build_metadata, from_raw_parts, from_raw_parts_mut,
-    metadata,
+    DynMetadata, Metadata, Thin, build_metadata, from_raw_parts, from_raw_parts_mut, metadata,
 };
 
 mod non_null;

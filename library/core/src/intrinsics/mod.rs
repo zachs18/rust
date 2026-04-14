@@ -925,7 +925,7 @@ pub const unsafe fn arith_offset<T>(dst: *const T, offset: isize) -> *const T;
 ///
 /// # Safety
 ///
-/// - `index < PtrMetadata(slice_ptr)`, so the indexing is in-bounds for the slice
+/// - `index < PtrMetadata(slice_ptr).len`, so the indexing is in-bounds for the slice
 /// - the resulting offsetting is in-bounds of the allocation, which is
 ///   always the case for references, but needs to be upheld manually for pointers
 #[rustc_nounwind]

@@ -121,10 +121,6 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // `DiscriminantKind` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate);
                 }
-                Some(LangItem::PointeeTrait) => {
-                    // `Pointee` is automatically implemented for every type.
-                    candidates.vec.push(BuiltinCandidate);
-                }
                 Some(LangItem::ThinPointeeTrait) => {
                     self.assemble_builtin_sized_candidate(
                         obligation.predicate.self_ty().skip_binder(),

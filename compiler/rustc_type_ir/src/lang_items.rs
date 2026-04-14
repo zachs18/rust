@@ -12,7 +12,6 @@ pub enum SolverLangItem {
     FieldBase,
     FieldType,
     FutureOutput,
-    Metadata,
     // tidy-alphabetical-end
 }
 
@@ -51,7 +50,6 @@ pub enum SolverTraitLangItem {
     MetaSized,
     Ord,
     PointeeSized,
-    PointeeTrait,
     Sized,
     ThinPointeeTrait,
     TransmuteTrait,

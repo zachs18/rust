@@ -16,10 +16,8 @@ macro_rules! type_dependent {
 fn t<T: Trait>() {
     let x: fully_qualified!(Assoc);
     //~^ ERROR cannot find associated type `Assoc` in trait `Trait`
-    // FIXME(ptr_metadata_v2): Once Pointee is fully ripped out, remove the HELP
     let x: type_dependent!(T, Assoc);
     //~^ ERROR associated type `Assoc` not found for `T`
-    //~| HELP has the following
 }
 
 fn main() {}
