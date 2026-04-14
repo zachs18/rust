@@ -8,6 +8,7 @@ error: fn_abi_of(take_va_list) = FnAbi {
                            align: AbiAlign {
                                abi: Align(8 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -47,6 +48,7 @@ error: fn_abi_of(take_va_list) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -86,6 +88,7 @@ error: fn_abi_of(take_va_list_sysv64) = FnAbi {
                            align: AbiAlign {
                                abi: Align(8 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -125,6 +128,7 @@ error: fn_abi_of(take_va_list_sysv64) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -166,6 +170,7 @@ error: fn_abi_of(take_va_list_win64) = FnAbi {
                            align: AbiAlign {
                                abi: Align(8 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -205,6 +210,7 @@ error: fn_abi_of(take_va_list_win64) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },

@@ -2218,6 +2218,12 @@ pub struct LayoutData<FieldIdx: Idx, VariantIdx: Idx> {
     /// especially in the case of by-pointer struct returns, which allocate stack even when unused.
     pub uninhabited: bool,
 
+    /// If `true`, then `align` is exact, otherwise it may be larger, e.g.
+    ///
+    ///     struct Foo(u16, dyn Trait);
+    ///
+    /// will have (on most platforms) `align == 2`, and `!align_is_exact`.
+    pub align_is_exact: bool,
     pub align: AbiAlign,
     pub size: Size,
 
@@ -2273,6 +2279,7 @@ where
         let LayoutData {
             size,
             align,
+            align_is_exact,
             backend_repr,
             fields,
             largest_niche,
@@ -2285,6 +2292,7 @@ where
         f.debug_struct("Layout")
             .field("size", size)
             .field("align", align)
+            .field("align_is_exact", align_is_exact)
             .field("backend_repr", backend_repr)
             .field("fields", fields)
             .field("largest_niche", largest_niche)

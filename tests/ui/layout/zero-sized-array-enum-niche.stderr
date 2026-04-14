@@ -3,6 +3,7 @@ error: layout_of(Result<[u32; 0], bool>) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Memory {
                sized: true,
            },
@@ -44,6 +45,7 @@ error: layout_of(Result<[u32; 0], bool>) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -72,6 +74,7 @@ error: layout_of(Result<[u32; 0], bool>) = Layout {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -120,6 +123,7 @@ error: layout_of(MultipleAlignments) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Memory {
                sized: true,
            },
@@ -161,6 +165,7 @@ error: layout_of(MultipleAlignments) = Layout {
                        align: AbiAlign {
                            abi: Align(2 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -189,6 +194,7 @@ error: layout_of(MultipleAlignments) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -217,6 +223,7 @@ error: layout_of(MultipleAlignments) = Layout {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -265,6 +272,7 @@ error: layout_of(Result<[u32; 0], Packed<NonZero<u16>>>) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Memory {
                sized: true,
            },
@@ -306,6 +314,7 @@ error: layout_of(Result<[u32; 0], Packed<NonZero<u16>>>) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -334,6 +343,7 @@ error: layout_of(Result<[u32; 0], Packed<NonZero<u16>>>) = Layout {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -382,6 +392,7 @@ error: layout_of(Result<[u32; 0], Packed<U16IsZero>>) = Layout {
            align: AbiAlign {
                abi: Align(4 bytes),
            },
+           align_is_exact: true,
            backend_repr: Memory {
                sized: true,
            },
@@ -427,6 +438,7 @@ error: layout_of(Result<[u32; 0], Packed<U16IsZero>>) = Layout {
                        align: AbiAlign {
                            abi: Align(4 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -455,6 +467,7 @@ error: layout_of(Result<[u32; 0], Packed<U16IsZero>>) = Layout {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },

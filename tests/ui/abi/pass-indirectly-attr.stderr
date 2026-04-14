@@ -17,6 +17,7 @@ error: fn_abi_of(extern_c) = FnAbi {
                            align: AbiAlign {
                                abi: Align(1 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -63,6 +64,7 @@ error: fn_abi_of(extern_c) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
@@ -102,6 +104,7 @@ error: fn_abi_of(extern_rust) = FnAbi {
                            align: AbiAlign {
                                abi: Align(1 bytes),
                            },
+                           align_is_exact: true,
                            backend_repr: Memory {
                                sized: true,
                            },
@@ -166,6 +169,7 @@ error: fn_abi_of(extern_rust) = FnAbi {
                        align: AbiAlign {
                            abi: Align(1 bytes),
                        },
+                       align_is_exact: true,
                        backend_repr: Memory {
                            sized: true,
                        },
