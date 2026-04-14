@@ -9,8 +9,7 @@ use rustc_span::DUMMY_SP;
 use tracing::{debug, trace};
 
 use crate::common::IntPredicate;
-use crate::mir::operand::{OperandRef, OperandValue};
-use crate::mir::place::PlaceRef;
+use crate::mir::operand::OperandRef;
 use crate::mir::{AnyPlaceMeta, PlaceMetadata};
 use crate::traits::*;
 use crate::{common, meth};
@@ -234,15 +233,8 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         }
         ty::Slice(elem_ty) => {
             let meta = info.0.expect("slice should have metadata").change_sizedness();
-            let (meta_len, meta_elem) = if let OperandValue::Ref(val) = meta.val {
-                let meta_place = PlaceRef { val, layout: meta.layout };
-                let meta_len_place = meta_place.project_field(bx, 0);
-                let meta_elem_place = meta_place.project_field(bx, 1);
-                (bx.load_operand(meta_len_place), bx.load_operand(meta_elem_place))
-            } else {
-                // FIXME(ptr_metadata_v2): use extract_field here
-                (meta.extract_field_simple(bx, 0), meta.extract_field_simple(bx, 1))
-            };
+            let meta_len = meta.extract_or_load_field(bx, 0);
+            let meta_elem = meta.extract_or_load_field(bx, 1);
             let len = meta_len.immediate();
             let elem_info =
                 AnyPlaceMeta(Some(meta_elem.expect_sized("pointer metadata must be sized")));
@@ -306,19 +298,10 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 } else {
                     let meta =
                         info.0.expect("non-Thin Adt/Tuple should have metadata").change_sizedness();
-                    if let OperandValue::Ref(val) = meta.val {
-                        let meta_ref = PlaceRef { val, layout: meta.layout };
-                        let field_meta_ref = meta_ref.project_field(bx, i);
-                        Some(
-                            bx.load_operand(field_meta_ref)
-                                .expect_sized("pointer metadata must be sized"),
-                        )
-                    } else {
-                        Some(
-                            meta.extract_field_simple(bx, i)
-                                .expect_sized("pointer metadata must be sized"),
-                        )
-                    }
+                    Some(
+                        meta.extract_or_load_field(bx, i)
+                            .expect_sized("pointer metadata must be sized"),
+                    )
                 },
             );
             let (mut valid, unsized_size, mut unsized_align) =

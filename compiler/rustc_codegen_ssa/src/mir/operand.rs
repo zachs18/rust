@@ -473,11 +473,14 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
         OperandRef { val, layout: field, move_annotation: None }
     }
 
+    /// If this is [`OperandValue::Ref`], [`PlaceRef::project_field`] and [`Bx::load_operand`](BuilderMethods::load_operand).
+    /// Otherwise, [`Self::extract_field`] without transmute checks
+    ///
     /// FIXME(ptr_metadata_v2): This exists to be used in `PlaceRef::project_field` and
     /// `rustc_codegen_ssa::size_and_align_of_dst` which need it (or something like it)
     /// to extract a fields' pointer metadata from a container's possibly-multi-wide pointer
     /// metadata, but does not have a `FunctionCx` to pass around.
-    pub(crate) fn extract_field_simple<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
+    pub(crate) fn extract_or_load_field<Bx: BuilderMethods<'a, 'tcx, Value = V>>(
         &self,
         bx: &mut Bx,
         i: usize,
@@ -488,6 +491,12 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
         if !bx.is_backend_ref(self.layout) && bx.is_backend_ref(field) {
             // Part of https://github.com/rust-lang/compiler-team/issues/838
             bug!("Non-ref type {self:?} cannot project to ref field type {field:?}",);
+        }
+
+        if let OperandValue::Ref(val) = self.val {
+            let place = PlaceRef { val, layout: self.layout };
+            let field_place = place.project_field(bx, i);
+            return bx.load_operand(field_place);
         }
 
         let val = if field.is_zst() {

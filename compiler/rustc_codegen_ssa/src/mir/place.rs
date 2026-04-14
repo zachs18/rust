@@ -205,18 +205,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             );
             self.val.llextra.map_metadata(|meta| {
                 let meta = meta.change_sizedness();
-                match meta.val {
-                    OperandValue::Ref(_) => {
-                        let orig_meta_place = PlaceRef::alloca(bx, meta.layout);
-                        meta.val.store(bx, orig_meta_place);
-                        let field_meta_place = orig_meta_place.project_field(bx, ix);
-                        bx.load_operand(field_meta_place)
-                            .expect_sized("pointer metadata must be sized")
-                    }
-                    _ => meta
-                        .extract_field_simple(bx, ix)
-                        .expect_sized("pointer metadata must be sized"),
-                }
+                meta.extract_or_load_field(bx, ix).expect_sized("pointer metadata must be sized")
             })
         } else {
             AnyPlaceMeta(None)
@@ -334,13 +323,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                 _ => bug!("project_index on non-slice non-array type"),
             };
             let array_meta = self.val.llextra.0.unwrap().change_sizedness();
-            let elem_meta = if let OperandValue::Ref(val) = array_meta.val {
-                let array_meta = PlaceRef { val, layout: array_meta.layout };
-                let elem_meta = array_meta.project_field(bx, elem_meta_idx);
-                bx.load_operand(elem_meta)
-            } else {
-                array_meta.extract_field_simple(bx, elem_meta_idx)
-            };
+            let elem_meta = array_meta.extract_or_load_field(bx, elem_meta_idx);
             let elem_meta =
                 AnyPlaceMeta(Some(elem_meta.expect_sized("pointer metadata must be sized")));
 
