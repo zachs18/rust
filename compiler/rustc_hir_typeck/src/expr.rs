@@ -4262,43 +4262,61 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     }
                 }
                 ty::Adt(container_def, args) => {
+                    assert!(container_def.is_struct(), "enums and unions were already handled");
+                    // If this struct has fields in declaration order, then all fields before
+                    // the requested field must be sized
+                    let is_linear = container_def.repr().linear();
+
                     let block = self.tcx.local_def_id_to_hir_id(self.body_id);
                     let (ident, def_scope) =
                         self.tcx.adjust_ident_and_get_scope(field, container_def.did(), block);
 
                     let fields = &container_def.non_enum_variant().fields;
-                    if let Some((index, field)) = fields
-                        .iter_enumerated()
-                        .find(|(_, f)| f.ident(self.tcx).normalize_to_macros_2_0() == ident)
-                    {
-                        let field_ty = self.field_ty(expr.span, field, args);
 
-                        if self.tcx.features().offset_of_slice() {
-                            self.require_type_has_static_alignment(
-                                field_ty,
-                                expr.span,
-                                ObligationCauseCode::OffsetOfField,
-                            );
-                        } else {
-                            self.require_type_is_sized(
-                                field_ty,
-                                expr.span,
-                                ObligationCauseCode::OffsetOfField,
-                            );
+                    if is_linear && false {
+                        // FIXMEL implement this
+                        // For linear-layout structs, all fields before the requested field must be `Sized`,
+                        // and the requested field must be `Sized` (or `Aligned` under `feature(offset_of_slice)`).
+                        todo!()
+                    } else {
+                        if let Some((index, field)) = fields
+                            .iter_enumerated()
+                            .find(|(_, f)| f.ident(self.tcx).normalize_to_macros_2_0() == ident)
+                        {
+                            let field_ty = self.field_ty(expr.span, field, args);
+
+                            if self.tcx.features().offset_of_slice() {
+                                self.require_type_has_static_alignment(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            } else {
+                                self.require_type_is_sized(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            }
+
+                            if field.vis.is_accessible_from(def_scope, self.tcx) {
+                                self.tcx.check_stability(
+                                    field.did,
+                                    Some(expr.hir_id),
+                                    expr.span,
+                                    None,
+                                );
+                            } else {
+                                self.private_field_err(ident, container_def.did()).emit();
+                            }
+
+                            // Save the index of all fields regardless of their visibility in case
+                            // of error recovery.
+                            field_indices.push((current_container, FIRST_VARIANT, index));
+                            current_container = field_ty;
+
+                            continue;
                         }
-
-                        if field.vis.is_accessible_from(def_scope, self.tcx) {
-                            self.tcx.check_stability(field.did, Some(expr.hir_id), expr.span, None);
-                        } else {
-                            self.private_field_err(ident, container_def.did()).emit();
-                        }
-
-                        // Save the index of all fields regardless of their visibility in case
-                        // of error recovery.
-                        field_indices.push((current_container, FIRST_VARIANT, index));
-                        current_container = field_ty;
-
-                        continue;
                     }
                 }
                 ty::Tuple(tys) => {
