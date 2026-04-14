@@ -136,7 +136,103 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
     }
 }
 
-enum LocalRef<'tcx, V> {
+pub trait PlaceSizedness: Copy + std::fmt::Debug {
+    // The default value should be valid for any `Sized` place.
+    type Metadata<'tcx, V: CodegenObject>: PlaceMetadata<'tcx, V>;
+}
+
+/// `Default::default()` must give the metadata for any sized place
+pub trait PlaceMetadata<'tcx, V: CodegenObject>:
+    Default + Copy + std::fmt::Debug + From<SizedPlaceMeta> + Into<AnyPlaceMeta<'tcx, V>>
+{
+    fn has_metadata(&self) -> bool;
+    fn try_to_sized(self) -> Option<SizedPlaceMeta>;
+    fn get_metadata(self) -> Option<OperandRef<'tcx, V, SizedPlace>> {
+        let meta: AnyPlaceMeta<'tcx, V> = self.into();
+        meta.0
+    }
+
+    fn immediate(self) -> V {
+        match self.get_metadata() {
+            Some(meta) => meta.change_sizedness().immediate(),
+            _ => bug!("not immediate: {:?}", self),
+        }
+    }
+
+    fn map_metadata(
+        self,
+        f: impl FnOnce(OperandRef<'tcx, V, SizedPlace>) -> OperandRef<'tcx, V, SizedPlace>,
+    ) -> Self;
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SizedPlace;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AnyPlace;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SizedPlaceMeta;
+
+#[derive(Debug, Clone, Copy)]
+pub struct AnyPlaceMeta<'tcx, V: CodegenObject>(Option<OperandRef<'tcx, V, SizedPlace>>);
+
+impl<'tcx, V: CodegenObject> Default for AnyPlaceMeta<'tcx, V> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<'tcx, V: CodegenObject> From<SizedPlaceMeta> for AnyPlaceMeta<'tcx, V> {
+    fn from(_: SizedPlaceMeta) -> Self {
+        AnyPlaceMeta(None)
+    }
+}
+
+impl PlaceSizedness for SizedPlace {
+    type Metadata<'tcx, V: CodegenObject> = SizedPlaceMeta;
+}
+
+impl PlaceSizedness for AnyPlace {
+    type Metadata<'tcx, V: CodegenObject> = AnyPlaceMeta<'tcx, V>;
+}
+
+impl<'tcx, V: CodegenObject> PlaceMetadata<'tcx, V> for SizedPlaceMeta {
+    fn has_metadata(&self) -> bool {
+        false
+    }
+
+    fn try_to_sized(self) -> Option<SizedPlaceMeta> {
+        Some(self)
+    }
+
+    fn map_metadata(
+        self,
+        _f: impl FnOnce(OperandRef<'tcx, V, SizedPlace>) -> OperandRef<'tcx, V, SizedPlace>,
+    ) -> Self {
+        self
+    }
+}
+impl<'tcx, V: CodegenObject> PlaceMetadata<'tcx, V> for AnyPlaceMeta<'tcx, V> {
+    fn has_metadata(&self) -> bool {
+        self.0.is_some()
+    }
+
+    fn try_to_sized(self) -> Option<SizedPlaceMeta> {
+        match self.0 {
+            None => Some(SizedPlaceMeta),
+            Some(_) => None,
+        }
+    }
+
+    fn map_metadata(
+        self,
+        f: impl FnOnce(OperandRef<'tcx, V, SizedPlace>) -> OperandRef<'tcx, V, SizedPlace>,
+    ) -> Self {
+        Self(self.0.map(f))
+    }
+}
+
+enum LocalRef<'tcx, V: CodegenObject> {
     Place(PlaceRef<'tcx, V>),
     /// `UnsizedPlace(p)`: `p` itself is a thin pointer (indirect place).
     /// `*p` is the wide pointer that references the actual unsized place.

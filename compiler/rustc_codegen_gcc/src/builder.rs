@@ -14,6 +14,7 @@ use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::common::{
     AtomicRmwBinOp, IntPredicate, RealPredicate, SynchronizationScope, TypeKind,
 };
+use rustc_codegen_ssa::mir::PlaceMetadata;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::PlaceRef;
 use rustc_codegen_ssa::traits::{
@@ -1023,7 +1024,7 @@ impl<'a, 'gcc, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'gcc, 'tcx> {
         &mut self,
         place: PlaceRef<'tcx, RValue<'gcc>>,
     ) -> OperandRef<'tcx, RValue<'gcc>> {
-        assert_eq!(place.val.llextra.is_some(), place.layout.is_unsized());
+        assert_eq!(place.val.llextra.has_metadata(), place.layout.is_unsized());
 
         if place.layout.is_zst() {
             return OperandRef::zero_sized(place.layout);
@@ -1048,7 +1049,7 @@ impl<'a, 'gcc, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'gcc, 'tcx> {
             }
         }
 
-        let val = if place.val.llextra.is_some() {
+        let val = if place.val.llextra.has_metadata() {
             // FIXME: Merge with the `else` below?
             OperandValue::Ref(place.val)
         } else if place.layout.is_gcc_immediate() {

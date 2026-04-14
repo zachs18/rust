@@ -9,6 +9,7 @@ use rustc_abi::{
 use rustc_codegen_ssa::base::{compare_simd_types, wants_msvc_seh, wants_wasm_eh};
 use rustc_codegen_ssa::common::{IntPredicate, TypeKind};
 use rustc_codegen_ssa::errors::{ExpectedPointerMutability, InvalidMonomorphization};
+use rustc_codegen_ssa::mir::PlaceMetadata;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
@@ -252,8 +253,8 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 };
                 match (args[1].val, args[2].val) {
                     (OperandValue::Ref(true_val), OperandValue::Ref(false_val)) => {
-                        assert!(true_val.llextra.is_none());
-                        assert!(false_val.llextra.is_none());
+                        assert!(!true_val.llextra.has_metadata());
+                        assert!(!false_val.llextra.has_metadata());
                         assert_eq!(true_val.align, false_val.align);
                         let ptr = select(self, true_val.llval, false_val.llval);
                         let selected =

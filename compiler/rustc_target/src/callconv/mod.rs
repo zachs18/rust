@@ -58,7 +58,7 @@ pub enum PassMode {
     Cast { pad_i32: bool, cast: Box<CastTarget> },
     /// Pass the argument indirectly via a hidden pointer.
     ///
-    /// The `meta_attrs` value, if any, is for the metadata (vtable or length) of an unsized
+    /// The `meta_attrs` value, if any, is for the metadata (vtable, length, etc) of an unsized
     /// argument. (This is the only mode that supports unsized arguments.)
     ///
     /// `on_stack` defines that the value should be passed at a fixed stack offset in accordance to
@@ -557,6 +557,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
                 // For aggregates in `Direct` mode to be compatible, the types need to be equal.
                 self.layout.ty == other.layout.ty
             } else {
+                // FIXME: also check metadata is eq_abi
                 true
             }
         }
