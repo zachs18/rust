@@ -2,7 +2,7 @@ use rustc_abi::{BackendRepr, FieldIdx, VariantIdx};
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_middle::mir::interpret::{EvalToValTreeResult, GlobalId, ValTreeCreationError};
 use rustc_middle::traits::ObligationCause;
-use rustc_middle::ty::layout::{LayoutCx, TyAndLayout};
+use rustc_middle::ty::layout::{HasTypingEnv, LayoutCx, TyAndLayout};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::{bug, mir};
 use rustc_span::DUMMY_SP;
@@ -217,14 +217,15 @@ fn reconstruct_place_meta<'tcx>(
     );
     // Sanity-check that we got a tail we support.
     match tail.kind() {
-        ty::Slice(..) | ty::Str => {}
-        _ => bug!("unsized tail of a valtree must be Slice or Str"),
+        ty::Str => {}
+        ty::Slice(elem) if elem.is_sized(*ecx.tcx, ecx.typing_env()) => {}
+        _ => bug!("unsized tail of a valtree must be Str or Slice of sized elements"),
     };
 
     // Get the number of elements in the unsized field.
     let num_elems = last_valtree.to_branch().len();
     let meta = Scalar::from_target_usize(num_elems as u64, &tcx);
-    let meta_layout = ecx.layout_of(ecx.tcx.types.usize).unwrap();
+    let meta_layout = ecx.layout_of(Ty::new_ptr_metadata(*ecx.tcx, layout.ty)).unwrap();
     let meta = ImmTy::from_scalar(meta, meta_layout);
     let meta = OpTy::from(meta).expect_sized("pointer metadata must be sized");
     AnyMemPlaceMeta(Some(meta))

@@ -1,5 +1,5 @@
 use either::{Left, Right};
-use rustc_abi::{Align, HasDataLayout, Size, TargetDataLayout};
+use rustc_abi::{Align, FieldIdx, HasDataLayout, Size, TargetDataLayout};
 use rustc_hir::def_id::DefId;
 use rustc_hir::limit::Limit;
 use rustc_middle::mir::interpret::{ErrorHandled, InvalidMetaKind, ReportedErrorInfo};
@@ -12,15 +12,15 @@ use rustc_middle::ty::{
     self, GenericArgsRef, Ty, TyCtxt, TypeFoldable, TypeVisitableExt, TypingEnv, TypingMode,
     Variance,
 };
-use rustc_middle::{bug, mir, span_bug};
+use rustc_middle::{bug, mir, span_bug, throw_unsup};
 use rustc_span::Span;
 use rustc_target::callconv::FnAbi;
 use tracing::{debug, trace};
 
 use super::{
     AnyMemPlaceMeta, Frame, FrameInfo, GlobalId, InterpErrorInfo, InterpErrorKind, InterpResult,
-    MPlaceTy, Machine, MemPlaceMetadata, Memory, OpTy, Place, PlaceTy, PointerArithmetic,
-    Projectable, Provenance, err_inval, interp_ok, throw_inval, throw_ub, throw_ub_format,
+    MPlaceTy, Machine, Memory, OpTy, Place, PlaceTy, PointerArithmetic, Projectable, Provenance,
+    err_inval, interp_ok, throw_inval, throw_ub, throw_ub_format,
 };
 use crate::{enter_trace_span, util};
 
@@ -231,6 +231,62 @@ pub fn format_interp_error<'tcx>(e: InterpErrorInfo<'tcx>) -> String {
     e.to_string()
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SizeAndAlignExternTypeSemantics {
+    /// Encountering an `extern type` is normal, and just results in returning `None`.
+    Normal,
+    /// Encountering an `extern type` is unsupported, and will be reported via [`throw_unsup`].
+    Unsupported,
+    /// Encountering an `extern type` should not be possible, e.g. due to `T: MetaSized`
+    /// trait bounds.
+    Unreachable,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct SizeAndAlignSemantics {
+    /// If `true`, an overflow during computation will be reported as UB,
+    /// otherwise `None` will be returned.
+    pub overflow_is_ub: bool,
+    /// What happens when layout computation encounters an `extern type`.
+    pub extern_type_semantics: SizeAndAlignExternTypeSemantics,
+}
+
+impl SizeAndAlignSemantics {
+    /// Overflow is not UB and `extern type` are not immediately reported; both
+    /// cause calculation to return `None`.
+    pub const RELAXED: Self = Self {
+        overflow_is_ub: false,
+        extern_type_semantics: SizeAndAlignExternTypeSemantics::Normal,
+    };
+
+    /// Not just for retag, but also for other uses in consteval that ignore `extern type`,
+    /// but still want UB on overflow.
+    pub const FOR_RETAG: Self = Self {
+        overflow_is_ub: true,
+        extern_type_semantics: SizeAndAlignExternTypeSemantics::Normal,
+    };
+
+    /// For computing field offsets, we don't want `extern type` to immediately be an error,
+    /// since it can be fine if it's at offset 0, but overflow is still UB.
+    pub const FOR_FIELD_OFFSET: Self = Self {
+        overflow_is_ub: true,
+        extern_type_semantics: SizeAndAlignExternTypeSemantics::Normal,
+    };
+
+    /// For `unchecked_(size|align)_*` intrinsics, which are bounded `T: MetaSized`
+    /// so should never encounter `extern type`, and for which overflow is UB.
+    pub const UNCHECKED_METASIZED_LAYOUT: Self = Self {
+        overflow_is_ub: true,
+        extern_type_semantics: SizeAndAlignExternTypeSemantics::Unreachable,
+    };
+
+    /// For `checked_(size|align)_*` intrinsics, which are bounded `T: MetaSized`
+    /// so should never encounter `extern type`, and for which overflow is not UB.
+    pub const CHECKED_METASIZED_LAYOUT: Self = Self {
+        overflow_is_ub: false,
+        extern_type_semantics: SizeAndAlignExternTypeSemantics::Unreachable,
+    };
+}
+
 impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     pub fn new(
         tcx: TyCtxt<'tcx>,
@@ -428,11 +484,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
     /// Returns the actual dynamic size and alignment of the place at the given type.
     /// Only the "meta" (metadata) part of the place matters.
-    /// This can fail to provide an answer for extern types.
+    ///
+    /// See [`SizeAndAlignSemantics`] for when this returns `None`.
     pub(super) fn size_and_align_from_meta(
         &self,
         metadata: &AnyMemPlaceMeta<'tcx, M::Provenance>,
         layout: &TyAndLayout<'tcx>,
+        semantics: SizeAndAlignSemantics,
     ) -> InterpResult<'tcx, Option<(Size, Align)>> {
         if layout.is_sized() {
             return interp_ok(Some((layout.size, layout.align.abi)));
@@ -454,11 +512,27 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // the last field). Can't have foreign types here, how would we
                 // adjust alignment and size for them?
                 let field = layout.field(self, layout.fields.count() - 1);
+
+                let field_meta = AnyMemPlaceMeta(
+                    if field.is_sized() || field.ty.is_thin(*self.tcx, self.typing_env) {
+                        None
+                    } else {
+                        let metadata = metadata
+                            .0
+                            .expect("non-Thin value should have metadata")
+                            .change_sizedness();
+                        let field_meta = self.project_field(
+                            &metadata,
+                            FieldIdx::from_usize(layout.fields.count() - 1),
+                        )?;
+                        Some(field_meta.expect_sized("pointer metadata must be sized"))
+                    },
+                );
+
                 let Some((unsized_size, mut unsized_align)) =
-                    self.size_and_align_from_meta(metadata, &field)?
+                    self.size_and_align_from_meta(&field_meta, &field, semantics)?
                 else {
-                    // A field with an extern type. We don't know the actual dynamic size
-                    // or the alignment.
+                    // The field layout calculation was invalid without UB.
                     return interp_ok(None);
                 };
 
@@ -488,40 +562,129 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 // Check if this brought us over the size limit.
                 if full_size > self.max_size_of_val() {
-                    throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
+                    if semantics.overflow_is_ub {
+                        throw_ub!(InvalidMeta(InvalidMetaKind::TooBig));
+                    } else {
+                        interp_ok(None)
+                    }
+                } else {
+                    interp_ok(Some((full_size, full_align)))
                 }
-                interp_ok(Some((full_size, full_align)))
             }
             ty::Dynamic(expected_trait, _) => {
-                let vtable = metadata.scalar().to_pointer(self)?;
+                let metadata =
+                    metadata.0.expect("non-Thin value should have metadata").change_sizedness();
+                let vtable = self.read_scalar(&metadata)?.to_pointer(self)?;
                 // Read size and align from vtable (already checks size).
                 interp_ok(Some(self.get_vtable_size_and_align(vtable, Some(expected_trait))?))
             }
 
-            ty::Slice(_) | ty::Str => {
-                let len = metadata.scalar().to_target_usize(self)?;
-                let elem = layout.field(self, 0);
+            ty::Array(elem_ty, len) => {
+                let len = len.try_to_target_usize(*self.tcx).expect("expected monomorphic const");
+                let elem_layout = self.layout_of(*elem_ty)?;
+                debug_assert!(
+                    !elem_layout.is_sized(),
+                    "sized arrays should have been handled above"
+                );
 
-                // Make sure the slice is not too big.
-                let size = elem.size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
+                // FIXME(ptr_metadata_v2): this and some other places in this file and in
+                // projection.rs, and probably other places, will need to be changed when we get
+                // `T: Thin + MetaSized + !Sized` custom types, or possibly `!Thin` types with
+                // custom metadata that is ZST.
+                let metadata =
+                    metadata.0.expect("non-Thin value should have metadata").change_sizedness();
+                let elem_meta = self.project_field(&metadata, FieldIdx::ZERO)?;
+                let elem_meta =
+                    AnyMemPlaceMeta(Some(elem_meta.expect_sized("pointer metadata must be sized")));
+
+                let Some((elem_size, elem_align)) =
+                    self.size_and_align_from_meta(&elem_meta, &elem_layout, semantics)?
+                else {
+                    return interp_ok(None);
+                };
+
+                let size = elem_size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
                 let size = Size::from_bytes(size);
                 if size > self.max_size_of_val() {
-                    throw_ub!(InvalidMeta(InvalidMetaKind::SliceTooBig));
+                    if semantics.overflow_is_ub {
+                        throw_ub!(InvalidMeta(InvalidMetaKind::SliceTooBig))
+                    } else {
+                        interp_ok(None)
+                    }
+                } else {
+                    interp_ok(Some((size, elem_align)))
                 }
-                interp_ok(Some((size, elem.align.abi)))
             }
 
-            ty::Foreign(_) => interp_ok(None),
+            ty::Str => {
+                let metadata =
+                    metadata.0.expect("non-Thin value should have metadata").change_sizedness();
+                let len = self.read_scalar(&metadata)?.to_target_usize(self)?;
+                let size = Size::from_bytes(len);
+                if size > self.max_size_of_val() {
+                    if semantics.overflow_is_ub {
+                        throw_ub!(InvalidMeta(InvalidMetaKind::SliceTooBig));
+                    } else {
+                        interp_ok(None)
+                    }
+                } else {
+                    interp_ok(Some((size, Align::ONE)))
+                }
+            }
+
+            ty::Slice(elem_ty) => {
+                let metadata =
+                    metadata.0.expect("non-Thin value should have metadata").change_sizedness();
+                let len = self.project_field(&metadata, FieldIdx::ZERO)?;
+                let len = self.read_scalar(&len)?.to_target_usize(self)?;
+
+                let elem_layout = self.layout_of(*elem_ty)?;
+                let elem_meta = AnyMemPlaceMeta(if elem_layout.is_sized() {
+                    None
+                } else {
+                    let elem_meta = self.project_field(&metadata, FieldIdx::ONE)?;
+                    Some(elem_meta.expect_sized("pointer metadata must be sized"))
+                });
+
+                let Some((elem_size, elem_align)) =
+                    self.size_and_align_from_meta(&elem_meta, &elem_layout, semantics)?
+                else {
+                    return interp_ok(None);
+                };
+
+                let size = elem_size.bytes().saturating_mul(len); // we rely on `max_size_of_val` being smaller than `u64::MAX`.
+                let size = Size::from_bytes(size);
+                if size > self.max_size_of_val() {
+                    if semantics.overflow_is_ub {
+                        throw_ub!(InvalidMeta(InvalidMetaKind::SliceTooBig))
+                    } else {
+                        interp_ok(None)
+                    }
+                } else {
+                    interp_ok(Some((size, elem_align)))
+                }
+            }
+
+            ty::Foreign(_) => match semantics.extern_type_semantics {
+                SizeAndAlignExternTypeSemantics::Normal => interp_ok(None),
+                SizeAndAlignExternTypeSemantics::Unsupported => throw_unsup!(ExternTypeField),
+                SizeAndAlignExternTypeSemantics::Unreachable => {
+                    span_bug!(self.cur_span(), "size_and_align_of::<{}> not supported", layout.ty)
+                }
+            },
 
             _ => span_bug!(self.cur_span(), "size_and_align_of::<{}> not supported", layout.ty),
         }
     }
+
+    /// See [`SizeAndAlignSemantics`] for when this returns `None`.
     #[inline]
     pub fn size_and_align_of_val(
         &self,
         val: &impl Projectable<'tcx, M::Provenance>,
+        semantics: SizeAndAlignSemantics,
     ) -> InterpResult<'tcx, Option<(Size, Align)>> {
-        self.size_and_align_from_meta(&val.meta(), &val.layout())
+        self.size_and_align_from_meta(&val.meta(), &val.layout(), semantics)
     }
 
     /// Jump to the given block.

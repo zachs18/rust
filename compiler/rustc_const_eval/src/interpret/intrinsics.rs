@@ -19,11 +19,12 @@ use tracing::trace;
 use super::memory::MemoryKind;
 use super::util::ensure_monomorphic_enough;
 use super::{
-    AllocId, AnyMemPlaceMeta, CheckInAllocMsg, ImmTy, InterpCx, InterpResult, Machine, OpTy,
-    PlaceTy, Pointer, PointerArithmetic, Projectable, Provenance, Scalar, err_ub_format,
-    err_unsup_format, interp_ok, throw_inval, throw_ub, throw_ub_format, throw_unsup_format,
+    AllocId, CheckInAllocMsg, ImmTy, InterpCx, InterpResult, Machine, OpTy, PlaceTy, Pointer,
+    PointerArithmetic, Projectable, Provenance, Scalar, err_ub_format, interp_ok, throw_inval,
+    throw_ub, throw_ub_format, throw_unsup_format,
 };
-use crate::interpret::Writeable;
+use crate::interpret::eval_context::SizeAndAlignSemantics;
+use crate::interpret::{AnyMemPlaceMeta, Writeable};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum MulAddType {
@@ -285,8 +286,12 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 // dereferenceable!
                 let place = self.imm_ptr_to_mplace(&self.read_immediate(&args[0])?)?;
                 let (size, align) = self
-                    .size_and_align_of_val(&place)?
-                    .ok_or_else(|| err_unsup_format!("`extern type` does not have known layout"))?;
+                    // `invalid_is_ub = true` is fine since these are the unchecked intrinsics
+                    .size_and_align_of_val(
+                        &place,
+                        SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                    )?
+                    .expect("size_and_align_of_val(UNCHECKED_METASIZED_LAYOUT) should never return None");
 
                 let result = match intrinsic_name {
                     sym::align_of_val => align.bytes(),
@@ -297,14 +302,53 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 self.write_scalar(Scalar::from_target_usize(result, self), dest)?;
             }
 
+            sym::checked_align_for_meta | sym::checked_size_for_meta => {
+                let pointee_ty = instance.args.type_at(0);
+                let pointee_layout = self.layout_of(pointee_ty)?;
+                let meta = if pointee_layout.is_sized() {
+                    AnyMemPlaceMeta(None)
+                } else {
+                    let meta = args[0].expect_sized("pointer metadata must be sized");
+                    AnyMemPlaceMeta(Some(meta))
+                };
+                let result = self.size_and_align_from_meta(
+                    &meta,
+                    &pointee_layout,
+                    SizeAndAlignSemantics::CHECKED_METASIZED_LAYOUT,
+                )?;
+
+                let (valid, result) = match (intrinsic_name, result) {
+                    // Note: it's fine that this returns `0` instead of the overflow/wrapped value
+                    // that codegen would return, because the value is not exposed to user code.
+                    // If the returned `bool` is `false`, then the intrinsics' wrapper functions
+                    // return `None` regardless of the returned `usize`.
+                    (_, None) => (false, 0),
+                    (sym::checked_align_for_meta, Some((_size, align))) => (true, align.bytes()),
+                    (sym::checked_size_for_meta, Some((size, _align))) => (true, size.bytes()),
+                    _ => bug!(),
+                };
+
+                let dest_valid = self.project_field(dest, FieldIdx::ZERO)?;
+                let dest_result = self.project_field(dest, FieldIdx::ONE)?;
+
+                self.write_scalar(Scalar::from_bool(valid), &dest_valid)?;
+                self.write_scalar(Scalar::from_target_usize(result, self), &dest_result)?;
+            }
+
             sym::unchecked_align_for_meta | sym::unchecked_size_for_meta => {
                 let pointee_ty = instance.args.type_at(0);
                 let pointee_layout = self.layout_of(pointee_ty)?;
-                let meta =
-                    AnyMemPlaceMeta(Some(args[0].expect_sized("pointer metadata must be sized")));
-                let (size, align) = self
-                    .size_and_align_from_meta(&meta, &pointee_layout)?
-                    .ok_or_else(|| err_unsup_format!("`extern type` does not have known layout"))?;
+                let meta = if pointee_layout.is_sized() {
+                    AnyMemPlaceMeta(None)
+                } else {
+                    let meta = args[0].expect_sized("pointer metadata must be sized");
+                    AnyMemPlaceMeta(Some(meta))
+                };
+                let (size, align) = self.size_and_align_from_meta(
+                    &meta,
+                    &pointee_layout,
+                    SizeAndAlignSemantics::UNCHECKED_METASIZED_LAYOUT,
+                )?.expect("size_and_align_for_meta(UNCHECKED_METASIZED_LAYOUT) should never return None");
 
                 let result = match intrinsic_name {
                     sym::unchecked_align_for_meta => align.bytes(),

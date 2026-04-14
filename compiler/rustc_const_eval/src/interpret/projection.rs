@@ -21,6 +21,7 @@ use super::{
     throw_ub, throw_unsup,
 };
 use crate::interpret::ImmTy;
+use crate::interpret::eval_context::SizeAndAlignSemantics;
 use crate::interpret::place::{AnyMemPlaceMeta, MemPlaceMetadata};
 
 /// Describes the constraints placed on offset-projections.
@@ -166,11 +167,23 @@ where
         // Offset may need adjustment for unsized fields.
         let (meta, offset) = if field_layout.is_unsized() {
             assert!(!base.layout().is_sized());
-            let base_meta = base.meta();
-            // Re-use parent metadata to determine dynamic field layout.
+            let field_meta = if field_layout.ty.is_thin(*self.tcx, self.typing_env) {
+                AnyMemPlaceMeta(None)
+            } else {
+                let base_meta = base.meta().0.unwrap().change_sizedness();
+                let field_meta = self
+                    .project_field(&base_meta, field)?
+                    .expect_sized("pointer metadata must be sized");
+                AnyMemPlaceMeta(Some(field_meta))
+            };
+            // Use metadata to determine dynamic field layout.
             // With custom DSTS, this *will* execute user-defined code, but the same
             // happens at run-time so that's okay.
-            match self.size_and_align_from_meta(&base_meta, &field_layout)? {
+            match self.size_and_align_from_meta(
+                &field_meta,
+                &field_layout,
+                SizeAndAlignSemantics::FOR_FIELD_OFFSET,
+            )? {
                 Some((_, align)) => {
                     // For packed types, we need to cap alignment.
                     let align = if let ty::Adt(def, _) = base.layout().ty.kind()
@@ -180,12 +193,12 @@ where
                     } else {
                         align
                     };
-                    (base_meta, offset.align_to(align))
+                    (field_meta, offset.align_to(align))
                 }
                 None if offset == Size::ZERO => {
                     // If the offset is 0, then rounding it up to alignment wouldn't change anything,
                     // so we can do this even for types where we cannot determine the alignment.
-                    (base_meta, offset)
+                    (field_meta, offset)
                 }
                 None => {
                     // We cannot know the alignment of this field, so we cannot adjust.
