@@ -22,13 +22,20 @@ help: the `Box` type always has a statically known size and allocates its conten
 LL | struct ArenaSet<U: Deref, V: ?Sized = <U as Deref>::Target>(Box<V>, U);
    |                                                             ++++ +
 
-error[E0080]: the type `{ptr metadata for ArenaSet<Vec<u8>, [u8]>}` has an unknown layout
-  --> $DIR/issue-unsized-tail-restatic-ice-122488.rs:8:1
+error[E0277]: the trait bound `[u8]: Thin` is not satisfied in `ArenaSet<Vec<u8>, [u8]>`
+  --> $DIR/issue-unsized-tail-restatic-ice-122488.rs:8:40
    |
 LL | const DATA: *const ArenaSet<Vec<u8>> = std::ptr::null_mut();
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `DATA` failed here
+   |                                        ^^^^^^^^^^^^^^^^^^^^ within `ArenaSet<Vec<u8>, [u8]>`, the nightly-only, unstable trait `Thin` is not implemented for `[u8]`
+   |
+note: required because it appears within the type `ArenaSet<Vec<u8>, [u8]>`
+  --> $DIR/issue-unsized-tail-restatic-ice-122488.rs:5:8
+   |
+LL | struct ArenaSet<U: Deref, V: ?Sized = <U as Deref>::Target>(V, U);
+   |        ^^^^^^^^
+note: required by a bound in `null_mut`
+  --> $SRC_DIR/core/src/ptr/mod.rs:LL:COL
 
 error: aborting due to 2 previous errors
 
-Some errors have detailed explanations: E0080, E0277.
-For more information about an error, try `rustc --explain E0080`.
+For more information about this error, try `rustc --explain E0277`.

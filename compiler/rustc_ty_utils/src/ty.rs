@@ -14,14 +14,14 @@ use rustc_span::def_id::{CRATE_DEF_ID, DefId, LocalDefId};
 use rustc_trait_selection::traits;
 use tracing::instrument;
 
-/// If `ty` implements the given `sizedness` trait, returns `None`. Otherwise, returns the type
+/// If `ty` implements the given `sizedness` trait, returns `None`. Otherwise, returns the types
 /// that must implement the given `sizedness` for `ty` to implement it.
 #[instrument(level = "debug", skip(tcx), ret)]
-fn sizedness_constraint_for_ty<'tcx>(
+fn sizedness_constraints_for_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     sizedness: SizedTraitKind,
     ty: Ty<'tcx>,
-) -> Option<Ty<'tcx>> {
+) -> Option<Vec<Ty<'tcx>>> {
     match ty.kind() {
         // Always `Sized`, `MetaSized`, and `Thin`
         ty::Bool
@@ -44,42 +44,58 @@ fn sizedness_constraint_for_ty<'tcx>(
 
         ty::Str | ty::Slice(..) | ty::Dynamic(_, _) => match sizedness {
             // Never `Sized` or `Thin`
-            SizedTraitKind::Sized | SizedTraitKind::Thin => Some(ty),
+            SizedTraitKind::Sized | SizedTraitKind::Thin => Some(vec![ty]),
             // Always `MetaSized`
             SizedTraitKind::MetaSized => None,
         },
 
         // Maybe `Sized`, `MetaSized`, or `Thin`
-        ty::Param(..) | ty::Alias(..) | ty::Error(_) => Some(ty),
+        ty::Param(..) | ty::Alias(..) | ty::Error(_) => Some(vec![ty]),
 
         // We cannot instantiate the binder, so just return the *original* type back,
         // but only if the inner type has a sized constraint. Thus we skip the binder,
         // but don't actually use the result from `sized_constraint_for_ty`.
         ty::UnsafeBinder(inner_ty) => {
-            sizedness_constraint_for_ty(tcx, sizedness, inner_ty.skip_binder()).map(|_| ty)
+            sizedness_constraints_for_ty(tcx, sizedness, inner_ty.skip_binder()).map(|_| vec![ty])
         }
 
         ty::Foreign(..) => match sizedness {
             // Never `Sized` or `MetaSized`
-            SizedTraitKind::Sized | SizedTraitKind::MetaSized => Some(ty),
+            SizedTraitKind::Sized | SizedTraitKind::MetaSized => Some(vec![ty]),
             // Always `Thin`
             SizedTraitKind::Thin => None,
         },
 
         // Recursive cases
-        ty::Pat(ty, _) => sizedness_constraint_for_ty(tcx, sizedness, *ty),
+        ty::Pat(ty, _) => sizedness_constraints_for_ty(tcx, sizedness, *ty),
 
         ty::Tuple(tys) => {
-            tys.last().and_then(|&ty| sizedness_constraint_for_ty(tcx, sizedness, ty))
+            // Try to avoid returning the same type multiple times
+            let mut seen = FxHashSet::default();
+            let constraints: Vec<_> = tys
+                .iter()
+                .filter_map(|ty| sizedness_constraints_for_ty(tcx, sizedness, ty))
+                .flatten()
+                .filter(|&ty| seen.insert(ty))
+                .collect();
+            if constraints.is_empty() { None } else { Some(constraints) }
         }
 
-        ty::Adt(adt, args) => adt.sizedness_constraint(tcx, sizedness).and_then(|intermediate| {
-            let ty = intermediate.instantiate(tcx, args);
-            sizedness_constraint_for_ty(tcx, sizedness, ty)
+        ty::Adt(adt, args) => adt.sizedness_constraints(tcx, sizedness).and_then(|intermediate| {
+            let tys = intermediate.instantiate(tcx, args);
+            // Try to avoid returning the same type multiple times
+            let mut seen = FxHashSet::default();
+            let constraints: Vec<_> = tys
+                .iter()
+                .filter_map(|ty| sizedness_constraints_for_ty(tcx, sizedness, ty))
+                .flatten()
+                .filter(|&ty| seen.insert(ty))
+                .collect();
+            if constraints.is_empty() { None } else { Some(constraints) }
         }),
 
         ty::Placeholder(..) | ty::Bound(..) | ty::Infer(..) => {
-            bug!("unexpected type `{ty:?}` in `sizedness_constraint_for_ty`")
+            bug!("unexpected type `{ty:?}` in `sizedness_constraints_for_ty`")
         }
     }
 }
@@ -118,10 +134,10 @@ fn defaultness(tcx: TyCtxt<'_>, def_id: LocalDefId) -> hir::Defaultness {
 ///     - an pointee-sized type (extern types)
 ///     - a type parameter or projection whose sizedness can't be known
 #[instrument(level = "debug", skip(tcx), ret)]
-fn adt_sizedness_constraint<'tcx>(
+fn adt_sizedness_constraints<'tcx>(
     tcx: TyCtxt<'tcx>,
     (def_id, sizedness): (DefId, SizedTraitKind),
-) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
+) -> Option<ty::EarlyBinder<'tcx, &'tcx ty::List<Ty<'tcx>>>> {
     if let Some(def_id) = def_id.as_local() {
         tcx.ensure_ok().check_representability(def_id);
     }
@@ -129,28 +145,37 @@ fn adt_sizedness_constraint<'tcx>(
     let def = tcx.adt_def(def_id);
 
     if !def.is_struct() && !def.is_union() {
-        bug!("`adt_sizedness_constraint` called on non-struct non-union type: {def:?}");
+        bug!("`adt_sizedness_constraints` called on non-struct non-union type: {def:?}");
     }
 
-    let tail_def = def.non_enum_variant().tail_opt()?;
-    let tail_ty = tcx.type_of(tail_def.did).instantiate_identity();
+    let mut constraint_tys = vec![];
 
-    let constraint_ty = sizedness_constraint_for_ty(tcx, sizedness, tail_ty)?;
+    for field_def in &def.non_enum_variant().fields {
+        let field_ty = tcx.type_of(field_def.did).instantiate_identity();
+        if let Some(field_constraint_tys) = sizedness_constraints_for_ty(tcx, sizedness, field_ty) {
+            constraint_tys.extend(field_constraint_tys);
+        }
+    }
 
+    // FIXME(ptr_metadata_v2): Is this perf hack still worth it with the vec?
     // perf hack: if there is a `constraint_ty: {Meta,}Sized` bound, then we know
     // that the type is sized and do not need to check it on the impl.
     let sizedness_trait_def_id = sizedness.require_lang_item(tcx);
     let predicates = tcx.predicates_of(def.did()).predicates;
-    if predicates.iter().any(|(p, _)| {
-        p.as_trait_clause().is_some_and(|trait_pred| {
-            trait_pred.def_id() == sizedness_trait_def_id
-                && trait_pred.self_ty().skip_binder() == constraint_ty
+    constraint_tys.retain(|constraint_ty| {
+        !predicates.iter().any(|(p, _)| {
+            p.as_trait_clause().is_some_and(|trait_pred| {
+                trait_pred.def_id() == sizedness_trait_def_id
+                    && trait_pred.self_ty().skip_binder() == *constraint_ty
+            })
         })
-    }) {
-        return None;
-    }
+    });
 
-    Some(ty::EarlyBinder::bind(constraint_ty))
+    if !constraint_tys.is_empty() {
+        Some(ty::EarlyBinder::bind(tcx.mk_type_list(&constraint_tys)))
+    } else {
+        None
+    }
 }
 
 /// See `ParamEnv` struct definition for details.
@@ -412,7 +437,7 @@ fn impl_self_is_guaranteed_unsized<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) 
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers {
         asyncness,
-        adt_sizedness_constraint,
+        adt_sizedness_constraints,
         param_env,
         typing_env_normalized_for_post_analysis,
         defaultness,

@@ -189,6 +189,7 @@ impl_erasable_for_types_with_no_type_params! {
     Option<rustc_span::def_id::DefId>,
     Option<rustc_span::def_id::LocalDefId>,
     Option<rustc_target::spec::PanicStrategy>,
+    Option<ty::EarlyBinder<'_, &'_ ty::List<Ty<'_>>>>,
     Option<ty::EarlyBinder<'_, Ty<'_>>>,
     Option<ty::Value<'_>>,
     Option<usize>,

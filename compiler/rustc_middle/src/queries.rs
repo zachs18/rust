@@ -928,10 +928,10 @@ rustc_queries! {
         cache_on_disk
         separate_provide_extern
     }
-    query adt_sizedness_constraint(
+    query adt_sizedness_constraints(
         key: (DefId, SizedTraitKind)
-    ) -> Option<ty::EarlyBinder<'tcx, Ty<'tcx>>> {
-        desc { "computing the sizedness constraint for `{}`", tcx.def_path_str(key.0) }
+    ) -> Option<ty::EarlyBinder<'tcx, &'tcx ty::List<Ty<'tcx>>>> {
+        desc { "computing the sizedness constraints for `{}`", tcx.def_path_str(key.0) }
     }
 
     query adt_dtorck_constraint(
