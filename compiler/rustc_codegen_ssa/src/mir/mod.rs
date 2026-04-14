@@ -606,23 +606,38 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 // Unsized indirect arguments
                 PassMode::Indirect { attrs: _, meta_abi: Some(ref meta_abi), on_stack: _ } => {
                     // As the storage for the indirect argument lives during
-                    // the whole function call, we just copy the wide pointer.
+                    // the whole function call, we just store a wide pointer.
 
-                    // The data pointer and pointer metadata are passed as separate arguments,
-                    // so we project to the two fields of the unsized place indirect pointer
-                    // and store the arguments there separately.
+                    // The data pointer and pointer metadata are passed as separate arguments.
+                    // As an optimization, if the metadata's BackendRepr is ZeroSized or Immediate,
+                    // we handle that here, otherwise we project to the two fields of the unsized
+                    // place indirect pointer and store the arguments there separately.
 
                     let llarg = bx.get_param(llarg_idx);
                     llarg_idx += 1;
 
-                    let tmp = PlaceRef::alloca_unsized_indirect(bx, arg.layout);
-                    let tmp_arg = tmp.project_field(bx, 0);
-                    OperandValue::Immediate(llarg).store(bx, tmp_arg);
-
-                    let tmp_extra = tmp.project_field(bx, 1);
-                    bx.store_fn_arg(meta_abi, &mut llarg_idx, tmp_extra);
-
-                    LocalRef::UnsizedPlace(tmp)
+                    LocalRef::UnsizedPlace(match meta_abi.mode {
+                        PassMode::Ignore => {
+                            let tmp = PlaceRef::alloca_unsized_indirect(bx, arg.layout);
+                            OperandValue::Immediate(llarg).store(bx, tmp);
+                            tmp
+                        }
+                        PassMode::Direct(..) => {
+                            let llextra = bx.get_param(llarg_idx);
+                            llarg_idx += 1;
+                            let tmp = PlaceRef::alloca_unsized_indirect(bx, arg.layout);
+                            OperandValue::Pair(llarg, llextra).store(bx, tmp);
+                            tmp
+                        }
+                        _ => {
+                            let tmp = PlaceRef::alloca_unsized_indirect(bx, arg.layout);
+                            let tmp_arg = tmp.project_field(bx, 0);
+                            let tmp_extra = tmp.project_field(bx, 1);
+                            OperandValue::Immediate(llarg).store(bx, tmp_arg);
+                            bx.store_fn_arg(meta_abi, &mut llarg_idx, tmp_extra);
+                            tmp
+                        }
+                    })
                 }
                 _ => {
                     let tmp = PlaceRef::alloca(bx, arg.layout);
