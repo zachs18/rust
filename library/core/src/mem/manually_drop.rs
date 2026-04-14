@@ -1,6 +1,6 @@
 use crate::cmp::Ordering;
 use crate::hash::{Hash, Hasher};
-use crate::marker::{Destruct, StructuralPartialEq};
+use crate::marker::{Destruct, PointeeSized, StructuralPartialEq};
 use crate::mem::MaybeDangling;
 use crate::ops::{Deref, DerefMut, DerefPure};
 use crate::ptr;
@@ -158,7 +158,7 @@ use crate::ptr;
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(transparent)]
 #[rustc_pub_transparent]
-pub struct ManuallyDrop<T: ?Sized> {
+pub struct ManuallyDrop<T: PointeeSized> {
     value: MaybeDangling<T>,
 }
 
@@ -231,7 +231,7 @@ impl<T> ManuallyDrop<T> {
     }
 }
 
-impl<T: ?Sized> ManuallyDrop<T> {
+impl<T: PointeeSized> ManuallyDrop<T> {
     /// Manually drops the contained value.
     ///
     /// This is exactly equivalent to calling [`ptr::drop_in_place`] with a

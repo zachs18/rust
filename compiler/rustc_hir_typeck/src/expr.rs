@@ -4212,6 +4212,55 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
                     continue;
                 }
+                ty::Adt(container_def, args) if container_def.is_union() => {
+                    let block = self.tcx.local_def_id_to_hir_id(self.body_id);
+                    let (ident, def_scope) =
+                        self.tcx.adjust_ident_and_get_scope(field, container_def.did(), block);
+
+                    let is_repr_c = container_def.repr().c();
+
+                    let fields = &container_def.non_enum_variant().fields;
+                    if let Some((index, field)) = fields
+                        .iter_enumerated()
+                        .find(|(_, f)| f.ident(self.tcx).normalize_to_macros_2_0() == ident)
+                    {
+                        let field_ty = self.field_ty(expr.span, field, args);
+
+                        if is_repr_c {
+                            // all fields in repr(C) unions are defined to be at offset 0,
+                            // so we don't need to check sizedness
+                        } else {
+                            // repr(Rust) unions don't yet guarantee that all fields are at offset 0,
+                            // so conservatively assume we might need to know the alignment
+                            if self.tcx.features().offset_of_slice() {
+                                self.require_type_has_static_alignment(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            } else {
+                                self.require_type_is_sized(
+                                    field_ty,
+                                    expr.span,
+                                    ObligationCauseCode::OffsetOfField,
+                                );
+                            }
+                        }
+
+                        if field.vis.is_accessible_from(def_scope, self.tcx) {
+                            self.tcx.check_stability(field.did, Some(expr.hir_id), expr.span, None);
+                        } else {
+                            self.private_field_err(ident, container_def.did()).emit();
+                        }
+
+                        // Save the index of all fields regardless of their visibility in case
+                        // of error recovery.
+                        field_indices.push((current_container, FIRST_VARIANT, index));
+                        current_container = field_ty;
+
+                        continue;
+                    }
+                }
                 ty::Adt(container_def, args) => {
                     let block = self.tcx.local_def_id_to_hir_id(self.body_id);
                     let (ident, def_scope) =
@@ -4228,13 +4277,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             self.require_type_has_static_alignment(
                                 field_ty,
                                 expr.span,
-                                ObligationCauseCode::Misc,
+                                ObligationCauseCode::OffsetOfField,
                             );
                         } else {
                             self.require_type_is_sized(
                                 field_ty,
                                 expr.span,
-                                ObligationCauseCode::Misc,
+                                ObligationCauseCode::OffsetOfField,
                             );
                         }
 
@@ -4258,17 +4307,58 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     {
                         if let Some(&field_ty) = tys.get(index) {
                             if self.tcx.features().offset_of_slice() {
-                                self.require_type_has_static_alignment(
-                                    field_ty,
-                                    expr.span,
-                                    ObligationCauseCode::Misc,
-                                );
+                                // Tuples do not support unsizing coercions,
+                                // so if the field is known sized, it is at a static offset.
+                                // FIXME(more_unsized): we also currently check that this is not the last field of the tuple,
+                                // since the last field of tuples is currently laid out as though it could be unsized due to compiler assumptions about ScalarPair layout.
+                                if !self.tcx.erase_and_anonymize_regions(field_ty)
+                                    .is_sized(self.tcx, self.infcx.typing_env(self.param_env))
+                                    && index + 1 != tys.len()
+                                {
+                                    // If the field is not Sized, then we can only guarantee
+                                    // that it is at a static offset if it is the only unsized field
+                                    // and it has a statically-known alignment.
+
+                                    // Require all other fields be `Sized`
+                                    for (other_index, other_field_ty) in tys.iter().enumerate() {
+                                        if other_index == index {
+                                            continue;
+                                        }
+                                        self.require_type_is_sized(
+                                            other_field_ty,
+                                            expr.span,
+                                            ObligationCauseCode::OffsetOfOtherFields,
+                                        );
+                                    }
+                                    // Require this field is `Aligned`
+                                    self.require_type_has_static_alignment(
+                                        field_ty,
+                                        expr.span,
+                                        ObligationCauseCode::OffsetOfField,
+                                    );
+                                }
                             } else {
+                                // Tuples do not support unsizing coercions,
+                                // so if the field is known sized, it is at a static offset.
                                 self.require_type_is_sized(
                                     field_ty,
                                     expr.span,
                                     ObligationCauseCode::Misc,
                                 );
+                                // FIXME(more_unsized): if this is the last field of the tuple, we also check that all other fields are `Sized`,
+                                // since the last field of tuples is currently laid out as though it could be unsized due to compiler assumptions about ScalarPair layout, so
+                                if index + 1 == tys.len() {
+                                    for (other_index, other_field_ty) in tys.iter().enumerate() {
+                                        if other_index == index {
+                                            continue;
+                                        }
+                                        self.require_type_is_sized(
+                                            other_field_ty,
+                                            expr.span,
+                                            ObligationCauseCode::Misc,
+                                        );
+                                    }
+                                }
                             }
 
                             field_indices.push((current_container, FIRST_VARIANT, index.into()));

@@ -3174,6 +3174,15 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
             ObligationCauseCode::TupleElem => {
                 err.note("only the last element of a tuple may have a dynamically sized type");
             }
+            ObligationCauseCode::OffsetOfField => {
+                err.note(
+                    "only fields with a statically known alignment can be used in `offset_of!`",
+                );
+            }
+            ObligationCauseCode::OffsetOfOtherFields => {
+                err.note("only fields with a constant offset can be used in `offset_of!`");
+                err.note("this requires that fields which can be laid out before this field have a constant size");
+            }
             ObligationCauseCode::DynCompatible(span) => {
                 err.multipart_suggestion(
                     "you might have meant to use `Self` to refer to the implementing type",
