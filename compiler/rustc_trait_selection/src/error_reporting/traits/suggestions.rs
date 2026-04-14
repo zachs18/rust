@@ -3621,6 +3621,41 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     Applicability::MachineApplicable,
                 );
             }
+            ObligationCauseCode::FieldSizedV2 { adt_kind: ref item, span } => {
+                match *item {
+                    AdtKind::Struct => {
+                        err.note(
+                            "a field of a packed struct may only have a \
+                            dynamically sized type if it does not need drop to be run",
+                        );
+                    }
+                    AdtKind::Union => {
+                        err.note(
+                            "a field of a packed union may only have a \
+                            dynamically sized type if it does not need drop to be run",
+                        );
+                    }
+                    AdtKind::Enum => {
+                        err.note("no field of an enum variant may have a dynamically sized type");
+                    }
+                }
+                err.help("change the field's type to have a statically known size");
+                err.span_suggestion_verbose(
+                    span.shrink_to_lo(),
+                    "borrowed types always have a statically known size",
+                    "&",
+                    Applicability::MachineApplicable,
+                );
+                err.multipart_suggestion(
+                    "the `Box` type always has a statically known size and allocates its contents \
+                     in the heap",
+                    vec![
+                        (span.shrink_to_lo(), "Box<".to_string()),
+                        (span.shrink_to_hi(), ">".to_string()),
+                    ],
+                    Applicability::MachineApplicable,
+                );
+            }
             ObligationCauseCode::SizedConstOrStatic => {
                 err.note("statics and constants must have a statically known size");
             }
