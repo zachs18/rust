@@ -335,12 +335,12 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 return Ok(());
             }
             sym::volatile_store => {
-                let dst = args[0].deref(self.cx());
+                let dst = args[0].deref(self);
                 args[1].val.volatile_store(self, dst);
                 return Ok(());
             }
             sym::unaligned_volatile_store => {
-                let dst = args[0].deref(self.cx());
+                let dst = args[0].deref(self);
                 args[1].val.unaligned_volatile_store(self, dst);
                 return Ok(());
             }

@@ -9,9 +9,13 @@ use rustc_span::DUMMY_SP;
 use tracing::{debug, trace};
 
 use crate::common::IntPredicate;
+use crate::mir::operand::{OperandRef, OperandValue};
+use crate::mir::place::PlaceRef;
+use crate::mir::{AnyPlaceMeta, PlaceMetadata};
 use crate::traits::*;
 use crate::{common, meth};
 
+#[derive(Debug)]
 enum CalculationResult<V> {
     /// The computation was unchecked, or the result is statically known to be valid.
     Unchecked { size: V, align: V },
@@ -24,7 +28,7 @@ enum CalculationResult<V> {
 pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     t: Ty<'tcx>,
-    info: Option<Bx::Value>,
+    info: AnyPlaceMeta<'tcx, Bx::Value>,
 ) -> (Bx::Value, Bx::Value) {
     match size_and_align_of_dst_impl(bx, t, info, false) {
         CalculationResult::Unchecked { size, align }
@@ -36,7 +40,7 @@ pub fn size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 pub fn checked_size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     t: Ty<'tcx>,
-    info: Option<Bx::Value>,
+    info: AnyPlaceMeta<'tcx, Bx::Value>,
 ) -> (Bx::Value, Bx::Value, Bx::Value) {
     match size_and_align_of_dst_impl(bx, t, info, true) {
         CalculationResult::Unchecked { size, align } => (bx.const_bool(true), size, align),
@@ -45,10 +49,97 @@ pub fn checked_size_and_align_of_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     }
 }
 
+fn size_and_align_of_arraylike_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+    bx: &mut Bx,
+    checked: bool,
+    elem_layout: CalculationResult<Bx::Value>,
+    count: Bx::Value,
+) -> CalculationResult<Bx::Value> {
+    let (elem_valid, elem_size, elem_align) = match elem_layout {
+        CalculationResult::Invalid => return CalculationResult::Invalid,
+        CalculationResult::Unchecked { size, align } => (None, size, align),
+        CalculationResult::Checked { valid, size, align } => (Some(valid), size, align),
+    };
+
+    let try_to_const =
+        |val: Bx::Value| -> Result<u64, Bx::Value> { bx.const_to_opt_uint(val).ok_or(val) };
+
+    let (valid, size, align) = match (try_to_const(count), try_to_const(elem_size)) {
+        // Zero-length array/slice, or array/slice of zero-sized elements is always zero-sized.
+        // The element layout must still be valid for this to be valid.
+        (Ok(0), _) | (_, Ok(0)) => (elem_valid, bx.const_usize(0), elem_align),
+        // A 1-length array/slice has the size of its element.
+        // We already know if elem_size <= isize::MAX (via `elem_valid`)
+        (Ok(1), Err(elem_size)) => (elem_valid, elem_size, elem_align),
+        // An array/slice of 1-byte values has size == length,
+        // but we still need to check if the length <= isize::MAX.
+        (Err(len), Ok(1)) => {
+            let size_valid = if !checked {
+                None
+            } else {
+                let isize_max: u64 =
+                    bx.data_layout().ptr_sized_integer().signed_max().try_into().unwrap();
+                let len_valid = bx.icmp(IntPredicate::IntULE, len, bx.const_usize(isize_max));
+                match elem_valid {
+                    None => Some(len_valid),
+                    Some(elem_valid) => {
+                        let size_valid = bx.and(elem_valid, len_valid);
+                        Some(size_valid)
+                    }
+                }
+            };
+            (size_valid, len, elem_align)
+        }
+        // Optimize the case where both size and len are known statically.
+        (Ok(lhs), Ok(rhs)) => {
+            let isize_max: u64 =
+                bx.data_layout().ptr_sized_integer().signed_max().try_into().unwrap();
+            let (size, overflow) = u64::overflowing_mul(lhs, rhs);
+            let overflow = overflow || size > isize_max;
+            let valid = if !checked {
+                None
+            } else if overflow {
+                Some(bx.const_bool(false))
+            } else {
+                elem_valid
+            };
+            (valid, bx.const_usize(size), elem_align)
+        }
+        // In unchecked mode, don't do any nontrivial optimizations/checks
+        _ if !checked => {
+            // In unchecked mode, all sizes must fit into `isize`, so this multiplication cannot
+            // wrap -- neither signed nor unsigned.
+            let size = bx.unchecked_sumul(count, elem_size);
+            (None, size, elem_align)
+        }
+        _ => {
+            let (size, overflow) =
+                bx.checked_binop(OverflowOp::Mul, bx.tcx().types.usize, count, elem_size);
+
+            // We don't just care about `usize` overflow, we also check that `size <= isize::MAX as usize`.
+            let isize_max: u64 =
+                bx.data_layout().ptr_sized_integer().signed_max().try_into().unwrap();
+
+            let valid_1 = bx.not(overflow);
+            let valid_2 = bx.icmp(IntPredicate::IntULE, size, bx.const_usize(isize_max));
+            let valid = bx.and(valid_1, valid_2);
+            let valid = match elem_valid {
+                Some(elem_valid) => Some(bx.and(valid, elem_valid)),
+                None => Some(valid),
+            };
+            (valid, size, elem_align)
+        }
+    };
+    match valid {
+        Some(valid) => CalculationResult::Checked { valid, size, align },
+        None => CalculationResult::Unchecked { size, align },
+    }
+}
+
 fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     t: Ty<'tcx>,
-    info: Option<Bx::Value>,
+    info: AnyPlaceMeta<'tcx, Bx::Value>,
     checked: bool,
 ) -> CalculationResult<Bx::Value> {
     let layout = bx.layout_of(t);
@@ -103,7 +194,7 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     match t.kind() {
         ty::Dynamic(..) => {
             // Load size/align from vtable.
-            let vtable = info.unwrap();
+            let vtable = info.immediate();
             let size = meth::VirtualIndex::from_index(ty::COMMON_VTABLE_ENTRIES_SIZE)
                 .get_usize(bx, vtable, t);
             let align = meth::VirtualIndex::from_index(ty::COMMON_VTABLE_ENTRIES_ALIGN)
@@ -119,37 +210,45 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             CalculationResult::Unchecked { size, align }
         }
-        ty::Slice(_) | ty::Str => {
-            let unit = layout.field(bx, 0);
-            // The info in this case is the length of the str/slice, so the size is that
-            // times the unit size.
-            if unit.size.bytes() == 0 {
-                // If the element size is zero, then the size is zero, and any length is valid.
-                let size = bx.const_usize(0);
-                let align = bx.const_usize(unit.align.bytes());
-                CalculationResult::Unchecked { size, align }
-            } else if !checked {
-                // In unchecked mode, all slice sizes must fit into `isize`, so this multiplication cannot
-                // wrap -- neither signed nor unsigned.
-                let size = bx.unchecked_sumul(info.unwrap(), bx.const_usize(unit.size.bytes()));
-                let align = bx.const_usize(unit.align.bytes());
-                CalculationResult::Unchecked { size, align }
+        ty::Array(elem_ty, len) => {
+            let len =
+                len.try_to_target_usize(bx.tcx()).expect("expected monomorphic const in codegen");
+            // Sized arrays were handled above, only unsized arrays reach here
+            let meta = info.0.expect("unsized array should have metadata");
+            let elem_meta_layout = meta.layout.field(bx.cx(), 0);
+            let elem_info = AnyPlaceMeta(Some(OperandRef {
+                val: meta.val,
+                layout: elem_meta_layout,
+                move_annotation: None,
+            }));
+
+            let elem_layout = size_and_align_of_dst_impl(bx, *elem_ty, elem_info, checked);
+
+            size_and_align_of_arraylike_impl(bx, checked, elem_layout, bx.const_usize(len))
+        }
+        ty::Str => {
+            let len = info.0.expect("str should have metadata").change_sizedness().immediate();
+            let elem_layout =
+                CalculationResult::Unchecked { size: bx.const_usize(1), align: bx.const_usize(1) };
+            size_and_align_of_arraylike_impl(bx, checked, elem_layout, len)
+        }
+        ty::Slice(elem_ty) => {
+            let meta = info.0.expect("slice should have metadata").change_sizedness();
+            let (meta_len, meta_elem) = if let OperandValue::Ref(val) = meta.val {
+                let meta_place = PlaceRef { val, layout: meta.layout };
+                let meta_len_place = meta_place.project_field(bx, 0);
+                let meta_elem_place = meta_place.project_field(bx, 1);
+                (bx.load_operand(meta_len_place), bx.load_operand(meta_elem_place))
             } else {
-                // If we are in checked mode, we need to check if `elem_size * count <= isize::MAX as usize`,
-                // but we can't check that after the overflow might occur, so check the equivalent division
-                // `count <= isize::MAX as usize / elem_size`, since we know `elem_size > 0` from the above check
-                let isize_max = bx.const_usize(
-                    bx.data_layout().ptr_sized_integer().signed_max().try_into().unwrap(),
-                );
-                let elem_size = bx.const_usize(unit.size.bytes());
-                let count = info.unwrap();
-                let isize_max_div_elem_size = bx.udiv(isize_max, elem_size);
-                // The slice is valid if the element
-                let valid = bx.icmp(IntPredicate::IntULE, count, isize_max_div_elem_size);
-                let size = bx.mul(count, elem_size);
-                let align = bx.const_usize(unit.align.bytes());
-                CalculationResult::Checked { valid, size, align }
-            }
+                // FIXME(ptr_metadata_v2): use extract_field here
+                (meta.extract_field_simple(bx, 0), meta.extract_field_simple(bx, 1))
+            };
+            let len = meta_len.immediate();
+            let elem_info =
+                AnyPlaceMeta(Some(meta_elem.expect_sized("pointer metadata must be sized")));
+
+            let elem_layout = size_and_align_of_dst_impl(bx, *elem_ty, elem_info, checked);
+            size_and_align_of_arraylike_impl(bx, checked, elem_layout, len)
         }
         ty::Foreign(_) => {
             // `extern` type. We cannot compute the size, so panic.
@@ -200,9 +299,30 @@ fn size_and_align_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             // Recurse to get the size of the dynamically sized field (must be
             // the last field).
-            let field_ty = layout.field(bx, i).ty;
+            let field_ty = layout.field(bx, i);
+            let field_meta = AnyPlaceMeta(
+                if field_ty.is_sized() || field_ty.ty.is_thin(bx.tcx(), bx.typing_env()) {
+                    None
+                } else {
+                    let meta =
+                        info.0.expect("non-Thin Adt/Tuple should have metadata").change_sizedness();
+                    if let OperandValue::Ref(val) = meta.val {
+                        let meta_ref = PlaceRef { val, layout: meta.layout };
+                        let field_meta_ref = meta_ref.project_field(bx, i);
+                        Some(
+                            bx.load_operand(field_meta_ref)
+                                .expect_sized("pointer metadata must be sized"),
+                        )
+                    } else {
+                        Some(
+                            meta.extract_field_simple(bx, i)
+                                .expect_sized("pointer metadata must be sized"),
+                        )
+                    }
+                },
+            );
             let (mut valid, unsized_size, mut unsized_align) =
-                match size_and_align_of_dst_impl(bx, field_ty, info, checked) {
+                match size_and_align_of_dst_impl(bx, field_ty.ty, field_meta, checked) {
                     CalculationResult::Unchecked { size, align } => (None, size, align),
                     CalculationResult::Invalid => return CalculationResult::Invalid,
                     CalculationResult::Checked { valid, size, align } => (Some(valid), size, align),
