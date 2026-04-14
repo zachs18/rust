@@ -624,9 +624,27 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     }
                 }
             }
+            _ if repr.flags.contains(crate::ReprFlags::IS_NONNULL_PTR) => {
+                let ptr = Primitive::Pointer(crate::AddressSpace::ZERO);
+                let ptr_size = ptr.size(dl);
+                let mut range = WrappingRange::full(ptr_size);
+                range.start = 1;
+                let scalar = Scalar::Initialized { value: ptr, valid_range: range };
+                let niche = Niche::from_scalar(dl, Size::ZERO, scalar).unwrap();
+                match st.largest_niche {
+                    Some(largest_niche) => {
+                        // Replace the existing niche even if they're equal,
+                        // because this one is at a lower offset.
+                        if largest_niche.available(dl) <= niche.available(dl) {
+                            st.largest_niche = Some(niche);
+                        }
+                    }
+                    None => st.largest_niche = Some(niche),
+                }
+            }
             _ => assert!(
                 start == Bound::Unbounded && end == Bound::Unbounded,
-                "nonscalar layout for layout_scalar_valid_range type: {st:#?} {variants:#?}",
+                "nonscalar layout for layout_scalar_valid_range type: {repr:#?} {st:#?} {variants:#?}",
             ),
         }
 

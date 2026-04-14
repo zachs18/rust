@@ -96,6 +96,10 @@ bitflags! {
         /// See [`TyAndLayout::pass_indirectly_in_non_rustic_abis`] for details.
         const PASS_INDIRECTLY_IN_NON_RUSTIC_ABIS = 1 << 5;
         const IS_SCALABLE        = 1 << 6;
+        /// If true, this type is `core::ptr::NonNull`. This is needed for
+        /// layout computation, to make multi-wide pointees work with
+        /// `#[rustc_scalar_valid_range_*]` on `NonNull`.
+        const IS_NONNULL_PTR     = 1 << 7;
          // Any of these flags being set prevent field reordering optimisation.
         const FIELD_ORDER_UNOPTIMIZABLE = ReprFlags::IS_C.bits()
                                  | ReprFlags::IS_SIMD.bits()
