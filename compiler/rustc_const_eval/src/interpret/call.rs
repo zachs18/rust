@@ -711,7 +711,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                             // actually access memory to resolve this method.
                             // Also see <https://github.com/rust-lang/miri/issues/2786>.
                             let val = self.read_immediate(&receiver)?;
-                            break self.imm_ptr_to_mplace(&val)?;
+                            break self.typed_ptr_to_mplace(&val)?;
                         }
                         ty::Dynamic(..) => break receiver.assert_mem_place(), // no immediate unsized values
                         _ => {
@@ -737,7 +737,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert!(receiver_place.layout.is_unsized());
 
                 // Get the required information from the vtable.
-                let vptr = receiver_place.meta().scalar().to_pointer(self)?;
+                let vptr = receiver_place.meta().scalar(self)?.to_pointer(self)?;
                 let dyn_ty = self.get_ptr_vtable_ty(vptr, Some(receiver_trait))?;
                 let adjusted_recv = receiver_place.ptr();
 
@@ -906,7 +906,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         };
         let fn_abi = self.fn_abi_of_instance_no_deduced_attrs(instance, ty::List::empty())?;
 
-        let arg = self.mplace_to_imm_ptr(&place, None)?;
+        let arg = self.mplace_to_ref(&place, None)?;
         let ret = MPlaceTy::fake_alloc_zst(self.layout_of(self.tcx.types.unit)?);
 
         self.init_fn_call(

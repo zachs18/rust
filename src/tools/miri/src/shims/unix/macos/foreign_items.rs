@@ -37,7 +37,9 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             "__error" => {
                 let [] = this.check_shim_sig_lenient(abi, CanonAbi::C, link_name, args)?;
                 let errno_place = this.last_error_place()?;
-                this.write_scalar(errno_place.to_ref(this).to_scalar(), dest)?;
+                let errno_ref_op = this.mplace_to_ref(&errno_place, None)?;
+                let errno_ref_imm = this.read_immediate(&errno_ref_op)?;
+                this.write_scalar(errno_ref_imm.to_scalar(), dest)?;
             }
 
             // File related shims

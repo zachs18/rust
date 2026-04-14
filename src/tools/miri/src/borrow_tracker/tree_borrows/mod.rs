@@ -413,13 +413,14 @@ trait EvalContextPrivExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
     /// Retags an individual pointer, returning the retagged version.
     fn tb_retag_reference(
         &mut self,
-        val: &ImmTy<'tcx>,
+        val: &OpTy<'tcx>,
         new_perm: NewPermission,
-    ) -> InterpResult<'tcx, ImmTy<'tcx>> {
+    ) -> InterpResult<'tcx, OpTy<'tcx>> {
         let this = self.eval_context_mut();
-        let place = this.imm_ptr_to_mplace(val)?;
+        let place = this.typed_ptr_to_mplace(val)?;
         let new_place = this.tb_retag_place(&place, new_perm)?;
-        interp_ok(ImmTy::from_immediate(new_place.to_ref(this), val.layout))
+        let new_ref = this.mplace_to_ref(&new_place, Some(val.layout.ty))?;
+        interp_ok(new_ref)
     }
 }
 
@@ -430,8 +431,8 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
     fn tb_retag_ptr_value(
         &mut self,
         kind: RetagKind,
-        val: &ImmTy<'tcx>,
-    ) -> InterpResult<'tcx, ImmTy<'tcx>> {
+        val: &OpTy<'tcx>,
+    ) -> InterpResult<'tcx, OpTy<'tcx>> {
         let this = self.eval_context_mut();
         let new_perm = match val.layout.ty.kind() {
             &ty::Ref(_, pointee, mutability) =>
@@ -468,9 +469,9 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 new_perm: Option<NewPermission>,
             ) -> InterpResult<'tcx> {
                 if let Some(new_perm) = new_perm {
-                    let val = self.ecx.read_immediate(&self.ecx.place_to_op(place)?)?;
+                    let val = self.ecx.place_to_op(place)?;
                     let val = self.ecx.tb_retag_reference(&val, new_perm)?;
-                    self.ecx.write_immediate(*val, place)?;
+                    self.ecx.copy_op(&val, place)?;
                 }
                 interp_ok(())
             }

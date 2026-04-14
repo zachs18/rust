@@ -486,8 +486,8 @@ pub trait Machine<'tcx>: Sized {
     fn retag_ptr_value(
         _ecx: &mut InterpCx<'tcx, Self>,
         _kind: mir::RetagKind,
-        val: &ImmTy<'tcx, Self::Provenance>,
-    ) -> InterpResult<'tcx, ImmTy<'tcx, Self::Provenance>> {
+        val: &OpTy<'tcx, Self::Provenance>,
+    ) -> InterpResult<'tcx, OpTy<'tcx, Self::Provenance>> {
         interp_ok(val.clone())
     }
 

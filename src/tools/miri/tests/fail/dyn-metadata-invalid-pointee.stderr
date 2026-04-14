@@ -1,4 +1,4 @@
-error: Undefined Behavior: constructing invalid value: wrong pointee for DynMetadata: expected a trait object type, but encountered `()`
+error: Undefined Behavior: constructing invalid value of type std::ptr::DynMetadata<()>: wrong pointee for DynMetadata: expected a trait object type, but encountered `()`
   --> tests/fail/dyn-metadata-invalid-pointee.rs:LL:CC
    |
 LL |     let _: DynMetadata<()> = unsafe { std::mem::transmute(valid) };
