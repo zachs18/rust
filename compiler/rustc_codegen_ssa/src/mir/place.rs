@@ -481,6 +481,16 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     cg_base.project_index(bx, llindex)
                 }
                 mir::ProjectionElem::Subslice { from, to, from_end } => {
+                    let elem_ty = match cg_base.layout.ty.kind() {
+                        ty::Array(elem_ty, _) => *elem_ty,
+                        ty::Slice(elem_ty) => *elem_ty,
+                        _ => unreachable!(),
+                    };
+                    if !elem_ty.is_thin(bx.tcx(), bx.typing_env()) {
+                        unimplemented!(
+                            "FIXME(ptr_metadata_v2): implement subslice projection for unsized elements"
+                        );
+                    }
                     let mut subslice =
                         cg_base.project_index(bx, bx.cx().const_usize(from)).change_sizedness();
                     let projected_ty =
@@ -493,7 +503,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             bx.sub(cg_base.val.llextra.immediate(), bx.cx().const_usize(from + to));
                         subslice.val.llextra = AnyPlaceMeta(Some(OperandRef {
                             val: OperandValue::Immediate(len),
-                            layout: bx.cx().layout_of(bx.tcx().types.usize),
+                            layout: bx
+                                .cx()
+                                .layout_of(Ty::new_ptr_metadata(bx.tcx(), subslice.layout.ty)),
                             move_annotation: None,
                         }));
                     }
