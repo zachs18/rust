@@ -870,7 +870,7 @@ pub const unsafe fn transmute_unchecked<Src, Dst>(src: Src) -> Dst;
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
-pub const fn needs_drop<T: ?Sized>() -> bool;
+pub const fn needs_drop<T: PointeeSized>() -> bool;
 
 /// Calculates the offset from a pointer.
 ///
@@ -906,12 +906,15 @@ pub const unsafe fn offset<Ptr: bounds::BuiltinDeref, Delta>(dst: Ptr, offset: D
 /// object, and it wraps with two's complement arithmetic. The resulting
 /// value is not necessarily valid to be used to actually access memory.
 ///
+/// The element size is computed using [`mem::checked_size_for_meta`], and
+/// the size is treated as `0` if that returns `None`.
+///
 /// The stabilized version of this intrinsic is [`pointer::wrapping_offset`].
 #[must_use = "returns a new pointer rather than modifying its argument"]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
-pub const unsafe fn arith_offset<T>(dst: *const T, offset: isize) -> *const T;
+pub const unsafe fn arith_offset<T: MetaSized>(dst: *const T, offset: isize) -> *const T;
 
 /// Projects to the `index`-th element of `slice_ptr`, as the same kind of pointer
 /// as the slice was provided -- so `&mut [T] → &mut T`, `&[T] → &T`,
@@ -2885,7 +2888,7 @@ pub const unsafe fn align_of_val<T: ?Sized>(ptr: *const T) -> usize;
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
-pub const fn checked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> (bool, usize);
+pub const fn checked_size_for_meta<T: MetaSized>(meta: ptr::Metadata<T>) -> (bool, usize);
 
 /// Returns `true` and the required alignment of a value with the given pointer metadata,
 /// or `false` and an arbitrary value if the size or alignment would overflow `isize`
@@ -2901,7 +2904,7 @@ pub const fn checked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> (bool, 
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
-pub const fn checked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> (bool, usize);
+pub const fn checked_align_for_meta<T: MetaSized>(meta: ptr::Metadata<T>) -> (bool, usize);
 
 /// Returns the size of a value with the given pointer metadata.
 ///
@@ -2961,7 +2964,7 @@ pub const fn type_of(_id: crate::any::TypeId) -> crate::mem::type_info::Type {
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
-pub const fn type_name<T: ?Sized>() -> &'static str;
+pub const fn type_name<T: PointeeSized>() -> &'static str;
 
 /// Gets an identifier which is globally unique to the specified type. This
 /// function will return the same value for a type regardless of whichever
@@ -2976,7 +2979,7 @@ pub const fn type_name<T: ?Sized>() -> &'static str;
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
-pub const fn type_id<T: ?Sized>() -> crate::any::TypeId;
+pub const fn type_id<T: PointeeSized>() -> crate::any::TypeId;
 
 /// Tests (at compile-time) if two [`crate::any::TypeId`] instances identify the
 /// same type. This is necessary because at const-eval time the actual discriminating

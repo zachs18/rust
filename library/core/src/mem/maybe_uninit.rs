@@ -1157,7 +1157,7 @@ impl<T: MetaSized> MaybeUninit<T> {
     }
 }
 
-impl<T> MaybeUninit<[T]> {
+impl<T: MetaSized> MaybeUninit<[T]> {
     /// Transposes a `&MaybeUninit<[T]>` into a `&[MaybeUninit<T>]`.
     #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
     pub const fn transpose_ref(&self) -> &[MaybeUninit<T>] {
@@ -1183,7 +1183,7 @@ impl<T> MaybeUninit<[T]> {
     }
 }
 
-impl<T> [MaybeUninit<T>] {
+impl<T: MetaSized> [MaybeUninit<T>] {
     /// Transposes a `&[MaybeUninit<T>]` into a `&MaybeUninit<[T]>`.
     #[unstable(feature = "maybe_uninit_of_slice", issue = "none")]
     pub const fn transpose_ref(&self) -> &MaybeUninit<[T]> {
@@ -1393,6 +1393,7 @@ impl<T> [MaybeUninit<T>] {
     #[unstable(feature = "maybe_uninit_fill", issue = "117428")]
     pub fn write_with<F>(&mut self, mut f: F) -> &mut [T]
     where
+        T: Sized,
         F: FnMut(usize) -> T,
     {
         let mut guard = Guard { slice: self, initialized: 0 };
@@ -1469,6 +1470,7 @@ impl<T> [MaybeUninit<T>] {
     #[unstable(feature = "maybe_uninit_fill", issue = "117428")]
     pub fn write_iter<I>(&mut self, it: I) -> (&mut [T], &mut [MaybeUninit<T>])
     where
+        T: Sized,
         I: IntoIterator<Item = T>,
     {
         let iter = it.into_iter();

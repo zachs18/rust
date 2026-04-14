@@ -5,7 +5,7 @@
 use crate::cell::{Cell, Ref, RefCell, RefMut, SyncUnsafeCell, UnsafeCell};
 use crate::char::EscapeDebugExtArgs;
 use crate::hint::assert_unchecked;
-use crate::marker::{PhantomData, PointeeSized};
+use crate::marker::{MetaSized, PhantomData, PointeeSized};
 use crate::num::imp::fmt as numfmt;
 use crate::ops::Deref;
 use crate::ptr::NonNull;
@@ -216,7 +216,7 @@ pub trait Write {
             fn spec_write_fmt(self, args: Arguments<'_>) -> Result;
         }
 
-        impl<W: Write + ?Sized> SpecWriteFmt for &mut W {
+        impl<W: Write + MetaSized> SpecWriteFmt for &mut W {
             #[inline]
             default fn spec_write_fmt(mut self, args: Arguments<'_>) -> Result {
                 if let Some(s) = args.as_statically_known_str() {
@@ -243,7 +243,7 @@ pub trait Write {
 }
 
 #[stable(feature = "fmt_write_blanket_impl", since = "1.4.0")]
-impl<W: Write + ?Sized> Write for &mut W {
+impl<W: Write + MetaSized> Write for &mut W {
     fn write_str(&mut self, s: &str) -> Result {
         (**self).write_str(s)
     }
@@ -3124,7 +3124,7 @@ macro_rules! maybe_tuple_doc {
 tuple! { E, D, C, B, A, Z, Y, X, W, V, U, T, }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: Debug> Debug for [T] {
+impl<T: MetaSized + Debug> Debug for [T] {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_list().entries(self.iter()).finish()
     }
@@ -3138,7 +3138,7 @@ impl Debug for () {
     }
 }
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized> Debug for PhantomData<T> {
+impl<T: PointeeSized> Debug for PhantomData<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "PhantomData<{}>", crate::any::type_name::<T>())
     }
@@ -3152,7 +3152,7 @@ impl<T: Copy + Debug> Debug for Cell<T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + Debug> Debug for RefCell<T> {
+impl<T: MetaSized + Debug> Debug for RefCell<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut d = f.debug_struct("RefCell");
         match self.try_borrow() {
@@ -3164,28 +3164,28 @@ impl<T: ?Sized + Debug> Debug for RefCell<T> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + Debug> Debug for Ref<'_, T> {
+impl<T: MetaSized + Debug> Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Debug::fmt(&**self, f)
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + Debug> Debug for RefMut<'_, T> {
+impl<T: MetaSized + Debug> Debug for RefMut<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Debug::fmt(&*(self.deref()), f)
     }
 }
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
-impl<T: ?Sized> Debug for UnsafeCell<T> {
+impl<T: MetaSized> Debug for UnsafeCell<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("UnsafeCell").finish_non_exhaustive()
     }
 }
 
 #[unstable(feature = "sync_unsafe_cell", issue = "95439")]
-impl<T: ?Sized> Debug for SyncUnsafeCell<T> {
+impl<T: MetaSized> Debug for SyncUnsafeCell<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("SyncUnsafeCell").finish_non_exhaustive()
     }

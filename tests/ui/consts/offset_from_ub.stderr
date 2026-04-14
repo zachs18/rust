@@ -12,6 +12,8 @@ LL |     unsafe { (42 as *const u8).offset_from(&5u8) as usize }
    |
 note: inside `std::ptr::const_ptr::<impl *const u8>::offset_from`
   --> $SRC_DIR/core/src/ptr/const_ptr.rs:LL:COL
+note: inside `std::ptr::const_ptr::<impl *const u8>::byte_offset_from::<u8>`
+  --> $SRC_DIR/core/src/ptr/const_ptr.rs:LL:COL
 
 error[E0080]: exact_div: 1_isize cannot be divided by 2_isize without remainder
   --> $DIR/offset_from_ub.rs:34:14
@@ -81,6 +83,8 @@ LL |     unsafe { ptr2.offset_from(ptr1) }
    |
 note: inside `std::ptr::const_ptr::<impl *const u8>::offset_from`
   --> $SRC_DIR/core/src/ptr/const_ptr.rs:LL:COL
+note: inside `std::ptr::const_ptr::<impl *const u8>::byte_offset_from::<u8>`
+  --> $SRC_DIR/core/src/ptr/const_ptr.rs:LL:COL
 
 error[E0080]: `ptr_offset_from` called when first pointer is too far before second
   --> $DIR/offset_from_ub.rs:118:14
@@ -89,6 +93,8 @@ LL |     unsafe { ptr1.offset_from(ptr2.wrapping_offset(1)) }
    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `OFFSET_VERY_FAR2` failed inside this call
    |
 note: inside `std::ptr::const_ptr::<impl *const u8>::offset_from`
+  --> $SRC_DIR/core/src/ptr/const_ptr.rs:LL:COL
+note: inside `std::ptr::const_ptr::<impl *const u8>::byte_offset_from::<u8>`
   --> $SRC_DIR/core/src/ptr/const_ptr.rs:LL:COL
 
 error: aborting due to 14 previous errors

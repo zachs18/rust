@@ -12,12 +12,11 @@ use crate::error::Error;
 use crate::hash::{self, Hash};
 use crate::intrinsics::transmute_unchecked;
 use crate::iter::{UncheckedIterator, repeat_n};
-use crate::marker::Destruct;
+use crate::marker::{Destruct, MetaSized};
 use crate::mem::{self, ManuallyDrop, MaybeUninit};
 use crate::ops::{
     ChangeOutputType, ControlFlow, FromResidual, Index, IndexMut, NeverShortCircuit, Residual, Try,
 };
-use crate::ptr::{null, null_mut};
 use crate::slice::{Iter, IterMut};
 use crate::{fmt, ptr};
 
@@ -653,7 +652,7 @@ impl<T: ?Sized, const N: usize> [T; N] {
     }
 }
 
-impl<T, const N: usize> [T; N] {
+impl<T: MetaSized, const N: usize> [T; N] {
     /// Borrows each element and returns an array of references with the same
     /// size as `self`.
     ///
@@ -681,12 +680,12 @@ impl<T, const N: usize> [T; N] {
     #[stable(feature = "array_methods", since = "1.77.0")]
     #[rustc_const_stable(feature = "const_array_each_ref", since = "1.91.0")]
     pub const fn each_ref(&self) -> [&T; N] {
-        let mut buf = [null::<T>(); N];
+        let mut buf = [const { MaybeUninit::uninit() }; N];
 
         // FIXME(const_trait_impl): We would like to simply use iterators for this (as in the original implementation), but this is not allowed in constant expressions.
         let mut i = 0;
         while i < N {
-            buf[i] = &raw const self[i];
+            buf[i] = MaybeUninit::new(&raw const self[i]);
 
             i += 1;
         }
@@ -712,12 +711,12 @@ impl<T, const N: usize> [T; N] {
     #[stable(feature = "array_methods", since = "1.77.0")]
     #[rustc_const_stable(feature = "const_array_each_ref", since = "1.91.0")]
     pub const fn each_mut(&mut self) -> [&mut T; N] {
-        let mut buf = [null_mut::<T>(); N];
+        let mut buf = [const { MaybeUninit::uninit() }; N];
 
         // FIXME(const_trait_impl): We would like to simply use iterators for this (as in the original implementation), but this is not allowed in constant expressions.
         let mut i = 0;
         while i < N {
-            buf[i] = &raw mut self[i];
+            buf[i] = MaybeUninit::new(&raw mut self[i]);
 
             i += 1;
         }

@@ -9,7 +9,7 @@
 use crate::clone::TrivialClone;
 use crate::cmp::Ordering::{self, Equal, Greater, Less};
 use crate::intrinsics::{exact_div, unchecked_sub};
-use crate::marker::Destruct;
+use crate::marker::{Destruct, MetaSized};
 use crate::mem::{self, MaybeUninit, SizedTypeProperties};
 use crate::num::NonZero;
 use crate::ops::{OneSidedRange, OneSidedRangeBound, Range, RangeBounds, RangeInclusive};
@@ -306,7 +306,7 @@ impl<T: ?Sized> [T] {
     }
 }
 
-impl<T> [T] {
+impl<T: MetaSized> [T] {
     /// Returns an array reference to the first `N` items in the slice.
     ///
     /// If the slice is not at least `N` in length, this will return `None`.
@@ -692,9 +692,7 @@ impl<T> [T] {
         // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
         unsafe { &mut *index.get_unchecked_mut(self) }
     }
-}
 
-impl<T: ?Sized> [T] {
     /// Returns a raw pointer to the slice's buffer.
     ///
     /// The caller must ensure that the slice outlives the pointer this
@@ -767,7 +765,7 @@ impl<T: ?Sized> [T] {
     }
 }
 
-impl<T> [T] {
+impl<T: MetaSized> [T] {
     /// Returns the two raw pointers spanning the slice.
     ///
     /// The returned range is half-open, which means that the end pointer
@@ -912,7 +910,10 @@ impl<T> [T] {
     #[rustc_const_stable(feature = "const_swap", since = "1.85.0")]
     #[inline]
     #[track_caller]
-    pub const fn swap(&mut self, a: usize, b: usize) {
+    pub const fn swap(&mut self, a: usize, b: usize)
+    where
+        T: Sized,
+    {
         // FIXME: use swap_unchecked here (https://github.com/rust-lang/rust/pull/88540#issuecomment-944344343)
         // Can't take two mutable loans from one vector, so instead use raw pointers.
         let pa = &raw mut self[a];
@@ -955,7 +956,10 @@ impl<T> [T] {
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     #[unstable(feature = "slice_swap_unchecked", issue = "88539")]
     #[track_caller]
-    pub const unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
+    pub const unsafe fn swap_unchecked(&mut self, a: usize, b: usize)
+    where
+        T: Sized,
+    {
         assert_unsafe_precondition!(
             check_library_ub,
             "slice::swap_unchecked requires that the indices are within the slice",
@@ -985,7 +989,10 @@ impl<T> [T] {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_stable(feature = "const_slice_reverse", since = "1.90.0")]
     #[inline]
-    pub const fn reverse(&mut self) {
+    pub const fn reverse(&mut self)
+    where
+        T: Sized,
+    {
         let half_len = self.len() / 2;
         let Range { start, end } = self.as_mut_ptr_range();
 
@@ -1355,7 +1362,7 @@ impl<T> [T] {
         let new_len = unsafe { exact_div(self.len(), N) };
         // SAFETY: We cast a slice of `new_len * N` elements into
         // a slice of `new_len` many `N` elements chunks.
-        unsafe { from_raw_parts(self.as_ptr().cast(), new_len) }
+        unsafe { from_raw_parts(self.as_ptr().cast_array(), new_len) }
     }
 
     /// Splits the slice into a slice of `N`-element arrays,
@@ -1515,7 +1522,7 @@ impl<T> [T] {
         let new_len = unsafe { exact_div(self.len(), N) };
         // SAFETY: We cast a slice of `new_len * N` elements into
         // a slice of `new_len` many `N` elements chunks.
-        unsafe { from_raw_parts_mut(self.as_mut_ptr().cast(), new_len) }
+        unsafe { from_raw_parts_mut(self.as_mut_ptr().cast_array(), new_len) }
     }
 
     /// Splits the slice into a slice of `N`-element arrays,
@@ -3085,7 +3092,9 @@ impl<T> [T] {
     {
         self.binary_search_by(|k| f(k).cmp(b))
     }
+}
 
+impl<T> [T] {
     /// Sorts the slice in ascending order **without** preserving the initial order of equal elements.
     ///
     /// This sort is unstable (i.e., may reorder equal elements), in-place (i.e., does not
@@ -4711,7 +4720,9 @@ impl<T> [T] {
         // potentially-higher alignment, so the de-facto transmutes are sound.
         unsafe { self.align_to_mut() }
     }
+}
 
+impl<T: MetaSized> [T] {
     /// Checks if the elements of this slice are sorted.
     ///
     /// That is, for each element `a` and its following element `b`, `a <= b` must hold. If the
@@ -4982,7 +4993,10 @@ impl<T> [T] {
     pub fn split_off_mut<'a, R: OneSidedRange<usize>>(
         self: &mut &'a mut Self,
         range: R,
-    ) -> Option<&'a mut Self> {
+    ) -> Option<&'a mut Self>
+    where
+        T: Sized,
+    {
         let (direction, split_index) = split_point_of(range)?;
         if split_index > self.len() {
             return None;
@@ -5042,7 +5056,10 @@ impl<T> [T] {
     #[inline]
     #[stable(feature = "slice_take", since = "1.87.0")]
     #[rustc_const_unstable(feature = "const_split_off_first_last", issue = "138539")]
-    pub const fn split_off_first_mut<'a>(self: &mut &'a mut Self) -> Option<&'a mut T> {
+    pub const fn split_off_first_mut<'a>(self: &mut &'a mut Self) -> Option<&'a mut T>
+    where
+        T: Sized,
+    {
         // FIXME(const-hack): Use `mem::take` and `?` when available in const.
         // Original: `mem::take(self).split_first_mut()?`
         let Some((first, rem)) = mem::replace(self, &mut []).split_first_mut() else { return None };
@@ -5267,7 +5284,10 @@ impl<T> [T] {
     /// ```
     #[must_use]
     #[stable(feature = "element_offset", since = "1.94.0")]
-    pub fn element_offset(&self, element: &T) -> Option<usize> {
+    pub fn element_offset(&self, element: &T) -> Option<usize>
+    where
+        T: Sized,
+    {
         if T::IS_ZST {
             panic!("elements are zero-sized");
         }
@@ -5322,7 +5342,10 @@ impl<T> [T] {
     /// ```
     #[must_use]
     #[unstable(feature = "substr_range", issue = "126769")]
-    pub fn subslice_range(&self, subslice: &[T]) -> Option<core::range::Range<usize>> {
+    pub fn subslice_range(&self, subslice: &[T]) -> Option<core::range::Range<usize>>
+    where
+        T: Sized,
+    {
         if T::IS_ZST {
             panic!("elements are zero-sized");
         }
@@ -5461,7 +5484,7 @@ impl<T, const N: usize> [[T; N]] {
             unsafe { self.len().unchecked_mul(N) }
         };
         // SAFETY: `[T]` is layout-identical to `[T; N]`
-        unsafe { from_raw_parts(self.as_ptr().cast(), len) }
+        unsafe { from_raw_parts(self.as_ptr().as_ptr(), len) }
     }
 
     /// Takes a `&mut [[T; N]]`, and flattens it to a `&mut [T]`.
@@ -5503,7 +5526,7 @@ impl<T, const N: usize> [[T; N]] {
             unsafe { self.len().unchecked_mul(N) }
         };
         // SAFETY: `[T]` is layout-identical to `[T; N]`
-        unsafe { from_raw_parts_mut(self.as_mut_ptr().cast(), len) }
+        unsafe { from_raw_parts_mut(self.as_mut_ptr().as_mut_ptr(), len) }
     }
 }
 

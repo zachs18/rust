@@ -803,10 +803,10 @@ impl<T: PointeeSized> *mut T {
     #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     pub const unsafe fn offset_from(self, origin: *const T) -> isize
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must uphold the safety contract for `offset_from`.
-        unsafe { (self as *const T).offset_from(origin) }
+        unsafe { self.cast_const().offset_from(origin) }
     }
 
     /// Calculates the distance between two pointers within the same allocation. The returned value is in
@@ -823,8 +823,8 @@ impl<T: PointeeSized> *mut T {
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     pub const unsafe fn byte_offset_from<U: ?Sized>(self, origin: *const U) -> isize {
-        // SAFETY: the caller must uphold the safety contract for `offset_from`.
-        unsafe { self.cast::<u8>().offset_from(origin.cast::<u8>()) }
+        // SAFETY: the caller must uphold the safety contract for `byte_offset_from`.
+        unsafe { self.cast_const().byte_offset_from(origin) }
     }
 
     /// Calculates the distance between two pointers within the same allocation, *where it's known that
@@ -892,10 +892,10 @@ impl<T: PointeeSized> *mut T {
     #[track_caller]
     pub const unsafe fn offset_from_unsigned(self, origin: *const T) -> usize
     where
-        T: Sized,
+        T: MetaSized,
     {
         // SAFETY: the caller must uphold the safety contract for `offset_from_unsigned`.
-        unsafe { (self as *const T).offset_from_unsigned(origin) }
+        unsafe { self.cast_const().offset_from_unsigned(origin) }
     }
 
     /// Calculates the distance between two pointers within the same allocation, *where it's known that
@@ -914,7 +914,7 @@ impl<T: PointeeSized> *mut T {
     #[track_caller]
     pub const unsafe fn byte_offset_from_unsigned<U: ?Sized>(self, origin: *mut U) -> usize {
         // SAFETY: the caller must uphold the safety contract for `byte_offset_from_unsigned`.
-        unsafe { (self as *const T).byte_offset_from_unsigned(origin) }
+        unsafe { self.cast_const().byte_offset_from_unsigned(origin) }
     }
 
     #[doc = include_str!("./docs/add.md")]
