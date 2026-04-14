@@ -271,6 +271,11 @@ language_item_table! {
     OrdCmp,                  sym::ord_cmp_method,      ord_cmp_method,             Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
     HashMethod,              sym::hash_method,         hash_method,                Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
     DebugTrait,              sym::debug_trait,         debug_trait,                Target::Trait,          GenericRequirement::None;
+    FormatterDebugStructMethod, sym::formatter_debug_struct_method, formatter_debug_struct_method, Target::Method(MethodKind::Inherent), GenericRequirement::None;
+    DebugStruct,             sym::DebugStruct,         debug_struct,               Target::Struct,         GenericRequirement::None;
+    DebugStructField,        sym::debug_struct_field,  debug_struct_field,         Target::Method(MethodKind::Inherent), GenericRequirement::None;
+    DebugStructFinish,       sym::debug_struct_finish, debug_struct_finish,        Target::Method(MethodKind::Inherent), GenericRequirement::None;
+    DebugStructFinishNonExhaustive, sym::debug_struct_finish_non_exhaustive, debug_struct_finish_non_exhaustive, Target::Method(MethodKind::Inherent), GenericRequirement::None;
     CVoid,                   sym::c_void,              c_void,                     Target::Enum,           GenericRequirement::None;
 
     Type,                    sym::type_info,           type_struct,                Target::Struct,         GenericRequirement::None;
