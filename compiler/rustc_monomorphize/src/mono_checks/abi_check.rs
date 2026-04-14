@@ -21,7 +21,7 @@ enum UsesVectorRegisters {
 
 /// Determines whether the combination of `mode` and `repr` will use fixed vector registers,
 /// scalable vector registers or no vector registers.
-fn passes_vectors_by_value(mode: &PassMode, repr: &BackendRepr) -> UsesVectorRegisters {
+fn passes_vectors_by_value<Ty>(mode: &PassMode<'_, Ty>, repr: &BackendRepr) -> UsesVectorRegisters {
     match mode {
         PassMode::Ignore | PassMode::Indirect { .. } => UsesVectorRegisters::No,
         PassMode::Cast { pad_i32: _, cast }

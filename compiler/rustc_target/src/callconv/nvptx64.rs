@@ -3,7 +3,7 @@ use rustc_abi::{HasDataLayout, Reg, Size, TyAbiInterface};
 use super::CastTarget;
 use crate::callconv::{ArgAbi, FnAbi, Uniform};
 
-fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
+fn classify_ret<Ty: std::fmt::Display>(ret: &mut ArgAbi<'_, Ty>) {
     if ret.layout.is_aggregate() && ret.layout.is_sized() {
         classify_aggregate(ret)
     } else if ret.layout.size.bits() < 32 && ret.layout.is_sized() {
@@ -27,7 +27,7 @@ where
 }
 
 /// the pass mode used for aggregates in arg and ret position
-fn classify_aggregate<Ty>(arg: &mut ArgAbi<'_, Ty>) {
+fn classify_aggregate<Ty: std::fmt::Display>(arg: &mut ArgAbi<'_, Ty>) {
     let align_bytes = arg.layout.align.bytes();
     let size = arg.layout.size;
 

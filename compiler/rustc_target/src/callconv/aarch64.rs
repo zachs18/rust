@@ -42,7 +42,7 @@ where
     })
 }
 
-fn softfloat_float_abi<Ty>(target: &Target, arg: &mut ArgAbi<'_, Ty>) {
+fn softfloat_float_abi<Ty: std::fmt::Display>(target: &Target, arg: &mut ArgAbi<'_, Ty>) {
     if target.rustc_abi != Some(RustcAbi::Softfloat) {
         return;
     }

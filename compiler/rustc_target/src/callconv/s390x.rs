@@ -6,7 +6,7 @@ use rustc_abi::{BackendRepr, HasDataLayout, TyAbiInterface};
 use crate::callconv::{ArgAbi, FnAbi, Reg, RegKind};
 use crate::spec::{Env, HasTargetSpec, Os};
 
-fn classify_ret<Ty>(ret: &mut ArgAbi<'_, Ty>) {
+fn classify_ret<Ty: std::fmt::Display>(ret: &mut ArgAbi<'_, Ty>) {
     let size = ret.layout.size;
     if size.bits() <= 128 && matches!(ret.layout.backend_repr, BackendRepr::SimdVector { .. }) {
         return;

@@ -23,7 +23,7 @@ enum FloatConv {
 #[derive(Copy, Clone)]
 struct CannotUseFpConv;
 
-fn is_loongarch_aggregate<Ty>(arg: &ArgAbi<'_, Ty>) -> bool {
+fn is_loongarch_aggregate<Ty: std::fmt::Display>(arg: &ArgAbi<'_, Ty>) -> bool {
     match arg.layout.backend_repr {
         BackendRepr::SimdVector { .. } => true,
         _ => arg.layout.is_aggregate(),
@@ -394,7 +394,7 @@ fn classify_arg<'a, Ty, C>(
     }
 }
 
-fn extend_integer_width<Ty>(arg: &mut ArgAbi<'_, Ty>, xlen: u64) {
+fn extend_integer_width<Ty: std::fmt::Display>(arg: &mut ArgAbi<'_, Ty>, xlen: u64) {
     if let BackendRepr::Scalar(scalar) = arg.layout.backend_repr
         && let Primitive::Int(i, _) = scalar.primitive()
         && i.size().bits() == 32
