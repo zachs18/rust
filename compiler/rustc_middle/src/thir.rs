@@ -212,10 +212,13 @@ pub enum InitAdtExprBase<'tcx> {
     /// A struct initializer expression where all the fields are explicitly enumerated:
     /// `do init struct Foo { a, b }`.
     None,
+    /// A pointer metadata expression with a "base", an expression of the same type as the outer struct that
+    /// will be used to populate any fields not explicitly mentioned: `builtin # ptr_metadata { elem, ..base }`
+    Base(FruInfo<'tcx>),
     /// A struct initializer expression with a `..` tail but no "base" expression.
     /// The values from the struct fields' default values will be used to populate
     /// any fields not explicitly mentioned: `do init struct Foo { .. }`.
-    DefaultFields(Box<[Ty<'tcx>]>),
+    DefaultFields,
 }
 
 #[derive(Clone, Debug, HashStable)]

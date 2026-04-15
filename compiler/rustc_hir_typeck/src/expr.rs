@@ -29,7 +29,7 @@ use rustc_infer::infer::{self, DefineOpaqueTypes, InferOk, RegionVariableOrigin}
 use rustc_infer::traits::query::NoSolution;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AllowTwoPhase};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
-use rustc_middle::ty::{self, AdtKind, GenericArgsRef, Ty, TypeVisitableExt};
+use rustc_middle::ty::{self, AdtKind, GenericArgsRef, InitAdtComponentInfo, Ty, TypeVisitableExt};
 use rustc_middle::{bug, span_bug};
 use rustc_session::errors::ExprParenthesesNeeded;
 use rustc_session::parse::feature_err;
@@ -2860,7 +2860,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         }
 
-        let (component_tys, component_infos): (Vec<_>, Vec<_>) = hir_fields
+        let (mut component_tys, mut component_infos): (Vec<_>, Vec<_>) = hir_fields
             .iter()
             .enumerate()
             .map(|(hir_field_idx, field)| {
@@ -3084,8 +3084,44 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 };
                 self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
             }
-            hir::StructTailExpr::Base(_base_expr) => {
-                todo!("decide if this should be allowed")
+            hir::StructTailExpr::Base(base_expr) => {
+                self.check_expr_with_expectation(base_expr, ExpectHasType(adt_ty));
+                let fru_tys = match adt_ty.kind() {
+                    ty::Adt(adt, args) if adt.is_struct() => variant
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let field_ty = self.normalize(expr.span, f.ty(self.tcx, args));
+
+                            let field_name = f.ident(tcx).normalize_to_macros_2_0();
+
+                            if let Some((idx, _)) = remaining_fields.remove(&field_name) {
+                                component_tys.push(field_ty);
+                                component_infos.push(InitAdtComponentInfo {
+                                    field: Some(idx),
+                                    args: tcx.mk_init_adt_component_arg_list(&[]),
+                                    referenced_unpinned: false,
+                                });
+
+                                self.require_type_is_sized(
+                                    field_ty,
+                                    base_expr.span,
+                                    ObligationCauseCode::InitAdtFruSized,
+                                );
+                            }
+
+                            field_ty
+                        })
+                        .collect(),
+                    _ => {
+                        let guar = self
+                            .dcx()
+                            .emit_err(FunctionalRecordUpdateOnNonStruct { span: base_expr.span });
+                        return Ty::new_error(tcx, guar);
+                    }
+                };
+
+                self.typeck_results.borrow_mut().fru_field_types_mut().insert(expr.hir_id, fru_tys);
             }
             rustc_hir::StructTailExpr::NoneWithError(guaranteed) => {
                 // If parsing the initializer recovered from a syntax error, do not report missing

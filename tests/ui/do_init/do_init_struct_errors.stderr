@@ -1,0 +1,21 @@
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/do_init_struct_errors.rs:20:38
+   |
+LL |     let bx: Box<BasicUnsized<str>> = Box::build(core::init::do_init!(struct BasicUnsized {
+   |                                      ^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+   = note: initializer elements must have `Sized` type
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/do_init_struct_errors.rs:25:11
+   |
+LL |         ..*src
+   |           ^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+   = note: in `do init struct Struct { ..place }`, values moved from `place` must have a statically known size
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

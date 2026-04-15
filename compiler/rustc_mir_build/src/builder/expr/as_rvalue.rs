@@ -1,6 +1,7 @@
 //! See docs in `build/expr/mod.rs`.
 
 use rustc_abi::FieldIdx;
+use rustc_data_structures::fx::FxHashSet;
 use rustc_index::{Idx, IndexVec};
 use rustc_middle::bug;
 use rustc_middle::middle::region::{self, TempLifetime};
@@ -320,13 +321,33 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 variant_index,
                 component_infos,
                 pinned,
-                base: _,
+                ref base,
             }) => {
                 // see (*) above
-                // first process the set of fields
-                let fields: IndexVec<FieldIdx, _> = fields
-                    .iter()
-                    .map(|f| {
+                // First process the set of fields that were provided
+                // (evaluating them in the order given by the user).
+
+                // This is the `FieldIdx`s of the *ADT*, not the InitAdt type.
+                // This is only important with `..base` exprs, which are only valid with
+                // `struct`s.
+                let mut remaining_adt_fields: Option<FxHashSet<FieldIdx>> =
+                    matches!(base, InitAdtExprBase::Base(..))
+                        .then(|| adt_def.non_enum_variant().fields.indices().collect());
+
+                // If there is an FRU base, we include its fields as though they were listed
+                // as individual field initializers.
+                // This works because of the blanket `impl<T> Init<T> for T`.
+
+                let (given_infos, fru_infos) = component_infos.split_at(fields.len());
+
+                let mut fields: IndexVec<FieldIdx, _> = itertools::zip_eq(fields, given_infos)
+                    .map(|(f, component_info)| {
+                        if let Some(adt_field) = component_info.field
+                            && let Some(remaining_adt_fields) = &mut remaining_adt_fields
+                        {
+                            remaining_adt_fields.remove(&adt_field);
+                        }
+
                         unpack!(
                             block = this.as_operand(
                                 block,
@@ -338,6 +359,48 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         )
                     })
                     .collect();
+                match base {
+                    InitAdtExprBase::None => {
+                        debug_assert!(
+                            fru_infos.is_empty(),
+                            "InitAdtExprBase::None has FRU fields?"
+                        );
+                    }
+                    InitAdtExprBase::DefaultFields => {
+                        debug_assert!(
+                            fru_infos.is_empty(),
+                            "InitAdtExprBase::DefaultFields has FRU fields?"
+                        );
+                    }
+                    InitAdtExprBase::Base(FruInfo { base, field_types }) => {
+                        let mut remaining_adt_fields = remaining_adt_fields.unwrap();
+                        let place_builder = unpack!(block = this.as_place_builder(block, *base));
+
+                        // We desugar FRU as we lower to MIR, so for each
+                        // base-supplied field, generate an operand that
+                        // reads it from the base.
+                        for component_info in fru_infos {
+                            let adt_field = component_info
+                                .field
+                                .expect("FRU component must initialize a field");
+                            assert!(
+                                remaining_adt_fields.remove(&adt_field),
+                                "duplicate ADT field in InitAdt"
+                            );
+                            let adt_field_ty = field_types[adt_field.as_usize()];
+
+                            let place = place_builder
+                                .clone_project(PlaceElem::Field(adt_field, adt_field_ty));
+                            let val = this.consume_by_copy_or_move(place.to_place(this));
+                            fields.push(val);
+                        }
+
+                        debug_assert!(
+                            remaining_adt_fields.is_empty(),
+                            "missing fields with InitAdtExprBase::Base?"
+                        )
+                    }
+                }
 
                 block.and(Rvalue::Aggregate(
                     Box::new(AggregateKind::InitAdt {

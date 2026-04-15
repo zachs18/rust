@@ -458,6 +458,10 @@ Exercises diagnostics for disallowed struct destructuring.
 
 Tests that require distribution artifacts.
 
+## `tests/ui/do_init`
+
+Tests for the `in_place_init` feature and `do init` syntax.
+
 ## `tests/ui/dollar-crate/`: `$crate` used with the `use` keyword
 
 There are a few rules - which are checked in this directory - to follow when using `$crate` - it must be used in the start of a `use` line and is a reserved identifier.
