@@ -51,7 +51,6 @@ pub enum SolverTraitLangItem {
     InitMut,
     InitOnce,
     Iterator,
-    MetaAligned,
     MetaSized,
     Ord,
     PinInit,

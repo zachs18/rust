@@ -2192,9 +2192,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 SizedTraitKind::Thin => {
                     unreachable!("tried to assemble `Thin` for a wide-pointee type")
                 }
-                SizedTraitKind::Aligned
-                | SizedTraitKind::MetaSized
-                | SizedTraitKind::MetaAligned => ty::Binder::dummy(vec![]),
+                SizedTraitKind::Aligned | SizedTraitKind::MetaSized => ty::Binder::dummy(vec![]),
             },
 
             ty::Slice(elem) => match sizedness {
@@ -2203,9 +2201,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                     unreachable!("tried to assemble `Thin` for a wide-pointee type")
                 }
                 SizedTraitKind::Aligned => ty::Binder::dummy(vec![*elem]),
-                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
-                    ty::Binder::dummy(vec![])
-                }
+                SizedTraitKind::MetaSized => ty::Binder::dummy(vec![]),
             },
 
             ty::Dynamic(..) => match sizedness {
@@ -2215,17 +2211,12 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 SizedTraitKind::Thin => {
                     unreachable!("tried to assemble `Thin` for a wide-pointee type")
                 }
-                SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
-                    ty::Binder::dummy(vec![])
-                }
+                SizedTraitKind::MetaSized => ty::Binder::dummy(vec![]),
             },
 
             ty::Foreign(..) => match sizedness {
                 SizedTraitKind::Thin => ty::Binder::dummy(vec![]),
-                SizedTraitKind::Sized
-                | SizedTraitKind::Aligned
-                | SizedTraitKind::MetaSized
-                | SizedTraitKind::MetaAligned => {
+                SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::MetaSized => {
                     unreachable!("tried to assemble `{sizedness:?}` for foreign type")
                 }
             },

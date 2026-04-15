@@ -458,36 +458,33 @@ impl<'tcx> TyCtxt<'tcx> {
                 | ty::Coroutine(..)
                 | ty::CoroutineClosure(..)
                 | ty::CoroutineWitness(..) => return None,
-                // `Thin`, but not `MetaAligned` or any of its subtraits
+                // `Thin`, but not any other sizedness trait
                 ty::Foreign(_) => match sizedness {
                     SizedTraitKind::Thin => return None,
-                    SizedTraitKind::Sized
-                    | SizedTraitKind::Aligned
-                    | SizedTraitKind::MetaSized
-                    | SizedTraitKind::MetaAligned => return Some(ty),
+                    SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::MetaSized => {
+                        return Some(ty);
+                    }
                 },
                 // Assume type error types are `Sized`.
                 ty::Error(_) => return None,
 
                 // `MetaSized + Aligned`, but not `Thin` or `Sized`
                 ty::Str => match sizedness {
-                    SizedTraitKind::Aligned
-                    | SizedTraitKind::MetaSized
-                    | SizedTraitKind::MetaAligned => return None,
+                    SizedTraitKind::Aligned | SizedTraitKind::MetaSized => return None,
                     SizedTraitKind::Sized | SizedTraitKind::Thin => return Some(ty),
                 },
 
                 // `MetaSized`, but not `Thin` or `Sized`.
                 // `Aligned` if and only if the element is.
                 ty::Slice(elem) => match sizedness {
-                    SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => return None,
+                    SizedTraitKind::MetaSized => return None,
                     SizedTraitKind::Sized | SizedTraitKind::Thin => return Some(ty),
                     SizedTraitKind::Aligned => ty = elem,
                 },
 
                 // `MetaSized`, but not `Thin` or `Sized` or `Aligned`
                 ty::Dynamic(..) => match sizedness {
-                    SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => return None,
+                    SizedTraitKind::MetaSized => return None,
                     SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {
                         return Some(ty);
                     }
@@ -1428,17 +1425,6 @@ impl<'tcx> Ty<'tcx> {
     pub fn is_meta_sized(self, tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
         self.has_trivial_sizedness(tcx, SizedTraitKind::MetaSized)
             || tcx.is_meta_sized_raw(typing_env.as_query_input(self))
-    }
-
-    /// Checks whether values of this type `T` have a size computible
-    /// from their pointer metadata (i.e., whether `T: MetaSized`).
-    /// Lifetimes are ignored for the purposes of this check, so it can be an
-    /// over-approximation in generic contexts, where one can have
-    /// strange rules like `<T as Foo<'static>>::Bar: MetaSized` that
-    /// actually carry lifetime requirements.
-    pub fn is_meta_aligned(self, tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
-        self.has_trivial_sizedness(tcx, SizedTraitKind::MetaAligned)
-            || tcx.is_meta_aligned_raw(typing_env.as_query_input(self))
     }
 
     /// Checks whether pointers to values of this type `T` are thin

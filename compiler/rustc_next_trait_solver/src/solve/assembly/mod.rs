@@ -593,11 +593,6 @@ where
                 Some(SolverTraitLangItem::MetaSized) => {
                     G::consider_builtin_sizedness_candidates(self, goal, SizedTraitKind::MetaSized)
                 }
-                Some(SolverTraitLangItem::MetaAligned) => G::consider_builtin_sizedness_candidates(
-                    self,
-                    goal,
-                    SizedTraitKind::MetaAligned,
-                ),
                 Some(SolverTraitLangItem::PointeeSized) => {
                     unreachable!("`PointeeSized` is removed during lowering");
                 }
@@ -882,8 +877,8 @@ where
     ) {
         let cx = self.cx();
         if cx.is_sizedness_trait(goal.predicate.trait_def_id(cx)) {
-            // `dyn MetaSized` (or `dyn MetaAligned`) is valid, but should
-            // get `MetaSized` (and `MetaAligned`) impl from being `dyn`
+            // `dyn MetaSized` is valid, but should
+            // get `MetaSized` impl from being `dyn`
             // (SizedCandidate in old solver terms), not from the object candidate.
             return;
         }

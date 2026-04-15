@@ -824,7 +824,6 @@ bidirectional_lang_item_map! {
     InitMut,
     InitOnce,
     Iterator,
-    MetaAligned,
     MetaSized,
     Ord,
     PinInit,

@@ -189,7 +189,7 @@ pub trait Sized: Aligned + MetaSized + crate::ptr::Thin {
 // `Aligned` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
 #[rustc_coinductive]
-pub trait Aligned: MetaAligned + PointeeSized {
+pub trait Aligned: PointeeSized {
     // Empty
 }
 
@@ -197,7 +197,7 @@ pub trait Aligned: MetaAligned + PointeeSized {
 ///
 /// # Safety
 ///
-/// `MetaSized` (and [`MetaAligned`]) implementations are provided by the compiler for most applicable types.
+/// `MetaSized` implementations are provided by the compiler for most applicable types.
 /// Only `unsized type`s may have custom implementations of `MetaSized`.
 ///
 /// ## Callers
@@ -215,12 +215,12 @@ pub trait Aligned: MetaAligned + PointeeSized {
 /// The author of an `unsized type` is responsible for defining what is a "safe" value of `Metadata<Self>`.
 /// Note that for a `Thin + MetaSized` `unsized type`, the single possible metadata value must be "safe".
 ///
-/// The methods of `MetaSized` and `MetaAligned` must be implemented consistently with each other; that is,
+/// The methods of `MetaSized` must be implemented consistently with each other; that is,
 /// they must return the same size and alignment (or fail) for a given metadata value in a single program execution.
 ///
-/// The methods of `MetaSized` and `MetaAligned` must not unwind.
+/// The methods of `MetaSized` must not unwind.
 ///
-/// The methods of `MetaSized` and `MetaAligned` must be idempotent and async-signal-safe (FIXME: expand), since they
+/// The methods of `MetaSized` must be idempotent and async-signal-safe (FIXME: expand), since they
 /// may be called at any time.
 ///
 /// The `checked_*` methods must return `Some(_)` and must not diverge on any "safe" metadata value,
@@ -235,7 +235,7 @@ pub trait Aligned: MetaAligned + PointeeSized {
 ///
 /// ## Consistency
 ///
-/// For a given value of `Metadata<Self>`, the methods of `MetaSized` and `MetaAligned` must return consistent results.
+/// For a given value of `Metadata<Self>`, the methods of `MetaSized` must return consistent results.
 //FIXME: expand on this
 #[unstable(feature = "sized_hierarchy", issue = "144404")]
 #[lang = "meta_sized"]
@@ -248,11 +248,11 @@ pub trait Aligned: MetaAligned + PointeeSized {
 // `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
 #[rustc_coinductive]
-// Note that `MetaSized` and `MetaAligned` are special-cased by the compiler to have their methods
+// Note that `MetaSized` is special-cased by the compiler to have its methods
 // not included in vtables (trait objects include the size/align in the vtable directly,
 // so it would be unnecessary).
-// `MetaSized` and `MetaAligned` are also special-cased to only allow manual impls for `unsized type`s.
-pub unsafe trait MetaSized: MetaAligned + PointeeSized {
+// `MetaSized` is also special-cased to only allow manual impls for `unsized type`s.
+pub unsafe trait MetaSized: PointeeSized {
     /// Returns the size of a value with the given metadata.
     ///
     /// # Safety
@@ -268,36 +268,6 @@ pub unsafe trait MetaSized: MetaAligned + PointeeSized {
     #[rustc_nounwind]
     fn checked_size_for_meta(self: Metadata<Self>) -> Option<usize>;
 
-    /// FIXME: docs
-    #[rustc_nounwind]
-    unsafe fn unchecked_layout_for_meta(self: Metadata<Self>) -> (usize, Alignment);
-
-    /// FIXME: docs
-    #[rustc_nounwind]
-    fn checked_layout_for_meta(self: Metadata<Self>) -> Option<(usize, Alignment)>;
-}
-
-/// Types with an alignment that can be determined from pointer metadata.
-///
-/// # Safety
-///
-/// See [`MetaSized`].
-#[unstable(feature = "sized_hierarchy", issue = "144404")]
-#[lang = "meta_aligned"]
-#[diagnostic::on_unimplemented(
-    message = "the alignment for values of type `{Self}` cannot be known",
-    label = "doesn't have a known alignment"
-)]
-#[fundamental]
-#[rustc_specialization_trait]
-// `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
-// `Sized` above.
-#[rustc_coinductive]
-// Note that `MetaSized` and `MetaAligned` are special-cased by the compiler to have their methods
-// not included in vtables (trait objects include the size/align in the vtable directly,
-// so it would be unnecessary).
-// `MetaSized` and `MetaAligned` are also special-cased to only allow manual impls for `unsized type`s.
-pub unsafe trait MetaAligned: PointeeSized {
     /// Returns the alignment of a value with the given metadata.
     ///
     /// # Safety
@@ -312,6 +282,14 @@ pub unsafe trait MetaAligned: PointeeSized {
     /// See [`checked_align_for_meta`](crate::mem::checked_align_for_meta).
     #[rustc_nounwind]
     fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment>;
+
+    /// FIXME: docs
+    #[rustc_nounwind]
+    unsafe fn unchecked_layout_for_meta(self: Metadata<Self>) -> (usize, Alignment);
+
+    /// FIXME: docs
+    #[rustc_nounwind]
+    fn checked_layout_for_meta(self: Metadata<Self>) -> Option<(usize, Alignment)>;
 }
 
 /// Types that may or may not have a size.

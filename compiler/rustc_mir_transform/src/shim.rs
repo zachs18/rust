@@ -979,9 +979,9 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             | ty::Error(_) => bug!("{} should be `Sized`", self_ty),
             ty::Foreign(..) => bug!("{} should not be `MetaSized`", self_ty),
 
-            ty::Adt(def, ..) if def.is_unsized_type() => bug!(
-                "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
-            ),
+            ty::Adt(def, ..) if def.is_unsized_type() => {
+                bug!("AdtKind::UnsizedType should have manual MetaSized impls, not builtin")
+            }
             ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
             ty::Adt(def, args) if def.is_union() => {
                 let size_acc = self.make_place(ty::Mutability::Mut, tcx.types.usize);
@@ -2248,11 +2248,11 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             | ty::UnsafeBinder(..)
             | ty::Error(_) => bug!("{} should be `Sized` (thus `Aligned`)", self_ty),
             ty::Str => bug!("{} should be `Aligned`", self_ty),
-            ty::Foreign(..) => bug!("{} should not be `MetaAligned`", self_ty),
+            ty::Foreign(..) => bug!("{} should not be `MetaSized`", self_ty),
 
-            ty::Adt(def, ..) if def.is_unsized_type() => bug!(
-                "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
-            ),
+            ty::Adt(def, ..) if def.is_unsized_type() => {
+                bug!("AdtKind::UnsizedType should have manual MetaSized impls, not builtin")
+            }
             ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
             ty::Adt(def, args) => {
                 let fields =
@@ -2432,7 +2432,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
     }
 
     /// Returns an `Operand` that represents the alignment of `ty` with `meta`,
-    /// adding a new block calling `MetaAligned::(un)checked_align_for_meta` if necessary.
+    /// adding a new block calling `MetaSized::(un)checked_align_for_meta` if necessary.
     ///
     /// If this is a `checked` operation, also handles the `?`.
     ///
@@ -2459,7 +2459,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         let field_align_ret = self.make_place(ty::Mutability::Not, ret_ty);
 
         // bb:
-        //  field_align_ret = <T as MetaAligned>::(un)checked_align_for_meta(Copy meta) [return -> nextbb, unwind continue]
+        //  field_align_ret = <T as MetaSized>::(un)checked_align_for_meta(Copy meta) [return -> nextbb, unwind continue]
         // nextbb: ...
         self.block(
             vec![],
