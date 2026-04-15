@@ -1,0 +1,27 @@
+error[E0308]: mismatched types
+  --> $DIR/multi-unsized-struct-coerce.rs:57:42
+   |
+LL |     let e: &Pair<dyn Debug, dyn Debug> = b;
+   |            ---------------------------   ^ expected `&Pair<dyn Debug, dyn Debug>`, found `&Pair<dyn Debug, [u8; 4]>`
+   |            |
+   |            expected due to this
+   |
+   = note: expected reference `&Pair<dyn Debug, dyn Debug>`
+              found reference `&Pair<dyn Debug, [u8; 4]>`
+   = help: `[u8; 4]` implements `Debug` so you could box the found value and coerce it to the trait object `Box<dyn Debug>`, you will have to change the expected type as well
+
+error[E0308]: mismatched types
+  --> $DIR/multi-unsized-struct-coerce.rs:60:42
+   |
+LL |     let f: &Pair<dyn Debug, dyn Debug> = c;
+   |            ---------------------------   ^ expected `&Pair<dyn Debug, dyn Debug>`, found `&Pair<[u8; 3], dyn Debug>`
+   |            |
+   |            expected due to this
+   |
+   = note: expected reference `&Pair<dyn Debug, dyn Debug>`
+              found reference `&Pair<[u8; 3], dyn Debug>`
+   = help: `[u8; 3]` implements `Debug` so you could box the found value and coerce it to the trait object `Box<dyn Debug>`, you will have to change the expected type as well
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0308`.
