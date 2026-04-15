@@ -2437,13 +2437,19 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 assumptions: vec![],
             }),
 
-            ty::InitArrayRepeat(elem, _) | ty::InitSliceRepeat(elem) => {
+            ty::InitArrayRepeat(elem, _) => {
                 ty::Binder::dummy(AutoImplConstituents { types: vec![elem], assumptions: vec![] })
             }
 
-            ty::InitAdt(_info) => {
-                todo!()
-            }
+            ty::InitSliceRepeat(elem) => ty::Binder::dummy(AutoImplConstituents {
+                types: vec![self.tcx().types.usize, elem],
+                assumptions: vec![],
+            }),
+
+            ty::InitAdt(info) => ty::Binder::dummy(AutoImplConstituents {
+                types: info.component_tys.to_vec(),
+                assumptions: vec![],
+            }),
 
             ty::Tuple(tys) => {
                 // (T1, ..., Tn) -- meets any bound that all of T1...Tn meet

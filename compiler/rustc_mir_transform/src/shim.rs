@@ -589,6 +589,18 @@ impl<'tcx, Extra> ShimBuilder<'tcx, Extra> {
         }
         Place::from(self.local_decls.push(local))
     }
+
+    fn make_set_bool_stmt(&self, place: Place<'tcx>, value: bool) -> Statement<'tcx> {
+        self.make_statement(StatementKind::Assign(Box::new((
+            place,
+            Rvalue::Use(Operand::const_from_scalar(
+                self.tcx,
+                self.tcx.types.bool,
+                interpret::Scalar::from_bool(value),
+                self.span,
+            )),
+        ))))
+    }
 }
 
 /// Builds a `Clone::clone` shim for `self_ty`. Here, `def_id` is `Clone::clone`.
@@ -1473,6 +1485,9 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
                 (&ty::InitTuple(init_elem_tys), &ty::Tuple(elem_tys)) => {
                     builder.tuple_metadata(dest, this, init_elem_tys, elem_tys);
                 }
+                (&ty::InitAdt(info), &ty::Adt(adt_def, adt_args)) => {
+                    builder.adt_metadata(dest, this, info, adt_def, adt_args);
+                }
                 pair => bug!("unsupported {pair:?}"),
             }
         }
@@ -1505,6 +1520,18 @@ fn build_init_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) ->
                         pre_zeroed,
                         init_elem_tys,
                         elem_tys,
+                    );
+                }
+                (&ty::InitAdt(info), &ty::Adt(adt_def, adt_args)) => {
+                    builder.adt_init_once(
+                        dest,
+                        this,
+                        dst_mut_ref,
+                        arg,
+                        pre_zeroed,
+                        info,
+                        adt_def,
+                        adt_args,
                     );
                 }
                 pair => bug!("unsupported {pair:?}"),
@@ -1705,18 +1732,6 @@ impl<'tcx> InitShimBuilder<'tcx> {
             return;
         }
 
-        let make_set_bool_stmt = |self_: &Self, place, value| {
-            self_.make_statement(StatementKind::Assign(Box::new((
-                place,
-                Rvalue::Use(Operand::const_from_scalar(
-                    self_.tcx,
-                    self_.tcx.types.bool,
-                    interpret::Scalar::from_bool(value),
-                    self_.span,
-                )),
-            ))))
-        };
-
         // bb0:
         //  _arg_needs_drop = true;
         //  _return_needs_drop_on_unwind = false;
@@ -1736,16 +1751,16 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // but is ignored unless failure cleanup unwinds before finishing.
 
         let arg_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
-        entry_stmts.push(make_set_bool_stmt(self, arg_needs_drop, true));
+        entry_stmts.push(self.make_set_bool_stmt(arg_needs_drop, true));
 
         let return_needs_drop_on_unwind = self.make_place(Mutability::Mut, self.tcx.types.bool);
-        entry_stmts.push(make_set_bool_stmt(self, return_needs_drop_on_unwind, false));
+        entry_stmts.push(self.make_set_bool_stmt(return_needs_drop_on_unwind, false));
 
         let init_elems_needs_drop: Vec<_> = init_elem_tys
             .iter()
             .map(|_| {
                 let init_elem_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
-                entry_stmts.push(make_set_bool_stmt(self, init_elem_needs_drop, true));
+                entry_stmts.push(self.make_set_bool_stmt(init_elem_needs_drop, true));
                 init_elem_needs_drop
             })
             .collect();
@@ -1754,7 +1769,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             .iter()
             .map(|_| {
                 let elem_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
-                entry_stmts.push(make_set_bool_stmt(self, elem_needs_drop, false));
+                entry_stmts.push(self.make_set_bool_stmt(elem_needs_drop, false));
                 elem_needs_drop
             })
             .collect();
@@ -1786,7 +1801,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
         //  goto -> first failure cleanup bb; (patched after loop)
         let failure_cleanup_target = self.block_index_offset(0);
         self.block(
-            vec![make_set_bool_stmt(self, return_needs_drop_on_unwind, true)],
+            vec![self.make_set_bool_stmt(return_needs_drop_on_unwind, true)],
             TerminatorKind::Goto { target: failure_cleanup_target },
             false,
         );
@@ -1978,7 +1993,7 @@ impl<'tcx> InitShimBuilder<'tcx> {
             //  goto -> next;
             let target = self.block_index_offset(1);
             self.block(
-                vec![make_set_bool_stmt(self, elems_needs_drop[idx], true)],
+                vec![self.make_set_bool_stmt(elems_needs_drop[idx], true)],
                 TerminatorKind::Goto { target },
                 false,
             );
@@ -1990,47 +2005,6 @@ impl<'tcx> InitShimBuilder<'tcx> {
 
         // Now we make the two cleanup loops and patch bb1 and bb2 to point at them
 
-        let make_cleanup_blocks = |self_: &mut Self,
-                                   needs_drop_flag: Place<'tcx>,
-                                   place: Place<'tcx>,
-                                   is_cleanup: bool| {
-            // bbn:
-            //  switchInt(copy NEEDS_DROP_FLAG) [true -> bbn+1, otherwise -> bbn+2]
-            // bbn+1:
-            //  NEEDS_DROP_FLAG = const false;
-            //  drop(PLACE) [return -> bbn+2, unwind -> [unwind_cleanup_target during failure, terminate during unwind]]
-            // bbn+2: (next thing to drop)
-
-            let drop_target = self_.block_index_offset(1);
-            let continue_target = self_.block_index_offset(2);
-
-            self_.block(
-                vec![],
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(needs_drop_flag),
-                    targets: SwitchTargets::static_if(1, drop_target, continue_target),
-                },
-                is_cleanup,
-            );
-
-            self_.block(
-                vec![make_set_bool_stmt(self_, needs_drop_flag, false)],
-                TerminatorKind::Drop {
-                    place,
-                    target: continue_target,
-                    unwind: if is_cleanup {
-                        UnwindAction::Terminate(UnwindTerminateReason::InCleanup)
-                    } else {
-                        UnwindAction::Cleanup(unwind_cleanup_target)
-                    },
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                is_cleanup,
-            );
-        };
-
         // Cleanup loop for non-panic failure.
         let real_failure_cleanup_target = self.block_index_offset(0);
         self.blocks[failure_cleanup_target].terminator = Some(Terminator {
@@ -2041,13 +2015,13 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // Cleanup element initializers
         for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
             // Check if this element initializer needs to be dropped
-            make_cleanup_blocks(
-                self,
+            self.make_cleanup_blocks(
                 init_elem_needs_drop,
                 this.project_deeper(
                     &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
                     self.tcx,
                 ),
+                unwind_cleanup_target,
                 false,
             );
         }
@@ -2055,19 +2029,19 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // Cleanup destination elements
         for (idx, &elem_needs_drop) in elems_needs_drop.iter().enumerate() {
             // Check if this element needs to be dropped
-            make_cleanup_blocks(
-                self,
+            self.make_cleanup_blocks(
                 elem_needs_drop,
                 dst_ptr.project_deeper(
                     &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
                     self.tcx,
                 ),
+                unwind_cleanup_target,
                 false,
             );
         }
 
         // Cleanup the `Arg`
-        make_cleanup_blocks(self, arg_needs_drop, arg, false);
+        self.make_cleanup_blocks(arg_needs_drop, arg, unwind_cleanup_target, false);
 
         // Done with failure cleanup, `return_place` contains the `Err` from
         // the initializer that failed, return.
@@ -2083,13 +2057,13 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // Cleanup element initializers
         for (idx, &init_elem_needs_drop) in init_elems_needs_drop.iter().enumerate() {
             // Check if this element initializer needs to be dropped
-            make_cleanup_blocks(
-                self,
+            self.make_cleanup_blocks(
                 init_elem_needs_drop,
                 this.project_deeper(
                     &[PlaceElem::Field(FieldIdx::new(idx), init_elem_tys[idx])],
                     self.tcx,
                 ),
+                unwind_cleanup_target,
                 /* is_cleanup */ true,
             );
         }
@@ -2097,22 +2071,727 @@ impl<'tcx> InitShimBuilder<'tcx> {
         // Cleanup destination elements
         for (idx, &elem_needs_drop) in elems_needs_drop.iter().enumerate() {
             // Check if this element needs to be dropped
-            make_cleanup_blocks(
-                self,
+            self.make_cleanup_blocks(
                 elem_needs_drop,
                 dst_ptr.project_deeper(
                     &[PlaceElem::Deref, PlaceElem::Field(FieldIdx::new(idx), elem_tys[idx])],
                     self.tcx,
                 ),
+                unwind_cleanup_target,
                 /* is_cleanup */ true,
             );
         }
 
         // Cleanup the `Arg`
-        make_cleanup_blocks(self, arg_needs_drop, arg, true);
+        self.make_cleanup_blocks(arg_needs_drop, arg, unwind_cleanup_target, true);
 
         // Cleanup the return place
-        make_cleanup_blocks(self, return_needs_drop_on_unwind, return_place, true);
+        self.make_cleanup_blocks(
+            return_needs_drop_on_unwind,
+            return_place,
+            unwind_cleanup_target,
+            true,
+        );
+
+        // Done with unwind cleanup, resume unwinding
+        self.block(vec![], TerminatorKind::UnwindResume, true);
+    }
+
+    fn adt_metadata(
+        &mut self,
+        dest: Place<'tcx>,
+        this: Place<'tcx>,
+        init_info: ty::InitAdtInfo<'tcx>,
+        adt_def: ty::AdtDef<'tcx>,
+        adt_args: ty::GenericArgsRef<'tcx>,
+    ) {
+        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
+            self.extra;
+        let typing_env = ty::TypingEnv::post_analysis(self.tcx, init_method_def_id);
+
+        if dst_ty.is_thin(self.tcx, typing_env) {
+            // if `dst_ty` is `Thin`, then its metadata is zero-sized, so we can just `return`
+            self.block(vec![], TerminatorKind::Return, false);
+            return;
+        }
+        if adt_def.is_enum() {
+            todo!("unsized enums");
+        }
+
+        let adt_variant = adt_def.variant(init_info.variant);
+        let adt_fields: IndexVec<FieldIdx, Ty<'tcx>> = adt_variant
+            .fields
+            .iter()
+            .map(|field| {
+                let adt_field_ty = field.ty(self.tcx, adt_args);
+                (adt_field_ty)
+            })
+            .collect();
+
+        #[derive(Clone, Copy)]
+        enum FieldMetadataHandled {
+            // The field's metadata has already been handled.
+            Yes,
+            // The field's metadata has not yet been handled.
+            No,
+            // The field is `Thin`, so does not need metadata.
+            Unnecessary,
+        }
+
+        let mut remaining_adt_fields: IndexVec<FieldIdx, FieldMetadataHandled> = adt_fields
+            .iter()
+            .map(|(adt_field_ty)| {
+                if adt_field_ty.is_thin(self.tcx, typing_env) {
+                    FieldMetadataHandled::Unnecessary
+                } else {
+                    FieldMetadataHandled::No
+                }
+            })
+            .collect();
+
+        for (init_field_idx, (component_ty, component_info)) in
+            std::iter::zip(init_info.component_tys, init_info.component_infos).enumerate()
+        {
+            let Some(adt_field_idx) = component_info.field else {
+                // `_` components do not affect metadata
+                continue;
+            };
+
+            match remaining_adt_fields[adt_field_idx] {
+                FieldMetadataHandled::Yes => unreachable!("duplicate field"),
+                FieldMetadataHandled::No => {
+                    remaining_adt_fields[adt_field_idx] = FieldMetadataHandled::Yes
+                }
+                FieldMetadataHandled::Unnecessary => continue,
+            }
+
+            let adt_field_ty = adt_fields[adt_field_idx];
+
+            let arg_tys =
+                self.tcx.mk_type_list_from_iter(component_info.args.iter().map(|arg| match arg {
+                    ty::InitAdtComponentArg::Arg => arg_ty,
+                    ty::InitAdtComponentArg::Ptr(field_idx) => {
+                        Ty::new_mut_ptr(self.tcx, adt_fields[field_idx])
+                    }
+                    ty::InitAdtComponentArg::Ref(..) | ty::InitAdtComponentArg::PinRef(..) => {
+                        todo!("InitAdt refs")
+                    }
+                }));
+            // FIXME(in_place_init): should `with arg` and `with (arg,)` have different syntax?
+            let arg_ty =
+                if arg_tys.len() == 1 { arg_tys[0] } else { Ty::new_tup(self.tcx, arg_tys) };
+
+            let init_field_idx = FieldIdx::new(init_field_idx);
+            let component_ref_place = self.make_place(
+                Mutability::Not,
+                Ty::new_imm_ref(self.tcx, self.tcx.lifetimes.re_erased, component_ty),
+            );
+
+            let component_ref_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                component_ref_place,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Shared,
+                    this.project_deeper(
+                        &[PlaceElem::Field(init_field_idx, component_ty)],
+                        self.tcx,
+                    ),
+                ),
+            ))));
+
+            let elem_metadata_dest = dest.project_deeper(
+                &[PlaceElem::Field(adt_field_idx, Ty::new_ptr_metadata(self.tcx, adt_field_ty))],
+                self.tcx,
+            );
+
+            let args = [Spanned { node: Operand::Move(component_ref_place), span: DUMMY_SP }];
+            let target = self.block_index_offset(1);
+            let terminator = TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    self.tcx.require_lang_item(LangItem::InitMetadataFn, self.span),
+                    [component_ty.into(), adt_field_ty.into(), error_ty.into(), arg_ty.into()],
+                    self.span,
+                ),
+                args: Box::new(args),
+                destination: elem_metadata_dest,
+                target: Some(target),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: self.span,
+            };
+
+            self.block(vec![component_ref_stmt], terminator, false);
+        }
+
+        // FIXME(in_place_init): disallow `do init struct` exprs for unions with multiple unsized fields.
+        assert!(remaining_adt_fields.iter().all(|h| !matches!(h, FieldMetadataHandled::No)));
+
+        self.block(vec![], TerminatorKind::Return, false);
+    }
+
+    fn adt_init_once(
+        &mut self,
+        return_place: Place<'tcx>,
+        this: Place<'tcx>,
+        dst_mu_ref: Place<'tcx>,
+        arg: Place<'tcx>,
+        pre_zeroed: Place<'tcx>,
+        init_info: ty::InitAdtInfo<'tcx>,
+        adt_def: ty::AdtDef<'tcx>,
+        adt_args: ty::GenericArgsRef<'tcx>,
+    ) {
+        let InitShimExtra { init_method_def_id, method, self_ty, dst_ty, error_ty, arg_ty } =
+            self.extra;
+        let adt_variant = adt_def.variant(init_info.variant);
+
+        if adt_def.is_union() {
+            todo!("implement init_once for unions");
+        }
+
+        if init_info.component_tys.is_empty() {
+            // If there are no components, then:
+            // 1. drop Arg
+            // 2. get a pointer to the destination to use for 3/4
+            // 3. fill all fields with their default values,
+            // 4. set the discriminant
+            // 5. return `Ok(())`.
+
+            // Drop Arg
+            let target = self.block_index_offset(1);
+            self.block(
+                vec![],
+                TerminatorKind::Drop {
+                    place: arg,
+                    target,
+                    // If there are no elements, then there's nothing to clean up if this unwinds
+                    unwind: UnwindAction::Continue,
+                    replace: false,
+                    drop: None,
+                    async_fut: None,
+                },
+                false,
+            );
+
+            let mut stmts = vec![];
+
+            // Get a pointer to the destination:
+            // bb:
+            //  _dst_MU_ptr = &raw mut *dst_MU_ref;
+            //  _dst_ptr = _dst_MU_ptr as *mut DST;
+            // then we use `*_dst_ptr`
+
+            let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
+            let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
+            // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
+            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                dst_mu_ptr,
+                Rvalue::RawPtr(
+                    RawPtrKind::Mut,
+                    dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
+                ),
+            )))));
+
+            let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
+            let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
+            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                dst_ptr,
+                Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
+            )))));
+
+            // Fill all fields with their default
+            for (field_idx, field) in adt_variant.fields.iter_enumerated() {
+                let Some(value_const_did) = field.value else { bug!() };
+                let const_ = Const::from_unevaluated(self.tcx, value_const_did)
+                    .instantiate(self.tcx, adt_args);
+                let field_ty = const_.ty();
+                let op = Operand::Constant(Box::new(ConstOperand {
+                    span: self.span,
+                    user_ty: None,
+                    const_,
+                }));
+
+                // (*_dst_ptr).IDX = const CONST;
+                let field_dst_place = dst_ptr.project_deeper(
+                    &[
+                        PlaceElem::Deref,
+                        PlaceElem::Downcast(None, init_info.variant),
+                        PlaceElem::Field(field_idx, field_ty),
+                    ],
+                    self.tcx,
+                );
+
+                stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                    field_dst_place,
+                    Rvalue::Use(op),
+                )))));
+            }
+
+            // Set the discriminant
+            stmts.push(self.make_statement(StatementKind::SetDiscriminant {
+                place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
+                variant_index: init_info.variant,
+            }));
+
+            // Return `Ok(())`
+            let result_ty = return_place.ty(&self.local_decls, self.tcx).ty;
+            let ty::Adt(result_def, result_args) = result_ty.kind() else { unreachable!() };
+
+            let ok_unit = Rvalue::Aggregate(
+                Box::new(AggregateKind::Adt(
+                    result_def.did(),
+                    VariantIdx::ZERO,
+                    result_args,
+                    None,
+                    None,
+                )),
+                [Operand::Constant(Box::new(ConstOperand {
+                    span: self.span,
+                    user_ty: None,
+                    const_: Const::Val(ConstValue::ZeroSized, self.tcx.types.unit),
+                }))]
+                .into(),
+            );
+
+            stmts.push(
+                self.make_statement(StatementKind::Assign(Box::new((return_place, ok_unit)))),
+            );
+
+            self.block(stmts, TerminatorKind::Return, false);
+            return;
+        }
+
+        // bb0:
+        //  _arg_needs_drop = true;
+        //  _return_needs_drop_on_unwind = false;
+        //  _component_*_needs_drop = true;
+        //  _adt_field_*_needs_drop = false;
+        //  _dst_MU_ptr = &raw mut *dst_MU_ref;
+        //  _dst_ptr = _dst_MU_ptr as *mut DST;
+        //  goto -> bb3 (first bb that does work);
+
+        let mut entry_stmts = vec![];
+
+        // We keep one bool for each initializer element, each destination element,
+        // the `Arg`, and the return place to determine if they need to be dropped
+        // on failure or unwind.
+        // These bools are ignored on success.
+        // `return_needs_drop_on_unwind` is only used on an unwind; it is set to `true` after a failure,
+        // but is ignored unless failure cleanup unwinds before finishing.
+
+        let arg_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
+        entry_stmts.push(self.make_set_bool_stmt(arg_needs_drop, true));
+
+        let return_needs_drop_on_unwind = self.make_place(Mutability::Mut, self.tcx.types.bool);
+        entry_stmts.push(self.make_set_bool_stmt(return_needs_drop_on_unwind, false));
+
+        let components_needs_drop: Vec<_> = init_info
+            .component_tys
+            .iter()
+            .map(|_| {
+                let init_elem_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
+                entry_stmts.push(self.make_set_bool_stmt(init_elem_needs_drop, true));
+                init_elem_needs_drop
+            })
+            .collect();
+
+        let adt_fields_needs_drop: Vec<_> = adt_variant
+            .fields
+            .iter()
+            .map(|_| {
+                let elem_needs_drop = self.make_place(Mutability::Mut, self.tcx.types.bool);
+                entry_stmts.push(self.make_set_bool_stmt(elem_needs_drop, false));
+                elem_needs_drop
+            })
+            .collect();
+
+        let dst_mu_ptr_ty = Ty::new_mut_ptr(self.tcx, Ty::new_maybe_uninit(self.tcx, dst_ty));
+        let dst_mu_ptr = self.make_place(Mutability::Not, dst_mu_ptr_ty);
+        // Note that reference-to-raw-ptr casts are translated into &raw mut/const *r, i.e., they are not actually casts.
+        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+            dst_mu_ptr,
+            Rvalue::RawPtr(
+                RawPtrKind::Mut,
+                dst_mu_ref.project_deeper(&[PlaceElem::Deref], self.tcx),
+            ),
+        )))));
+
+        let dst_ptr_ty = Ty::new_mut_ptr(self.tcx, dst_ty);
+        let dst_ptr = self.make_place(Mutability::Not, dst_ptr_ty);
+        entry_stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+            dst_ptr,
+            Rvalue::Cast(CastKind::PtrToPtr, Operand::Move(dst_mu_ptr), dst_ptr_ty),
+        )))));
+
+        let entry_target = self.block_index_offset(3);
+        self.block(entry_stmts, TerminatorKind::Goto { target: entry_target }, false);
+
+        // Failure block
+        // bb1:
+        //  return_needs_drop_on_unwind = true;
+        //  goto -> first failure cleanup bb; (patched after loop)
+        let failure_cleanup_target = self.block_index_offset(0);
+        self.block(
+            vec![self.make_set_bool_stmt(return_needs_drop_on_unwind, true)],
+            TerminatorKind::Goto { target: failure_cleanup_target },
+            false,
+        );
+
+        // bb2 (cleanup):
+        //  goto -> first unwind cleanup bb; (patched after loop)
+        let unwind_cleanup_target = self.block_index_offset(0);
+        self.block(vec![], TerminatorKind::Goto { target: unwind_cleanup_target }, true);
+
+        let clone_arg_to = |self_: &mut Self, dst: Place<'tcx>| {};
+
+        // Each component has several blocks:
+        // 1. Get the arg for that component (including cloning or moving the `Arg`, which is the only part that could fail).
+        // 2. set component_needs_drop=false, then call `init_once` for that component [return -> keep going, unwind -> bb2]
+        // 3. check if `init_once` succeeded [yes -> keep going, no -> bb1]
+        // 4. if that component initialized a field, set adt_field_IDX_needs_drop=true, then keep going
+
+        for (component_idx, (component_ty, component_info)) in
+            std::iter::zip(init_info.component_tys, init_info.component_infos).enumerate()
+        {
+            let component_field_idx = FieldIdx::new(component_idx);
+
+            // Make the arg for the call
+            let component_arg = match component_info.args.as_slice() {
+                [] => self.make_place(Mutability::Not, self.tcx.types.unit),
+                &[arg_] => match arg_ {
+                    ty::InitAdtComponentArg::Arg => {
+                        let component_arg = self.make_place(Mutability::Not, arg_ty);
+                        let target = self.block_index_offset(1);
+                        self.make_clone_call(
+                            component_arg,
+                            arg,
+                            arg_ty,
+                            target,
+                            unwind_cleanup_target,
+                        );
+                        component_arg
+                    }
+                    ty::InitAdtComponentArg::Ref(..) | ty::InitAdtComponentArg::PinRef(..) => {
+                        todo!()
+                    }
+                    ty::InitAdtComponentArg::Ptr(field_idx) => {
+                        let field_ty = adt_variant.fields[field_idx].ty(self.tcx, adt_args);
+                        let component_arg_ty = Ty::new_mut_ptr(self.tcx, field_ty);
+                        let component_arg = self.make_place(Mutability::Not, component_arg_ty);
+                        let stmt = self.make_statement(StatementKind::Assign(Box::new((
+                            component_arg,
+                            Rvalue::RawPtr(
+                                RawPtrKind::Mut,
+                                dst_ptr.project_deeper(
+                                    &[
+                                        PlaceElem::Deref,
+                                        PlaceElem::Downcast(None, init_info.variant),
+                                        PlaceElem::Field(field_idx, field_ty),
+                                    ],
+                                    self.tcx,
+                                ),
+                            ),
+                        ))));
+                        let target = self.block_index_offset(1);
+                        self.block(vec![stmt], TerminatorKind::Goto { target }, false);
+                        component_arg
+                    }
+                },
+                args => {
+                    todo!("multiple args with cleanup")
+                }
+            };
+
+            // Get the Dst MU reference for the call, then
+            // set the initializer as moved and do the call
+            // component has a field:
+            //  _adt_field_ptr = &raw mut (*dst_ptr).VARIANT.IDX;
+            //  _dst_ptr = _adt_field_ptr as *mut MaybeUninit<ELEM>;
+            // component has no field:
+            //  _dst_ptr = 1 as *mut MaybeUninit<()>;
+            // both:
+            //  _dst_ref = &mut *_dst_ptr;
+            //  _component_IDX_needs_drop = false;
+            //  _return_place = <INITELEM as PinInitOnce<ELEM, Error, Arg>>::init_once(
+            //    move this.IDX,
+            //    move _adt_field_mu_ref,
+            //    move elem_arg,
+            //    copy pre_zeroed,
+            //  ) [return -> next, unwind -> unwind_cleanup_target];
+            let mut stmts = vec![];
+            let (component_dst_ty, component_dst_ptr) =
+                if let Some(adt_field_idx) = component_info.field {
+                    let adt_field_ty = adt_variant.fields[adt_field_idx].ty(self.tcx, adt_args);
+
+                    let mu_adt_field_ty = Ty::new_maybe_uninit(self.tcx, adt_field_ty);
+
+                    //  _adt_field_ptr = &raw mut (*dst_ptr).VARIANT.IDX;
+                    let adt_field_place = dst_ptr.project_deeper(
+                        &[
+                            PlaceElem::Deref,
+                            PlaceElem::Downcast(None, init_info.variant),
+                            PlaceElem::Field(adt_field_idx, adt_field_ty),
+                        ],
+                        self.tcx,
+                    );
+                    let adt_field_ptr_ty = Ty::new_mut_ptr(self.tcx, adt_field_ty);
+                    let adt_field_ptr = self.make_place(Mutability::Not, adt_field_ptr_ty);
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        adt_field_ptr,
+                        Rvalue::RawPtr(RawPtrKind::Mut, adt_field_place),
+                    )))));
+
+                    //  _dst_ptr = _adt_field_ptr as *mut MaybeUninit<ELEM>;
+                    let mu_adt_field_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_adt_field_ty);
+                    let mu_adt_field_ptr = self.make_place(Mutability::Not, mu_adt_field_ptr_ty);
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        mu_adt_field_ptr,
+                        Rvalue::Cast(
+                            CastKind::PtrToPtr,
+                            Operand::Move(adt_field_ptr),
+                            mu_adt_field_ptr_ty,
+                        ),
+                    )))));
+
+                    (adt_field_ty, mu_adt_field_ptr)
+                } else {
+                    let mu_unit_ty = Ty::new_maybe_uninit(self.tcx, self.tcx.types.unit);
+                    let mu_unit_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_unit_ty);
+                    let mu_unit_ptr = self.make_place(Mutability::Not, mu_unit_ptr_ty);
+
+                    stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                        mu_unit_ptr,
+                        Rvalue::Cast(
+                            CastKind::PointerWithExposedProvenance,
+                            Operand::const_from_scalar(
+                                self.tcx,
+                                self.tcx.types.u8,
+                                interpret::Scalar::from_u8(0),
+                                self.span,
+                            ),
+                            mu_unit_ptr_ty,
+                        ),
+                    )))));
+
+                    (self.tcx.types.unit, mu_unit_ptr)
+                };
+
+            //  _dst_ref = &mut *_dst_ptr;
+            let dst_ref = self.make_place(
+                Mutability::Not,
+                Ty::new_mut_ref(
+                    self.tcx,
+                    self.tcx.lifetimes.re_erased,
+                    Ty::new_maybe_uninit(self.tcx, component_dst_ty),
+                ),
+            );
+            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                dst_ref,
+                Rvalue::Ref(
+                    self.tcx.lifetimes.re_erased,
+                    BorrowKind::Mut { kind: MutBorrowKind::Default },
+                    component_dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx),
+                ),
+            )))));
+
+            //  _component_IDX_needs_drop = false;
+            stmts.push(self.make_statement(StatementKind::Assign(Box::new((
+                components_needs_drop[component_idx],
+                Rvalue::Use(Operand::const_from_scalar(
+                    self.tcx,
+                    self.tcx.types.bool,
+                    interpret::Scalar::from_bool(false),
+                    self.span,
+                )),
+            )))));
+
+            //  _return_place = <INITELEM as PinInitOnce<ELEM, Error, Arg>>::init_once(
+            //    move this.IDX,
+            //    move _dst_ref,
+            //    move elem_arg,
+            //    copy pre_zeroed,
+            //  ) [return -> next, unwind -> unwind_cleanup_target];
+            let target = self.block_index_offset(1);
+            let func_ty = Ty::new_fn_def(
+                self.tcx,
+                init_method_def_id,
+                [
+                    component_ty,
+                    component_dst_ty,
+                    error_ty,
+                    component_arg.ty(&self.local_decls, self.tcx).ty,
+                ],
+            );
+            let func = Operand::Constant(Box::new(ConstOperand {
+                span: self.span,
+                user_ty: None,
+                const_: Const::zero_sized(func_ty),
+            }));
+            let args = [
+                Operand::Move(this.project_deeper(
+                    &[PlaceElem::Field(component_field_idx, component_ty)],
+                    self.tcx,
+                )),
+                Operand::Move(dst_ref),
+                Operand::Move(component_arg),
+                Operand::Copy(pre_zeroed),
+            ]
+            .map(|arg| Spanned { node: arg, span: self.span });
+            self.block(
+                stmts,
+                TerminatorKind::Call {
+                    func,
+                    args: args.into(),
+                    destination: return_place,
+                    target: Some(target),
+                    unwind: UnwindAction::Cleanup(unwind_cleanup_target),
+                    call_source: CallSource::Normal,
+                    fn_span: self.span,
+                },
+                false,
+            );
+
+            // Check if it succeeded
+            // bb:
+            //  _result_discr = discriminant(_return_place);
+            //  // 0 is discriminant of Result::Ok
+            //  switchInt [0 -> next, otherwise -> failure_cleanup_target]
+            let continue_target = self.block_index_offset(1);
+            let result_discr = self.make_place(Mutability::Not, self.tcx.types.isize);
+            let get_result_discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                result_discr,
+                Rvalue::Discriminant(return_place),
+            ))));
+            self.block(
+                vec![get_result_discr_stmt],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Move(result_discr),
+                    targets: SwitchTargets::static_if(0, continue_target, failure_cleanup_target),
+                },
+                false,
+            );
+
+            // If this component initialized a field, selt the adt field as initialized.
+            // Then go to the next loop iteration (or the return).
+            // bb:
+            //  _elem_IDX_needs_drop = true;
+            //  goto -> next;
+            let stmts = if let Some(adt_field_idx) = component_info.field {
+                vec![self.make_set_bool_stmt(adt_fields_needs_drop[adt_field_idx.as_usize()], true)]
+            } else {
+                vec![]
+            };
+            let target = self.block_index_offset(1);
+            self.block(stmts, TerminatorKind::Goto { target }, false);
+        }
+
+        // All the initializations succeeded and `Arg` was moved, so there's no drops to do.
+        // Set discriminant and return
+        let set_discrim_stmt = self.make_statement(StatementKind::SetDiscriminant {
+            place: Box::new(dst_ptr.project_deeper(&[PlaceElem::Deref], self.tcx)),
+            variant_index: init_info.variant,
+        });
+        self.block(vec![set_discrim_stmt], TerminatorKind::Return, false);
+
+        // Now we make the two cleanup loops and patch bb1 and bb2 to point at them
+
+        // Cleanup loop for non-panic failure.
+        let real_failure_cleanup_target = self.block_index_offset(0);
+        self.blocks[failure_cleanup_target].terminator = Some(Terminator {
+            source_info: self.source_info(),
+            kind: TerminatorKind::Goto { target: real_failure_cleanup_target },
+        });
+
+        // Cleanup component initializers
+        for (idx, &component_needs_drop) in components_needs_drop.iter().enumerate() {
+            // Check if this component initializer needs to be dropped
+            self.make_cleanup_blocks(
+                component_needs_drop,
+                this.project_deeper(
+                    &[PlaceElem::Field(FieldIdx::new(idx), init_info.component_tys[idx])],
+                    self.tcx,
+                ),
+                unwind_cleanup_target,
+                false,
+            );
+        }
+
+        // Cleanup destination fields
+        for (idx, &adt_field_needs_drop) in adt_fields_needs_drop.iter().enumerate() {
+            // Check if this fields needs to be dropped
+            let field_ty = adt_variant.fields[FieldIdx::from_usize(idx)].ty(self.tcx, adt_args);
+            self.make_cleanup_blocks(
+                adt_field_needs_drop,
+                dst_ptr.project_deeper(
+                    &[
+                        PlaceElem::Deref,
+                        PlaceElem::Downcast(None, init_info.variant),
+                        PlaceElem::Field(FieldIdx::new(idx), field_ty),
+                    ],
+                    self.tcx,
+                ),
+                unwind_cleanup_target,
+                false,
+            );
+        }
+
+        // Cleanup the `Arg`
+        self.make_cleanup_blocks(arg_needs_drop, arg, unwind_cleanup_target, false);
+
+        // Done with failure cleanup, `return_place` contains the `Err` from
+        // the initializer that failed, return.
+        self.block(vec![], TerminatorKind::Return, false);
+
+        // Cleanup loop for unwinds
+        let real_unwind_cleanup_target = self.block_index_offset(0);
+        self.blocks[unwind_cleanup_target].terminator = Some(Terminator {
+            source_info: self.source_info(),
+            kind: TerminatorKind::Goto { target: real_unwind_cleanup_target },
+        });
+
+        // Cleanup element initializers
+        for (idx, &component_needs_drop) in components_needs_drop.iter().enumerate() {
+            // Check if this element initializer needs to be dropped
+            self.make_cleanup_blocks(
+                component_needs_drop,
+                this.project_deeper(
+                    &[PlaceElem::Field(FieldIdx::new(idx), init_info.component_tys[idx])],
+                    self.tcx,
+                ),
+                unwind_cleanup_target,
+                /* is_cleanup */ true,
+            );
+        }
+
+        // Cleanup destination fields
+        for (idx, &adt_field_needs_drop) in adt_fields_needs_drop.iter().enumerate() {
+            // Check if this fields needs to be dropped
+            let field_ty = adt_variant.fields[FieldIdx::from_usize(idx)].ty(self.tcx, adt_args);
+            self.make_cleanup_blocks(
+                adt_field_needs_drop,
+                dst_ptr.project_deeper(
+                    &[
+                        PlaceElem::Deref,
+                        PlaceElem::Downcast(None, init_info.variant),
+                        PlaceElem::Field(FieldIdx::new(idx), field_ty),
+                    ],
+                    self.tcx,
+                ),
+                unwind_cleanup_target,
+                /* is_cleanup */ true,
+            );
+        }
+
+        // Cleanup the `Arg`
+        self.make_cleanup_blocks(arg_needs_drop, arg, unwind_cleanup_target, true);
+
+        // Cleanup the return place
+        self.make_cleanup_blocks(
+            return_needs_drop_on_unwind,
+            return_place,
+            unwind_cleanup_target,
+            true,
+        );
 
         // Done with unwind cleanup, resume unwinding
         self.block(vec![], TerminatorKind::UnwindResume, true);
@@ -2159,6 +2838,50 @@ impl<'tcx> InitShimBuilder<'tcx> {
                 fn_span: self.span,
             },
             false,
+        );
+    }
+
+    fn make_cleanup_blocks(
+        &mut self,
+        needs_drop_flag: Place<'tcx>,
+        place: Place<'tcx>,
+        unwind_cleanup_target: BasicBlock,
+        is_cleanup: bool,
+    ) {
+        // bbn:
+        //  switchInt(copy NEEDS_DROP_FLAG) [true -> bbn+1, otherwise -> bbn+2]
+        // bbn+1:
+        //  NEEDS_DROP_FLAG = const false;
+        //  drop(PLACE) [return -> bbn+2, unwind -> [unwind_cleanup_target during failure, terminate during unwind]]
+        // bbn+2: (next thing to drop)
+
+        let drop_target = self.block_index_offset(1);
+        let continue_target = self.block_index_offset(2);
+
+        self.block(
+            vec![],
+            TerminatorKind::SwitchInt {
+                discr: Operand::Copy(needs_drop_flag),
+                targets: SwitchTargets::static_if(1, drop_target, continue_target),
+            },
+            is_cleanup,
+        );
+
+        self.block(
+            vec![self.make_set_bool_stmt(needs_drop_flag, false)],
+            TerminatorKind::Drop {
+                place,
+                target: continue_target,
+                unwind: if is_cleanup {
+                    UnwindAction::Terminate(UnwindTerminateReason::InCleanup)
+                } else {
+                    UnwindAction::Cleanup(unwind_cleanup_target)
+                },
+                replace: false,
+                drop: None,
+                async_fut: None,
+            },
+            is_cleanup,
         );
     }
 }

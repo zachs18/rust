@@ -2293,6 +2293,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         if matches!(
             aggregate_kind,
             AggregateKind::Tuple
+                | AggregateKind::InitAdt(..)
                 | AggregateKind::InitTuple
                 | AggregateKind::InitArray
                 | AggregateKind::InitSliceRepeat(..)

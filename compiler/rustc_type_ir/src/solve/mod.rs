@@ -525,4 +525,34 @@ impl InitTraitKind {
             InitTraitKind::Init => SolverTraitLangItem::Init,
         })
     }
+    /// Returns `InitTraitKind` from corresponding language item.
+    pub fn from_lang_item<I: Interner>(cx: I, def_id: I::TraitId) -> Option<InitTraitKind> {
+        Some(match cx.as_trait_lang_item(def_id) {
+            Some(SolverTraitLangItem::PinInitOnce) => InitTraitKind::PinInitOnce,
+            Some(SolverTraitLangItem::InitOnce) => InitTraitKind::InitOnce,
+            Some(SolverTraitLangItem::PinInitMut) => InitTraitKind::PinInitMut,
+            Some(SolverTraitLangItem::InitMut) => InitTraitKind::InitMut,
+            Some(SolverTraitLangItem::PinInit) => InitTraitKind::PinInit,
+            Some(SolverTraitLangItem::Init) => InitTraitKind::Init,
+            _ => return None,
+        })
+    }
+
+    /// Returns the non-pinned `Init`-family trait analogous to this trait.
+    pub fn to_non_pinned(self) -> Self {
+        match self {
+            InitTraitKind::PinInitOnce | InitTraitKind::InitOnce => InitTraitKind::InitOnce,
+            InitTraitKind::PinInitMut | InitTraitKind::InitMut => InitTraitKind::InitMut,
+            InitTraitKind::PinInit | InitTraitKind::Init => InitTraitKind::Init,
+        }
+    }
+
+    /// Returns the pinned `Init`-family trait corresponding to this trait.
+    pub fn to_pinned(self) -> Self {
+        match self {
+            InitTraitKind::PinInitOnce | InitTraitKind::InitOnce => InitTraitKind::PinInitOnce,
+            InitTraitKind::PinInitMut | InitTraitKind::InitMut => InitTraitKind::PinInitMut,
+            InitTraitKind::PinInit | InitTraitKind::Init => InitTraitKind::PinInit,
+        }
+    }
 }

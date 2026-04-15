@@ -14,7 +14,9 @@ use rustc_hir::lang_items::LangItem;
 use rustc_infer::infer::{BoundRegionConversionTime, DefineOpaqueTypes, InferOk};
 use rustc_infer::traits::ObligationCauseCode;
 use rustc_middle::traits::{BuiltinImplSource, SignatureMismatchData};
-use rustc_middle::ty::{self, GenericArgsRef, Region, SizedTraitKind, Ty, TyCtxt, Upcast};
+use rustc_middle::ty::{
+    self, GenericArgsRef, InitTraitKind, Region, SizedTraitKind, Ty, TyCtxt, Upcast,
+};
 use rustc_middle::{bug, span_bug};
 use rustc_span::def_id::DefId;
 use thin_vec::thin_vec;
@@ -1362,6 +1364,122 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     );
                     nested.push(elem_init);
                 }
+                ImplSource::Builtin(BuiltinImplSource::Misc, nested)
+            }
+            ty::InitAdt(info) => {
+                // `do init struct Foo  { a, b, c }` implements `Init*<Foo, Error, Arg>` where:
+                // * each element implements `Init*<Dst, Error, ElemArg>`,
+                //     * where `Dst` is the corresponding field, or `()` for `_` components
+                //     * where `ElemArg` depends on the `with` declared for that field
+                // * if any component is declared `pinned`, the whole initializer implements
+                //   only `PinInit*` and not `Init*`
+                // * if a field is referenced elsewhere as `Ref`, then it must implement `Init*`
+                // * if `Arg` is never used, it must be `()`,
+                // * if `Arg` is used exactly once, there is no restriction on it,
+                // * if `Arg` is used more than once, it must be `Clone`.
+                let mut nested = PredicateObligations::new();
+
+                let ty::Adt(adt_def, adt_args) = *info.adt_ty.kind() else { todo!() };
+                let adt_variant = adt_def.variant(info.variant);
+
+                let trait_def_id = obligation.predicate.skip_binder().trait_ref.def_id;
+                let Some(trait_kind) = InitTraitKind::from_lang_item(tcx, trait_def_id) else {
+                    bug!("BuiltinInitCandidate for non-Init-family trait {trait_def_id:?}")
+                };
+
+                if info.pinned {
+                    match trait_kind {
+                        InitTraitKind::PinInitOnce
+                        | InitTraitKind::PinInitMut
+                        | InitTraitKind::PinInit => {}
+                        InitTraitKind::InitOnce | InitTraitKind::InitMut | InitTraitKind::Init => {
+                            // FIXME(in_place_init): give better error message when user passes
+                            // pinned initializer to `Box::build` etc.
+                            return Err(SelectionError::Unimplemented);
+                        }
+                    }
+                }
+
+                let mut arg_mentions = 0usize;
+
+                for (component_ty, component_info) in
+                    std::iter::zip(info.component_tys, info.component_infos)
+                {
+                    let component_trait_kind = if component_info.referenced_unpinned {
+                        trait_kind.to_non_pinned()
+                    } else {
+                        trait_kind
+                    };
+
+                    let component_dst_ty = match component_info.field {
+                        Some(adt_field_idx) => adt_variant.fields[adt_field_idx].ty(tcx, adt_args),
+                        None => tcx.types.unit,
+                    };
+
+                    let component_arg_tys = tcx.mk_type_list_from_iter(
+                        component_info.args.iter().map(|arg| match arg {
+                            ty::InitAdtComponentArg::Arg => {
+                                arg_mentions += 1;
+                                arg_ty
+                            }
+                            ty::InitAdtComponentArg::Ref(..)
+                            | ty::InitAdtComponentArg::PinRef(..) => todo!("init with ref"),
+                            ty::InitAdtComponentArg::Ptr(field_idx) => Ty::new_mut_ptr(
+                                tcx,
+                                adt_variant.fields[field_idx].ty(tcx, adt_args),
+                            ),
+                        }),
+                    );
+
+                    let component_arg_ty = if component_arg_tys.len() == 1 {
+                        component_arg_tys[0]
+                    } else {
+                        Ty::new_tup(tcx, component_arg_tys)
+                    };
+
+                    let component_pred = obligation.with(
+                        tcx,
+                        obligation.predicate.rebind(ty::TraitRef::new(
+                            tcx,
+                            component_trait_kind.require_lang_item(tcx),
+                            [component_ty, component_dst_ty, error_ty, component_arg_ty],
+                        )),
+                    );
+                    nested.push(component_pred);
+                }
+
+                // FIXME(in_place_init): does this need to handle binders in any way?
+                nested.extend(
+                    self.infcx
+                        .at(&obligation.cause, obligation.param_env)
+                        .eq(DefineOpaqueTypes::No, dst_ty, info.adt_ty)
+                        .map(|InferOk { obligations, .. }| obligations)
+                        .map_err(|_| SelectionError::Unimplemented)?,
+                );
+
+                match arg_mentions {
+                    0 => nested.extend(
+                        self.infcx
+                            .at(&obligation.cause, obligation.param_env)
+                            .eq(DefineOpaqueTypes::No, arg_ty, tcx.types.unit)
+                            .map(|InferOk { obligations, .. }| obligations)
+                            .map_err(|_| SelectionError::Unimplemented)?,
+                    ),
+                    // FIXME(in_place_init): once the mir shim works, re-enable this
+                    1 if false => {}
+                    _ => {
+                        let arg_clone = obligation.with(
+                            tcx,
+                            obligation.predicate.rebind(ty::TraitRef::new(
+                                tcx,
+                                tcx.require_lang_item(LangItem::Clone, obligation.cause.span),
+                                [arg_ty],
+                            )),
+                        );
+                        nested.push(arg_clone);
+                    }
+                }
+
                 ImplSource::Builtin(BuiltinImplSource::Misc, nested)
             }
             _ => {
