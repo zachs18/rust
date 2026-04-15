@@ -559,44 +559,61 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
                 self.push("E");
             }
 
+            ty::InitArray(tys) => {
+                self.push("IC10init_array");
+                for ty in tys.iter() {
+                    ty.print(self)?;
+                }
+                self.push("E");
+            }
+
+            ty::InitArrayRepeat(elem, len) => {
+                self.push("IC17init_array_repeat");
+                elem.print(self)?;
+                len.print(self)?;
+                self.push("E");
+            }
+
+            ty::InitSliceRepeat(elem) => {
+                self.push("IC17init_slice_repeat");
+                elem.print(self)?;
+                self.push("E");
+            }
+
             ty::InitAdt(info) => {
                 self.push("IC8init_adt");
                 info.adt_ty.print(self)?;
-                // FIXME(in_place_init): encode this properly?
-                // currently trying to encode it as a const u64
-                self.push(&format!("Ky{:x}_", info.variant.as_usize()));
+                self.push("K");
+                self.print_const(ty::Const::from_target_usize(
+                    self.tcx,
+                    info.variant.as_u32() as u64,
+                ))?;
+                self.push("K");
+                self.print_const(ty::Const::from_bool(self.tcx, info.pinned))?;
                 for (ty, info) in std::iter::zip(info.component_tys, info.component_infos) {
                     self.push("IC9component");
                     ty.print(self)?;
                     let encoded_field = info.field.map_or(0, |idx| idx.as_usize() + 1);
-                    // FIXME(in_place_init): encode this properly?
-                    // currently trying to encode it as a const u64
-                    self.push(&format!("Ky{:x}_", encoded_field));
+                    self.push("K");
+                    self.print_const(ty::Const::from_target_usize(self.tcx, encoded_field as u64))?;
                     for arg in info.args {
                         self.push("IC3arg");
                         let (a, b) = match arg {
                             ty::InitAdtComponentArg::Arg => (0, 0),
-                            ty::InitAdtComponentArg::Ref(field_idx) => (1, field_idx.as_usize()),
-                            ty::InitAdtComponentArg::PinRef(field_idx) => (2, field_idx.as_usize()),
-                            ty::InitAdtComponentArg::Ptr(field_idx) => (3, field_idx.as_usize()),
+                            ty::InitAdtComponentArg::Ref(field_idx) => (1, field_idx.as_u32()),
+                            ty::InitAdtComponentArg::PinRef(field_idx) => (2, field_idx.as_u32()),
+                            ty::InitAdtComponentArg::Ptr(field_idx) => (3, field_idx.as_u32()),
                         };
-                        // FIXME(in_place_init): encode thes properly?
-                        // currently trying to encode it as a const u64
-                        self.push(&format!("Ky{:x}_", a));
-                        self.push(&format!("Ky{:x}_", b));
+                        self.push("K");
+                        self.print_const(ty::Const::from_target_usize(self.tcx, a))?;
+                        self.push("K");
+                        self.print_const(ty::Const::from_target_usize(self.tcx, b as u64))?;
                         self.push("E");
                     }
                     self.push("E");
                 }
-                // FIXME(in_place_init): encode this properly?
-                // currently trying to encode it as a const bool
-                self.push(&format!("Kb{}_", info.pinned as u8));
                 self.push("E");
             }
-
-            // TODO: implement these with a DefId instead(?)
-            // actually, for the non-struct ones, could probably just mangle like tuples/arrays/etc do
-            ty::InitArray(..) | ty::InitArrayRepeat(..) | ty::InitSliceRepeat(..) => todo!(),
 
             // We may still encounter projections here due to the printing
             // logic sometimes passing identity-substituted impl headers.
