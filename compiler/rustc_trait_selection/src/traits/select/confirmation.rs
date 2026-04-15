@@ -7,6 +7,7 @@
 //! [rustc dev guide]:
 //! https://rustc-dev-guide.rust-lang.org/traits/resolution.html#confirmation
 
+use std::cell::LazyCell;
 use std::ops::ControlFlow;
 
 use rustc_abi::FieldPinnedness;
@@ -1304,6 +1305,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         })
     }
 
+    #[instrument(level = "debug", skip(self))]
     fn confirm_builtin_init_candidate(
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
@@ -1372,13 +1374,16 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, nested)
             }
             ty::InitAdt(info) => {
-                // `do init struct Foo  { a, b, c }` implements `Init*<Foo, Error, Arg>` where:
-                // * each element implements `Init*<Dst, Error, ElemArg>`,
+                // `do init struct Foo  { a, b, c }` implements `*Init*<Foo, Error, Arg>` where:
+                // * each element implements `*Init*<Dst, Error, ElemArg>`,
                 //     * where `Dst` is the corresponding field, or `()` for `_` components
                 //     * where `ElemArg` depends on the `with` declared for that field
-                // * if any component is declared `pinned`, the whole initializer implements
-                //   only `PinInit*` and not `Init*`
-                // * if a field is referenced elsewhere as `Ref`, then it must implement `Init*`
+                // * if a field is *not* structurally pinned (including `_`), its initializer must implement `Init*`,
+                //      even if the `InitAdt` is implementing `PinInit*`.
+                // * if a structurally pinned field is referenced using `Ref`, then the field must be `Unpin`.
+                // * if a *non*-structurally pinned field is referenced using `PinRef`, then the field must be `Unpin`.
+                // * if any field is referenced using `PinRef`, and we are implementing `Init*`,
+                //      then the whole value must implement `Unpin`.
                 // * if `Arg` is never used, it must be `()`,
                 // * if `Arg` is used exactly once, there is no restriction on it,
                 // * if `Arg` is used more than once, it must be `Clone`.
@@ -1418,22 +1423,20 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     std::iter::zip(info.component_tys, info.component_infos)
                 {
                     let (component_dst_ty, field_is_structurally_pinned) =
-                        match component_info.field {
-                            Some(adt_field_idx) => {
-                                let field = &adt_variant.fields[adt_field_idx];
+                        if let Some(adt_field_idx) = component_info.field {
+                            let field = &adt_variant.fields[adt_field_idx];
 
-                                let field_is_structurally_pinned =
-                                    if adt_def.has_explicitly_pinned_fields() {
-                                        field.pinned == FieldPinnedness::Yes
-                                    } else {
-                                        true
-                                    };
+                            // If the ADT has no explicitly marked structurally pinned fields,
+                            // then all fields are structurally pinned, for backcompat.
+                            let field_is_structurally_pinned = !adt_def
+                                .has_explicitly_pinned_fields()
+                                || field.pinned == FieldPinnedness::Yes;
 
-                                let field_ty = field.ty(tcx, adt_args);
+                            let field_ty = field.ty(tcx, adt_args);
 
-                                (field_ty, field_is_structurally_pinned)
-                            }
-                            None => (tcx.types.unit, true),
+                            (field_ty, field_is_structurally_pinned)
+                        } else {
+                            (tcx.types.unit, false)
                         };
 
                     let component_trait_kind = if !field_is_structurally_pinned {
@@ -1443,14 +1446,40 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         trait_kind
                     };
 
+                    // FIXME(in_place_init): I have no confidence that this is correct, but it seems to work, so meh for now.
+                    let forall_lifetime = LazyCell::new(|| {
+                        let next_universe = self.infcx.create_next_universe();
+
+                        let br = ty::BoundRegion {
+                            var: ty::BoundVar::from_usize(0),
+                            kind: ty::BoundRegionKind::Anon,
+                        };
+
+                        ty::Region::new_placeholder(
+                            tcx,
+                            ty::PlaceholderRegion::new(next_universe, br),
+                        )
+                    });
+
                     let component_arg_tys = tcx.mk_type_list_from_iter(
                         component_info.args.iter().map(|arg| match arg {
                             ty::InitAdtComponentArg::Arg => {
                                 arg_mentions += 1;
                                 arg_ty
                             }
-                            ty::InitAdtComponentArg::Ref(..)
-                            | ty::InitAdtComponentArg::PinRef(..) => todo!("init with ref"),
+                            ty::InitAdtComponentArg::Ref(field_idx) => {
+                                let refd_field_ty = adt_variant.fields[field_idx].ty(tcx, adt_args);
+                                Ty::new_mut_ref(tcx, *forall_lifetime, refd_field_ty)
+                            }
+                            ty::InitAdtComponentArg::PinRef(field_idx) => {
+                                let refd_field_ty = adt_variant.fields[field_idx].ty(tcx, adt_args);
+                                Ty::new_pinned_ref(
+                                    tcx,
+                                    *forall_lifetime,
+                                    refd_field_ty,
+                                    ty::Mutability::Mut,
+                                )
+                            }
                             ty::InitAdtComponentArg::Ptr(field_idx) => Ty::new_mut_ptr(
                                 tcx,
                                 adt_variant.fields[field_idx].ty(tcx, adt_args),
