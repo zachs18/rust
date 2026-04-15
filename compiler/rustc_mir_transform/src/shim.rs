@@ -1,7 +1,8 @@
 // ignore-tidy-filelength
 use std::{assert_matches, fmt, iter};
 
-use rustc_abi::{ExternAbi, FIRST_VARIANT, FieldIdx, VariantIdx};
+use either::Either;
+use rustc_abi::{Align, ExternAbi, FIRST_VARIANT, FieldIdx, VariantIdx};
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::lang_items::LangItem;
@@ -984,7 +985,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             return;
         }
 
-        match self_ty.kind() {
+        let (size, alignment) = match self_ty.kind() {
             ty::Bool
             | ty::Char
             | ty::Int(_)
@@ -1012,12 +1013,29 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ty::Adt(def, ..) if def.is_unsized_type() => bug!(
                 "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
             ),
+            ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
+            ty::Adt(def, args) if def.is_union() => {
+                todo!("{:?} {:?}", def, args)
+            }
+            ty::Adt(def, args) => {
+                debug_assert!(def.is_struct());
+                todo!("{:?} {:?}", def, args)
+            }
 
-            ty::Str => todo!(),
+            ty::Str => (
+                Operand::Copy(
+                    meta.project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx),
+                ),
+                Operand::const_from_scalar(
+                    self.tcx,
+                    alignment_struct_ty,
+                    interpret::Scalar::from_target_usize(1, &tcx),
+                    self.span,
+                ),
+            ),
             ty::Slice(_elem_ty) => todo!(),
             ty::Array(_elem_ty, _len) => todo!(),
             ty::Dynamic(..) => todo!(),
-            ty::Adt(def, args) => todo!("{:?} {:?}", def, args),
             ty::Tuple(..) => todo!(),
             ty::Pat(_inner_ty, _) => todo!(),
             ty::UnsafeBinder(..) => todo!(),
@@ -1025,13 +1043,16 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
                 bug!("{} should not occur here", self_ty)
             }
-        }
+        };
+        todo!()
     }
 
     fn only_alignment_shim(&mut self) {
         let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
         let tcx = self.tcx;
         let typing_env = ty::TypingEnv::fully_monomorphized();
+        let option_did = tcx.require_lang_item(LangItem::Option, self.span);
+        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
 
         let dest = Place::return_place();
         let dest_ty = dest.ty(&self.local_decls, tcx).ty;
@@ -1067,7 +1088,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             return;
         }
 
-        match self_ty.kind() {
+        let alignment = match self_ty.kind() {
             ty::Bool
             | ty::Char
             | ty::Int(_)
@@ -1096,6 +1117,72 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ty::Adt(def, ..) if def.is_unsized_type() => bug!(
                 "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
             ),
+            ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
+            ty::Adt(def, args) => 'adt_alignment: {
+                // Alignment of a struct/union is the max of the fields' alignments, clamped if `repr(packed)`.
+                // There will always be at least one field with dynamic alignment, as otherwise the whole ADT
+                // would be `Aligned`.
+
+                let pack = def.repr().pack;
+                if pack == Some(Align::ONE) {
+                    break 'adt_alignment Rvalue::Use(Operand::const_from_scalar(
+                        self.tcx,
+                        alignment_struct_ty,
+                        interpret::Scalar::from_target_usize(1, &tcx),
+                        self.span,
+                    ));
+                }
+
+                let dyn_acc = self.make_place(ty::Mutability::Not, alignment_struct_ty);
+                let mut first_dyn = true;
+                let mut static_acc = Align::ONE;
+
+                for (field_idx, field) in def.non_enum_variant().fields.iter_enumerated() {
+                    let field_ty = field.ty(tcx, args);
+                    let dynamic_alignment = match self.field_align(
+                        field_ty,
+                        meta.project_deeper(
+                            &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(tcx, field_ty))],
+                            tcx,
+                        ),
+                    ) {
+                        Either::Left(dynamic_alignment) => dynamic_alignment,
+                        Either::Right(static_alignment) => {
+                            static_acc = Align::max(static_acc, static_alignment);
+                            continue;
+                        }
+                    };
+                    if first_dyn {
+                        first_dyn = false;
+                        self.block(
+                            vec![self.make_statement(StatementKind::Assign(Box::new((
+                                dyn_acc,
+                                Rvalue::Use(dynamic_alignment),
+                            ))))],
+                            TerminatorKind::Goto { target: self.block_index_offset(1) },
+                            false,
+                        );
+                    } else {
+                        todo!();
+                    }
+                }
+                debug_assert!(
+                    !first_dyn,
+                    "non-`Aligned` struct/union should have at least one non-`Aligned` field"
+                );
+                if static_acc > Align::ONE {
+                    todo!()
+                }
+
+                if let Some(pack) = pack {
+                    todo!()
+                }
+
+                // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
+                // or `Option<Alignment>` (which is niche-optimized), so we can `transmute` an `Alignment`
+                // into it.
+                Rvalue::Cast(CastKind::Transmute, Operand::Copy(dyn_acc), dest_ty)
+            }
 
             ty::Slice(elem_ty) | ty::Array(elem_ty, _) => todo!("{:?}", elem_ty),
             ty::Dynamic(..) => todo!(),
@@ -1108,6 +1195,115 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
                 bug!("{} should not occur here", self_ty)
             }
+        };
+        let stmt = self.make_statement(StatementKind::Assign(Box::new((dest, alignment))));
+        self.block(vec![stmt], TerminatorKind::Return, false);
+        return;
+    }
+
+    /// Returns an `Operand` that represents the alignment of `ty` with `meta`,
+    /// adding a new block calling `MetaAligned::(un)checked_align_for_meta` if necessary.
+    ///
+    /// If this is a `checked` operation, also handles the `?`.
+    ///
+    /// Should only be used in `only_alignment_shim`.
+    fn field_align(&mut self, ty: Ty<'tcx>, meta: Place<'tcx>) -> Either<Operand<'tcx>, Align> {
+        let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
+        let tcx = self.tcx;
+        let typing_env = ty::TypingEnv::fully_monomorphized();
+        let option_did = tcx.require_lang_item(LangItem::Option, self.span);
+        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
+
+        if ty.is_aligned(tcx, typing_env) {
+            // If `T: Aligned`, then `layout.align` is accurate, and we can just return it
+            // as `Alignment` (which is a newtype around a `repr(usize)` enum),
+            // so a `usize`-valued scalar constant is valid.
+            let layout = tcx
+                .layout_of(typing_env.as_query_input(ty))
+                .expect("type is as a field of a type with a valid layout");
+            return Either::Right(layout.align.abi);
+        }
+
+        let ret_ty =
+            if checked { Ty::new_option(tcx, alignment_struct_ty) } else { alignment_struct_ty };
+
+        let field_align_ret = self.make_place(ty::Mutability::Not, ret_ty);
+
+        // bb:
+        //  _field_align = <T as MetaAligned>::(un)checked_align_for_meta(Copy meta) [return -> nextbb, unwind continue]
+        // nextbb: ...
+        self.block(
+            vec![],
+            TerminatorKind::Call {
+                func: Operand::function_handle(
+                    self.tcx,
+                    method_def_id,
+                    [ty::GenericArg::from(ty)],
+                    self.span,
+                ),
+                args: Box::new([Spanned { node: Operand::Copy(meta), span: self.span }]),
+                destination: field_align_ret,
+                target: Some(self.block_index_offset(1)),
+                // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
+                // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: self.span,
+            },
+            false,
+        );
+
+        if checked {
+            // bb:
+            //  _discr = discriminant(_field_align);
+            //  switchInt _discr [None -> returnbb, Some(_) -> nextbb]
+            // returnbb:
+            //  _0 = None
+            //  return
+            // nextbb: ...
+
+            let discr_place = self.make_place(ty::Mutability::Not, ret_ty.discriminant_ty(tcx));
+
+            let discr_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                discr_place,
+                Rvalue::Discriminant(field_align_ret),
+            ))));
+            self.block(
+                vec![discr_stmt],
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(discr_place),
+                    targets: SwitchTargets::static_if(
+                        // 0 -> None -> returnbb
+                        // 1 -> Some -> nextbb
+                        0,
+                        self.block_index_offset(1),
+                        self.block_index_offset(2),
+                    ),
+                },
+                false,
+            );
+
+            let assign_none_stmt = self.make_statement(StatementKind::Assign(Box::new((
+                Place::return_place(),
+                Rvalue::Aggregate(
+                    Box::new(AggregateKind::Adt(
+                        option_did,
+                        VariantIdx::ZERO,
+                        tcx.mk_args(&[alignment_struct_ty.into()]),
+                        None,
+                        None,
+                    )),
+                    [].into(),
+                ),
+            ))));
+            self.block(vec![assign_none_stmt], TerminatorKind::Return, false);
+
+            Either::Left(Operand::Copy(
+                field_align_ret
+                    .project_deeper(&[PlaceElem::Downcast(None, VariantIdx::from_usize(1))], tcx),
+            ))
+        } else {
+            Either::Left(Operand::Copy(field_align_ret))
         }
     }
 
