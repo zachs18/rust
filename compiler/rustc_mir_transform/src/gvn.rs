@@ -1991,7 +1991,19 @@ fn op_to_prop_const<'tcx>(
 
     // If this constant is already represented as an `Allocation`,
     // try putting it into global memory to return it.
-    if let Either::Left(mplace) = op.as_mplace_or_imm() {
+    if let Either::Left(mplace) = op.as_mplace_or_imm()
+        // FIXME(more_usized): this hits an assertion when optimizing functions containing a
+        // `&[[T]]` whose can be a constant, e.g.
+        // ```
+        // let buf: &[[u32]; 2] = &[[1, 2]];
+        // let buf: &[[u32]] = buf;
+        // dbg!(std::ptr::metadata(buf));
+        // ```
+        // the metadata is constant `Metadata { len: 1, elem: Metadata { len: 2, .. }, .. }`,
+        // but the allocation for the `&[[T]]` has provenance, and `intern_const_alloc_for_constprop`
+        // can't intern allocations that have provenance
+        && std::env::var_os("RUSTC_DEBUG_GVN").is_none()
+    {
         let (size, _align) =
             ecx.size_and_align_of_val(&mplace, LayoutComputeSemantics::RELAXED).discard_err()??;
 
