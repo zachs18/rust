@@ -543,7 +543,12 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
             AdtKind::Union => build_union_type_di_node(cx, unique_type_id, span),
             AdtKind::Enum => enums::build_enum_type_di_node(cx, unique_type_id, span),
         },
-        ty::Tuple(_) => build_tuple_type_di_node(cx, unique_type_id),
+        ty::Tuple(_)
+        | ty::InitArray(..)
+        | ty::InitArrayRepeat(..)
+        | ty::InitSliceRepeat(..)
+        | ty::InitStruct(..)
+        | ty::InitTuple(..) => build_tuple_like_type_di_node(cx, unique_type_id),
         ty::Pat(base, _) => return type_di_node(cx, base),
         ty::UnsafeBinder(_) => build_unsafe_binder_type_di_node(cx, t, unique_type_id),
         ty::PtrMetadata(pointee_ty) => {
@@ -551,12 +556,6 @@ pub(crate) fn spanned_type_di_node<'ll, 'tcx>(
         }
         // FIXME(untyped_ptr): impl debug info if this type ever exists outside typed ptrs
         ty::UntypedPtr { .. } => unimplemented!(),
-        // FIXME(in_place_init): impl debug info
-        ty::InitArray(..)
-        | ty::InitArrayRepeat(..)
-        | ty::InitSliceRepeat(..)
-        | ty::InitStruct(..)
-        | ty::InitTuple(..) => unimplemented!(),
         ty::Alias(..)
         | ty::Param(_)
         | ty::Bound(..)
@@ -830,7 +829,7 @@ fn build_basic_type_di_node<'ll, 'tcx>(
         ty::Never => ("!", DW_ATE_unsigned),
         ty::Tuple(elements) if elements.is_empty() => {
             if cpp_like_debuginfo {
-                return build_tuple_type_di_node(cx, UniqueTypeId::for_ty(cx.tcx, t));
+                return build_tuple_like_type_di_node(cx, UniqueTypeId::for_ty(cx.tcx, t));
             } else {
                 ("()", DW_ATE_unsigned)
             }
@@ -1335,18 +1334,25 @@ fn build_upvar_field_di_nodes<'ll, 'tcx>(
         .collect()
 }
 
-/// Builds the DW_TAG_structure_type debuginfo node for a Rust tuple type.
-fn build_tuple_type_di_node<'ll, 'tcx>(
+/// Builds the DW_TAG_structure_type debuginfo node for a Rust tuple or tuple-like `do init` type.
+fn build_tuple_like_type_di_node<'ll, 'tcx>(
     cx: &CodegenCx<'ll, 'tcx>,
     unique_type_id: UniqueTypeId<'tcx>,
 ) -> DINodeCreationResult<'ll> {
-    let tuple_type = unique_type_id.expect_ty();
-    let &ty::Tuple(component_types) = tuple_type.kind() else {
-        bug!("build_tuple_type_di_node() called with non-tuple-type: {:?}", tuple_type)
+    let tuple_like_type = unique_type_id.expect_ty();
+    let component_types = match *tuple_like_type.kind() {
+        ty::Tuple(component_types)
+        | ty::InitArray(component_types)
+        | ty::InitTuple(component_types) => &component_types[..],
+        ty::InitArrayRepeat(elem_ty, _len) => &[elem_ty],
+        // FIXME(in_place_init): check field order
+        ty::InitSliceRepeat(elem_ty) => &[cx.tcx.types.usize, elem_ty],
+        ty::InitStruct(..) => todo!(),
+        _ => bug!("build_tuple_type_di_node() called with non-tuple-type: {:?}", tuple_like_type),
     };
 
-    let tuple_type_and_layout = cx.layout_of(tuple_type);
-    let type_name = compute_debuginfo_type_name(cx.tcx, tuple_type, false);
+    let tuple_like_type_and_layout = cx.layout_of(tuple_like_type);
+    let type_name = compute_debuginfo_type_name(cx.tcx, tuple_like_type, false);
 
     type_map::build_type_with_children(
         cx,
@@ -1356,7 +1362,7 @@ fn build_tuple_type_di_node<'ll, 'tcx>(
             unique_type_id,
             &type_name,
             None,
-            size_and_align_of(tuple_type_and_layout),
+            size_and_align_of(tuple_like_type_and_layout),
             NO_SCOPE_METADATA,
             DIFlags::FlagZero,
         ),
@@ -1366,14 +1372,14 @@ fn build_tuple_type_di_node<'ll, 'tcx>(
             component_types
                 .into_iter()
                 .enumerate()
-                .map(|(index, component_type)| {
+                .map(|(index, &component_type)| {
                     build_field_di_node(
                         cx,
                         tuple_di_node,
                         &tuple_field_name(index),
                         cx.layout_of(component_type),
                         // FIXME(more_unsized): handle fields past unsized fields
-                        tuple_type_and_layout.fields.offset(index).offset,
+                        tuple_like_type_and_layout.fields.offset(index).offset,
                         DIFlags::FlagZero,
                         type_di_node(cx, component_type),
                         None,
