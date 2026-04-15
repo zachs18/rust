@@ -4423,7 +4423,6 @@ name = "rustc_next_trait_solver"
 version = "0.0.0"
 dependencies = [
  "derive-where",
- "rustc_abi",
  "rustc_data_structures",
  "rustc_index",
  "rustc_macros",
@@ -4753,7 +4752,6 @@ dependencies = [
  "rustc_data_structures",
  "rustc_errors",
  "rustc_hir",
- "rustc_index",
  "rustc_infer",
  "rustc_macros",
  "rustc_middle",

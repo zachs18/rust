@@ -1,9 +1,10 @@
 use std::borrow::Borrow;
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
 
-use rustc_abi::FieldIdx;
+use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_ast_ir::Movability;
 use rustc_index::bit_set::DenseBitSet;
 
@@ -53,6 +54,7 @@ pub trait Interner:
     type CoroutineClosureId: SpecificDefId<Self>;
     type CoroutineId: SpecificDefId<Self>;
     type AdtId: SpecificDefId<Self>;
+    type VariantId: SpecificDefId<Self>;
     type FieldId: SpecificDefId<Self>;
     type ImplId: SpecificDefId<Self>;
     type UnevaluatedConstId: SpecificDefId<Self>;
@@ -221,6 +223,7 @@ pub trait Interner:
     fn anon_const_kind(self, def_id: Self::DefId) -> ty::AnonConstKind;
 
     type AdtDef: AdtDef<Self>;
+    type VariantDef: VariantDef<Self>;
     type FieldDef: FieldDef<Self>;
     fn adt_def(self, adt_def_id: Self::AdtId) -> Self::AdtDef;
 
@@ -406,12 +409,8 @@ pub trait Interner:
     fn coroutine_is_gen(self, coroutine_def_id: Self::CoroutineId) -> bool;
     fn coroutine_is_async_gen(self, coroutine_def_id: Self::CoroutineId) -> bool;
 
-    type UnsizingParams: Deref<Target = DenseBitSet<u32>>;
-    fn unsizing_params_for_adt_field(
-        self,
-        adt_def_id: Self::AdtId,
-        adt_field_idx: FieldIdx,
-    ) -> Self::UnsizingParams;
+    type UnsizingAdtInfo: Deref<Target = [(BTreeSet<(VariantIdx, FieldIdx)>, DenseBitSet<u32>)]>;
+    fn unsizing_info_for_adt(self, adt_def_id: Self::AdtId) -> Self::UnsizingAdtInfo;
 
     fn anonymize_bound_vars<T: TypeFoldable<Self>>(
         self,

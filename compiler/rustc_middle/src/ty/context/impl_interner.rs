@@ -1,13 +1,15 @@
 //! Implementation of [`rustc_type_ir::Interner`] for [`TyCtxt`].
 
+use std::collections::BTreeSet;
 use std::{debug_assert_matches, fmt};
 
-use rustc_abi::{ExternAbi, FieldIdx};
+use rustc_abi::{ExternAbi, FieldIdx, VariantIdx};
 use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::lang_items::LangItem;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_span::{DUMMY_SP, Span, Symbol};
 use rustc_type_ir::lang_items::{SolverAdtLangItem, SolverLangItem, SolverTraitLangItem};
 use rustc_type_ir::{CollectAndApply, Interner, TypeFoldable, search_graph};
@@ -38,6 +40,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     type CoroutineClosureId = DefId;
     type CoroutineId = DefId;
     type AdtId = DefId;
+    type VariantId = DefId;
     type FieldId = DefId;
     type ImplId = DefId;
     type UnevaluatedConstId = DefId;
@@ -188,6 +191,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     }
 
     type AdtDef = ty::AdtDef<'tcx>;
+    type VariantDef = &'tcx ty::VariantDef;
     type FieldDef = &'tcx ty::FieldDef;
     fn adt_def(self, adt_def_id: DefId) -> Self::AdtDef {
         self.adt_def(adt_def_id)
@@ -694,13 +698,9 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
         self.coroutine_is_async_gen(coroutine_def_id)
     }
 
-    type UnsizingParams = &'tcx rustc_index::bit_set::DenseBitSet<u32>;
-    fn unsizing_params_for_adt_field(
-        self,
-        adt_def_id: DefId,
-        adt_field_idx: FieldIdx,
-    ) -> Self::UnsizingParams {
-        self.unsizing_params_for_adt_field((adt_def_id, adt_field_idx))
+    type UnsizingAdtInfo = &'tcx [(BTreeSet<(VariantIdx, FieldIdx)>, DenseBitSet<u32>)];
+    fn unsizing_info_for_adt(self, adt_def_id: DefId) -> Self::UnsizingAdtInfo {
+        self.unsizing_info_for_adt(adt_def_id)
     }
 
     fn anonymize_bound_vars<T: TypeFoldable<TyCtxt<'tcx>>>(

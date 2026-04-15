@@ -1307,6 +1307,16 @@ impl Hash for VariantDef {
     }
 }
 
+impl<'tcx> rustc_type_ir::inherent::VariantDef<TyCtxt<'tcx>> for &'tcx VariantDef {
+    fn def_id(self) -> DefId {
+        self.def_id
+    }
+
+    fn field(self, idx: FieldIdx) -> &'tcx FieldDef {
+        &self.fields[idx]
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, TyEncodable, TyDecodable, HashStable)]
 pub enum VariantDiscr {
     /// Explicit value for this variant, i.e., `X = 123`.

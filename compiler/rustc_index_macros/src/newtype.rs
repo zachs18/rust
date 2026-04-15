@@ -23,6 +23,7 @@ impl Parse for Newtype {
         let mut consts = Vec::new();
         let mut encodable = false;
         let mut ord = false;
+        let mut stable_ord = false;
         let mut stable_hash = false;
         let mut stable_hash_generic = false;
         let mut stable_hash_no_context = false;
@@ -42,6 +43,10 @@ impl Parse for Newtype {
                 }
                 "orderable" => {
                     ord = true;
+                    false
+                }
+                "stable_ord" => {
+                    stable_ord = true;
                     false
                 }
                 "stable_hash" => {
@@ -156,6 +161,18 @@ impl Parse for Newtype {
                     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                         self.as_u32().partial_cmp(&other.as_u32())
                     }
+                }
+            }
+        } else {
+            quote! {}
+        };
+        let stable_ord = if stable_ord {
+            quote! {
+                #gate_rustc_only
+                impl ::rustc_data_structures::stable_hasher::StableOrd for #name {
+                    // A newtype index is only an integer.
+                    const CAN_USE_UNSTABLE_SORT: bool = true;
+                    const THIS_IMPLEMENTATION_HAS_BEEN_TRIPLE_CHECKED: () = ();
                 }
             }
         } else {
@@ -319,6 +336,8 @@ impl Parse for Newtype {
             }
 
             #step
+
+            #stable_ord
 
             #hash_stable
 

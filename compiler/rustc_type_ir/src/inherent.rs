@@ -653,6 +653,8 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
 
     fn all_fields(self) -> impl Iterator<Item = I::FieldDef> + Clone;
 
+    fn variant(self, idx: VariantIdx) -> I::VariantDef;
+
     fn sizedness_constraints(
         self,
         interner: I,
@@ -662,6 +664,12 @@ pub trait AdtDef<I: Interner>: Copy + Debug + Hash + Eq {
     fn is_fundamental(self) -> bool;
 
     fn destructor(self, interner: I) -> Option<AdtDestructorKind>;
+}
+
+pub trait VariantDef<I: Interner>: Copy + Debug + Hash + Eq {
+    fn def_id(self) -> I::VariantId;
+
+    fn field(self, idx: FieldIdx) -> I::FieldDef;
 }
 
 pub trait FieldDef<I: Interner>: Copy + Debug + Hash + Eq {

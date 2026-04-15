@@ -49,6 +49,7 @@ rustc_index::newtype_index! {
     #[stable_hash_generic]
     #[encodable]
     #[orderable]
+    #[stable_ord]
     #[gate_rustc_only]
     pub struct FieldIdx {}
 }
@@ -74,6 +75,7 @@ rustc_index::newtype_index! {
     #[stable_hash_generic]
     #[encodable]
     #[orderable]
+    #[stable_ord]
     #[gate_rustc_only]
     pub struct VariantIdx {
         /// Equivalent to `VariantIdx(0)`.
