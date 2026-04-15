@@ -1,3 +1,5 @@
+use std::debug_assert_matches;
+
 use either::{Left, Right};
 use rustc_abi::{Align, FieldIdx, FieldsShape, HasDataLayout, Size, TargetDataLayout};
 use rustc_hir::def_id::DefId;

@@ -1095,6 +1095,7 @@ symbols! {
         import_trait_associated_functions,
         imported_main,
         in_band_lifetimes,
+        in_place_init,
         include,
         include_bytes,
         include_str,
