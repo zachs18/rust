@@ -270,12 +270,17 @@ pub(super) fn op_to_const<'tcx>(
                 // that case.
                 let pointee_ty = imm.layout.ty.builtin_deref(false).unwrap(); // `false` = no raw ptrs
                 debug_assert!(
-                    matches!(
-                        ecx.tcx
-                            .struct_or_union_tail_for_codegen(pointee_ty, ecx.typing_env())
-                            .kind(),
-                        ty::Str | ty::Slice(..),
-                    ),
+                    ecx.tcx
+                        .reduce_pointee_for_codegen(
+                            pointee_ty,
+                            ecx.typing_env(),
+                            ty::SizedTraitKind::Sized
+                        )
+                        .is_some_and(|t| match t.kind() {
+                            ty::Str => true,
+                            ty::Slice(elem) => elem.is_sized(*ecx.tcx, ecx.typing_env()),
+                            _ => false,
+                        }),
                     "`ConstValue::Slice` is for slice-tailed types only, but got {}",
                     imm.layout.ty,
                 );

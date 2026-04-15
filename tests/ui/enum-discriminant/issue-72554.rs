@@ -1,3 +1,4 @@
+//~? ERROR recursive type `ElemDerived` has infinite size
 use std::collections::BTreeSet;
 
 #[derive(Hash)]

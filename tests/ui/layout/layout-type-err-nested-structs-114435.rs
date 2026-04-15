@@ -1,4 +1,3 @@
-//~ ERROR reached the recursion limit finding the struct tail for `Bottom`
 //@ check-fail
 //@ compile-flags: --crate-type lib -Cdebuginfo=2
 
@@ -6,6 +5,7 @@
 macro_rules! link {
     ($outer:ident, $inner:ident) => {
         struct $outer($inner);
+        //~^ ERROR reached the recursion limit finding the struct tail for `Bottom`
         impl $outer {
             fn new() -> $outer {
                 $outer($inner::new())
@@ -38,6 +38,7 @@ link!(G, H);
 link!(H, I);
 link!(I, J);
 link!(J, K);
-link!(K, Bottom);
+link!(K, L);
+link!(L, Bottom);
 
 fn main() {}

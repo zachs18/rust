@@ -208,27 +208,29 @@ fn reconstruct_place_meta<'tcx>(
         return AnyMemPlaceMeta(None);
     }
 
-    let mut last_valtree = valtree;
-    // Traverse the type, and update `last_valtree` as we go.
-    let tail = tcx.struct_or_union_tail_raw(
+    let mut reduced_valtree = valtree;
+    let reduced = tcx.reduce_pointee_raw(
         layout.ty,
         &ObligationCause::dummy(),
-        |ty| ty,
-        || {
-            let branches = last_valtree.to_branch();
-            last_valtree = branches.last().unwrap().to_value().valtree;
-            debug!(?branches, ?last_valtree);
-        },
+        &mut |ty| ty,
+        ty::SizedTraitKind::Sized,
+        Some(&mut |variant_idx, field_idx| {
+            assert_eq!(variant_idx, VariantIdx::ZERO, "unimplemented: unsized enums");
+            let branches = reduced_valtree.to_branch();
+            reduced_valtree = branches[field_idx.as_usize()].to_value().valtree;
+            debug!(?branches, ?reduced_valtree);
+        }),
     );
+    let reduced = reduced.expect("type with non-sized layout should not be `Sized`");
     // Sanity-check that we got a tail we support.
-    match tail.kind() {
+    match reduced.kind() {
         ty::Str => {}
         ty::Slice(elem) if elem.is_sized(*ecx.tcx, ecx.typing_env()) => {}
         _ => bug!("unsized tail of a valtree must be Str or Slice of sized elements"),
     };
 
     // Get the number of elements in the unsized field.
-    let num_elems = last_valtree.to_branch().len();
+    let num_elems = reduced_valtree.to_branch().len();
     let meta = Scalar::from_target_usize(num_elems as u64, &tcx);
     let meta_layout = ecx.layout_of(Ty::new_ptr_metadata(*ecx.tcx, layout.ty)).unwrap();
     let meta = ImmTy::from_scalar(meta, meta_layout);
