@@ -35,7 +35,7 @@ pub(super) fn infer_predicates(
 
             let mut item_required_predicates = RequiredPredicates::default();
             match tcx.def_kind(item_did) {
-                DefKind::Union | DefKind::Enum | DefKind::Struct => {
+                DefKind::Union | DefKind::Enum | DefKind::Struct | DefKind::UnsizedType => {
                     let adt_def = tcx.adt_def(item_did.to_def_id());
 
                     // Iterate over all fields in item_did

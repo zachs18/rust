@@ -2098,7 +2098,7 @@ fn legacy_receiver_is_implemented<'tcx>(
 
 pub(super) fn check_variances_for_type_defn<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     match tcx.def_kind(def_id) {
-        DefKind::Enum | DefKind::Struct | DefKind::Union => {
+        DefKind::Enum | DefKind::Struct | DefKind::Union | DefKind::UnsizedType => {
             // Ok
         }
         DefKind::TyAlias => {

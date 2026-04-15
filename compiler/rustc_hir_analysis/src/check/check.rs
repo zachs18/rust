@@ -126,6 +126,14 @@ fn check_union(tcx: TyCtxt<'_>, def_id: LocalDefId) {
     check_packed(tcx, span, def);
 }
 
+fn check_unsized_type(tcx: TyCtxt<'_>, def_id: LocalDefId) {
+    let def = tcx.adt_def(def_id);
+    def.destructor(tcx); // force the destructor to be evaluated
+    // FIXME: check_unsized_type_metadata_fields: all fields must be
+    // `Debug + Copy + Freeze + Send + Hash + Ord + etc`
+    // We already do that check elsewhere; do we need to do it here too?
+}
+
 fn allowed_union_or_unsafe_field<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: Ty<'tcx>,
@@ -865,12 +873,12 @@ pub(crate) fn check_item_type(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(),
             tcx.ensure_ok().explicit_super_predicates_of(def_id);
             tcx.ensure_ok().predicates_of(def_id);
         }
-        def_kind @ (DefKind::Struct | DefKind::Union) => {
+        def_kind @ (DefKind::Struct | DefKind::Union | DefKind::UnsizedType) => {
             tcx.ensure_ok().generics_of(def_id);
             tcx.ensure_ok().type_of(def_id);
             tcx.ensure_ok().predicates_of(def_id);
 
-            let adt = tcx.adt_def(def_id).non_enum_variant();
+            let adt = tcx.adt_def(def_id).variant(VariantIdx::ZERO);
             for f in adt.fields.iter() {
                 tcx.ensure_ok().generics_of(f.did);
                 tcx.ensure_ok().type_of(f.did);
@@ -883,6 +891,7 @@ pub(crate) fn check_item_type(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(),
             match def_kind {
                 DefKind::Struct => check_struct(tcx, def_id),
                 DefKind::Union => check_union(tcx, def_id),
+                DefKind::UnsizedType => check_unsized_type(tcx, def_id),
                 _ => unreachable!(),
             }
             check_variances_for_type_defn(tcx, def_id);

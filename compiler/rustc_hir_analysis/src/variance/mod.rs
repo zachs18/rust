@@ -45,6 +45,7 @@ pub(super) fn variances_of(tcx: TyCtxt<'_>, item_def_id: LocalDefId) -> &[ty::Va
         | DefKind::AssocFn
         | DefKind::Enum
         | DefKind::Struct
+        | DefKind::UnsizedType
         | DefKind::Union
         | DefKind::Ctor(..) => {
             // These are inferred.
