@@ -205,7 +205,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             // FIXME(ptr_metadata_v2): What about non-align-1 ZST metadata?
             return interp_ok(caller == callee);
         }
+
         // For wide pointers we have to get the pointee type.
+        #[cfg(false)]
         let pointee_ty = |ty: Ty<'tcx>| -> InterpResult<'tcx, Option<Ty<'tcx>>> {
             // We cannot use `builtin_deref` here since we need to reject `Box<T, MyAlloc>`.
             interp_ok(Some(match ty.kind() {
@@ -216,6 +218,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 _ => return interp_ok(None),
             }))
         };
+
+        #[cfg(false)]
         if let (Some(caller), Some(callee)) = (pointee_ty(caller.ty)?, pointee_ty(callee.ty)?) {
             // FIXME(ptr_metadata_v2): implement this check for multi-wide pointees.
             // This is okay if they have the same metadata type.

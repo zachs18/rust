@@ -744,19 +744,21 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     .insert(MentionedItem::UnsizeCast { source_ty, target_ty });
                 let target_ty = self.monomorphize(target_ty);
                 let source_ty = self.monomorphize(source_ty);
-                let (source_ty, target_ty) =
-                    find_tails_for_unsizing(self.tcx.at(span), source_ty, target_ty);
-                // This could also be a different Unsize instruction, like
-                // from a fixed sized array to a slice. But we are only
-                // interested in things that produce a vtable.
-                if target_ty.is_trait() && !source_ty.is_trait() {
-                    create_mono_items_for_vtable_methods(
-                        self.tcx,
-                        target_ty,
-                        source_ty,
-                        span,
-                        self.used_items,
-                    );
+                for (source_ty, target_ty) in
+                    find_differing_fields_for_unsizing(self.tcx.at(span), source_ty, target_ty)
+                {
+                    // This could also be a different Unsize instruction, like
+                    // from a fixed sized array to a slice. But we are only
+                    // interested in things that produce a vtable.
+                    if target_ty.is_trait() && !source_ty.is_trait() {
+                        create_mono_items_for_vtable_methods(
+                            self.tcx,
+                            target_ty,
+                            source_ty,
+                            span,
+                            self.used_items,
+                        );
+                    }
                 }
             }
             mir::Rvalue::Cast(
@@ -1094,7 +1096,7 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> 
 }
 
 /// For a given pair of source and target type that occur in an unsizing coercion,
-/// this function finds the pair of types that determines the vtable linking
+/// this function finds the pairs of types that determines the vtables linking
 /// them.
 ///
 /// For example, the source type might be `&SomeStruct` and the target type
@@ -1109,49 +1111,55 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> 
 /// constructing the `target` wide-pointer we need the vtable for that pair.
 ///
 /// Things can get more complicated though because there's also the case where
-/// the unsized type occurs as a field:
+/// the unsized types occurs as fields:
 ///
 /// ```rust
-/// struct ComplexStruct<T: ?Sized> {
+/// struct ComplexStruct<T: ?Sized, U: ?Sized> {
 ///    a: u32,
 ///    b: f64,
-///    c: T
+///    #[rustc_unsizable_field]
+///    c: T,
+///    #[rustc_unsizable_field]
+///    c: U,
 /// }
 /// ```
 ///
-/// In this case, if `T` is sized, `&ComplexStruct<T>` is a thin pointer. If `T`
-/// is unsized, `&SomeStruct` is a wide pointer, and the vtable it points to is
+/// In this case, if `T` and `U` are sized, `&ComplexStruct<T>` is a thin pointer.
+/// If either is unsized, `&SomeStruct` is a wide pointer, and the vtable(s) it points to is
 /// for the pair of `T` (which is a trait) and the concrete type that `T` was
-/// originally coerced from:
+/// originally coerced from (and/or analogous for `U`):
 ///
 /// ```rust,ignore (not real code)
-/// let src: &ComplexStruct<SomeStruct> = ...;
-/// let target = src as &ComplexStruct<dyn SomeTrait>;
+/// let src: &ComplexStruct<SomeStruct, SomeOtherStruct> = ...;
+/// let target = src as &ComplexStruct<dyn SomeTrait, dyn SomeOtherTrait>;
 /// ```
 ///
-/// Again, we want this `find_vtable_types_for_unsizing()` to provide the pair
-/// `(SomeStruct, SomeTrait)`.
+/// Again, we want this `find_vtable_types_for_unsizing()` to provide the pairs
+/// `[(SomeStruct, SomeTrait), (SomeOtherStruct, SomeOtherTrait)]`.
 ///
 /// Finally, there is also the case of custom unsizing coercions, e.g., for
 /// smart pointers such as `Rc` and `Arc`.
-fn find_tails_for_unsizing<'tcx>(
+fn find_differing_fields_for_unsizing<'tcx>(
     tcx: TyCtxtAt<'tcx>,
     source_ty: Ty<'tcx>,
     target_ty: Ty<'tcx>,
-) -> (Ty<'tcx>, Ty<'tcx>) {
+) -> Vec<(Ty<'tcx>, Ty<'tcx>)> {
     let typing_env = ty::TypingEnv::fully_monomorphized();
     debug_assert!(!source_ty.has_param(), "{source_ty} should be fully monomorphic");
     debug_assert!(!target_ty.has_param(), "{target_ty} should be fully monomorphic");
 
     match (source_ty.kind(), target_ty.kind()) {
-        (&ty::Pat(source, _), &ty::Pat(target, _)) => find_tails_for_unsizing(tcx, source, target),
+        (&ty::Pat(source, _), &ty::Pat(target, _)) => {
+            find_differing_fields_for_unsizing(tcx, source, target)
+        }
         (
             &ty::Ref(_, source_pointee, _),
             &ty::Ref(_, target_pointee, _) | &ty::RawPtr(target_pointee, _),
         )
         | (&ty::RawPtr(source_pointee, _), &ty::RawPtr(target_pointee, _))
-        | (&ty::PtrMetadata(source_pointee), &ty::PtrMetadata(target_pointee)) => tcx
-            .struct_or_union_lockstep_tails_for_codegen(source_pointee, target_pointee, typing_env),
+        | (&ty::PtrMetadata(source_pointee), &ty::PtrMetadata(target_pointee)) => {
+            tcx.lockstep_differing_fields_for_codegen(source_pointee, target_pointee, typing_env)
+        }
 
         // `Box<T>` could go through the ADT code below, b/c it'll unpeel to `Unique<T>`,
         // and eventually bottom out in a raw ref, but we can micro-optimize it here.
@@ -1159,7 +1167,7 @@ fn find_tails_for_unsizing<'tcx>(
             if let Some(source_boxed) = source_ty.boxed_ty()
                 && let Some(target_boxed) = target_ty.boxed_ty() =>
         {
-            tcx.struct_or_union_lockstep_tails_for_codegen(source_boxed, target_boxed, typing_env)
+            tcx.lockstep_differing_fields_for_codegen(source_boxed, target_boxed, typing_env)
         }
 
         (&ty::Adt(source_adt_def, source_args), &ty::Adt(target_adt_def, target_args)) => {
@@ -1169,7 +1177,7 @@ fn find_tails_for_unsizing<'tcx>(
                     Ok(ccu) => ccu,
                     Err(e) => {
                         let e = Ty::new_error(tcx.tcx, e);
-                        return (e, e);
+                        return vec![(e, e)];
                     }
                 };
             let coerce_field = &source_adt_def.non_enum_variant().fields[coerce_index];
@@ -1178,7 +1186,7 @@ fn find_tails_for_unsizing<'tcx>(
                 tcx.normalize_erasing_regions(typing_env, coerce_field.ty(*tcx, source_args));
             let target_field =
                 tcx.normalize_erasing_regions(typing_env, coerce_field.ty(*tcx, target_args));
-            find_tails_for_unsizing(tcx, source_field, target_field)
+            find_differing_fields_for_unsizing(tcx, source_field, target_field)
         }
 
         _ => bug!(
@@ -1411,13 +1419,15 @@ fn visit_mentioned_item<'tcx>(
             visit_drop_use(tcx, ty, /*is_direct_call*/ true, span, output);
         }
         MentionedItem::UnsizeCast { source_ty, target_ty } => {
-            let (source_ty, target_ty) =
-                find_tails_for_unsizing(tcx.at(span), source_ty, target_ty);
-            // This could also be a different Unsize instruction, like
-            // from a fixed sized array to a slice. But we are only
-            // interested in things that produce a vtable.
-            if target_ty.is_trait() && !source_ty.is_trait() {
-                create_mono_items_for_vtable_methods(tcx, target_ty, source_ty, span, output);
+            for (source_ty, target_ty) in
+                find_differing_fields_for_unsizing(tcx.at(span), source_ty, target_ty)
+            {
+                // This could also be a different Unsize instruction, like
+                // from a fixed sized array to a slice. But we are only
+                // interested in things that produce a vtable.
+                if target_ty.is_trait() && !source_ty.is_trait() {
+                    create_mono_items_for_vtable_methods(tcx, target_ty, source_ty, span, output);
+                }
             }
         }
         MentionedItem::Closure(source_ty) => {

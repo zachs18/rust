@@ -44,7 +44,7 @@ fn skeleton_string<'tcx>(
     sk: Result<SizeSkeleton<'tcx>, &'tcx LayoutError<'tcx>>,
 ) -> String {
     match sk {
-        Ok(SizeSkeleton::Pointer { tail, .. }) => format!("pointer to `{tail}`"),
+        Ok(SizeSkeleton::Pointer { reduced, .. }) => format!("pointer to `{reduced}`"),
         Ok(SizeSkeleton::Known(size, _)) => {
             if let Some(v) = u128::from(size.bytes()).checked_mul(8) {
                 format!("{v} bits")

@@ -163,8 +163,6 @@ pub(crate) fn dyn_unsize_info<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     old_info: Option<Bx::Value>,
 ) -> Bx::Value {
     let cx = bx.cx();
-    let (source, target) =
-        cx.tcx().struct_or_union_lockstep_tails_for_codegen(source, target, bx.typing_env());
     match (source.kind(), target.kind()) {
         (&ty::Dynamic(data_a, _), &ty::Dynamic(data_b, _)) => {
             let old_info =

@@ -5,7 +5,7 @@ use rustc_infer::infer::canonical::Canonical;
 use rustc_infer::infer::outlives::env::RegionBoundPairs;
 use rustc_middle::bug;
 use rustc_middle::mir::{Body, ConstraintCategory};
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable, Upcast};
+use rustc_middle::ty::{self, SizedTraitKind, Ty, TyCtxt, TypeFoldable, Upcast};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_trait_selection::solve::NoSolution;
@@ -221,6 +221,65 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
             param_env.and(type_op::normalize::Normalize { value }),
         );
         result.unwrap_or(value)
+    }
+
+    /// Reduce `ty` to it's single (nested) field that is *not* known to implement the
+    /// given sizedness trait, or return `None` if `ty` (and thus all of its fields) implements it.
+    ///
+    /// This is analogous to a least-upper-bound in the "field tree", i.e. if multiple nested fields are not known to implement `sizedness`, then the returned
+    /// type will "contain" all of them. E.g. if multiple direct fields of `ty` are
+    /// not known to implement `sizedness`, then `ty` itself is returned.
+    #[instrument(skip(self), level = "debug")]
+    #[allow(unused)]
+    pub(super) fn reduce_pointee(
+        &mut self,
+        ty: Ty<'tcx>,
+        location: impl NormalizeLocation,
+        sizedness: SizedTraitKind,
+    ) -> Option<Ty<'tcx>> {
+        let tcx = self.tcx();
+        let body = self.body;
+
+        let cause = ObligationCause::misc(
+            location.to_locations().span(body),
+            body.source.def_id().expect_local(),
+        );
+
+        if self.infcx.next_trait_solver() {
+            let param_env = self.infcx.param_env;
+            // FIXME: Make this into a real type op?
+            self.fully_perform_op(
+                location.to_locations(),
+                ConstraintCategory::Boring,
+                CustomTypeOp::new(
+                    |ocx| {
+                        let mut structurally_normalize = |ty| {
+                            ocx.structurally_normalize_ty(
+                                &cause,
+                                param_env,
+                                ty,
+                            )
+                            .unwrap_or_else(|_| bug!("struct tail should have been computable, since we computed it in HIR"))
+                        };
+
+                        let reduced = tcx.reduce_pointee_raw(
+                            ty,
+                            &cause,
+                            &mut structurally_normalize,
+                            sizedness,
+                        );
+
+                        Ok(reduced)
+                    },
+                    "normalizing struct tail",
+                ),
+            )
+            .unwrap_or_else(|guar| Some(Ty::new_error(tcx, guar)))
+        } else {
+            let mut normalize = |ty| self.normalize(ty, location);
+            let reduced = tcx.reduce_pointee_raw(ty, &cause, &mut normalize, sizedness);
+            reduced.map(normalize)
+        }
     }
 
     #[instrument(skip(self), level = "debug")]
