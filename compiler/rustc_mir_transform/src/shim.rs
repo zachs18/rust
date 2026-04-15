@@ -851,7 +851,6 @@ fn build_layout_for_meta_shim<'tcx>(
     builder.into_mir()
 }
 
-#[allow(unused)]
 struct LayoutForMetaShimExtra<'tcx> {
     method_def_id: DefId,
     self_ty: Ty<'tcx>,
@@ -860,7 +859,6 @@ struct LayoutForMetaShimExtra<'tcx> {
 }
 type LayoutForMetaShimBuilder<'tcx> = ShimBuilder<'tcx, LayoutForMetaShimExtra<'tcx>>;
 
-#[allow(unused)]
 impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
     fn new(
         tcx: TyCtxt<'tcx>,
@@ -2390,7 +2388,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         let LayoutForMetaShimExtra { method_def_id, checked, .. } = self.extra;
         let tcx = self.tcx;
         let typing_env = ty::TypingEnv::fully_monomorphized();
-        let option_did = tcx.require_lang_item(LangItem::Option, self.span);
         let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
 
         if ty.is_aligned(tcx, typing_env) {
