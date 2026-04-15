@@ -213,8 +213,6 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             AnyPlaceMeta(None)
         };
 
-        // FIXME(more_unsized): factor this code out to implement `offset_for_meta!`
-
         // The simple codepath is used when we don't need to adjust the offset (to
         // the dynamic alignment of the field, or due to it being after an unsized field).
         let is_simple = match offset.accuracy {
@@ -232,26 +230,26 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
             };
             let val = PlaceValue { llval, llextra: field_llextra, align: effective_field_align };
             return val.with_type(field);
-        }
-
-        // We need to get the pointer manually now.
-        // We do this by casting to a `*i8`, then offsetting it by the appropriate amount.
-        // We do this instead of, say, simply adjusting the pointer from the result of a GEP
-        // because the field may have an arbitrary alignment in the LLVM representation.
-        //
-        // To demonstrate:
-        //
-        //     struct Foo<T: ?Sized> {
-        //         x: u16,
-        //         y: T
-        //     }
-        //
-        // The type `Foo<Foo<Trait>>` is represented in LLVM as `{ u16, { u16, u8 }}`, meaning that
-        // the `y` field has 16-bit alignment.
-
-        if matches!(offset.accuracy, OffsetAccuracy::RoundedUp) {
-            // We *only* need to adjust for the dynamic alignment
+        } else if matches!(offset.accuracy, OffsetAccuracy::RoundedUp) {
+            // We *only* need to adjust for the dynamic alignment in this case
+            // We need to get the pointer manually now.
+            // We do this by casting to a `*i8`, then offsetting it by the appropriate amount.
+            // We do this instead of, say, simply adjusting the pointer from the result of a GEP
+            // because the field may have an arbitrary alignment in the LLVM representation.
+            //
+            // To demonstrate:
+            //
+            //     struct Foo<T: ?Sized> {
+            //         x: u16,
+            //         y: T
+            //     }
+            //
+            // The type `Foo<Foo<Trait>>` is represented in LLVM as `{ u16, { u16, u8 }}`, meaning that
+            // the `y` field has 16-bit alignment.
             let offset = offset.offset;
+            // This is not necessarily exactly correct, but is a lower-bound.
+            // If the field is dynamically aligned higher than it's offset would satisfy,
+            // then we will round up the offset which can never *decrease* the effective alignment.
             let effective_field_align = self.val.align.restrict_for_offset(offset);
 
             let unaligned_offset = bx.cx().const_usize(offset.bytes());
@@ -280,77 +278,18 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                 PlaceValue { llval: ptr, llextra: field_llextra, align: effective_field_align };
             val.with_type(field)
         } else {
-            // We need to compute the offset by adding up the sizes of all previous fields, with alignment padding.
-
-            let mut offset = bx.const_usize(0);
-            let packed =
-                if let ty::Adt(def, _) = self.layout.ty.kind() { def.repr().pack } else { None };
-
-            // Invariant: all valid sizes (including intermediate sizes) are `<= isize::MAX`,
-            // and all valid alignments are powers of 2.
-            // Therefore, we can calculate such that the output is correct if the size and align
-            // given are valid, and if either input was invalid, `valid` would have already been set to false so
-            // the output doesn't matter.
-            let round_up_to_alignment = |bx: &mut Bx, size, alignment| {
-                // The bit-magic to round `size` up to a multiple of `alignment` is
-                //
-                //     `(size + (align-1)) & -align`
-                //
-                // This is valid even for extreme cases `size = isize::MAX as usize, align = isize::MAX as usize + 1`.
-                // We also need to check that the new size is still `<= isize::MAX`. This could happen if it was
-                // rounded up to `isize::MAX + 1`. However, this happens if and only if the sum was `> isize::MAX`,
-                // so we can just check the addition with our `add` closure that already does that check.
-                let one = bx.const_usize(1);
-                let addend = bx.sub(alignment, one);
-                let sum = bx.add(size, addend);
-                let neg = bx.neg(alignment);
-                bx.and(sum, neg)
-            };
-
-            // FIXME(more_unsized): optimize this, and deduplicate with `size_of_val`
-            for field_idx in self.layout.fields.index_by_increasing_offset() {
-                let field = self.layout.field(bx.cx(), field_idx);
-                let field_llextra =
-                    if bx.cx().tcx().type_has_metadata(field.ty, bx.cx().typing_env()) {
-                        debug_assert!(
-                            self.val.llextra.has_metadata(),
-                            "field projection from thin container to non-thin field",
-                        );
-                        self.val.llextra.map_metadata(|meta| {
-                            let meta = meta.change_sizedness();
-                            meta.extract_or_load_field(bx, field_idx)
-                                .expect_sized("pointer metadata must be sized")
-                        })
-                    } else {
-                        AnyPlaceMeta(None)
-                    };
-
-                let (field_size, mut field_align) =
-                    size_of_val::size_and_align_of_dst(bx, field.ty, field_llextra);
-
-                if let Some(packed) = packed {
-                    let packed = bx.const_usize(packed.bytes());
-                    let cmp = bx.icmp(IntPredicate::IntULT, field_align, packed);
-                    field_align = bx.select(cmp, field_align, packed)
-                }
-
-                offset = round_up_to_alignment(bx, offset, field_align);
-
-                // If this is the field we want, use its offset
-                if field_idx == ix {
-                    // Adjust pointer.
-                    let ptr = bx.inbounds_ptradd(self.val.llval, offset);
-                    let val = PlaceValue { llval: ptr, llextra: field_llextra, align: Align::ONE };
-                    return val.with_type(field);
-                }
-                // Otherwise, add the size of this field
-                offset = bx.add(offset, field_size);
-            }
-
-            unreachable!(
-                "ix not found in fields.index_by_increasing_offset: {ix} {:?}",
-                self.layout
+            // We need to get the pointer manually now.
+            // We do this by casting to a `*i8`, then offsetting it by the appropriate (dynamically computed) amount.
+            let (offset, _field_align) = crate::size_of_val::field_offset_for_dst(
+                bx,
+                self.layout.ty,
+                self.val.llextra,
+                FieldIdx::from_usize(ix),
             );
+            // Adjust pointer.
+            let ptr = bx.inbounds_ptradd(self.val.llval, offset);
+            let val = PlaceValue { llval: ptr, llextra: field_llextra, align: Align::ONE };
+            return val.with_type(field);
         }
     }
 
