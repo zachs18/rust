@@ -1,6 +1,8 @@
 //! Miscellaneous type-system utilities that are too small to deserve their own modules.
 
 use hir::LangItem;
+use hir::def_id::DefId;
+use rustc_abi::VariantIdx;
 use rustc_ast::Mutability;
 use rustc_hir as hir;
 use rustc_infer::infer::{RegionResolutionError, TyCtxtInferExt};
@@ -9,6 +11,17 @@ use rustc_span::sym;
 
 use crate::regions::InferCtxtRegionExt;
 use crate::traits::{self, FulfillmentError, Obligation, ObligationCause};
+
+pub enum SizednessImplementationError<'tcx> {
+    ThinInfrigingFields(Vec<(&'tcx ty::FieldDef, Ty<'tcx>, ThinInfringingFieldsReason<'tcx>)>),
+    NotAnUnsizedType,
+}
+
+pub enum ThinInfringingFieldsReason<'tcx> {
+    NotPhantomDataOrMetadata,
+    Fulfill(Vec<FulfillmentError<'tcx>>),
+    Regions(Vec<RegionResolutionError<'tcx>>),
+}
 
 pub enum CopyImplementationError<'tcx> {
     InfringingFields(Vec<(&'tcx ty::FieldDef, Ty<'tcx>, InfringingFieldsReason<'tcx>)>),
@@ -27,6 +40,87 @@ pub enum ConstParamTyImplementationError<'tcx> {
 pub enum InfringingFieldsReason<'tcx> {
     Fulfill(Vec<FulfillmentError<'tcx>>),
     Regions(Vec<RegionResolutionError<'tcx>>),
+}
+
+/// Checks that the type is an `unsized type`, which is the only kind of type where
+/// manual implementations of `MetaSized`/`MetaAligned` are allowed.
+///
+/// If it's not an `unsized type`, returns `Err(NotAnUnsizedType)`.
+pub fn type_allowed_to_implement_sizedness<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    param_env: ty::ParamEnv<'tcx>,
+    self_type: Ty<'tcx>,
+    parent_cause: ObligationCause<'tcx>,
+    trait_def_id: DefId,
+) -> Result<(), SizednessImplementationError<'tcx>> {
+    match self_type.kind() {
+        &ty::Adt(adt, args) if adt.is_unsized_type() => {
+            // For `Thin`, we must have that all metadata fields are ZST, specifically either
+            // `Metadata<impl Thin>` or `PhantomData<_>`.
+            if tcx.is_lang_item(trait_def_id, LangItem::ThinPointeeTrait) {
+                let mut infringing_fields = vec![];
+                for field in adt.variant(VariantIdx::ZERO).fields.iter() {
+                    let field_ty = field.ty(tcx, args);
+                    let field_pointee_ty = match field_ty.kind() {
+                        ty::Adt(def, ..) if def.is_phantom_data() => continue,
+                        ty::PtrMetadata(field_pointee_ty) => *field_pointee_ty,
+                        _ => {
+                            infringing_fields.push((
+                                field,
+                                field_ty,
+                                ThinInfringingFieldsReason::NotPhantomDataOrMetadata,
+                            ));
+                            continue;
+                        }
+                    };
+
+                    // We use an ocx per field ty for better diagnostics
+                    let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
+                    let ocx = traits::ObligationCtxt::new_with_diagnostics(&infcx);
+
+                    ocx.register_bound(
+                        parent_cause.clone(),
+                        param_env,
+                        field_pointee_ty,
+                        tcx.require_lang_item(LangItem::ThinPointeeTrait, parent_cause.span),
+                    );
+
+                    let errors = ocx.evaluate_obligations_error_on_ambiguity();
+                    if !errors.is_empty() {
+                        infringing_fields.push((
+                            field,
+                            field_pointee_ty,
+                            ThinInfringingFieldsReason::Fulfill(errors),
+                        ));
+                        continue;
+                    }
+
+                    // Check regions assuming the self type of the impl is WF
+                    let errors =
+                        infcx.resolve_regions(parent_cause.body_id, param_env, [self_type]);
+                    if !errors.is_empty() {
+                        infringing_fields.push((
+                            field,
+                            field_pointee_ty,
+                            ThinInfringingFieldsReason::Regions(errors),
+                        ));
+                        continue;
+                    }
+                }
+
+                if !infringing_fields.is_empty() {
+                    return Err(SizednessImplementationError::ThinInfrigingFields(
+                        infringing_fields,
+                    ));
+                }
+            }
+
+            // The other traits have no such requirements
+            Ok(())
+        }
+
+        _ => return Err(SizednessImplementationError::NotAnUnsizedType),
+    }
 }
 
 /// Checks that the fields of the type (an ADT) all implement copy.

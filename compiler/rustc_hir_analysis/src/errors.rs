@@ -284,6 +284,14 @@ pub(crate) struct FieldAlreadyDeclaredNestedHelp {
 }
 
 #[derive(Diagnostic)]
+#[diag("the traits `MetaSized`, `MetaAligned`, and `Thin` cannot be implemented for this type")]
+pub(crate) struct SizednessImplOnNonUnsizedType {
+    #[primary_span]
+    #[label("type is not an `unsized type`")]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
 #[diag("the trait `Copy` cannot be implemented for this type; the type has a destructor", code = E0184)]
 pub(crate) struct CopyImplOnTypeWithDtor {
     #[primary_span]
@@ -1404,6 +1412,23 @@ pub(crate) struct TraitCannotImplForTy {
     pub trait_name: String,
     #[label("this field does not implement `{$trait_name}`")]
     pub label_spans: Vec<Span>,
+    #[subdiagnostic]
+    pub notes: Vec<ImplForTyRequires>,
+}
+
+#[derive(Diagnostic)]
+#[diag("the trait `Thin` cannot be implemented for this type")]
+#[note(
+    "`Thin` can only be implemented for `unsized type`s where each metadata field is \
+    either `PhantomData<_>` or `Metadata<T>` where `T: Thin`"
+)]
+pub(crate) struct ThinCannotImplForTy {
+    #[primary_span]
+    pub span: Span,
+    #[label("this field is not `Metadata` or `PhantomData`")]
+    pub invalid_field_ty_label_spans: Vec<Span>,
+    #[label("this field's pointee does not implement `Thin`")]
+    pub field_ty_pointee_not_thin_spans: Vec<Span>,
     #[subdiagnostic]
     pub notes: Vec<ImplForTyRequires>,
 }

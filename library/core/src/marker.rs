@@ -241,13 +241,13 @@ pub trait Aligned: MetaAligned + PointeeSized {
 )]
 #[fundamental]
 #[rustc_specialization_trait]
-#[rustc_deny_explicit_impl]
 // `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
+#[rustc_coinductive]
 // Note that `MetaSized` and `MetaAligned` are special-cased by the compiler to have their methods
 // not included in vtables (trait objects include the size/align in the vtable directly,
 // so it would be unnecessary).
-#[rustc_coinductive]
+// `MetaSized` and `MetaAligned` are also special-cased to only allow manual impls for `unsized type`s.
 pub unsafe trait MetaSized: MetaAligned + PointeeSized {
     /// Returns the size of a value with the given metadata.
     ///
@@ -282,13 +282,13 @@ pub unsafe trait MetaSized: MetaAligned + PointeeSized {
 )]
 #[fundamental]
 #[rustc_specialization_trait]
-#[rustc_deny_explicit_impl]
 // `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
 // `Sized` above.
+#[rustc_coinductive]
 // Note that `MetaSized` and `MetaAligned` are special-cased by the compiler to have their methods
 // not included in vtables (trait objects include the size/align in the vtable directly,
 // so it would be unnecessary).
-#[rustc_coinductive]
+// `MetaSized` and `MetaAligned` are also special-cased to only allow manual impls for `unsized type`s.
 pub unsafe trait MetaAligned: PointeeSized {
     /// Returns the alignment of a value with the given metadata.
     ///
