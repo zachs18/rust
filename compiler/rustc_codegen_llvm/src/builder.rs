@@ -1545,7 +1545,7 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
         header_bx.cond_br(keep_going, body_bb, next_bb);
 
         let mut body_bx = Self::build(self.cx, body_bb);
-        let dest_elem = dest.project_index(&mut body_bx, i);
+        let dest_elem = dest.project_index(None, &mut body_bx, i);
         cg_elem.val.store(&mut body_bx, dest_elem);
 
         let next = body_bx.unchecked_uadd(i, self.const_usize(1));
@@ -1563,8 +1563,8 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
     ) {
         let zero = self.const_usize(0);
         let count = self.const_usize(count);
-        let start = dest.project_index(self, zero).val.llval;
-        let end = dest.project_index(self, count).val.llval;
+        let start = dest.project_index(None, self, zero).val.llval;
+        let end = dest.project_index(None, self, count).val.llval;
 
         let header_bb = self.append_sibling_block("repeat_loop_header");
         let body_bb = self.append_sibling_block("repeat_loop_body");

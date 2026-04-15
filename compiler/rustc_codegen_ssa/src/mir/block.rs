@@ -371,9 +371,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             bx.cleanup_ret(funclet, None);
         } else {
             let slot = self.get_personality_slot(bx);
-            let exn0 = slot.project_field(bx, 0);
+            let exn0 = slot.project_field(None, bx, 0);
             let exn0 = bx.load_operand(exn0).immediate();
-            let exn1 = slot.project_field(bx, 1);
+            let exn1 = slot.project_field(None, bx, 1);
             let exn1 = bx.load_operand(exn1).immediate();
             slot.storage_dead(bx);
 
@@ -630,8 +630,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let ptr_layout = bx.layout_of(ptr_ty);
                     let ptr_place = PlaceRef::alloca(bx, ptr_layout);
 
-                    let data_ptr_place = ptr_place.project_field(bx, 0);
-                    let ptr_meta_place = ptr_place.project_field(bx, 1);
+                    let data_ptr_place = ptr_place.project_field(None, bx, 0);
+                    let ptr_meta_place = ptr_place.project_field(None, bx, 1);
 
                     Immediate(place.val.llval).store(bx, data_ptr_place);
                     llextra.change_sizedness().store_with_annotation(bx, ptr_meta_place);
@@ -1879,7 +1879,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
             let tuple_ptr = place_val.with_type(tuple.layout);
             for i in 0..tuple.layout.fields.count() {
-                let field_ptr = tuple_ptr.project_field(bx, i);
+                let field_ptr = tuple_ptr.project_field(Some(self), bx, i);
                 let field = bx.load_operand(field_ptr);
                 self.codegen_argument(bx, field, llargs, &args[i], lifetime_ends_after_call);
             }

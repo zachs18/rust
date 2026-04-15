@@ -218,9 +218,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         let field_index = active_field_index.unwrap_or(i);
                         let field = if let mir::AggregateKind::Array(_) = **kind {
                             let llindex = bx.cx().const_usize(field_index.as_u32().into());
-                            variant_dest.project_index(bx, llindex)
+                            variant_dest.project_index(Some(self), bx, llindex)
                         } else {
-                            variant_dest.project_field(bx, field_index.as_usize())
+                            variant_dest.project_field(Some(self), bx, field_index.as_usize())
                         };
                         op.store_with_annotation(bx, field);
                     }
@@ -264,6 +264,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "type with metadata had sized layout? ty = {pointee_ty:?}, layout = {pointee_layout:?}"
                 );
                 let (pointee_size, _pointee_align) = size_of_val::size_and_align_of_dst(
+                    Some(self),
                     bx,
                     pointee_ty,
                     AnyPlaceMeta(Some(meta.expect_sized("pointer metadata must be sized"))),
@@ -285,8 +286,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     base_data_ptr.layout,
                 );
 
-                let dest_data_ptr = dest.project_field(bx, 0);
-                let dest_meta = dest.project_field(bx, 1);
+                let dest_data_ptr = dest.project_field(None, bx, 0);
+                let dest_meta = dest.project_field(None, bx, 1);
 
                 result_data_ptr.store_with_annotation(bx, dest_data_ptr);
                 meta.store_with_annotation(bx, dest_meta);
@@ -563,7 +564,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             assert_eq!(cast.layout.size, bx.data_layout().pointer_size());
                             if let OperandValue::Ref(place_value) = operand.val {
                                 let place_ref = PlaceRef{val:place_value, layout:operand.layout};
-                                let data_ref = place_ref.project_field(bx, 0);
+                                let data_ref = place_ref.project_field(None,bx, 0);
                                 bx.load_operand(data_ref).val
                             } else {
                                 operand.extract_field(self, bx, 0).val
@@ -1165,7 +1166,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     .expect_sized("pointer metadata must be sized")
             }));
             let (pointee_size, _pointee_align) =
-                size_of_val::size_and_align_of_dst(bx, pointee_type, meta);
+                size_of_val::size_and_align_of_dst(Some(self), bx, pointee_type, meta);
 
             // FIXME(more_unsized): make this the right kind of unchecked mul
             let offset = bx.mul(pointee_size, rhs);

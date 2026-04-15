@@ -335,8 +335,8 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
             OperandValue::ZeroSized => bug!("pointer cannot be zero-sized"),
             OperandValue::Ref(place_value) => {
                 let place_ref = PlaceRef { val: place_value, layout: self.layout };
-                let llval = place_ref.project_field(bx, 0);
-                let llextra = place_ref.project_field(bx, 1);
+                let llval = place_ref.project_field(None, bx, 0);
+                let llextra = place_ref.project_field(None, bx, 1);
                 (
                     bx.load_operand(llval).immediate(),
                     AnyPlaceMeta(Some(
@@ -499,7 +499,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
 
         if let OperandValue::Ref(val) = self.val {
             let place = PlaceRef { val, layout: self.layout };
-            let field_place = place.project_field(bx, i);
+            let field_place = place.project_field(None, bx, i);
             return bx.load_operand(field_place);
         }
 
@@ -606,7 +606,8 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                 self.extract_field(fx, bx, tag_field.as_usize())
             }
             OperandValue::Ref(place) => {
-                let tag = place.with_type(self.layout).project_field(bx, tag_field.as_usize());
+                let tag =
+                    place.with_type(self.layout).project_field(Some(fx), bx, tag_field.as_usize());
                 bx.load_operand(tag)
             }
         };

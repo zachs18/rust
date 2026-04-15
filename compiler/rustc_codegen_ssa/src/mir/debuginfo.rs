@@ -92,15 +92,25 @@ impl<'tcx, S: Copy, L: Copy> DebugScope<S, L> {
     }
 }
 
-trait DebugInfoOffsetLocation<'tcx, Bx> {
+trait DebugInfoOffsetLocation<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> {
     fn deref(&self, bx: &mut Bx) -> Self;
     fn layout(&self) -> TyAndLayout<'tcx>;
-    fn project_field(&self, bx: &mut Bx, field: FieldIdx) -> Self;
-    fn project_constant_index(&self, bx: &mut Bx, offset: u64) -> Self;
+    fn project_field(
+        &self,
+        fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
+        bx: &mut Bx,
+        field: FieldIdx,
+    ) -> Self;
+    fn project_constant_index(
+        &self,
+        fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
+        bx: &mut Bx,
+        offset: u64,
+    ) -> Self;
     fn downcast(&self, bx: &mut Bx, variant: VariantIdx) -> Self;
 }
 
-impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'tcx, Bx>
+impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'a, 'tcx, Bx>
     for PlaceRef<'tcx, Bx::Value>
 {
     fn deref(&self, bx: &mut Bx) -> Self {
@@ -111,13 +121,23 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'tcx, Bx>
         self.layout
     }
 
-    fn project_field(&self, bx: &mut Bx, field: FieldIdx) -> Self {
-        PlaceRef::project_field(*self, bx, field.index())
+    fn project_field(
+        &self,
+        fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
+        bx: &mut Bx,
+        field: FieldIdx,
+    ) -> Self {
+        PlaceRef::project_field(*self, fx, bx, field.index())
     }
 
-    fn project_constant_index(&self, bx: &mut Bx, offset: u64) -> Self {
+    fn project_constant_index(
+        &self,
+        fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
+        bx: &mut Bx,
+        offset: u64,
+    ) -> Self {
         let lloffset = bx.cx().const_usize(offset);
-        self.project_index(bx, lloffset)
+        self.project_index(fx, bx, lloffset)
     }
 
     fn downcast(&self, bx: &mut Bx, variant: VariantIdx) -> Self {
@@ -125,7 +145,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'tcx, Bx>
     }
 }
 
-impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'tcx, Bx>
+impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'a, 'tcx, Bx>
     for TyAndLayout<'tcx>
 {
     fn deref(&self, bx: &mut Bx) -> Self {
@@ -138,11 +158,21 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> DebugInfoOffsetLocation<'tcx, Bx>
         *self
     }
 
-    fn project_field(&self, bx: &mut Bx, field: FieldIdx) -> Self {
+    fn project_field(
+        &self,
+        _fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
+        bx: &mut Bx,
+        field: FieldIdx,
+    ) -> Self {
         self.field(bx.cx(), field.index())
     }
 
-    fn project_constant_index(&self, bx: &mut Bx, index: u64) -> Self {
+    fn project_constant_index(
+        &self,
+        _fx: Option<&mut FunctionCx<'a, 'tcx, Bx>>,
+        bx: &mut Bx,
+        index: u64,
+    ) -> Self {
         self.field(bx.cx(), index as usize)
     }
 
@@ -165,7 +195,7 @@ fn calculate_debuginfo_offset<
     'a,
     'tcx,
     Bx: BuilderMethods<'a, 'tcx>,
-    L: DebugInfoOffsetLocation<'tcx, Bx>,
+    L: DebugInfoOffsetLocation<'a, 'tcx, Bx>,
 >(
     bx: &mut Bx,
     projection: &[mir::PlaceElem<'tcx>],
@@ -191,7 +221,7 @@ fn calculate_debuginfo_offset<
                     return None;
                 }
                 *offset += field_offset.offset;
-                place = place.project_field(bx, field);
+                place = place.project_field(None, bx, field);
             }
             mir::ProjectionElem::Downcast(_, variant) => {
                 place = place.downcast(bx, variant);
@@ -206,7 +236,7 @@ fn calculate_debuginfo_offset<
                     bug!("ConstantIndex on non-array type {:?}", place.layout())
                 };
                 *offset += stride * index;
-                place = place.project_constant_index(bx, index);
+                place = place.project_constant_index(None, bx, index);
             }
             _ => {
                 // Sanity check for `can_use_in_debuginfo`.

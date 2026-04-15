@@ -224,16 +224,16 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     debug!("coerce_unsized_into: {src_ty:?} -> {dst_ty:?}");
     match (src_ty.kind(), dst_ty.kind()) {
         (&ty::Pat(_, s_pat), &ty::Pat(_, c_pat)) if s_pat == c_pat => {
-            let src_f = src.project_field(bx, 0);
-            let dst_f = dst.project_field(bx, 0);
+            let src_f = src.project_field(None, bx, 0);
+            let dst_f = dst.project_field(None, bx, 0);
             coerce_unsized_into(bx, src_f, dst_f);
         }
         (&ty::Ref(..), &ty::Ref(..) | &ty::RawPtr(..)) | (&ty::RawPtr(..), &ty::RawPtr(..)) => {
-            let src_data = src.project_field(bx, 0);
-            let src_extra = src.project_field(bx, 1);
+            let src_data = src.project_field(None, bx, 0);
+            let src_extra = src.project_field(None, bx, 1);
 
-            let dst_data = dst.project_field(bx, 0);
-            let dst_extra = dst.project_field(bx, 1);
+            let dst_data = dst.project_field(None, bx, 0);
+            let dst_extra = dst.project_field(None, bx, 1);
 
             bx.load_operand(src_data).val.store(bx, dst_data);
             coerce_unsized_into(bx, src_extra, dst_extra);
@@ -242,18 +242,18 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             match (src_pointee_ty.kind(), dst_pointee_ty.kind()) {
                 (ty::Slice(..), ty::Slice(..)) => {
                     // Unsize the element type, keep the length
-                    let src_len = src.project_field(bx, 0);
-                    let dst_len = dst.project_field(bx, 0);
+                    let src_len = src.project_field(None, bx, 0);
+                    let dst_len = dst.project_field(None, bx, 0);
                     bx.typed_place_copy(dst_len.val, src_len.val, src_len.layout);
 
-                    let src_elem = src.project_field(bx, 1);
-                    let dst_elem = dst.project_field(bx, 1);
+                    let src_elem = src.project_field(None, bx, 1);
+                    let dst_elem = dst.project_field(None, bx, 1);
                     coerce_unsized_into(bx, src_elem, dst_elem);
                 }
                 (ty::Array(..), ty::Array(..)) => {
                     // Unsize the element type
-                    let src_elem = src.project_field(bx, 0);
-                    let dst_elem = dst.project_field(bx, 0);
+                    let src_elem = src.project_field(None, bx, 0);
+                    let dst_elem = dst.project_field(None, bx, 0);
                     coerce_unsized_into(bx, src_elem, dst_elem);
                 }
                 (ty::Array(_, len), ty::Slice(..)) => {
@@ -263,11 +263,11 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                         len.try_to_target_usize(cx.tcx())
                             .expect("expected monomorphic const in codegen"),
                     );
-                    let dst_len = dst.project_field(bx, 0);
+                    let dst_len = dst.project_field(None, bx, 0);
                     OperandValue::Immediate(src_len).store(bx, dst_len);
 
-                    let src_elem = src.project_field(bx, 0);
-                    let dst_elem = dst.project_field(bx, 1);
+                    let src_elem = src.project_field(None, bx, 0);
+                    let dst_elem = dst.project_field(None, bx, 1);
                     if src_elem.layout == dst_elem.layout {
                         bx.typed_place_copy(dst_elem.val, src_elem.val, src_elem.layout);
                     } else {
@@ -288,8 +288,8 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                     assert_eq!(def_a, def_b); // implies same number of metadata fields
 
                     for i in def_a.variant(FIRST_VARIANT).fields.indices() {
-                        let src_f = src.project_field(bx, i.as_usize());
-                        let dst_f = dst.project_field(bx, i.as_usize());
+                        let src_f = src.project_field(None, bx, i.as_usize());
+                        let dst_f = dst.project_field(None, bx, i.as_usize());
 
                         if dst_f.layout.is_zst() {
                             // No data here, nothing to copy/coerce.
@@ -315,8 +315,8 @@ pub(crate) fn coerce_unsized_into<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             assert_eq!(def_a, def_b); // implies same number of fields
 
             for i in def_a.variant(FIRST_VARIANT).fields.indices() {
-                let src_f = src.project_field(bx, i.as_usize());
-                let dst_f = dst.project_field(bx, i.as_usize());
+                let src_f = src.project_field(None, bx, i.as_usize());
+                let dst_f = dst.project_field(None, bx, i.as_usize());
 
                 if dst_f.layout.is_zst() {
                     // No data here, nothing to copy/coerce.
