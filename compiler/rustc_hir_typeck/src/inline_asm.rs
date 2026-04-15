@@ -26,7 +26,7 @@ enum NonAsmTypeReason<'tcx> {
     UnevaluatedSIMDArrayLength(DefId, ty::Const<'tcx>),
     Invalid(Ty<'tcx>),
     InvalidElement(DefId, Ty<'tcx>),
-    NotSizedPtr(Ty<'tcx>),
+    NotThinPtr(Ty<'tcx>),
     EmptySIMDArray(Ty<'tcx>),
     Tainted(ErrorGuaranteed),
 }
@@ -50,17 +50,11 @@ impl<'a, 'tcx> InlineAsmCtxt<'a, 'tcx> {
         }
     }
 
-    // FIXME(compiler-errors): This could use `<$ty as Pointee>::Metadata == ()`
-    fn is_thin_ptr_ty(&self, span: Span, ty: Ty<'tcx>) -> bool {
-        // Type still may have region variables, but `Sized` does not depend
+    fn is_thin_ptr_ty(&self, _span: Span, ty: Ty<'tcx>) -> bool {
+        // Type still may have region variables, but `Thin` does not depend
         // on those, so just erase them before querying.
-        if self.fcx.type_is_sized_modulo_regions(self.fcx.param_env, ty) {
-            return true;
-        }
-        if let ty::Foreign(..) = self.fcx.try_structurally_resolve_type(span, ty).kind() {
-            return true;
-        }
-        false
+        // `ty::Foreign` always implement Thin
+        self.fcx.type_is_thin_modulo_regions(self.fcx.param_env, ty)
     }
 
     fn get_asm_ty(
@@ -91,7 +85,7 @@ impl<'a, 'tcx> InlineAsmCtxt<'a, 'tcx> {
                 if self.is_thin_ptr_ty(span, elem_ty) {
                     Ok(asm_ty_isize)
                 } else {
-                    Err(NonAsmTypeReason::NotSizedPtr(ty))
+                    Err(NonAsmTypeReason::NotThinPtr(ty))
                 }
             }
             ty::Adt(adt, args) if adt.repr().simd() => {
@@ -240,14 +234,14 @@ impl<'a, 'tcx> InlineAsmCtxt<'a, 'tcx> {
                             can be used as arguments for inline assembly",
                         ).emit();
                     }
-                    NonAsmTypeReason::NotSizedPtr(ty) => {
+                    NonAsmTypeReason::NotThinPtr(ty) => {
                         let msg = format!(
-                            "cannot use value of unsized pointer type `{ty}` for inline assembly"
+                            "cannot use value of wide pointer type `{ty}` for inline assembly"
                         );
                         self.fcx
                             .dcx()
                             .struct_span_err(expr.span, msg)
-                            .with_note("only sized pointers can be used in inline assembly")
+                            .with_note("only thin pointers can be used in inline assembly")
                             .emit();
                     }
                     NonAsmTypeReason::InvalidElement(did, ty) => {
