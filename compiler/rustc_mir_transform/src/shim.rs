@@ -1845,6 +1845,170 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         (Operand::Copy(full_size), Operand::Copy(align_acc))
     }
 
+    /// Returns an `Rvalue` that represents the alignment of the struct/union/tuple with `meta`,
+    /// with optional `repr(packed)` and `repr(align)` values.
+    ///
+    /// If this is a `checked` operation, also handles the `?`.
+    ///
+    /// Should only be used in `only_alignment_shim`.
+    fn struct_or_union_like_alignment(
+        &mut self,
+        fields: impl Iterator<Item = (FieldIdx, Ty<'tcx>)>,
+        meta: Place<'tcx>,
+        pack: Option<Align>,
+        overalign: Option<Align>,
+        dest_ty: Ty<'tcx>,
+    ) -> Rvalue<'tcx> {
+        let tcx = self.tcx;
+        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
+
+        // Alignment of a struct/union/tuple is the max of the fields' alignments, clamped if `repr(packed)`,
+        // raised if `repr(aligned)`.
+        // There will always be at least one field with dynamic alignment, as otherwise the whole type
+        // would be `Aligned`.
+
+        if pack == Some(Align::ONE) {
+            // The alignment of a `repr(packed(1))` ADT is always 1, so we can just return that.
+            // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
+            // or `Option<Alignment>` (which is niche-optimized), so a nonzero-`usize`-valued
+            // scalar constant is valid
+            return Rvalue::Use(Operand::const_from_scalar(
+                self.tcx,
+                dest_ty,
+                interpret::Scalar::from_target_usize(1, &tcx),
+                self.span,
+            ));
+        }
+
+        let alignment_max_fn = Operand::function_handle(
+            tcx,
+            tcx.require_lang_item(LangItem::AlignmentMax, self.span),
+            [],
+            self.span,
+        );
+        let alignment_min_fn = Operand::function_handle(
+            tcx,
+            tcx.require_lang_item(LangItem::AlignmentMin, self.span),
+            [],
+            self.span,
+        );
+
+        let dyn_acc = self.make_place(ty::Mutability::Not, alignment_struct_ty);
+        let mut first_dyn = true;
+        let mut static_acc = overalign.unwrap_or(Align::ONE);
+
+        for (field_idx, field_ty) in fields {
+            let field_dynamic_alignment = match self.field_align(
+                field_ty,
+                meta.project_deeper(
+                    &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(tcx, field_ty))],
+                    tcx,
+                ),
+            ) {
+                Either::Left(dynamic_alignment) => dynamic_alignment,
+                Either::Right(static_alignment) => {
+                    static_acc = Align::max(static_acc, static_alignment);
+                    continue;
+                }
+            };
+            if first_dyn {
+                // For the first dynamically-aligned field, just do
+                // _dyn_acc = field_dynamic_alignment;
+                first_dyn = false;
+                self.block(
+                    vec![self.make_assign(dyn_acc, Rvalue::Use(field_dynamic_alignment))],
+                    TerminatorKind::Goto { target: self.block_index_offset(1) },
+                    false,
+                );
+            } else {
+                // For later fields, do
+                // _dyn_acc = Alignment::max(_dyn_acc, field_dynamic_alignment) [return -> next, unwind continue]
+                self.block(
+                    vec![],
+                    TerminatorKind::Call {
+                        func: alignment_max_fn.clone(),
+                        args: Box::new([
+                            Spanned { node: Operand::Copy(dyn_acc), span: self.span },
+                            Spanned { node: field_dynamic_alignment, span: self.span },
+                        ]),
+                        target: Some(self.block_index_offset(1)),
+                        destination: dyn_acc,
+                        unwind: UnwindAction::Continue,
+                        call_source: CallSource::Misc,
+                        fn_span: self.span,
+                    },
+                    false,
+                );
+            }
+        }
+        debug_assert!(
+            !first_dyn,
+            "non-`Aligned` struct/union should have at least one non-`Aligned` field"
+        );
+
+        // Raise to `max(repr(align), max(field_aligns))`
+        if static_acc > Align::ONE {
+            // _dyn_acc = Alignment::max(_dyn_acc, max_static_field_alignment_or_repr_align) [return -> next, unwind continue]
+            self.block(
+                vec![],
+                TerminatorKind::Call {
+                    func: alignment_max_fn,
+                    args: Box::new([
+                        Spanned { node: Operand::Copy(dyn_acc), span: self.span },
+                        Spanned {
+                            node: Operand::const_from_scalar(
+                                self.tcx,
+                                alignment_struct_ty,
+                                interpret::Scalar::from_target_usize(static_acc.bytes(), &tcx),
+                                self.span,
+                            ),
+                            span: self.span,
+                        },
+                    ]),
+                    target: Some(self.block_index_offset(1)),
+                    destination: dyn_acc,
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: self.span,
+                },
+                false,
+            );
+        }
+
+        if let Some(pack) = pack {
+            // _dyn_acc = Alignment::min(_dyn_acc, pack_alignment) [return -> next, unwind continue]
+            self.block(
+                vec![],
+                TerminatorKind::Call {
+                    func: alignment_min_fn,
+                    args: Box::new([
+                        Spanned { node: Operand::Copy(dyn_acc), span: self.span },
+                        Spanned {
+                            node: Operand::const_from_scalar(
+                                self.tcx,
+                                alignment_struct_ty,
+                                interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
+                                self.span,
+                            ),
+                            span: self.span,
+                        },
+                    ]),
+                    target: Some(self.block_index_offset(1)),
+                    destination: dyn_acc,
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: self.span,
+                },
+                false,
+            );
+        }
+
+        // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
+        // or `Option<Alignment>` (which is niche-optimized), so we can `transmute` an `Alignment`
+        // into it.
+        Rvalue::Cast(CastKind::Transmute, Operand::Copy(dyn_acc), dest_ty)
+    }
+
     /// `size` must be `<= isize::MAX`, and `alignment` must be a `mem::Alignment`.
     /// If the rounded-up value is `> isize::MAX` in `checked` mode, `None::<dest_inner_ty>` will be returned.
     /// In unchecked mode, there will be an `assume(value <= isize::MAX)`.
@@ -2019,7 +2183,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
         let LayoutForMetaShimExtra { method_def_id, self_ty, .. } = self.extra;
         let tcx = self.tcx;
         let typing_env = ty::TypingEnv::fully_monomorphized();
-        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
 
         let dest = Place::return_place();
         let dest_ty = dest.ty(&self.local_decls, tcx).ty;
@@ -2084,156 +2247,26 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 "AdtKind::UnsizedType should have manual MetaSized/MetaAligned impls, not builtin"
             ),
             ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
-            ty::Adt(def, args) => 'adt_alignment: {
-                // Alignment of a struct/union is the max of the fields' alignments, clamped if `repr(packed)`.
-                // There will always be at least one field with dynamic alignment, as otherwise the whole ADT
-                // would be `Aligned`.
-
-                let pack = def.repr().pack;
-                if pack == Some(Align::ONE) {
-                    // The alignment of a `repr(packed(1))` ADT is always 1, so we can just return that.
-                    // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
-                    // or `Option<Alignment>` (which is niche-optimized), so a nonzero-`usize`-valued
-                    // scalar constant is valid
-                    break 'adt_alignment Rvalue::Use(Operand::const_from_scalar(
-                        self.tcx,
-                        dest_ty,
-                        interpret::Scalar::from_target_usize(1, &tcx),
-                        self.span,
-                    ));
-                }
-
-                let alignment_max_fn = Operand::function_handle(
-                    tcx,
-                    tcx.require_lang_item(LangItem::AlignmentMax, self.span),
-                    [],
-                    self.span,
-                );
-                let alignment_min_fn = Operand::function_handle(
-                    tcx,
-                    tcx.require_lang_item(LangItem::AlignmentMin, self.span),
-                    [],
-                    self.span,
-                );
-
-                let dyn_acc = self.make_place(ty::Mutability::Not, alignment_struct_ty);
-                let mut first_dyn = true;
-                let mut static_acc = def.repr().align.unwrap_or(Align::ONE);
-
-                for (field_idx, field) in def.non_enum_variant().fields.iter_enumerated() {
-                    let field_ty = field.ty(tcx, args);
-                    let field_dynamic_alignment = match self.field_align(
-                        field_ty,
-                        meta.project_deeper(
-                            &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(tcx, field_ty))],
-                            tcx,
-                        ),
-                    ) {
-                        Either::Left(dynamic_alignment) => dynamic_alignment,
-                        Either::Right(static_alignment) => {
-                            static_acc = Align::max(static_acc, static_alignment);
-                            continue;
-                        }
-                    };
-                    if first_dyn {
-                        // For the first dynamically-aligned field, just do
-                        // _dyn_acc = field_dynamic_alignment;
-                        first_dyn = false;
-                        self.block(
-                            vec![self.make_assign(dyn_acc, Rvalue::Use(field_dynamic_alignment))],
-                            TerminatorKind::Goto { target: self.block_index_offset(1) },
-                            false,
-                        );
-                    } else {
-                        // For later fields, do
-                        // _dyn_acc = Alignment::max(_dyn_acc, field_dynamic_alignment) [return -> next, unwind continue]
-                        self.block(
-                            vec![],
-                            TerminatorKind::Call {
-                                func: alignment_max_fn.clone(),
-                                args: Box::new([
-                                    Spanned { node: Operand::Copy(dyn_acc), span: self.span },
-                                    Spanned { node: field_dynamic_alignment, span: self.span },
-                                ]),
-                                target: Some(self.block_index_offset(1)),
-                                destination: dyn_acc,
-                                unwind: UnwindAction::Continue,
-                                call_source: CallSource::Misc,
-                                fn_span: self.span,
-                            },
-                            false,
-                        );
-                    }
-                }
-                debug_assert!(
-                    !first_dyn,
-                    "non-`Aligned` struct/union should have at least one non-`Aligned` field"
-                );
-
-                // Raise to `max(repr(align), max(field_aligns))`
-                if static_acc > Align::ONE {
-                    // _dyn_acc = Alignment::max(_dyn_acc, max_static_field_alignment_or_repr_align) [return -> next, unwind continue]
-                    self.block(
-                        vec![],
-                        TerminatorKind::Call {
-                            func: alignment_max_fn,
-                            args: Box::new([
-                                Spanned { node: Operand::Copy(dyn_acc), span: self.span },
-                                Spanned {
-                                    node: Operand::const_from_scalar(
-                                        self.tcx,
-                                        alignment_struct_ty,
-                                        interpret::Scalar::from_target_usize(
-                                            static_acc.bytes(),
-                                            &tcx,
-                                        ),
-                                        self.span,
-                                    ),
-                                    span: self.span,
-                                },
-                            ]),
-                            target: Some(self.block_index_offset(1)),
-                            destination: dyn_acc,
-                            unwind: UnwindAction::Continue,
-                            call_source: CallSource::Misc,
-                            fn_span: self.span,
-                        },
-                        false,
-                    );
-                }
-
-                if let Some(pack) = pack {
-                    // _dyn_acc = Alignment::min(_dyn_acc, pack_alignment) [return -> next, unwind continue]
-                    self.block(
-                        vec![],
-                        TerminatorKind::Call {
-                            func: alignment_min_fn,
-                            args: Box::new([
-                                Spanned { node: Operand::Copy(dyn_acc), span: self.span },
-                                Spanned {
-                                    node: Operand::const_from_scalar(
-                                        self.tcx,
-                                        alignment_struct_ty,
-                                        interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
-                                        self.span,
-                                    ),
-                                    span: self.span,
-                                },
-                            ]),
-                            target: Some(self.block_index_offset(1)),
-                            destination: dyn_acc,
-                            unwind: UnwindAction::Continue,
-                            call_source: CallSource::Misc,
-                            fn_span: self.span,
-                        },
-                        false,
-                    );
-                }
-
-                // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
-                // or `Option<Alignment>` (which is niche-optimized), so we can `transmute` an `Alignment`
-                // into it.
-                Rvalue::Cast(CastKind::Transmute, Operand::Copy(dyn_acc), dest_ty)
+            ty::Adt(def, args) => {
+                let fields =
+                    def.non_enum_variant().fields.iter_enumerated().map(|(field_idx, field)| {
+                        let field_ty = field.ty(tcx, args);
+                        (field_idx, field_ty)
+                    });
+                self.struct_or_union_like_alignment(
+                    fields,
+                    meta,
+                    def.repr().pack,
+                    def.repr().align,
+                    dest_ty,
+                )
+            }
+            ty::Tuple(tys) => {
+                let fields = tys
+                    .iter()
+                    .enumerate()
+                    .map(|(field_idx, field_ty)| (FieldIdx::from_usize(field_idx), field_ty));
+                self.struct_or_union_like_alignment(fields, meta, None, None, dest_ty)
             }
 
             &ty::Slice(elem_ty) | &ty::Array(elem_ty, _) => {
@@ -2312,7 +2345,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 Rvalue::Cast(CastKind::Transmute, Operand::Copy(vtable_align), dest_ty)
             }
 
-            ty::Tuple(..) => todo!(),
             ty::Pat(_inner_ty, _) => todo!(),
             ty::UnsafeBinder(..) => todo!(),
 
