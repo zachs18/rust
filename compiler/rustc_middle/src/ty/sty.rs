@@ -1923,7 +1923,7 @@ impl<'tcx> Ty<'tcx> {
     ) -> ty::layout::MetadataFields<'tcx> {
         use ty::layout::MetadataFields;
         let pointee = self;
-        MetadataFields::KnownFields(match pointee.kind() {
+        let fields = match pointee.kind() {
             // Known-sized types with no metadata fields, and Foreign which has no metadata fields.
             ty::Bool
             | ty::Char
@@ -2046,7 +2046,15 @@ impl<'tcx> Ty<'tcx> {
                     return MetadataFields::TooGeneric;
                 }
             }
-        })
+        };
+        let non_exhaustive = match pointee.kind() {
+            ty::Tuple(..) => false,
+            ty::Adt(def, ..) if def.is_enum() => true,
+            // FIXME: use  field_list_has_applicable_non_exhaustive?
+            ty::Adt(def, ..) => def.variant(VariantIdx::ZERO).is_field_list_non_exhaustive(),
+            _ => true,
+        };
+        MetadataFields::KnownFields { fields, non_exhaustive }
     }
 
     /// When we create a closure, we record its kind (i.e., what trait

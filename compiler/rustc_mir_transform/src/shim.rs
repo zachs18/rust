@@ -2622,7 +2622,7 @@ fn build_ptr_metadata_cmp_shim<'tcx>(
 
     let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
     let fields = match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
-        MetadataFields::KnownFields(fields) => fields,
+        MetadataFields::KnownFields { fields, .. } => fields,
         fields => bug!(
             "ptr_metadata cmp shim for `{:?}` which is not monomorphic enough ({fields:?})",
             pointee_ty
@@ -2860,13 +2860,14 @@ fn build_ptr_metadata_fmt_shim<'tcx>(
     debug!("build_ptr_metadata_fmt_shim(def_id={:?})", def_id);
 
     let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
-    let fields = match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
-        MetadataFields::KnownFields(fields) => fields,
-        fields => bug!(
-            "ptr_metadata fmt shim for `{:?}` which is not monomorphic enough ({fields:?})",
-            pointee_ty
-        ),
-    };
+    let (fields, non_exhaustive) =
+        match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
+            MetadataFields::KnownFields { fields, non_exhaustive } => (fields, non_exhaustive),
+            fields => bug!(
+                "ptr_metadata fmt shim for `{:?}` which is not monomorphic enough ({fields:?})",
+                pointee_ty
+            ),
+        };
 
     let fields_to_print: Vec<_> = fields
         .iter()
@@ -2877,8 +2878,9 @@ fn build_ptr_metadata_fmt_shim<'tcx>(
         })
         .collect();
 
-    // FIXME(ptr_metadata_v2): handle #[non_exhaustive] pointees here too.
-    let should_finish_non_exhaustive = fields_to_print.len() != fields.len();
+    // Print `..` if the source type could have more metadata fields added alter,
+    // or if we omitted any `Metadata<impl Thin>` fields.
+    let should_finish_non_exhaustive = non_exhaustive || fields_to_print.len() != fields.len();
 
     let mut builder = PtrMetadataFmtShimBuilder::new(tcx, instance, def_id, pointee_ty);
 
@@ -3126,7 +3128,7 @@ fn build_ptr_metadata_hash_shim<'tcx>(
 
     let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
     let fields = match pointee_ty.metadata_fields_for_pointee(tcx, Some(typing_env)) {
-        MetadataFields::KnownFields(fields) => fields,
+        MetadataFields::KnownFields { fields, .. } => fields,
         fields => bug!(
             "ptr_metadata hash shim for `{:?}` which is not monomorphic enough ({fields:?})",
             pointee_ty

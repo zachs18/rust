@@ -715,7 +715,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 let rvalue = match inferred_pointee_ty
                     .metadata_fields_for_pointee(this.tcx, Some(this.typing_env()))
                 {
-                    ty::layout::MetadataFields::KnownFields(fields) => {
+                    ty::layout::MetadataFields::KnownFields { fields, .. } => {
                         let expected_field_count = fields.len();
                         let field_names = (FieldIdx::ZERO..).take(expected_field_count);
 

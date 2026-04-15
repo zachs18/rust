@@ -229,14 +229,15 @@ impl fmt::Display for ValidityRequirement {
 pub enum MetadataFields<'tcx> {
     /// This type is monomorphic enough to know its pointer metadata's fields.
     /// The span is `None` for primitives.
-    KnownFields(
-        &'tcx ty::List<(
+    KnownFields {
+        fields: &'tcx ty::List<(
             rustc_span::Symbol,
             Option<rustc_span::Span>,
             ty::Visibility<DefId>,
             Ty<'tcx>,
         )>,
-    ),
+        non_exhaustive: bool,
+    },
     /// This type is known to be thin, so its pointer metadata is a trivial 1-ZST,
     /// but it is too generic to know the fields specifically.
     ThinUnknownFields,
@@ -893,7 +894,7 @@ where
                 ty::PtrMetadata(pointee) => {
                     let fields =
                         match pointee.metadata_fields_for_pointee(tcx, Some(cx.typing_env())) {
-                            MetadataFields::KnownFields(fields) => fields,
+                            MetadataFields::KnownFields { fields, .. } => fields,
                             MetadataFields::ThinUnknownFields | MetadataFields::TooGeneric => {
                                 cx.tcx().dcx().delayed_bug(format!(
                                     "TyAndLayout::field({this:?}): not applicable",

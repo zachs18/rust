@@ -421,7 +421,7 @@ fn layout_of_uncached<'tcx>(
             use ty::layout::MetadataFields;
             let metadata_fields =
                 match pointee.metadata_fields_for_pointee(tcx, Some(cx.typing_env)) {
-                    MetadataFields::KnownFields(fields) => fields,
+                    MetadataFields::KnownFields { fields, .. } => fields,
                     MetadataFields::ThinUnknownFields => ty::List::empty(),
                     MetadataFields::TooGeneric => {
                         return Err(error(cx, LayoutError::TooGeneric(ty)));

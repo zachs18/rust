@@ -818,7 +818,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                         let metadata_fields =
                             pointee_ty.metadata_fields_for_pointee(self.tcx, Some(self.typing_env));
                         let metadata_fields = match metadata_fields {
-                            MetadataFields::KnownFields(fields) => fields,
+                            MetadataFields::KnownFields { fields, .. } => fields,
                             MetadataFields::ThinUnknownFields | MetadataFields::TooGeneric => {
                                 fail_out_of_bounds(self, location);
                                 return;
@@ -1155,7 +1155,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 AggregateKind::PtrMetadata(pointee_ty, _) => {
                     let expected_fields =
                         pointee_ty.metadata_fields_for_pointee(self.tcx, Some(self.typing_env));
-                    let ty::layout::MetadataFields::KnownFields(expected_fields) = expected_fields
+                    let ty::layout::MetadataFields::KnownFields { fields: expected_fields, .. } =
+                        expected_fields
                     else {
                         bug!(
                             "AggregateKind::PtrMetadata(..) should only be used for monomorphic-enough \
