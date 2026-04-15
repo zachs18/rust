@@ -633,6 +633,11 @@ fn build_clone_shim<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::InstanceKind<'tcx>) -
             assert_eq!(tcx.coroutine_movability(*coroutine_def_id), hir::Movability::Movable);
             builder.coroutine_shim(dest, src, *coroutine_def_id, args.as_coroutine())
         }
+        ty::InitTuple(tys) => builder.tuple_like_shim(dest, src, *tys),
+        ty::InitAdt(info) => builder.tuple_like_shim(dest, src, info.component_tys),
+        ty::InitArray(tys) => builder.tuple_like_shim(dest, src, *tys),
+        ty::InitArrayRepeat(elem, _len) => builder.tuple_like_shim(dest, src, [*elem]),
+        ty::InitSliceRepeat(elem) => builder.tuple_like_shim(dest, src, [tcx.types.usize, *elem]),
         _ => bug!("clone shim for `{:?}` which is not `Copy` and is not an aggregate", self_ty),
     };
 

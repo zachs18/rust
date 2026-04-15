@@ -262,7 +262,9 @@ pub enum TyKind<I: Interner> {
 
     /// The anonymous type of a `do init slice [elem; non_const_len]` array-repeat-like expression.
     ///
-    /// The `Ty` is of the element initializer; the length is always a `usize`.
+    /// The length is always a `usize`; the `Ty` is of the element initializer.
+    ///
+    /// The field order is `[usize, elem]`.
     InitSliceRepeat(I::Ty),
 
     /// The type of a `do init struct` expression for an algebraic data type (ADT).

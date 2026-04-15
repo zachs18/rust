@@ -282,6 +282,11 @@ fn resolve_associated_item<'tcx>(
                         | ty::CoroutineWitness(..)
                         | ty::Closure(..)
                         | ty::CoroutineClosure(..)
+                        | ty::InitAdt(..)
+                        | ty::InitArray(..)
+                        | ty::InitArrayRepeat(..)
+                        | ty::InitSliceRepeat(..)
+                        | ty::InitTuple(..)
                         | ty::Tuple(..) => {}
                         _ => return Ok(None),
                     };
