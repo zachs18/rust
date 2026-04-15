@@ -1043,8 +1043,8 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
                     "`DynMetadata` must have exactly 2 fields"
                 );
                 let (vtable_ptr, phantom) = (
-                    self.ecx().project_field(value, FieldIdx::ZERO)?,
-                    self.ecx().project_field(value, FieldIdx::ONE)?,
+                    self.ecx().project_simple_field(value, FieldIdx::ZERO)?,
+                    self.ecx().project_simple_field(value, FieldIdx::ONE)?,
                 );
                 assert!(
                     phantom.layout().ty.ty_adt_def().is_some_and(|adt| adt.is_phantom_data()),
@@ -1376,6 +1376,11 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
         self.ecx
     }
 
+    #[inline(always)]
+    fn ecx_mut(&mut self) -> &mut InterpCx<'tcx, M> {
+        self.ecx
+    }
+
     fn read_discriminant(
         &mut self,
         val: &PlaceTy<'tcx, M::Provenance>,
@@ -1602,7 +1607,8 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
             ty::Array(tys, ..) | ty::Slice(tys) if self.ecx.layout_of(*tys)?.is_zst() => {
                 // Validate just the first element (if any).
                 if val.len(self.ecx)? > 0 {
-                    self.visit_field(val, 0, &self.ecx.project_index(val, 0)?)?;
+                    let new_val = self.ecx.project_index(val, 0)?;
+                    self.visit_field(val, 0, &new_val)?;
                 }
             }
             ty::Pat(base, pat) => {

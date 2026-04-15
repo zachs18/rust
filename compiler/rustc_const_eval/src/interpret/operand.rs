@@ -825,7 +825,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     /// Evaluate a place with the goal of reading from it. This lets us sometimes
     /// avoid allocations.
     pub fn eval_place_to_op(
-        &self,
+        &mut self,
         mir_place: mir::Place<'tcx>,
         layout: Option<TyAndLayout<'tcx>>,
     ) -> InterpResult<'tcx, OpTy<'tcx, M::Provenance>> {
@@ -876,7 +876,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
     /// by passing it in here.
     #[inline]
     pub fn eval_operand(
-        &self,
+        &mut self,
         mir_op: &mir::Operand<'tcx>,
         layout: Option<TyAndLayout<'tcx>>,
     ) -> InterpResult<'tcx, OpTy<'tcx, M::Provenance>> {

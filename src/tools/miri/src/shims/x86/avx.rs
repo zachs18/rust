@@ -150,7 +150,7 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(dest_len, control_len);
 
                 for i in 0..dest_len {
-                    let control = this.project_index(&control, i)?;
+                    let control = this.project_simple_index(&control, i)?;
 
                     // Each 128-bit chunk is shuffled independently. Since each chunk contains
                     // four 32-bit elements, only two bits from `control` are used. To read the
@@ -161,8 +161,8 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                         .strict_add(chunk_base);
 
                     this.copy_op(
-                        &this.project_index(&data, src_i)?,
-                        &this.project_index(&dest, i)?,
+                        &this.project_simple_index(&data, src_i)?,
+                        &this.project_simple_index(&dest, i)?,
                     )?;
                 }
             }
@@ -184,7 +184,7 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(dest_len, control_len);
 
                 for i in 0..dest_len {
-                    let control = this.project_index(&control, i)?;
+                    let control = this.project_simple_index(&control, i)?;
 
                     // Each 128-bit chunk is shuffled independently. Since each chunk contains
                     // two 64-bit elements, only the second bit from `control` is used (yes, the
@@ -195,8 +195,8 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                         ((this.read_scalar(&control)?.to_u64()? >> 1) & 1).strict_add(chunk_base);
 
                     this.copy_op(
-                        &this.project_index(&data, src_i)?,
-                        &this.project_index(&dest, i)?,
+                        &this.project_simple_index(&data, src_i)?,
+                        &this.project_simple_index(&dest, i)?,
                     )?;
                 }
             }

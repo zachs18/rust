@@ -570,7 +570,7 @@ impl<'a, 'tcx> ConstAnalysis<'a, 'tcx> {
                 }
             }
             operand = if let Some(operand) =
-                self.ecx.borrow().project(&operand, proj_elem).discard_err()
+                self.ecx.borrow().project_simple(&operand, proj_elem).discard_err()
             {
                 operand
             } else {
@@ -582,7 +582,9 @@ impl<'a, 'tcx> ConstAnalysis<'a, 'tcx> {
             place,
             operand,
             &mut |elem, op| match elem {
-                TrackElem::Field(idx) => self.ecx.borrow().project_field(op, idx).discard_err(),
+                TrackElem::Field(idx) => {
+                    self.ecx.borrow().project_simple_field(op, idx).discard_err()
+                }
                 TrackElem::Variant(idx) => {
                     self.ecx.borrow().project_downcast(op, idx).discard_err()
                 }

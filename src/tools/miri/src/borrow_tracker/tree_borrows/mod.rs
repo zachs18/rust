@@ -485,6 +485,11 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 self.ecx
             }
 
+            #[inline(always)]
+            fn ecx_mut(&mut self) -> &mut MiriInterpCx<'tcx> {
+                self.ecx
+            }
+
             /// Regardless of how `Unique` is handled, Boxes are always reborrowed.
             /// When `Unique` is also reborrowed, then it behaves exactly like `Box`
             /// except for the fact that `Box` has a non-zero-sized reborrow.

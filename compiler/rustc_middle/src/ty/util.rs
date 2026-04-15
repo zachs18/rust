@@ -1360,6 +1360,28 @@ impl<'tcx> Ty<'tcx> {
             || tcx.is_aligned_raw(typing_env.as_query_input(self))
     }
 
+    /// Checks whether values of this type `T` have a size computible
+    /// from their pointer metadata (i.e., whether `T: MetaSized`).
+    /// Lifetimes are ignored for the purposes of this check, so it can be an
+    /// over-approximation in generic contexts, where one can have
+    /// strange rules like `<T as Foo<'static>>::Bar: MetaSized` that
+    /// actually carry lifetime requirements.
+    pub fn is_meta_sized(self, tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
+        self.has_trivial_sizedness(tcx, SizedTraitKind::MetaSized)
+            || tcx.is_meta_sized_raw(typing_env.as_query_input(self))
+    }
+
+    /// Checks whether values of this type `T` have a size computible
+    /// from their pointer metadata (i.e., whether `T: MetaSized`).
+    /// Lifetimes are ignored for the purposes of this check, so it can be an
+    /// over-approximation in generic contexts, where one can have
+    /// strange rules like `<T as Foo<'static>>::Bar: MetaSized` that
+    /// actually carry lifetime requirements.
+    pub fn is_meta_aligned(self, tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
+        self.has_trivial_sizedness(tcx, SizedTraitKind::MetaAligned)
+            || tcx.is_meta_aligned_raw(typing_env.as_query_input(self))
+    }
+
     /// Checks whether pointers to values of this type `T` are thin
     /// (i.e., whether `T: Thin`). Lifetimes are ignored
     /// for the purposes of this check, so it can be an

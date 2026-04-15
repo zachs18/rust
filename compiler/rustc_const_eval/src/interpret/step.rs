@@ -194,13 +194,16 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     // `Offset` result is same type as lhs
                     let ptr = self.eval_operand(left, Some(dest.layout))?;
                     // `Offset` rhs is `isize` or `usize`
-                    let delta = self.read_immediate(&self.eval_operand(right, None)?)?;
+                    let delta_op = self.eval_operand(right, None)?;
+                    let delta = self.read_immediate(&delta_op)?;
                     self.maybe_wide_ptr_offset(&ptr, &delta, &dest)?;
                 } else {
                     let layout = util::binop_left_homogeneous(bin_op).then_some(dest.layout);
-                    let left = self.read_immediate(&self.eval_operand(left, layout)?)?;
+                    let left_op = self.eval_operand(left, layout)?;
+                    let left = self.read_immediate(&left_op)?;
                     let layout = util::binop_right_homogeneous(bin_op).then_some(left.layout);
-                    let right = self.read_immediate(&self.eval_operand(right, layout)?)?;
+                    let right_op = self.eval_operand(right, layout)?;
+                    let right = self.read_immediate(&right_op)?;
                     let result = self.binary_op(bin_op, &left, &right)?;
                     assert_eq!(
                         result.layout, dest.layout,
@@ -212,7 +215,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
             UnaryOp(un_op, ref operand) => {
                 // The operand always has the same type as the result.
-                let val = self.read_immediate(&self.eval_operand(operand, Some(dest.layout))?)?;
+                let op = self.eval_operand(operand, Some(dest.layout))?;
+                let val = self.read_immediate(&op)?;
                 let result = self.unary_op(un_op, &val)?;
                 assert_eq!(result.layout, dest.layout, "layout mismatch for result of {un_op:?}");
                 self.write_immediate(*result, &dest)?;
@@ -497,7 +501,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             Goto { target } => self.go_to_block(target),
 
             SwitchInt { ref discr, ref targets } => {
-                let discr = self.read_immediate(&self.eval_operand(discr, None)?)?;
+                let op = self.eval_operand(discr, None)?;
+                let discr = self.read_immediate(&op)?;
                 trace!("SwitchInt({:?})", *discr);
 
                 // Branch to the `otherwise` case by default, if no match is found.
@@ -597,7 +602,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             Assert { ref cond, expected, ref msg, target, unwind } => {
                 let ignored =
                     M::ignore_optional_overflow_checks(self) && msg.is_optional_overflow_check();
-                let cond_val = self.read_scalar(&self.eval_operand(cond, None)?)?.to_bool()?;
+                let cond_op = self.eval_operand(cond, None)?;
+                let cond_val = self.read_scalar(&cond_op)?.to_bool()?;
                 if ignored || expected == cond_val {
                     self.go_to_block(target);
                 } else {

@@ -58,7 +58,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                         "`{intrinsic_name}` index {index} is out-of-bounds of vector with length {input_len}"
                     );
                 }
-                self.copy_op(&self.project_index(&input, index)?, &dest)?;
+                self.copy_op(&self.project_simple_index(&input, index)?, &dest)?;
             }
             sym::simd_splat => {
                 let elem = &args[0];
@@ -110,7 +110,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 };
 
                 for i in 0..dest_len {
-                    let op = self.read_immediate(&self.project_index(&op, i)?)?;
+                    let op = self.read_immediate(&self.project_simple_index(&op, i)?)?;
                     let dest = self.project_index(&dest, i)?;
                     let val = match which {
                         Op::MirOp(mir_op) => {
@@ -220,8 +220,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 };
 
                 for i in 0..dest_len {
-                    let left = self.read_immediate(&self.project_index(&left, i)?)?;
-                    let right = self.read_immediate(&self.project_index(&right, i)?)?;
+                    let left = self.read_immediate(&self.project_simple_index(&left, i)?)?;
+                    let right = self.read_immediate(&self.project_simple_index(&right, i)?)?;
                     let dest = self.project_index(&dest, i)?;
                     let val = match which {
                         Op::MirOp(mir_op) => {
@@ -310,13 +310,13 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 };
 
                 // Initialize with first lane, then proceed with the rest.
-                let mut res = self.read_immediate(&self.project_index(&op, 0)?)?;
+                let mut res = self.read_immediate(&self.project_simple_index(&op, 0)?)?;
                 if matches!(which, Op::MirOpBool(_)) {
                     // Convert to `bool` scalar.
                     res = imm_from_bool(simd_element_to_bool(res)?);
                 }
                 for i in 1..op_len {
-                    let op = self.read_immediate(&self.project_index(&op, i)?)?;
+                    let op = self.read_immediate(&self.project_simple_index(&op, i)?)?;
                     res = match which {
                         Op::MirOp(mir_op) => self.binary_op(mir_op, &res, &op)?,
                         Op::MirOpBool(mir_op) => {
@@ -357,7 +357,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 let mut res = init;
                 for i in 0..op_len {
-                    let op = self.read_immediate(&self.project_index(&op, i)?)?;
+                    let op = self.read_immediate(&self.project_simple_index(&op, i)?)?;
                     res = self.binary_op(mir_op, &res, &op)?;
                 }
                 self.write_immediate(*res, &dest)?;
@@ -373,9 +373,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert_eq!(dest_len, no_len);
 
                 for i in 0..dest_len {
-                    let mask = self.read_immediate(&self.project_index(&mask, i)?)?;
-                    let yes = self.read_immediate(&self.project_index(&yes, i)?)?;
-                    let no = self.read_immediate(&self.project_index(&no, i)?)?;
+                    let mask = self.read_immediate(&self.project_simple_index(&mask, i)?)?;
+                    let yes = self.read_immediate(&self.project_simple_index(&yes, i)?)?;
+                    let no = self.read_immediate(&self.project_simple_index(&no, i)?)?;
                     let dest = self.project_index(&dest, i)?;
 
                     let val = if simd_element_to_bool(mask)? { yes } else { no };
@@ -436,8 +436,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 for i in 0..dest_len {
                     let bit_i = simd_bitmask_index(i, dest_len, self.tcx.data_layout.endian);
                     let mask = mask & 1u64.strict_shl(bit_i);
-                    let yes = self.read_immediate(&self.project_index(&yes, i.into())?)?;
-                    let no = self.read_immediate(&self.project_index(&no, i.into())?)?;
+                    let yes = self.read_immediate(&self.project_simple_index(&yes, i.into())?)?;
+                    let no = self.read_immediate(&self.project_simple_index(&no, i.into())?)?;
                     let dest = self.project_index(&dest, i.into())?;
 
                     let val = if mask != 0 { yes } else { no };
@@ -458,7 +458,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let op_len = u32::try_from(op_len).unwrap();
                 let mut res = 0u64;
                 for i in 0..op_len {
-                    let op = self.read_immediate(&self.project_index(&op, i.into())?)?;
+                    let op = self.read_immediate(&self.project_simple_index(&op, i.into())?)?;
                     if simd_element_to_bool(op)? {
                         let bit_i = simd_bitmask_index(i, op_len, self.tcx.data_layout.endian);
                         res |= 1u64.strict_shl(bit_i);
@@ -508,7 +508,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let from_exposed_cast = intrinsic_name == sym::simd_with_exposed_provenance;
 
                 for i in 0..dest_len {
-                    let op = self.read_immediate(&self.project_index(&op, i)?)?;
+                    let op = self.read_immediate(&self.project_simple_index(&op, i)?)?;
                     let dest = self.project_index(&dest, i)?;
 
                     let val = match (op.layout.ty.kind(), dest.layout.ty.kind()) {
@@ -566,10 +566,10 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     let dest = self.project_index(&dest, i)?;
 
                     let val = if src_index < left_len {
-                        self.read_immediate(&self.project_index(&left, src_index)?)?
+                        self.read_immediate(&self.project_simple_index(&left, src_index)?)?
                     } else if src_index < left_len.strict_add(right_len) {
                         let right_idx = src_index.strict_sub(left_len);
-                        self.read_immediate(&self.project_index(&right, right_idx)?)?
+                        self.read_immediate(&self.project_simple_index(&right, right_idx)?)?
                     } else {
                         throw_ub_format!(
                             "`simd_shuffle_const_generic` index {src_index} is out-of-bounds for 2 vectors with length {dest_len}"
@@ -589,17 +589,17 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
                 for i in 0..dest_len {
                     let src_index: u64 = self
-                        .read_immediate(&self.project_index(&index, i)?)?
+                        .read_immediate(&self.project_simple_index(&index, i)?)?
                         .to_scalar()
                         .to_u32()?
                         .into();
                     let dest = self.project_index(&dest, i)?;
 
                     let val = if src_index < left_len {
-                        self.read_immediate(&self.project_index(&left, src_index)?)?
+                        self.read_immediate(&self.project_simple_index(&left, src_index)?)?
                     } else if src_index < left_len.strict_add(right_len) {
                         let right_idx = src_index.strict_sub(left_len);
-                        self.read_immediate(&self.project_index(&right, right_idx)?)?
+                        self.read_immediate(&self.project_simple_index(&right, right_idx)?)?
                     } else {
                         throw_ub_format!(
                             "`simd_shuffle` index {src_index} is out-of-bounds for 2 vectors with length {dest_len}"
@@ -619,9 +619,10 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert_eq!(dest_len, mask_len);
 
                 for i in 0..dest_len {
-                    let passthru = self.read_immediate(&self.project_index(&passthru, i)?)?;
-                    let ptr = self.read_immediate(&self.project_index(&ptrs, i)?)?;
-                    let mask = self.read_immediate(&self.project_index(&mask, i)?)?;
+                    let passthru =
+                        self.read_immediate(&self.project_simple_index(&passthru, i)?)?;
+                    let ptr = self.read_immediate(&self.project_simple_index(&ptrs, i)?)?;
+                    let mask = self.read_immediate(&self.project_simple_index(&mask, i)?)?;
                     let dest = self.project_index(&dest, i)?;
 
                     let val = if simd_element_to_bool(mask)? {
@@ -642,9 +643,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert_eq!(ptrs_len, mask_len);
 
                 for i in 0..ptrs_len {
-                    let value = self.read_immediate(&self.project_index(&value, i)?)?;
-                    let ptr = self.read_immediate(&self.project_index(&ptrs, i)?)?;
-                    let mask = self.read_immediate(&self.project_index(&mask, i)?)?;
+                    let value = self.read_immediate(&self.project_simple_index(&value, i)?)?;
+                    let ptr = self.read_immediate(&self.project_simple_index(&ptrs, i)?)?;
+                    let mask = self.read_immediate(&self.project_simple_index(&mask, i)?)?;
 
                     if simd_element_to_bool(mask)? {
                         let place = self.deref_pointer(&ptr)?;
@@ -670,8 +671,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 )?;
 
                 for i in 0..dest_len {
-                    let mask = self.read_immediate(&self.project_index(&mask, i)?)?;
-                    let default = self.read_immediate(&self.project_index(&default, i)?)?;
+                    let mask = self.read_immediate(&self.project_simple_index(&mask, i)?)?;
+                    let default = self.read_immediate(&self.project_simple_index(&default, i)?)?;
                     let dest = self.project_index(&dest, i)?;
 
                     let val = if simd_element_to_bool(mask)? {
@@ -700,8 +701,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 )?;
 
                 for i in 0..vals_len {
-                    let mask = self.read_immediate(&self.project_index(&mask, i)?)?;
-                    let val = self.read_immediate(&self.project_index(&vals, i)?)?;
+                    let mask = self.read_immediate(&self.project_simple_index(&mask, i)?)?;
+                    let val = self.read_immediate(&self.project_simple_index(&vals, i)?)?;
 
                     if simd_element_to_bool(mask)? {
                         // Size * u64 is implemented as always checked
@@ -731,9 +732,9 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 assert_eq!(dest_len, c_len);
 
                 for i in 0..dest_len {
-                    let a = self.read_scalar(&self.project_index(&a, i)?)?;
-                    let b = self.read_scalar(&self.project_index(&b, i)?)?;
-                    let c = self.read_scalar(&self.project_index(&c, i)?)?;
+                    let a = self.read_scalar(&self.project_simple_index(&a, i)?)?;
+                    let b = self.read_scalar(&self.project_simple_index(&b, i)?)?;
+                    let c = self.read_scalar(&self.project_simple_index(&c, i)?)?;
                     let dest = self.project_index(&dest, i)?;
 
                     let ty::Float(float_ty) = dest.layout.ty.kind() else {
@@ -762,12 +763,15 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let is_left = intrinsic_name == sym::simd_funnel_shl;
 
                 for i in 0..len {
-                    let left =
-                        self.read_scalar(&self.project_index(&left, i)?)?.to_bits(elem_size)?;
-                    let right =
-                        self.read_scalar(&self.project_index(&right, i)?)?.to_bits(elem_size)?;
-                    let shift_bits =
-                        self.read_scalar(&self.project_index(&shift, i)?)?.to_bits(elem_size)?;
+                    let left = self
+                        .read_scalar(&self.project_simple_index(&left, i)?)?
+                        .to_bits(elem_size)?;
+                    let right = self
+                        .read_scalar(&self.project_simple_index(&right, i)?)?
+                        .to_bits(elem_size)?;
+                    let shift_bits = self
+                        .read_scalar(&self.project_simple_index(&shift, i)?)?
+                        .to_bits(elem_size)?;
 
                     if shift_bits >= elem_size_bits {
                         throw_ub_format!(

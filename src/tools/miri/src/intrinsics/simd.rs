@@ -27,8 +27,8 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(dest_len, op_len);
 
                 for i in 0..dest_len {
-                    let op = this.project_index(&op, i)?;
-                    let dest = this.project_index(&dest, i)?;
+                    let op = this.project_simple_index(&op, i)?;
+                    let dest = this.project_simple_index(&dest, i)?;
                     let ty::Float(float_ty) = op.layout.ty.kind() else {
                         span_bug!(this.cur_span(), "{} operand is not a float", intrinsic_name)
                     };
@@ -61,8 +61,8 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 };
 
                 for i in 0..dest_len {
-                    let op = this.project_index(&op, i)?;
-                    let dest = this.project_index(&dest, i)?;
+                    let op = this.project_simple_index(&op, i)?;
+                    let dest = this.project_simple_index(&dest, i)?;
                     let ty::Float(float_ty) = op.layout.ty.kind() else {
                         span_bug!(this.cur_span(), "{} operand is not a float", intrinsic_name)
                     };
@@ -84,8 +84,8 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(dest_len, op_len);
 
                 for i in 0..dest_len {
-                    let op = this.read_immediate(&this.project_index(&op, i)?)?;
-                    let dest = this.project_index(&dest, i)?;
+                    let op = this.read_immediate(&this.project_simple_index(&op, i)?)?;
+                    let dest = this.project_simple_index(&dest, i)?;
 
                     let val = match (op.layout.ty.kind(), dest.layout.ty.kind()) {
                         // Ptr/Int casts

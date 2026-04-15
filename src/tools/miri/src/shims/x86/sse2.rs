@@ -211,8 +211,8 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
                 assert_eq!(left_len, right_len);
 
-                let left = this.read_scalar(&this.project_index(&left, 0)?)?.to_f64()?;
-                let right = this.read_scalar(&this.project_index(&right, 0)?)?.to_f64()?;
+                let left = this.read_scalar(&this.project_simple_index(&left, 0)?)?.to_f64()?;
+                let right = this.read_scalar(&this.project_simple_index(&right, 0)?)?.to_f64()?;
                 // The difference between the com* and ucom* variants is signaling
                 // of exceptions when either argument is a quiet NaN. We do not
                 // support accessing the SSE status register from miri (or from Rust,
@@ -235,7 +235,7 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 let [op] = this.check_shim_sig_lenient(abi, CanonAbi::C, link_name, args)?;
                 let (op, _) = this.project_to_simd(op)?;
 
-                let op = this.read_immediate(&this.project_index(&op, 0)?)?;
+                let op = this.read_immediate(&this.project_simple_index(&op, 0)?)?;
 
                 let rnd = match unprefixed_name {
                     // "current SSE rounding mode", assume nearest
@@ -268,14 +268,14 @@ pub(super) trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
                 assert_eq!(dest_len, left_len);
 
                 // Convert first element of `right`
-                let right0 = this.read_immediate(&this.project_index(&right, 0)?)?;
-                let dest0 = this.project_index(&dest, 0)?;
+                let right0 = this.read_immediate(&this.project_simple_index(&right, 0)?)?;
+                let dest0 = this.project_simple_index(&dest, 0)?;
                 let res0 = this.float_to_float_or_int(&right0, dest0.layout)?;
                 this.write_immediate(*res0, &dest0)?;
 
                 // Copy remaining from `left`
                 for i in 1..dest_len {
-                    this.copy_op(&this.project_index(&left, i)?, &this.project_index(&dest, i)?)?;
+                    this.copy_op(&this.project_simple_index(&left, i)?, &this.project_simple_index(&dest, i)?)?;
                 }
             }
             // Used to implement the _mm_madd_epi16 function.

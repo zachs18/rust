@@ -17,6 +17,9 @@ pub trait ValueVisitor<'tcx, M: Machine<'tcx>>: Sized {
     /// The visitor must have an `InterpCx` in it.
     fn ecx(&self) -> &InterpCx<'tcx, M>;
 
+    /// The visitor must have an `InterpCx` in it.
+    fn ecx_mut(&mut self) -> &mut InterpCx<'tcx, M>;
+
     /// `read_discriminant` can be hooked for better error messages.
     #[inline(always)]
     fn read_discriminant(&mut self, v: &Self::V) -> InterpResult<'tcx, VariantIdx> {
@@ -109,13 +112,14 @@ pub trait ValueVisitor<'tcx, M: Machine<'tcx>>: Sized {
                 // `Box` has two fields: the pointer we care about, and the allocator.
                 assert_eq!(v.layout().fields.count(), 2, "`Box` must have exactly 2 fields");
                 let [unique_ptr, alloc] =
-                    self.ecx().project_fields(v, [FieldIdx::ZERO, FieldIdx::ONE])?;
+                    self.ecx().project_simple_fields(v, [FieldIdx::ZERO, FieldIdx::ONE])?;
 
                 // Unfortunately there is some type junk in the way here: `unique_ptr` is a `Unique`...
                 // (which means another 2 fields, the second of which is a `PhantomData`)
                 assert_eq!(unique_ptr.layout().fields.count(), 2);
-                let [nonnull_ptr, phantom] =
-                    self.ecx().project_fields(&unique_ptr, [FieldIdx::ZERO, FieldIdx::ONE])?;
+                let [nonnull_ptr, phantom] = self
+                    .ecx()
+                    .project_simple_fields(&unique_ptr, [FieldIdx::ZERO, FieldIdx::ONE])?;
                 assert!(
                     phantom.layout().ty.ty_adt_def().is_some_and(|adt| adt.is_phantom_data()),
                     "2nd field of `Unique` should be PhantomData but is {:?}",
@@ -124,7 +128,7 @@ pub trait ValueVisitor<'tcx, M: Machine<'tcx>>: Sized {
 
                 // ... that contains a `NonNull`... (gladly, only a single field here)
                 assert_eq!(nonnull_ptr.layout().fields.count(), 1);
-                let raw_ptr = self.ecx().project_field(&nonnull_ptr, FieldIdx::ZERO)?; // the actual raw ptr
+                let raw_ptr = self.ecx().project_simple_field(&nonnull_ptr, FieldIdx::ZERO)?; // the actual raw ptr
 
                 // ... whose only field finally is a raw ptr we can dereference.
                 self.visit_box(ty, &raw_ptr)?;
@@ -157,7 +161,7 @@ pub trait ValueVisitor<'tcx, M: Machine<'tcx>>: Sized {
             }
             FieldsShape::Arbitrary { in_memory_order, .. } => {
                 for idx in in_memory_order.iter().copied() {
-                    let field = self.ecx().project_field(v, idx)?;
+                    let field = self.ecx().project_simple_field(v, idx)?;
                     self.visit_field(v, idx.as_usize(), &field)?;
                 }
             }
