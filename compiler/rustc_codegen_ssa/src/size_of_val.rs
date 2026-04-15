@@ -2,7 +2,7 @@
 
 use std::debug_assert_matches;
 
-use rustc_abi::{Align, FieldIdx, FieldsShape, WrappingRange};
+use rustc_abi::{Align, FieldIdx, FieldsShape, VariantIdx, WrappingRange};
 use rustc_hir::LangItem;
 use rustc_middle::bug;
 use rustc_middle::ty::print::{with_no_trimmed_paths, with_no_visible_paths};
@@ -20,10 +20,12 @@ use crate::{common, meth};
 #[derive(Debug)]
 enum CalculationResult<V> {
     /// The computation was unchecked, or the result is statically known to be valid.
+    /// If only the size or alignment was requested, the other value may be invalid.
     Unchecked { size: V, align: V },
     /// The result is statically known to be invalid.
     Invalid,
     /// The computation was checked, and the result is not statically known to be valid.
+    /// If only the size or alignment was requested, the other value may be invalid.
     Checked { valid: V, size: V, align: V },
 }
 
@@ -86,6 +88,10 @@ pub fn checked_field_offset_for_dst<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 pub enum LayoutComputeGoal {
     /// We are computing the overall size and alignment of the value.
     OverallLayout,
+    /// We are computing the overall size of the value.
+    OverallSize,
+    /// We are computing the overall alignment of the value.
+    OverallAlignment,
     /// We are computing the offset and effective alignment of a field.
     FieldOffset(FieldIdx),
 }
@@ -102,7 +108,12 @@ fn layout_for_arraylike_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         CalculationResult::Unchecked { size, align } => (None, size, align),
         CalculationResult::Checked { valid, size, align } => (Some(valid), size, align),
     };
-    let LayoutComputeGoal::OverallLayout = goal else { todo!() };
+    if matches!(goal, LayoutComputeGoal::FieldOffset(_)) {
+        todo!();
+    } else if matches!(goal, LayoutComputeGoal::OverallAlignment) {
+        // The alignment of an array or slice is the alignment of the element
+        return elem_layout;
+    }
 
     let try_to_const =
         |val: Bx::Value| -> Result<u64, Bx::Value> { bx.const_to_opt_uint(val).ok_or(val) };
@@ -202,7 +213,13 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         "layout_of_dst_impl(ty={}, info={:?}, checked={}, goal={:?}): layout: {:?}",
         t, info, checked, goal, layout
     );
-    if matches!(goal, LayoutComputeGoal::OverallLayout) && layout.is_sized() {
+    if matches!(goal, LayoutComputeGoal::OverallLayout | LayoutComputeGoal::OverallSize)
+        && layout.is_sized()
+    {
+        let size = bx.const_usize(layout.size.bytes());
+        let align = bx.const_usize(layout.align.bytes());
+        return CalculationResult::Unchecked { size, align };
+    } else if matches!(goal, LayoutComputeGoal::OverallAlignment) && layout.align_is_exact {
         let size = bx.const_usize(layout.size.bytes());
         let align = bx.const_usize(layout.align.bytes());
         return CalculationResult::Unchecked { size, align };
@@ -228,7 +245,8 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let add = |bx: &mut Bx, valid: &mut Option<_>, lhs, rhs| {
         // Because we know that valid sizes are `<= isize::MAX`, and `isize::MAX as usize * 2 <= usize::MAX`,
         // we can do the addition and check overflow afterwards.
-        // Note that we still can't use `unchecked_add` unconditionally.
+        // Note that we still can't use `unchecked_add` unconditionally, since this could be after an overflow
+        // in a checked computation.
         let sum = bx.add(lhs, rhs);
         if checked {
             let isize_max = bx
@@ -376,6 +394,180 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             );
 
             CalculationResult::Invalid
+        }
+        ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
+            let tcx = bx.tcx();
+            // An `unsized type`, possibly with custom `MetaSized` and/or `MetaAligned` impls.
+
+            // FIXME: make the methods lang items
+            let meta_sized = tcx.require_lang_item(LangItem::MetaSized, DUMMY_SP);
+            let meta_aligned = tcx.require_lang_item(LangItem::MetaAligned, DUMMY_SP);
+            let alignment_struct_ty = tcx.ty_alignment_struct(DUMMY_SP);
+            let size_and_align_tup = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
+            let (trait_def_id, method_to_call, method_ret_ty) = match (goal, checked) {
+                (LayoutComputeGoal::FieldOffset(_), _) => bug!("`unsized type`s have no fields"),
+                (LayoutComputeGoal::OverallLayout, true) => {
+                    (meta_sized, "checked_layout_for_meta", Ty::new_option(tcx, size_and_align_tup))
+                }
+                (LayoutComputeGoal::OverallLayout, false) => {
+                    (meta_sized, "unchecked_layout_for_meta", size_and_align_tup)
+                }
+                (LayoutComputeGoal::OverallSize, true) => {
+                    (meta_sized, "checked_size_for_meta", Ty::new_option(tcx, tcx.types.usize))
+                }
+                (LayoutComputeGoal::OverallSize, false) => {
+                    (meta_sized, "unchecked_size_for_meta", tcx.types.usize)
+                }
+                (LayoutComputeGoal::OverallAlignment, true) => (
+                    meta_aligned,
+                    "checked_align_for_meta",
+                    Ty::new_option(tcx, alignment_struct_ty),
+                ),
+                (LayoutComputeGoal::OverallAlignment, false) => {
+                    (meta_aligned, "unchecked_align_for_meta", alignment_struct_ty)
+                }
+            };
+            let method_ret_ty = bx.layout_of(method_ret_ty);
+
+            let method_def_id = tcx
+                .associated_items(trait_def_id)
+                .filter_by_name_unhygienic(rustc_span::Symbol::intern(method_to_call))
+                .next()
+                .unwrap()
+                .def_id;
+            // FIXME: what does `try_resolve` do if the trait isn't impleemnted?
+            let instance = ty::Instance::try_resolve(
+                tcx,
+                bx.typing_env(),
+                method_def_id,
+                tcx.mk_args(&[t.into()]),
+            )
+            .unwrap();
+
+            let Some(instance) = instance else {
+                // The `unsized type` does not implement the relevant trait. We cannot compute the layout, so panic.
+                let msg_str = with_no_visible_paths!({
+                    with_no_trimmed_paths!({
+                        format!(
+                            "attempted to compute the size or alignment of unsized type `{t}` that does not implement `MetaSized`"
+                        )
+                    })
+                });
+                let msg = bx.const_str(&msg_str);
+
+                // Obtain the panic entry point.
+                let (fn_abi, llfn, _instance) =
+                    common::build_langcall(bx, DUMMY_SP, LangItem::PanicNounwind);
+
+                // Generate the call. Cannot use `do_call` since we don't have a MIR terminator so we
+                // can't create a `TerminationCodegenHelper`. (But we are in good company, this code is
+                // duplicated plenty of times.)
+                let fn_ty = bx.fn_decl_backend_type(fn_abi);
+
+                bx.call(
+                    fn_ty,
+                    /* fn_attrs */ None,
+                    Some(fn_abi),
+                    llfn,
+                    &[msg.0, msg.1],
+                    None,
+                    None,
+                );
+
+                return CalculationResult::Invalid;
+            };
+
+            let fx = fx.expect("FunctionCx is required to compute layout of `unsized type`");
+
+            let fn_abi = bx.fn_abi_of_instance(instance, ty::List::empty());
+            let llfn = bx.get_fn_addr(instance);
+
+            // Generate the call. Cannot use `do_call` since we don't have a MIR terminator so we
+            // can't create a `TerminationCodegenHelper`. (But we are in good company, this code is
+            // duplicated plenty of times.)
+            let fn_ty = bx.fn_decl_backend_type(fn_abi);
+
+            let mut llargs = Vec::with_capacity(3);
+
+            let ret_place = if fn_abi.ret.is_indirect() {
+                let ret_place = PlaceRef::alloca(bx, method_ret_ty);
+                llargs.push(ret_place.val.llval);
+                Some(ret_place)
+            } else {
+                None
+            };
+
+            if let Some(meta) = info.0 {
+                match meta.val {
+                    crate::mir::operand::OperandValue::Ref(place_value) => {
+                        llargs.push(place_value.llval)
+                    }
+                    crate::mir::operand::OperandValue::Immediate(meta) => llargs.push(meta),
+                    crate::mir::operand::OperandValue::Pair(a, b) => llargs.extend([a, b]),
+                    crate::mir::operand::OperandValue::ZeroSized => {}
+                }
+            }
+
+            let llret =
+                bx.call(fn_ty, /* fn_attrs */ None, Some(fn_abi), llfn, &llargs, None, None);
+
+            let ret = if fn_abi.ret.is_indirect() {
+                ret_place.unwrap()
+            } else {
+                let ret_op = OperandRef::from_immediate_or_packed_pair(bx, llret, method_ret_ty);
+                let ret_place = PlaceRef::alloca(bx, method_ret_ty);
+                ret_op.store_with_annotation(bx, ret_place);
+                ret_place
+            };
+
+            if checked {
+                // 0 -> None -> false
+                // 1 -> Some -> true
+                let llvalid = bx.load_operand(ret).codegen_get_discr(fx, bx, tcx.types.bool);
+                let ret_some_field =
+                    ret.project_downcast(bx, VariantIdx::from_usize(1)).project_field(None, bx, 0);
+
+                let (llsize, llalign) = match goal {
+                    LayoutComputeGoal::OverallLayout => {
+                        let llsize = ret_some_field.project_field(None, bx, 0);
+                        let llalign = ret_some_field.project_field(None, bx, 1);
+                        let llsize = bx.load_operand(llsize).immediate();
+                        let llalign = bx.load_operand(llalign).immediate();
+                        (
+                            bx.select(llvalid, llsize, bx.const_usize(0)),
+                            bx.select(llvalid, llalign, bx.const_usize(1)),
+                        )
+                    }
+                    LayoutComputeGoal::OverallSize => {
+                        let llsize = bx.load_operand(ret_some_field).immediate();
+                        (bx.select(llvalid, llsize, bx.const_usize(0)), bx.const_usize(1))
+                    }
+                    LayoutComputeGoal::OverallAlignment => {
+                        let llalign = bx.load_operand(ret_some_field).immediate();
+                        (bx.const_usize(0), bx.select(llvalid, llalign, bx.const_usize(1)))
+                    }
+                    LayoutComputeGoal::FieldOffset(_) => unreachable!(),
+                };
+
+                CalculationResult::Checked { valid: llvalid, size: llsize, align: llalign }
+            } else {
+                let (llsize, llalign) = match goal {
+                    LayoutComputeGoal::OverallLayout => {
+                        let llsize = ret.project_field(None, bx, 0);
+                        let llalign = ret.project_field(None, bx, 1);
+                        (bx.load_operand(llsize).immediate(), bx.load_operand(llalign).immediate())
+                    }
+                    LayoutComputeGoal::OverallSize => {
+                        (bx.load_operand(ret).immediate(), bx.const_usize(1))
+                    }
+                    LayoutComputeGoal::OverallAlignment => {
+                        (bx.const_usize(0), bx.load_operand(ret).immediate())
+                    }
+                    LayoutComputeGoal::FieldOffset(_) => unreachable!(),
+                };
+
+                CalculationResult::Unchecked { size: llsize, align: llalign }
+            }
         }
         ty::Adt(adt_def, ..) if adt_def.is_union() => {
             let FieldsShape::Union(field_count) = layout.fields else {

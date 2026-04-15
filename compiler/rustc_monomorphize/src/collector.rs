@@ -227,12 +227,12 @@ use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::{
     self, GenericArgs, GenericParamDefKind, Instance, InstanceKind, Ty, TyCtxt, TypeFoldable,
-    TypeVisitable, TypeVisitableExt, TypeVisitor, VtblEntry,
+    TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypeVisitor, VtblEntry,
 };
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, span_bug};
 use rustc_session::config::{DebugInfo, EntryFnType};
-use rustc_span::{DUMMY_SP, Span, Spanned, dummy_spanned, respan};
+use rustc_span::{DUMMY_SP, Span, Spanned, Symbol, dummy_spanned, respan, sym};
 use tracing::{debug, instrument, trace};
 
 use crate::errors::{
@@ -974,6 +974,57 @@ fn visit_fn_use<'tcx>(
     }
 }
 
+fn visit_sizedness_intrinsic_use<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    _intrinsic: Symbol,
+    self_ty: Ty<'tcx>,
+    source: Span,
+    output: &mut MonoItems<'tcx>,
+) {
+    struct MonoSizednessMethodsVisitor<'tcx, 'a> {
+        tcx: TyCtxt<'tcx>,
+        output: &'a mut MonoItems<'tcx>,
+        items: &'a [DefId],
+        source: Span,
+    }
+    impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for MonoSizednessMethodsVisitor<'tcx, '_> {
+        type Result = ();
+
+        fn visit_ty(&mut self, t: Ty<'tcx>) -> Self::Result {
+            if let ty::Adt(def, ..) = t.kind()
+                && def.is_unsized_type()
+            {
+                for item in self.items {
+                    // let instance = ty::Instance::new_raw(*item, self.tcx.mk_args(&[t.into()]));
+                    let instance = ty::Instance::expect_resolve(
+                        self.tcx,
+                        ty::TypingEnv::fully_monomorphized(),
+                        *item,
+                        self.tcx.mk_args(&[t.into()]),
+                        self.source,
+                    );
+                    self.output.push(create_fn_mono_item(self.tcx, instance, self.source));
+                }
+            }
+            t.super_visit_with(self);
+        }
+    }
+
+    let meta_sized = tcx.require_lang_item(LangItem::MetaSized, source);
+    let meta_aligned = tcx.require_lang_item(LangItem::MetaAligned, source);
+    let meta_sized_items = tcx.associated_items(meta_sized).in_definition_order();
+    let meta_aligned_items = tcx.associated_items(meta_aligned).in_definition_order();
+
+    // for now, we require all of the methods
+    // FIXME: figure out how to only require the methods of the same checkedness,
+    // and only align for align, without getting linker errors.
+    let items: Vec<_> =
+        std::iter::chain(meta_aligned_items, meta_sized_items).map(|item| item.def_id).collect();
+
+    let mut visitor = MonoSizednessMethodsVisitor { tcx, output, items: &items, source };
+    self_ty.visit_with(&mut visitor);
+}
+
 fn visit_instance_use<'tcx>(
     tcx: TyCtxt<'tcx>,
     instance: ty::Instance<'tcx>,
@@ -1006,6 +1057,22 @@ fn visit_instance_use<'tcx>(
             if tcx.should_codegen_locally(instance) {
                 output.push(create_fn_mono_item(tcx, instance, source));
             }
+        } else if matches!(
+            intrinsic.name,
+            sym::checked_align_for_meta
+                | sym::unchecked_align_for_meta
+                | sym::checked_size_for_meta
+                | sym::unchecked_size_for_meta
+                | sym::size_of_val
+                | sym::align_of_val
+        ) {
+            visit_sizedness_intrinsic_use(
+                tcx,
+                intrinsic.name,
+                instance.args.type_at(0),
+                source,
+                output,
+            );
         }
     }
 
