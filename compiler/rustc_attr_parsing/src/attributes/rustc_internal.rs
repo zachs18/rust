@@ -687,6 +687,7 @@ impl<S: Stage> NoArgsAttributeParser<S> for RustcNounwindParser {
         Allow(Target::Method(MethodKind::Inherent)),
         Allow(Target::Method(MethodKind::TraitImpl)),
         Allow(Target::Method(MethodKind::Trait { body: true })),
+        Allow(Target::Method(MethodKind::Trait { body: false })),
     ]);
     const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::RustcNounwind;
 }
