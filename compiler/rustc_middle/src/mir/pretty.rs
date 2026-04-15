@@ -217,56 +217,67 @@ impl<'dis, 'de, 'tcx> MirDumper<'dis, 'de, 'tcx> {
 
         let crate_name = tcx.crate_name(source.def_id().krate);
         let item_name = tcx.def_path(source.def_id()).to_filename_friendly_no_crate();
-        // All drop shims have the same DefId, so we have to add the type
-        // to get unique file names.
+        // Most shims share same DefIds with other shims of the same kind,
+        // so we have to add the type to get unique file names.
+        // Unfortunately, pretty-printed types are not very filename-friendly.
+        // We do some filtering.
+        let append_filtered_ty_disambiguator = |s: &mut String, ty: Ty<'tcx>| {
+            s.extend(ty.to_string().chars().filter_map(|c| match c {
+                ' ' => None,
+                ':' | '<' | '>' => Some('_'),
+                c => Some(c),
+            }));
+        };
+        let filtered_ty_disambiguator = |ty| {
+            let mut s = ".".to_owned();
+            append_filtered_ty_disambiguator(&mut s, ty);
+            s
+        };
         let shim_disambiguator = match source.instance {
-            ty::InstanceKind::DropGlue(_, Some(ty)) => {
-                // Unfortunately, pretty-printed types are not very filename-friendly.
-                // We do some filtering.
-                let mut s = ".".to_owned();
-                s.extend(ty.to_string().chars().filter_map(|c| match c {
-                    ' ' => None,
-                    ':' | '<' | '>' => Some('_'),
-                    c => Some(c),
-                }));
-                s
-            }
-            ty::InstanceKind::AsyncDropGlueCtorShim(_, ty) => {
-                let mut s = ".".to_owned();
-                s.extend(ty.to_string().chars().filter_map(|c| match c {
-                    ' ' => None,
-                    ':' | '<' | '>' => Some('_'),
-                    c => Some(c),
-                }));
-                s
-            }
+            ty::InstanceKind::DropGlue(_, Some(ty)) => filtered_ty_disambiguator(ty),
+            ty::InstanceKind::AsyncDropGlueCtorShim(_, ty) => filtered_ty_disambiguator(ty),
             ty::InstanceKind::AsyncDropGlue(_, ty) => {
                 let ty::Coroutine(_, args) = ty.kind() else {
                     bug!();
                 };
                 let ty = args.first().unwrap().expect_ty();
-                let mut s = ".".to_owned();
-                s.extend(ty.to_string().chars().filter_map(|c| match c {
-                    ' ' => None,
-                    ':' | '<' | '>' => Some('_'),
-                    c => Some(c),
-                }));
-                s
+                filtered_ty_disambiguator(ty)
             }
             ty::InstanceKind::FutureDropPollShim(_, proxy_cor, impl_cor) => {
                 let mut s = ".".to_owned();
-                s.extend(proxy_cor.to_string().chars().filter_map(|c| match c {
-                    ' ' => None,
-                    ':' | '<' | '>' => Some('_'),
-                    c => Some(c),
-                }));
-                s.push('.');
-                s.extend(impl_cor.to_string().chars().filter_map(|c| match c {
-                    ' ' => None,
-                    ':' | '<' | '>' => Some('_'),
-                    c => Some(c),
-                }));
+                append_filtered_ty_disambiguator(&mut s, proxy_cor);
+                append_filtered_ty_disambiguator(&mut s, impl_cor);
                 s
+            }
+            ty::InstanceKind::CloneShim(_def_id, ty) => filtered_ty_disambiguator(ty),
+            ty::InstanceKind::FnPtrAddrShim(_def_id, ty) => filtered_ty_disambiguator(ty),
+            ty::InstanceKind::FnPtrShim(_def_id, ty) => filtered_ty_disambiguator(ty),
+            ty::InstanceKind::ReifyShim(_def_id, reify_reason) => match reify_reason {
+                None => ".reify-none".to_owned(),
+                Some(ty::ReifyReason::FnPtr) => ".reify-fnptr".to_owned(),
+                Some(ty::ReifyReason::Vtable) => ".reify-vtable".to_owned(),
+            },
+            ty::InstanceKind::PtrMetadataCmpShim(_def_id, pointee_ty) => {
+                filtered_ty_disambiguator(pointee_ty)
+            }
+            ty::InstanceKind::PtrMetadataHashShim(_def_id, pointee_ty, hasher_ty) => {
+                let mut s = ".".to_owned();
+                append_filtered_ty_disambiguator(&mut s, pointee_ty);
+                append_filtered_ty_disambiguator(&mut s, hasher_ty);
+                s
+            }
+            ty::InstanceKind::PtrMetadataDebugShim(_def_id, pointee_ty) => {
+                filtered_ty_disambiguator(pointee_ty)
+            }
+
+            ty::InstanceKind::LayoutForMetaShim {
+                method_def: _,
+                self_ty,
+                checked: _,
+                layout_part: _,
+            } => {
+                // `checked` and `layout_part` are uniquely determined by the item name.
+                filtered_ty_disambiguator(self_ty)
             }
             _ => String::new(),
         };
