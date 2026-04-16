@@ -48,21 +48,15 @@ struct CollectedSizednessBounds {
     aligned: CollectedBound,
     // Collected `MetaSized` bounds
     meta_sized: CollectedBound,
-    // Collected `MetaAligned` bounds
-    meta_aligned: CollectedBound,
     // Collected `PointeeSized` bounds
     pointee_sized: CollectedBound,
 }
 
 impl CollectedSizednessBounds {
     /// Returns `true` if any of `Trait`, `?Trait` or `!Trait` were encountered for `Sized`,
-    /// `Aligned`, `MetaSized`, `MetaAligned` or `PointeeSized`.
+    /// `Aligned`, `MetaSized`, or `PointeeSized`.
     fn any(&self) -> bool {
-        self.sized.any()
-            || self.aligned.any()
-            || self.meta_sized.any()
-            || self.meta_aligned.any()
-            || self.pointee_sized.any()
+        self.sized.any() || self.aligned.any() || self.meta_sized.any() || self.pointee_sized.any()
     }
 }
 
@@ -146,18 +140,10 @@ fn collect_sizedness_bounds<'tcx>(
     let meta_sized_did = tcx.require_lang_item(hir::LangItem::MetaSized, span);
     let meta_sized = collect_bounds(hir_bounds, context, meta_sized_did);
 
-    // Missing `MetaAligned` lang item is not fatal
-    let meta_aligned = tcx
-        .lang_items()
-        .get(hir::LangItem::MetaAligned)
-        .map_or_else(CollectedBound::default, |aligned_did| {
-            collect_bounds(hir_bounds, context, aligned_did)
-        });
-
     let pointee_sized_did = tcx.require_lang_item(hir::LangItem::PointeeSized, span);
     let pointee_sized = collect_bounds(hir_bounds, context, pointee_sized_did);
 
-    CollectedSizednessBounds { sized, aligned, meta_sized, meta_aligned, pointee_sized }
+    CollectedSizednessBounds { sized, aligned, meta_sized, pointee_sized }
 }
 
 /// Add a trait bound for `did`.
@@ -236,7 +222,6 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
             && !collected.sized.positive
             && !collected.aligned.any()
             && !collected.meta_sized.any()
-            && !collected.meta_aligned.any()
             && !collected.pointee_sized.any()
         {
             // `?Sized` is equivalent to `MetaSized` (but only add the bound if there aren't any

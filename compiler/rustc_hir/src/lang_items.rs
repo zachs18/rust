@@ -155,7 +155,6 @@ language_item_table! {
     Sized,                   sym::sized,               sized_trait,                Target::Trait,          GenericRequirement::Exact(0);
     Aligned,                 sym::aligned,             aligned_trait,              Target::Trait,          GenericRequirement::Exact(0);
     MetaSized,               sym::meta_sized,          meta_sized_trait,           Target::Trait,          GenericRequirement::Exact(0);
-    MetaAligned,             sym::meta_aligned,        meta_aligned_trait,         Target::Trait,          GenericRequirement::Exact(0);
     PointeeSized,            sym::pointee_sized,       pointee_sized_trait,        Target::Trait,          GenericRequirement::Exact(0);
     Unsize,                  sym::unsize,              unsize_trait,               Target::Trait,          GenericRequirement::Minimum(1);
     AlignOf,                 sym::mem_align_const,     align_const,                Target::AssocConst,     GenericRequirement::Exact(0);

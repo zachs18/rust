@@ -284,7 +284,7 @@ pub(crate) struct FieldAlreadyDeclaredNestedHelp {
 }
 
 #[derive(Diagnostic)]
-#[diag("the traits `MetaSized`, `MetaAligned`, and `Thin` cannot be implemented for this type")]
+#[diag("the traits `MetaSized` and `Thin` cannot be implemented for this type")]
 pub(crate) struct SizednessImplOnNonUnsizedType {
     #[primary_span]
     #[label("type is not an `unsized type`")]

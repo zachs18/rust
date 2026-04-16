@@ -4919,7 +4919,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             // so conservatively assume we might need to know the alignment
                             if meta_expr.is_some() {
                                 // `offset_for_meta!` only requires we can dynamically compute the alignment
-                                self.require_type_has_dynamic_alignment(
+                                self.require_type_has_dynamic_size(
                                     field_ty,
                                     expr.span,
                                     ObligationCauseCode::OffsetOfField,
@@ -4976,7 +4976,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                 // This is the field we are looking for; we only need
                                 // its alignment, not its size.
                                 if meta_expr.is_some() {
-                                    self.require_type_has_dynamic_alignment(
+                                    self.require_type_has_dynamic_size(
                                         field_ty,
                                         expr.span,
                                         ObligationCauseCode::OffsetOfField,
@@ -5107,7 +5107,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             let field_ty = tys[index];
 
                             if meta_expr.is_some() {
-                                self.require_type_has_dynamic_alignment(
+                                self.require_type_has_dynamic_size(
                                     field_ty,
                                     expr.span,
                                     ObligationCauseCode::OffsetOfField,

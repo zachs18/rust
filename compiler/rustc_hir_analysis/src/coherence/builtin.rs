@@ -42,7 +42,6 @@ pub(super) fn check_trait<'tcx>(
     checker.check(lang_items.copy_trait(), visit_implementation_of_copy)?;
     checker.check(lang_items.thin_pointee_trait(), visit_implementation_of_sizedness)?;
     checker.check(lang_items.meta_sized_trait(), visit_implementation_of_sizedness)?;
-    checker.check(lang_items.meta_aligned_trait(), visit_implementation_of_sizedness)?;
     checker.check(lang_items.unpin_trait(), visit_implementation_of_unpin)?;
     checker.check(lang_items.const_param_ty_trait(), |checker| {
         visit_implementation_of_const_param_ty(checker)

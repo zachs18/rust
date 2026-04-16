@@ -397,11 +397,10 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         }
         ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
             let tcx = bx.tcx();
-            // An `unsized type`, possibly with custom `MetaSized` and/or `MetaAligned` impls.
+            // An `unsized type`, possibly with a custom `MetaSized` impl.
 
             // FIXME: make the methods lang items
             let meta_sized = tcx.require_lang_item(LangItem::MetaSized, DUMMY_SP);
-            let meta_aligned = tcx.require_lang_item(LangItem::MetaAligned, DUMMY_SP);
             let alignment_struct_ty = tcx.ty_alignment_struct(DUMMY_SP);
             let size_and_align_tup = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
             let (trait_def_id, method_to_call, method_ret_ty) = match (goal, checked) {
@@ -418,13 +417,11 @@ fn layout_of_dst_impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 (LayoutComputeGoal::OverallSize, false) => {
                     (meta_sized, "unchecked_size_for_meta", tcx.types.usize)
                 }
-                (LayoutComputeGoal::OverallAlignment, true) => (
-                    meta_aligned,
-                    "checked_align_for_meta",
-                    Ty::new_option(tcx, alignment_struct_ty),
-                ),
+                (LayoutComputeGoal::OverallAlignment, true) => {
+                    (meta_sized, "checked_align_for_meta", Ty::new_option(tcx, alignment_struct_ty))
+                }
                 (LayoutComputeGoal::OverallAlignment, false) => {
-                    (meta_aligned, "unchecked_align_for_meta", alignment_struct_ty)
+                    (meta_sized, "unchecked_align_for_meta", alignment_struct_ty)
                 }
             };
             let method_ret_ty = bx.layout_of(method_ret_ty);

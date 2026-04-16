@@ -52,17 +52,15 @@ fn sizedness_constraints_for_ty<'tcx>(
         ty::Str => match sizedness {
             // Never `Sized` or `Thin`
             SizedTraitKind::Sized | SizedTraitKind::Thin => Some(vec![ty]),
-            // Always `MetaSized`, `Aligned`, and `MetaAligned`
-            SizedTraitKind::Aligned | SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
-                None
-            }
+            // Always `MetaSized` and `Aligned`
+            SizedTraitKind::Aligned | SizedTraitKind::MetaSized => None,
         },
 
         ty::Slice(elem) => match sizedness {
             // Never `Sized` or `Thin`
             SizedTraitKind::Sized | SizedTraitKind::Thin => Some(vec![ty]),
-            // Always `MetaSized` and `MetaAligned`
-            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => None,
+            // Always `MetaSized`
+            SizedTraitKind::MetaSized => None,
             // Conditionally `Aligned`
             SizedTraitKind::Aligned => Some(vec![*elem]),
         },
@@ -72,8 +70,8 @@ fn sizedness_constraints_for_ty<'tcx>(
             SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {
                 Some(vec![ty])
             }
-            // Always `MetaSized` and `MetaAligned`
-            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => None,
+            // Always `MetaSized`
+            SizedTraitKind::MetaSized => None,
         },
 
         // Maybe `Sized`, `MetaSized`, or `Thin`
@@ -87,11 +85,10 @@ fn sizedness_constraints_for_ty<'tcx>(
         }
 
         ty::Foreign(..) => match sizedness {
-            // Never `Sized`, `Aligned`, `MetaSized`, or `MetaAligned`
-            SizedTraitKind::Sized
-            | SizedTraitKind::Aligned
-            | SizedTraitKind::MetaSized
-            | SizedTraitKind::MetaAligned => Some(vec![ty]),
+            // Never `Sized`, `Aligned`, or `MetaSized`
+            SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::MetaSized => {
+                Some(vec![ty])
+            }
             // Always `Thin`
             SizedTraitKind::Thin => None,
         },

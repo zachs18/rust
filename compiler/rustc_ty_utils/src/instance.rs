@@ -505,9 +505,7 @@ fn resolve_associated_item<'tcx>(
                 || tcx.is_lang_item(trait_ref.def_id, LangItem::Init)
             {
                 bug!("InitOnce, InitMut, Init should have no associated items")
-            } else if tcx.is_lang_item(trait_ref.def_id, LangItem::MetaSized)
-                || tcx.is_lang_item(trait_ref.def_id, LangItem::MetaAligned)
-            {
+            } else if tcx.is_lang_item(trait_ref.def_id, LangItem::MetaSized) {
                 let name = tcx.item_name(trait_item_id);
                 let (checked, layout_part) = match name.as_str() {
                     "unchecked_align_for_meta" => (false, ty::LayoutPart::Alignment),
@@ -517,7 +515,7 @@ fn resolve_associated_item<'tcx>(
                     "unchecked_layout_for_meta" => (false, ty::LayoutPart::Layout),
                     "checked_layout_for_meta" => (true, ty::LayoutPart::Layout),
                     name => {
-                        bug!("{name:?} is not a known associated fn in `MetaSized`/`MetaAligned`")
+                        bug!("{name:?} is not a known associated fn in `MetaSized`")
                     }
                 };
                 let args = tcx.erase_and_anonymize_regions(rcvr_args);

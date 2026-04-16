@@ -1011,15 +1011,12 @@ fn visit_sizedness_intrinsic_use<'tcx>(
     }
 
     let meta_sized = tcx.require_lang_item(LangItem::MetaSized, source);
-    let meta_aligned = tcx.require_lang_item(LangItem::MetaAligned, source);
     let meta_sized_items = tcx.associated_items(meta_sized).in_definition_order();
-    let meta_aligned_items = tcx.associated_items(meta_aligned).in_definition_order();
 
     // for now, we require all of the methods
     // FIXME: figure out how to only require the methods of the same checkedness,
     // and only align for align, without getting linker errors.
-    let items: Vec<_> =
-        std::iter::chain(meta_aligned_items, meta_sized_items).map(|item| item.def_id).collect();
+    let items: Vec<_> = meta_sized_items.map(|item| item.def_id).collect();
 
     let mut visitor = MonoSizednessMethodsVisitor { tcx, output, items: &items, source };
     self_ty.visit_with(&mut visitor);
