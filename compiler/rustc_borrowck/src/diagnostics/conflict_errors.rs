@@ -703,8 +703,8 @@ impl<'infcx, 'tcx> MirBorrowckCtxt<'_, 'infcx, 'tcx> {
 
         // First, is there at least one method on one of `param`'s non-sizedness trait bounds?
         // This keeps us from suggesting borrowing the argument to e.g. `mem::drop` whose only
-        // bound is `Sized`. (We need to special-case sizedness traits due to `MetaSized` and
-        // `MetaAligned`'s methods, since `Sized: MetaSized`.)
+        // bound is `Sized`. (We need to special-case sizedness traits due to `MetaSized`'s
+        // methods, since `Sized: MetaSized`.)
         if !clauses.instantiate_identity(tcx).predicates.iter().any(|clause| {
             clause.as_trait_clause().is_some_and(|tc| {
                 tc.self_ty().skip_binder().is_param(param.index)

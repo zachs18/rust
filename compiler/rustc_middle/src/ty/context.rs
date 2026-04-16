@@ -1052,7 +1052,6 @@ impl<'tcx> TyCtxt<'tcx> {
                 LangItem::Sized
                     | LangItem::Aligned
                     | LangItem::MetaSized
-                    | LangItem::MetaAligned
                     | LangItem::ThinPointeeTrait
             )
         )

@@ -476,8 +476,6 @@ pub enum SizedTraitKind {
     Aligned,
     /// `MetaSized` trait
     MetaSized,
-    /// `MetaAligned` trait
-    MetaAligned,
     /// `Thin` trait for thin pointees.
     Thin,
 }
@@ -489,7 +487,6 @@ impl SizedTraitKind {
             SizedTraitKind::Sized => SolverTraitLangItem::Sized,
             SizedTraitKind::Aligned => SolverTraitLangItem::Aligned,
             SizedTraitKind::MetaSized => SolverTraitLangItem::MetaSized,
-            SizedTraitKind::MetaAligned => SolverTraitLangItem::MetaAligned,
             SizedTraitKind::Thin => SolverTraitLangItem::ThinPointeeTrait,
         })
     }

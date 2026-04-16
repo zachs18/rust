@@ -150,15 +150,10 @@ where
             // `PointeeSized` bounds are syntactic sugar for a lack of bounds so don't need this.
             let goal_is = |lang_item| cx.is_trait_lang_item(goal_def_id, lang_item);
             let clause_is = |lang_item| cx.is_trait_lang_item(clause_def_id, lang_item);
-            (clause_is(SolverTraitLangItem::Sized)
+            clause_is(SolverTraitLangItem::Sized)
                 && (goal_is(SolverTraitLangItem::Aligned)
                     || goal_is(SolverTraitLangItem::MetaSized)
-                    || goal_is(SolverTraitLangItem::MetaAligned)
-                    || goal_is(SolverTraitLangItem::ThinPointeeTrait)))
-                || (clause_is(SolverTraitLangItem::Aligned)
-                    && goal_is(SolverTraitLangItem::MetaAligned))
-                || (clause_is(SolverTraitLangItem::MetaSized)
-                    && goal_is(SolverTraitLangItem::MetaAligned))
+                    || goal_is(SolverTraitLangItem::ThinPointeeTrait))
         }
 
         if let Some(trait_clause) = assumption.as_trait_clause()
@@ -196,15 +191,10 @@ where
         // are syntactic sugar for a lack of bounds so don't need this.
         // We don't need to check polarity, `fast_reject_assumption` already rejected non-`Positive`
         // polarity `Sized` assumptions as matching non-`Positive` `MetaSized`/`Thin` goals.
-        if (clause_is(SolverTraitLangItem::Sized)
+        if clause_is(SolverTraitLangItem::Sized)
             && (goal_is(SolverTraitLangItem::Aligned)
                 || goal_is(SolverTraitLangItem::MetaSized)
-                || goal_is(SolverTraitLangItem::MetaAligned)
-                || goal_is(SolverTraitLangItem::ThinPointeeTrait)))
-            || (clause_is(SolverTraitLangItem::Aligned)
-                && goal_is(SolverTraitLangItem::MetaAligned))
-            || (clause_is(SolverTraitLangItem::MetaSized)
-                && goal_is(SolverTraitLangItem::MetaAligned))
+                || goal_is(SolverTraitLangItem::ThinPointeeTrait))
         {
             let thin_or_meta_sized_clause =
                 trait_predicate_with_def_id(ecx.cx(), trait_clause, goal.predicate.def_id());

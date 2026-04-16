@@ -130,7 +130,7 @@ where
         // impl ** for &mut? T, [T; N], dyn* Trait, !, Coroutine, CoroutineWitness
         // impl ** for Closure, CoroutineClosure
         // impl ** for typeof(do init *)
-        // ** = Sized, Aligned, MetaSized, MetaAligned, Thin
+        // ** = Sized, Aligned, MetaSized, Thin
         ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
         | ty::Uint(_)
         | ty::Int(_)
@@ -160,37 +160,30 @@ where
         // impl MetaSized,Aligned for str
         ty::Str => match sizedness {
             SizedTraitKind::Sized | SizedTraitKind::Thin => Err(NoSolution),
-            SizedTraitKind::Aligned | SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
-                Ok(ty::Binder::dummy(vec![]))
-            }
+            SizedTraitKind::Aligned | SizedTraitKind::MetaSized => Ok(ty::Binder::dummy(vec![])),
         },
 
-        // impl MetaSized,MetaAligned for [T]
+        // impl MetaSized for [T]
         // impl Aligned for [T] where T: Aligned
         ty::Slice(elem) => match sizedness {
             SizedTraitKind::Sized | SizedTraitKind::Thin => Err(NoSolution),
             SizedTraitKind::Aligned => Ok(ty::Binder::dummy(vec![elem])),
-            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
-                Ok(ty::Binder::dummy(vec![]))
-            }
+            SizedTraitKind::MetaSized => Ok(ty::Binder::dummy(vec![])),
         },
 
-        // impl MetaSized,MetaAligned for dyn Trait
+        // impl MetaSized for dyn Trait
         ty::Dynamic(..) => match sizedness {
             SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::Thin => {
                 Err(NoSolution)
             }
-            SizedTraitKind::MetaSized | SizedTraitKind::MetaAligned => {
-                Ok(ty::Binder::dummy(vec![]))
-            }
+            SizedTraitKind::MetaSized => Ok(ty::Binder::dummy(vec![])),
         },
 
         // impl Thin for extern type
         ty::Foreign(..) => match sizedness {
-            SizedTraitKind::Sized
-            | SizedTraitKind::Aligned
-            | SizedTraitKind::MetaSized
-            | SizedTraitKind::MetaAligned => Err(NoSolution),
+            SizedTraitKind::Sized | SizedTraitKind::Aligned | SizedTraitKind::MetaSized => {
+                Err(NoSolution)
+            }
             SizedTraitKind::Thin => Ok(ty::Binder::dummy(vec![])),
         },
 
