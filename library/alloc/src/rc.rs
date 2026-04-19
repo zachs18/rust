@@ -1094,13 +1094,13 @@ impl<T: ?Sized, A: Allocator> Rc<T, A> {
     /// initialization of `T`, before the `Rc<T, A>` is created, such that you can
     /// clone and store it inside the `T`.
     ///
-    /// `new_cyclic_in` first allocates the managed allocation for the `Rc<T, A>`,
-    /// then calls your closure, giving it a `Weak<T, A>` to this allocation,
+    /// `build_cyclic_in` first allocates the managed allocation for the `Rc<T, A>`,
+    /// then calls your initializer, giving it a `Weak<T, A>` to this allocation,
     /// and only afterwards completes the construction of the `Rc<T, A>` by placing
     /// the `T` returned from your closure into the allocation.
     ///
-    /// Since the new `Rc<T, A>` is not fully-constructed until `Rc<T, A>::new_cyclic_in`
-    /// returns, calling [`upgrade`] on the weak reference inside your closure will
+    /// Since the new `Rc<T, A>` is not fully-constructed until `Rc<T, A>::build_cyclic_in`
+    /// returns, calling [`upgrade`] on the weak reference during initialization will
     /// fail and result in a `None` value.
     ///
     /// # Panics
@@ -1188,18 +1188,18 @@ impl<T: ?Sized> Rc<T> {
     /// initialization of `T`, before the `Rc<T>` is created, such that you can
     /// clone and store it inside the `T`.
     ///
-    /// `new_cyclic` first allocates the managed allocation for the `Rc<T>`,
-    /// then calls your closure, giving it a `Weak<T>` to this allocation,
+    /// `build_cyclic` first allocates the managed allocation for the `Rc<T>`,
+    /// then calls your initializer, giving it a `Weak<T>` to this allocation,
     /// and only afterwards completes the construction of the `Rc<T>` by placing
     /// the `T` returned from your closure into the allocation.
     ///
-    /// Since the new `Rc<T>` is not fully-constructed until `Rc<T>::new_cyclic`
-    /// returns, calling [`upgrade`] on the weak reference inside your closure will
+    /// Since the new `Rc<T>` is not fully-constructed until `Rc<T>::build_cyclic`
+    /// returns, calling [`upgrade`] on the weak reference during initialization will
     /// fail and result in a `None` value.
     ///
     /// # Panics
     ///
-    /// If `data_fn` panics, the panic is propagated to the caller, and the
+    /// If the initializer panics, the panic is propagated to the caller, and the
     /// temporary [`Weak<T>`] is dropped normally.
     ///
     /// # Examples
