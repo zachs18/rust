@@ -1195,6 +1195,8 @@ fn check_type_defn<'tcx>(
 
             // All metadata fields of `unsized type` must implement
             // `Debug + Copy + Send + Sync + Ord + Hash + Unpin + Freeze`.
+            // FIXME(ptr_metadata): should we allow `PhantomData<T>` fields regardless of traits?
+            // Users can work around it by using `PhantomData<fn() -> T>`
             if matches!(item.kind, ItemKind::UnsizedType(..)) {
                 for field in &variant.fields {
                     let field_id = field.did.expect_local();
@@ -2243,7 +2245,10 @@ fn report_bivariance<'tcx>(
     let param_name = param.name.ident();
 
     let help = match item.kind {
-        ItemKind::Enum(..) | ItemKind::Struct(..) | ItemKind::Union(..) => {
+        ItemKind::Enum(..)
+        | ItemKind::Struct(..)
+        | ItemKind::Union(..)
+        | ItemKind::UnsizedType(..) => {
             if let Some(def_id) = tcx.lang_items().phantom_data() {
                 errors::UnusedGenericParameterHelp::Adt {
                     param_name,
