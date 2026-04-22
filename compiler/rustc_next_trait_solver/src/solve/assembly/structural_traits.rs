@@ -91,11 +91,12 @@ where
             .instantiate(cx, args)
             .map_bound(|bound| bound.types.to_vec())),
 
-        ty::InitArray(..)
-        | ty::InitArrayRepeat(..)
-        | ty::InitSliceRepeat(..)
-        | ty::InitAdt(..)
-        | ty::InitTuple(..) => unimplemented!(),
+        // typeof(do init *) -- meets any bound that all component initializers meet
+        ty::InitAdt(info) => Ok(ty::Binder::dummy(info.component_tys().to_vec())),
+        ty::InitArray(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
+        ty::InitArrayRepeat(elem, _len) => Ok(ty::Binder::dummy(vec![elem])),
+        ty::InitSliceRepeat(elem) => Ok(ty::Binder::dummy(vec![elem])),
+        ty::InitTuple(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
 
         ty::UnsafeBinder(bound_ty) => Ok(bound_ty.map_bound(|ty| vec![ty])),
 
