@@ -1,0 +1,77 @@
+error[E0277]: `A` cannot be shared between threads safely
+  --> $DIR/unsized-type-not-sync-send.rs:20:19
+   |
+LL |     assert_sync::<A>();
+   |                   ^ `A` cannot be shared between threads safely
+   |
+help: the trait `Sync` is not implemented for `A`
+  --> $DIR/unsized-type-not-sync-send.rs:7:1
+   |
+LL | unsized type A {}
+   | ^^^^^^^^^^^^^^
+note: required by a bound in `assert_sync`
+  --> $DIR/unsized-type-not-sync-send.rs:16:34
+   |
+LL | fn assert_sync<T: PointeeSized + Sync>() {}
+   |                                  ^^^^ required by this bound in `assert_sync`
+
+error[E0277]: `A` cannot be sent between threads safely
+  --> $DIR/unsized-type-not-sync-send.rs:23:19
+   |
+LL |     assert_send::<A>();
+   |                   ^ `A` cannot be sent between threads safely
+   |
+help: the trait `Send` is not implemented for `A`
+  --> $DIR/unsized-type-not-sync-send.rs:7:1
+   |
+LL | unsized type A {}
+   | ^^^^^^^^^^^^^^
+note: required by a bound in `assert_send`
+  --> $DIR/unsized-type-not-sync-send.rs:17:34
+   |
+LL | fn assert_send<T: PointeeSized + Send>() {}
+   |                                  ^^^^ required by this bound in `assert_send`
+
+error[E0277]: `*const u32` cannot be shared between threads safely
+  --> $DIR/unsized-type-not-sync-send.rs:29:19
+   |
+LL |     assert_sync::<B<*const u32>>();
+   |                   ^^^^^^^^^^^^^ `*const u32` cannot be shared between threads safely
+   |
+   = help: the trait `Sync` is not implemented for `*const u32`
+note: required for `B<*const u32>` to implement `Sync`
+  --> $DIR/unsized-type-not-sync-send.rs:14:22
+   |
+LL | unsafe impl<T: Sync> Sync for B<T> {}
+   |                ----  ^^^^     ^^^^
+   |                |
+   |                unsatisfied trait bound introduced here
+note: required by a bound in `assert_sync`
+  --> $DIR/unsized-type-not-sync-send.rs:16:34
+   |
+LL | fn assert_sync<T: PointeeSized + Sync>() {}
+   |                                  ^^^^ required by this bound in `assert_sync`
+
+error[E0277]: `*const u32` cannot be sent between threads safely
+  --> $DIR/unsized-type-not-sync-send.rs:32:19
+   |
+LL |     assert_send::<B<*const u32>>();
+   |                   ^^^^^^^^^^^^^ `*const u32` cannot be sent between threads safely
+   |
+   = help: the trait `Send` is not implemented for `*const u32`
+note: required for `B<*const u32>` to implement `Send`
+  --> $DIR/unsized-type-not-sync-send.rs:13:22
+   |
+LL | unsafe impl<T: Send> Send for B<T> {}
+   |                ----  ^^^^     ^^^^
+   |                |
+   |                unsatisfied trait bound introduced here
+note: required by a bound in `assert_send`
+  --> $DIR/unsized-type-not-sync-send.rs:17:34
+   |
+LL | fn assert_send<T: PointeeSized + Send>() {}
+   |                                  ^^^^ required by this bound in `assert_send`
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

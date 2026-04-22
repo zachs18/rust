@@ -1532,6 +1532,10 @@ See:
 
 **FIXME**: Seems to also contain more generic tests that fit in `tests/ui/unsized/`.
 
+## `tests/ui/unsized-type/`: Custom `unsized type`s
+
+Tests for `unsized type`s with custom metadata and layout.
+
 ## `tests/ui/unstable-feature-bound`
 
 Tests for gating and diagnostics when unstable features are used.

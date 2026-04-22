@@ -1470,6 +1470,14 @@ where
             // Test: ui/traits/default_auto_traits/extern-types.rs
             ty::Foreign(..) if self.cx().is_default_trait(goal.predicate.def_id()) => check_impls(),
 
+            // Backward compatibility for default auto traits.
+            // Test: ui/traits/default_auto_traits/extern-types.rs
+            ty::Adt(def, ..)
+                if def.is_unsized_type() && self.cx().is_default_trait(goal.predicate.def_id()) =>
+            {
+                check_impls()
+            }
+
             // These types cannot be structurally decomposed into constituent
             // types, and therefore have no built-in auto impl.
             ty::Dynamic(..)
@@ -1480,6 +1488,7 @@ where
                 ..
             })
             | ty::Placeholder(..) => Some(Err(NoSolution)),
+            ty::Adt(def, ..) if def.is_unsized_type() => Some(Err(NoSolution)),
 
             ty::Infer(_) | ty::Bound(_, _) => panic!("unexpected type `{self_ty:?}`"),
 
