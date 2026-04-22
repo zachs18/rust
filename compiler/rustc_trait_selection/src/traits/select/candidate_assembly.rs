@@ -875,6 +875,18 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         check_impls()
                     }
                 }
+                ty::Adt(def, ..) if def.is_unsized_type() => {
+                    // Since the contents of custom unsized types is unknown,
+                    // we don't add any `..` impl. Default traits could
+                    // still be provided by a manual implementation for
+                    // this trait and type.
+
+                    // Backward compatibility for default auto traits.
+                    // Test: ui/traits/default_auto_traits/extern-types.rs
+                    if self.tcx().is_default_trait(def_id) {
+                        check_impls()
+                    }
+                }
                 ty::Param(..)
                 | ty::Alias(ty::AliasTy {
                     kind: ty::Projection { .. } | ty::Inherent { .. } | ty::Free { .. },

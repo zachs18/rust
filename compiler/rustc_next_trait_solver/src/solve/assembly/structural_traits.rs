@@ -103,6 +103,11 @@ where
         // For `PhantomData<T>`, we pass `T`.
         ty::Adt(def, args) if def.is_phantom_data() => Ok(ty::Binder::dummy(vec![args.type_at(0)])),
 
+        // This branch is only for `experimental_default_bounds`.
+        // Other `unsized type`s were rejected earlier in
+        // `disqualify_auto_trait_candidate_due_to_possible_impl`.
+        ty::Adt(def, ..) if def.is_unsized_type() => Ok(ty::Binder::dummy(vec![])),
+
         ty::Adt(def, args) => {
             Ok(ty::Binder::dummy(def.all_field_tys(cx).iter_instantiated(cx, args).collect()))
         }
