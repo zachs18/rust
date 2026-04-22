@@ -284,12 +284,8 @@ where
             Ok(ty::Binder::dummy(vec![args.as_coroutine_closure().tupled_upvars_ty()]))
         }
 
-        // impl Copy/Clone for InitAdt where Self::TupledFieldInitializers: Copy/Clone
-        ty::InitAdt(_info) => {
-            todo!()
-        }
-
         // impl Copy/Clone for typeof(do init *) where ...Self::Fields: Copy/Clone
+        ty::InitAdt(info) => Ok(ty::Binder::dummy(info.component_tys().to_vec())),
         ty::InitArray(elems) => Ok(ty::Binder::dummy(elems.to_vec())),
         ty::InitArrayRepeat(elem, _len) => Ok(ty::Binder::dummy(vec![elem])),
         ty::InitSliceRepeat(elem) => Ok(ty::Binder::dummy(vec![elem])),
