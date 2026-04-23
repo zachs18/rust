@@ -2,6 +2,8 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
+use crate::marker::PointeeSized;
+
 /// A trait for borrowing data.
 ///
 /// In Rust, it is common to provide different representations of a type for
@@ -155,7 +157,7 @@
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Borrow"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-pub const trait Borrow<Borrowed: ?Sized> {
+pub const trait Borrow<Borrowed: PointeeSized>: PointeeSized {
     /// Immutably borrows from an owned value.
     ///
     /// # Examples
@@ -187,7 +189,9 @@ pub const trait Borrow<Borrowed: ?Sized> {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "BorrowMut"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-pub const trait BorrowMut<Borrowed: ?Sized>: [const] Borrow<Borrowed> {
+pub const trait BorrowMut<Borrowed: PointeeSized>:
+    [const] Borrow<Borrowed> + PointeeSized
+{
     /// Mutably borrows from an owned value.
     ///
     /// # Examples
@@ -209,7 +213,7 @@ pub const trait BorrowMut<Borrowed: ?Sized>: [const] Borrow<Borrowed> {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const Borrow<T> for T {
+impl<T: PointeeSized> const Borrow<T> for T {
     #[rustc_diagnostic_item = "noop_method_borrow"]
     fn borrow(&self) -> &T {
         self
@@ -218,7 +222,7 @@ impl<T: ?Sized> const Borrow<T> for T {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const BorrowMut<T> for T {
+impl<T: PointeeSized> const BorrowMut<T> for T {
     fn borrow_mut(&mut self) -> &mut T {
         self
     }
@@ -226,7 +230,7 @@ impl<T: ?Sized> const BorrowMut<T> for T {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const Borrow<T> for &T {
+impl<T: PointeeSized> const Borrow<T> for &T {
     fn borrow(&self) -> &T {
         self
     }
@@ -234,7 +238,7 @@ impl<T: ?Sized> const Borrow<T> for &T {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const Borrow<T> for &mut T {
+impl<T: PointeeSized> const Borrow<T> for &mut T {
     fn borrow(&self) -> &T {
         self
     }
@@ -242,7 +246,7 @@ impl<T: ?Sized> const Borrow<T> for &mut T {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const BorrowMut<T> for &mut T {
+impl<T: PointeeSized> const BorrowMut<T> for &mut T {
     fn borrow_mut(&mut self) -> &mut T {
         self
     }
