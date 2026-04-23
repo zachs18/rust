@@ -1,3 +1,5 @@
+use crate::marker::PointeeSized;
+
 /// The addition operator `+`.
 ///
 /// Note that `Rhs` is `Self` by default, but this is not mandatory. For
@@ -765,7 +767,7 @@ neg_impl! { isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 )]
 #[doc(alias = "+")]
 #[doc(alias = "+=")]
-pub const trait AddAssign<Rhs = Self> {
+pub const trait AddAssign<Rhs = Self>: PointeeSized {
     /// Performs the `+=` operation.
     ///
     /// # Example
@@ -836,7 +838,7 @@ add_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 )]
 #[doc(alias = "-")]
 #[doc(alias = "-=")]
-pub const trait SubAssign<Rhs = Self> {
+pub const trait SubAssign<Rhs = Self>: PointeeSized {
     /// Performs the `-=` operation.
     ///
     /// # Example
@@ -898,7 +900,7 @@ sub_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 )]
 #[doc(alias = "*")]
 #[doc(alias = "*=")]
-pub const trait MulAssign<Rhs = Self> {
+pub const trait MulAssign<Rhs = Self>: PointeeSized {
     /// Performs the `*=` operation.
     ///
     /// # Example
@@ -960,7 +962,7 @@ mul_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 )]
 #[doc(alias = "/")]
 #[doc(alias = "/=")]
-pub const trait DivAssign<Rhs = Self> {
+pub const trait DivAssign<Rhs = Self>: PointeeSized {
     /// Performs the `/=` operation.
     ///
     /// # Example
@@ -1025,7 +1027,7 @@ div_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 )]
 #[doc(alias = "%")]
 #[doc(alias = "%=")]
-pub const trait RemAssign<Rhs = Self> {
+pub const trait RemAssign<Rhs = Self>: PointeeSized {
     /// Performs the `%=` operation.
     ///
     /// # Example
