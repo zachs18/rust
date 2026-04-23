@@ -6,6 +6,7 @@
 pub use core::borrow::{Borrow, BorrowMut};
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
+use core::marker::PointeeSized;
 #[cfg(not(no_global_oom_handling))]
 use core::ops::{Add, AddAssign};
 use core::ops::{Deref, DerefPure};
@@ -24,7 +25,7 @@ use crate::string::String;
 /// from any borrow of a given type.
 #[rustc_diagnostic_item = "ToOwned"]
 #[stable(feature = "rust1", since = "1.0.0")]
-pub trait ToOwned {
+pub trait ToOwned: PointeeSized {
     /// The resulting type after obtaining ownership.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Owned: Borrow<Self>;
@@ -166,7 +167,7 @@ where
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Cow"]
-pub enum Cow<'a, B: ?Sized + 'a>
+pub enum Cow<'a, B: PointeeSized + 'a>
 where
     B: ToOwned,
 {
@@ -183,7 +184,7 @@ where
 //   see https://github.com/rust-lang/rust/issues/147964
 // #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, B: ?Sized + ToOwned> Borrow<B> for Cow<'a, B>
+impl<'a, B: PointeeSized + ToOwned> Borrow<B> for Cow<'a, B>
 // where
 //     B::Owned: [const] Borrow<B>,
 {
@@ -193,7 +194,7 @@ impl<'a, B: ?Sized + ToOwned> Borrow<B> for Cow<'a, B>
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized + ToOwned> Clone for Cow<'_, B> {
+impl<B: PointeeSized + ToOwned> Clone for Cow<'_, B> {
     fn clone(&self) -> Self {
         match *self {
             Borrowed(b) => Borrowed(b),
@@ -212,7 +213,7 @@ impl<B: ?Sized + ToOwned> Clone for Cow<'_, B> {
     }
 }
 
-impl<B: ?Sized + ToOwned> Cow<'_, B> {
+impl<B: PointeeSized + ToOwned> Cow<'_, B> {
     /// Returns true if the data is borrowed, i.e. if `to_mut` would require additional work.
     ///
     /// Note: this is an associated function, which means that you have to call
@@ -340,7 +341,7 @@ impl<B: ?Sized + ToOwned> Cow<'_, B> {
 //   see https://github.com/rust-lang/rust/issues/147964
 // #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized + ToOwned> Deref for Cow<'_, B>
+impl<B: PointeeSized + ToOwned> Deref for Cow<'_, B>
 // where
 //     B::Owned: [const] Borrow<B>,
 {
@@ -368,10 +369,10 @@ unsafe impl DerefPure for Cow<'_, str> {}
 unsafe impl<T: Clone> DerefPure for Cow<'_, [T]> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized> Eq for Cow<'_, B> where B: Eq + ToOwned {}
+impl<B: PointeeSized> Eq for Cow<'_, B> where B: Eq + ToOwned {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized> Ord for Cow<'_, B>
+impl<B: PointeeSized> Ord for Cow<'_, B>
 where
     B: Ord + ToOwned,
 {
@@ -382,7 +383,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, 'b, B: ?Sized, C: ?Sized> PartialEq<Cow<'b, C>> for Cow<'a, B>
+impl<'a, 'b, B: PointeeSized, C: PointeeSized> PartialEq<Cow<'b, C>> for Cow<'a, B>
 where
     B: PartialEq<C> + ToOwned,
     C: ToOwned,
@@ -394,7 +395,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<'a, B: ?Sized> PartialOrd for Cow<'a, B>
+impl<'a, B: PointeeSized> PartialOrd for Cow<'a, B>
 where
     B: PartialOrd + ToOwned,
 {
@@ -405,7 +406,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized> fmt::Debug for Cow<'_, B>
+impl<B: PointeeSized> fmt::Debug for Cow<'_, B>
 where
     B: fmt::Debug + ToOwned<Owned: fmt::Debug>,
 {
@@ -418,7 +419,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized> fmt::Display for Cow<'_, B>
+impl<B: PointeeSized> fmt::Display for Cow<'_, B>
 where
     B: fmt::Display + ToOwned<Owned: fmt::Display>,
 {
@@ -431,7 +432,7 @@ where
 }
 
 #[stable(feature = "default", since = "1.11.0")]
-impl<B: ?Sized> Default for Cow<'_, B>
+impl<B: PointeeSized> Default for Cow<'_, B>
 where
     B: ToOwned<Owned: Default>,
 {
@@ -442,7 +443,7 @@ where
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<B: ?Sized> Hash for Cow<'_, B>
+impl<B: PointeeSized> Hash for Cow<'_, B>
 where
     B: Hash + ToOwned,
 {
@@ -456,7 +457,7 @@ where
 //   see https://github.com/rust-lang/rust/issues/147964
 // #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + ToOwned> AsRef<T> for Cow<'_, T>
+impl<T: PointeeSized + ToOwned> AsRef<T> for Cow<'_, T>
 // where
 //     T::Owned: [const] Borrow<T>,
 {
