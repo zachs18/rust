@@ -142,7 +142,7 @@ pub const trait Deref: PointeeSized {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "deref_target"]
     #[lang = "deref_target"]
-    type Target: ?Sized;
+    type Target: PointeeSized;
 
     /// Dereferences the value.
     #[must_use]
@@ -153,7 +153,7 @@ pub const trait Deref: PointeeSized {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const Deref for &T {
+impl<T: PointeeSized> const Deref for &T {
     type Target = T;
 
     #[rustc_diagnostic_item = "noop_method_deref"]
@@ -163,11 +163,11 @@ impl<T: ?Sized> const Deref for &T {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized> !DerefMut for &T {}
+impl<T: PointeeSized> !DerefMut for &T {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const Deref for &mut T {
+impl<T: PointeeSized> const Deref for &mut T {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -277,7 +277,7 @@ pub const trait DerefMut: [const] Deref + PointeeSized {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
-impl<T: ?Sized> const DerefMut for &mut T {
+impl<T: PointeeSized> const DerefMut for &mut T {
     fn deref_mut(&mut self) -> &mut T {
         self
     }
@@ -297,10 +297,10 @@ impl<T: ?Sized> const DerefMut for &mut T {
 pub unsafe trait DerefPure: PointeeSized {}
 
 #[unstable(feature = "deref_pure_trait", issue = "87121")]
-unsafe impl<T: ?Sized> DerefPure for &T {}
+unsafe impl<T: PointeeSized> DerefPure for &T {}
 
 #[unstable(feature = "deref_pure_trait", issue = "87121")]
-unsafe impl<T: ?Sized> DerefPure for &mut T {}
+unsafe impl<T: PointeeSized> DerefPure for &mut T {}
 
 /// Indicates that a struct can be used as a method receiver.
 /// That is, a type can use this type as a type of `self`, like this:
@@ -376,7 +376,7 @@ pub trait Receiver: PointeeSized {
 }
 
 #[unstable(feature = "arbitrary_self_types", issue = "44874")]
-impl<P: ?Sized, T: ?Sized> Receiver for P
+impl<P: PointeeSized, T: PointeeSized> Receiver for P
 where
     P: Deref<Target = T>,
 {
