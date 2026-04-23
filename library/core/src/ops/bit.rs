@@ -1,3 +1,5 @@
+use crate::marker::PointeeSized;
+
 /// The unary logical negation operator `!`.
 ///
 /// # Examples
@@ -713,7 +715,7 @@ shr_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
     message = "no implementation for `{Self} &= {Rhs}`",
     label = "no implementation for `{Self} &= {Rhs}`"
 )]
-pub const trait BitAndAssign<Rhs = Self> {
+pub const trait BitAndAssign<Rhs = Self>: PointeeSized {
     /// Performs the `&=` operation.
     ///
     /// # Examples
@@ -788,7 +790,7 @@ bitand_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     message = "no implementation for `{Self} |= {Rhs}`",
     label = "no implementation for `{Self} |= {Rhs}`"
 )]
-pub const trait BitOrAssign<Rhs = Self> {
+pub const trait BitOrAssign<Rhs = Self>: PointeeSized {
     /// Performs the `|=` operation.
     ///
     /// # Examples
@@ -863,7 +865,7 @@ bitor_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     message = "no implementation for `{Self} ^= {Rhs}`",
     label = "no implementation for `{Self} ^= {Rhs}`"
 )]
-pub const trait BitXorAssign<Rhs = Self> {
+pub const trait BitXorAssign<Rhs = Self>: PointeeSized {
     /// Performs the `^=` operation.
     ///
     /// # Examples
@@ -936,7 +938,7 @@ bitxor_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     message = "no implementation for `{Self} <<= {Rhs}`",
     label = "no implementation for `{Self} <<= {Rhs}`"
 )]
-pub const trait ShlAssign<Rhs = Self> {
+pub const trait ShlAssign<Rhs = Self>: PointeeSized {
     /// Performs the `<<=` operation.
     ///
     /// # Examples
@@ -1023,7 +1025,7 @@ shl_assign_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
     message = "no implementation for `{Self} >>= {Rhs}`",
     label = "no implementation for `{Self} >>= {Rhs}`"
 )]
-pub const trait ShrAssign<Rhs = Self> {
+pub const trait ShrAssign<Rhs = Self>: PointeeSized {
     /// Performs the `>>=` operation.
     ///
     /// # Examples
