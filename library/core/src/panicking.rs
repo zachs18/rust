@@ -30,6 +30,7 @@
 
 use crate::fmt;
 use crate::intrinsics::const_eval_select;
+use crate::marker::PointeeSized;
 use crate::panic::{Location, PanicInfo};
 
 #[cfg(feature = "panic_immediate_abort")]
@@ -388,8 +389,8 @@ pub fn assert_failed<T, U>(
     args: Option<fmt::Arguments<'_>>,
 ) -> !
 where
-    T: fmt::Debug + ?Sized,
-    U: fmt::Debug + ?Sized,
+    T: fmt::Debug + PointeeSized,
+    U: fmt::Debug + PointeeSized,
 {
     assert_failed_inner(kind, &left, &right, args)
 }
@@ -399,7 +400,7 @@ where
 #[cfg_attr(panic = "immediate-abort", inline)]
 #[track_caller]
 #[doc(hidden)]
-pub fn assert_matches_failed<T: fmt::Debug + ?Sized>(
+pub fn assert_matches_failed<T: fmt::Debug + PointeeSized>(
     left: &T,
     right: &str,
     args: Option<fmt::Arguments<'_>>,
