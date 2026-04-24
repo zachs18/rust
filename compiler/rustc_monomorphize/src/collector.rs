@@ -208,7 +208,7 @@
 use std::cell::OnceCell;
 use std::ops::ControlFlow;
 
-use rustc_data_structures::fx::FxIndexMap;
+use rustc_data_structures::fx::{FxHashSet, FxIndexMap};
 use rustc_data_structures::sync::{Lock, par_for_each_in};
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir as hir;
@@ -227,7 +227,7 @@ use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::{
     self, GenericArgs, GenericParamDefKind, Instance, InstanceKind, Ty, TyCtxt, TypeFoldable,
-    TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypeVisitor, VtblEntry,
+    TypeVisitable, TypeVisitableExt, TypeVisitor, VtblEntry,
 };
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, span_bug};
@@ -981,35 +981,6 @@ fn visit_sizedness_intrinsic_use<'tcx>(
     source: Span,
     output: &mut MonoItems<'tcx>,
 ) {
-    struct MonoSizednessMethodsVisitor<'tcx, 'a> {
-        tcx: TyCtxt<'tcx>,
-        output: &'a mut MonoItems<'tcx>,
-        items: &'a [DefId],
-        source: Span,
-    }
-    impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for MonoSizednessMethodsVisitor<'tcx, '_> {
-        type Result = ();
-
-        fn visit_ty(&mut self, t: Ty<'tcx>) -> Self::Result {
-            if let ty::Adt(def, ..) = t.kind()
-                && def.is_unsized_type()
-            {
-                for item in self.items {
-                    // let instance = ty::Instance::new_raw(*item, self.tcx.mk_args(&[t.into()]));
-                    let instance = ty::Instance::expect_resolve(
-                        self.tcx,
-                        ty::TypingEnv::fully_monomorphized(),
-                        *item,
-                        self.tcx.mk_args(&[t.into()]),
-                        self.source,
-                    );
-                    self.output.push(create_fn_mono_item(self.tcx, instance, self.source));
-                }
-            }
-            t.super_visit_with(self);
-        }
-    }
-
     let meta_sized = tcx.require_lang_item(LangItem::MetaSized, source);
     let meta_sized_items = tcx.associated_items(meta_sized).in_definition_order();
 
@@ -1018,8 +989,89 @@ fn visit_sizedness_intrinsic_use<'tcx>(
     // and only align for align, without getting linker errors.
     let items: Vec<_> = meta_sized_items.map(|item| item.def_id).collect();
 
-    let mut visitor = MonoSizednessMethodsVisitor { tcx, output, items: &items, source };
-    self_ty.visit_with(&mut visitor);
+    // Find any `unsized type`s as nested fields of `self_ty`, for which we need to monomorphize
+    // their `MetaSized` impl's methods.
+    let mut seen: FxHashSet<Ty<'tcx>> = FxHashSet::default();
+    let mut queue = vec![self_ty];
+    while let Some(ty) = queue.pop() {
+        if !seen.insert(ty) {
+            continue;
+        }
+        match *ty.kind() {
+            // `unsized type` requires monomorphizing the custom `MetaSized` methods
+            ty::Adt(def, ..) if def.is_unsized_type() => {
+                for &item in &items {
+                    let instance = ty::Instance::expect_resolve(
+                        tcx,
+                        ty::TypingEnv::fully_monomorphized(),
+                        item,
+                        tcx.mk_args(&[ty.into()]),
+                        source,
+                    );
+                    output.push(create_fn_mono_item(tcx, instance, source));
+                }
+            }
+
+            // The intrinsics know how to calculate these types' layouts unconditionally,
+            // i.e. they can never have an `unsized type` field
+            ty::Bool
+            | ty::Char
+            | ty::Int(..)
+            | ty::Uint(..)
+            | ty::Float(..)
+            | ty::Str
+            | ty::UntypedPtr { .. }
+            | ty::PtrMetadata(_)
+            | ty::RawPtr(..)
+            | ty::Ref(..)
+            | ty::FnDef(..)
+            | ty::FnPtr(..)
+            | ty::Dynamic(..)
+            | ty::Closure(..)
+            | ty::CoroutineClosure(..)
+            | ty::Coroutine(..)
+            | ty::CoroutineWitness(..)
+            | ty::Never => {}
+
+            // These types layouts depend on one other type
+            ty::Array(elem, _) | ty::Pat(elem, _) | ty::Slice(elem) => queue.push(elem),
+            ty::UnsafeBinder(unsafe_binder_inner) => queue.push(unsafe_binder_inner.skip_binder()),
+
+            // These types' layouts depend on multiple other types, but they are always `Sized` so
+            // cannot contain `unsized type` fields.
+            ty::InitAdt(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitTuple(..) => {
+                debug_assert!(ty.is_sized(tcx, ty::TypingEnv::fully_monomorphized()));
+            }
+
+            // These types' layouts depend on multiple other types
+            ty::Tuple(tys) => queue.extend_from_slice(tys),
+            ty::Adt(def, args) => {
+                for variant in def.variants() {
+                    for field in &variant.fields {
+                        let field_ty = field.ty(tcx, args);
+                        queue.push(field_ty);
+                    }
+                }
+            }
+
+            // Normalize type aliases
+            ty::Alias(..) => {
+                queue.push(tcx.normalize_erasing_regions(ty::TypingEnv::fully_monomorphized(), ty))
+            }
+
+            // These should never occur
+            ty::Foreign(_) => {
+                bug!("{ty:?} should never occur as a field of a type that implements `MetaSized`")
+            }
+            ty::Param(_) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) | ty::Error(_) => {
+                bug!("{ty:?} should never occur during monomorphization")
+            }
+        }
+    }
 }
 
 fn visit_instance_use<'tcx>(
