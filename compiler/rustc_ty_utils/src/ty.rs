@@ -111,6 +111,8 @@ fn sizedness_constraints_for_ty<'tcx>(
             if constraints.is_empty() { None } else { Some(constraints) }
         }
 
+        ty::Adt(def, ..) if def.is_unsized_type() => Some(vec![ty]),
+
         ty::Adt(adt, args) => adt.sizedness_constraints(tcx, sizedness).and_then(|intermediate| {
             let tys = intermediate.instantiate(tcx, args);
             // Try to avoid returning the same type multiple times

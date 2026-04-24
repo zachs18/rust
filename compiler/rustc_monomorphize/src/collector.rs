@@ -928,6 +928,47 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
 
         self.super_terminator(terminator, location);
     }
+
+    fn visit_projection_elem(
+        &mut self,
+        place_ref: mir::PlaceRef<'tcx>,
+        elem: mir::PlaceElem<'tcx>,
+        context: mir::visit::PlaceContext,
+        location: Location,
+    ) {
+        // If we are doing a field-projection to a type containing an `unsized type`,
+        // the we need to monomorphize the `MetaSized` impl for that `unsized type`.
+
+        let place_ty = place_ref.ty(self.body, self.tcx);
+
+        match elem {
+            mir::ProjectionElem::Field(_field_idx, field_ty) => {
+                // `place_ty` is an aggregate with `field_ty` as a field
+                let field_ty = self.monomorphize(field_ty);
+                visit_sizedness_use(self.tcx, None, field_ty, DUMMY_SP, &mut self.used_items);
+            }
+            mir::ProjectionElem::Index(..)
+            | mir::ProjectionElem::ConstantIndex { .. }
+            | mir::ProjectionElem::Subslice { .. } => {
+                // `place_ty` is an array/slice with `elem_ty` as the element
+                let elem_ty = match *place_ty.ty.kind() {
+                    ty::Array(elem_ty, ..) => elem_ty,
+                    ty::Slice(elem_ty) => elem_ty,
+                    _ => bug!("{elem:?} projection should have array or slice source ty"),
+                };
+                let elem_ty = self.monomorphize(elem_ty);
+                visit_sizedness_use(self.tcx, None, elem_ty, DUMMY_SP, &mut self.used_items);
+            }
+
+            // These should never require computing the layout of an `unsized type`
+            mir::ProjectionElem::Deref => {}
+            mir::ProjectionElem::Downcast(..) => {}
+            mir::ProjectionElem::OpaqueCast(_) => {}
+            mir::ProjectionElem::UnwrapUnsafeBinder(_) => {}
+        }
+
+        self.super_projection_elem(place_ref, elem, context, location);
+    }
 }
 
 fn visit_drop_use<'tcx>(
@@ -974,15 +1015,38 @@ fn visit_fn_use<'tcx>(
     }
 }
 
-fn visit_sizedness_intrinsic_use<'tcx>(
+/// `size_of_val`/`size_for_meta`/field-projection that might require monomorphizing
+/// `MetaSized` methods for `unsized type`s.
+///
+/// `intrinsic` should be `None` for field projections, and `Some` for intrinsics.
+///
+/// If this is called for a field-projection for a non-`MetaSized` type,
+/// it is a no-op (since codegen will insert a panic like it does for `extern type`
+/// field projections).
+fn visit_sizedness_use<'tcx>(
     tcx: TyCtxt<'tcx>,
-    _intrinsic: Symbol,
+    intrinsic: Option<Symbol>,
     self_ty: Ty<'tcx>,
     source: Span,
     output: &mut MonoItems<'tcx>,
 ) {
     let meta_sized = tcx.require_lang_item(LangItem::MetaSized, source);
     let meta_sized_items = tcx.associated_items(meta_sized).in_definition_order();
+
+    if !self_ty.is_meta_sized(tcx, ty::TypingEnv::fully_monomorphized()) {
+        // This should only happen for field-projections,
+        // in which case codegen will notice that and just panic instead of trying to compute the alignment,
+        // like it does for `extern type`.
+        assert!(
+            intrinsic.is_none(),
+            "layout intrinsic called for type containing `unsized type` \
+                    not implementing that layout function"
+        );
+        return;
+    } else if self_ty.is_sized(tcx, ty::TypingEnv::fully_monomorphized()) {
+        // Codegen knows how to compute the layout without calling any MetaSized methods
+        return;
+    }
 
     // for now, we require all of the methods
     // FIXME: figure out how to only require the methods of the same checkedness,
@@ -994,7 +1058,14 @@ fn visit_sizedness_intrinsic_use<'tcx>(
     let mut seen: FxHashSet<Ty<'tcx>> = FxHashSet::default();
     let mut queue = vec![self_ty];
     while let Some(ty) = queue.pop() {
-        if !seen.insert(ty) {
+        debug_assert!(
+            ty.is_meta_sized(tcx, ty::TypingEnv::fully_monomorphized()),
+            "MetaSized type {self_ty:?} had !MetaSized field {ty:?}?",
+        );
+        if ty.is_sized(tcx, ty::TypingEnv::fully_monomorphized()) {
+            // Codegen knows how to compute the layout without calling any MetaSized methods.
+            continue;
+        } else if !seen.insert(ty) {
             continue;
         }
         match *ty.kind() {
@@ -1012,40 +1083,38 @@ fn visit_sizedness_intrinsic_use<'tcx>(
                 }
             }
 
-            // The intrinsics know how to calculate these types' layouts unconditionally,
-            // i.e. they can never have an `unsized type` field
+            // These are all `Sized`, so should have been caught above.
             ty::Bool
             | ty::Char
             | ty::Int(..)
             | ty::Uint(..)
             | ty::Float(..)
-            | ty::Str
             | ty::UntypedPtr { .. }
             | ty::PtrMetadata(_)
             | ty::RawPtr(..)
             | ty::Ref(..)
             | ty::FnDef(..)
             | ty::FnPtr(..)
-            | ty::Dynamic(..)
             | ty::Closure(..)
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..)
-            | ty::Never => {}
+            | ty::Never
+            | ty::InitAdt(..)
+            | ty::InitArray(..)
+            | ty::InitArrayRepeat(..)
+            | ty::InitSliceRepeat(..)
+            | ty::InitTuple(..) => unreachable!("sized type {ty:?} was !Sized + MetaSized?"),
+            // This is `!MetaSized`, so should have been caught above
+            ty::Foreign(..) => unreachable!("extern type {ty:?} was MetaSized?"),
+
+            // The intrinsics know how to calculate these types' layouts unconditionally,
+            // i.e. they can never have an `unsized type` field
+            ty::Dynamic(..) | ty::Str => {}
 
             // These types layouts depend on one other type
             ty::Array(elem, _) | ty::Pat(elem, _) | ty::Slice(elem) => queue.push(elem),
             ty::UnsafeBinder(unsafe_binder_inner) => queue.push(unsafe_binder_inner.skip_binder()),
-
-            // These types' layouts depend on multiple other types, but they are always `Sized` so
-            // cannot contain `unsized type` fields.
-            ty::InitAdt(..)
-            | ty::InitArray(..)
-            | ty::InitArrayRepeat(..)
-            | ty::InitSliceRepeat(..)
-            | ty::InitTuple(..) => {
-                debug_assert!(ty.is_sized(tcx, ty::TypingEnv::fully_monomorphized()));
-            }
 
             // These types' layouts depend on multiple other types
             ty::Tuple(tys) => queue.extend_from_slice(tys),
@@ -1064,9 +1133,6 @@ fn visit_sizedness_intrinsic_use<'tcx>(
             }
 
             // These should never occur
-            ty::Foreign(_) => {
-                bug!("{ty:?} should never occur as a field of a type that implements `MetaSized`")
-            }
             ty::Param(_) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) | ty::Error(_) => {
                 bug!("{ty:?} should never occur during monomorphization")
             }
@@ -1115,9 +1181,9 @@ fn visit_instance_use<'tcx>(
                 | sym::size_of_val
                 | sym::align_of_val
         ) {
-            visit_sizedness_intrinsic_use(
+            visit_sizedness_use(
                 tcx,
-                intrinsic.name,
+                Some(intrinsic.name),
                 instance.args.type_at(0),
                 source,
                 output,

@@ -1,5 +1,5 @@
 error[E0392]: type parameter `T` is never used
-  --> $DIR/no-bivariant-params.rs:5:16
+  --> $DIR/no-bivariant-params.rs:3:16
    |
 LL | unsized type B<T> {}
    |                ^ unused type parameter

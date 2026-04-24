@@ -801,8 +801,7 @@ impl<'tcx> AdtDef<'tcx> {
         if self.is_struct() || self.is_union() {
             tcx.adt_sizedness_constraints((self.did(), sizedness))
         } else if self.is_unsized_type() {
-            tracing::warn!("handle user impls of sizedness traits for `unsized type`");
-            tcx.adt_sizedness_constraints((self.did(), sizedness))
+            unreachable!("sizedness_constraints should not be called for `unsized type`s")
         } else {
             None
         }
