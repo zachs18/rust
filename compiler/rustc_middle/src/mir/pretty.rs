@@ -279,6 +279,24 @@ impl<'dis, 'de, 'tcx> MirDumper<'dis, 'de, 'tcx> {
                 // `checked` and `layout_part` are uniquely determined by the item name.
                 filtered_ty_disambiguator(self_ty)
             }
+
+            ty::InstanceKind::InitShim {
+                method_def: _,
+                method: _,
+                self_ty,
+                dst_ty,
+                error_ty,
+                arg_ty,
+            } => {
+                // `method` is uniquely determined by the item name
+                let mut s = ".".to_owned();
+                append_filtered_ty_disambiguator(&mut s, self_ty);
+                append_filtered_ty_disambiguator(&mut s, dst_ty);
+                append_filtered_ty_disambiguator(&mut s, error_ty);
+                append_filtered_ty_disambiguator(&mut s, arg_ty);
+                s
+            }
+
             _ => String::new(),
         };
 
