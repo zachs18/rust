@@ -4271,14 +4271,15 @@ impl<'tcx> InitShimBuilder<'tcx> {
                     let mu_unit_ptr_ty = Ty::new_mut_ptr(self.tcx, mu_unit_ty);
                     let mu_unit_ptr = self.make_place(Mutability::Not, mu_unit_ptr_ty);
 
+                    // `core::ptr::without_provenance_mut::<()>(1_usize)`
                     stmts.push(self.make_assign(
                         mu_unit_ptr,
                         Rvalue::Cast(
-                            CastKind::PointerWithExposedProvenance,
+                            CastKind::Transmute,
                             Operand::const_from_scalar(
                                 self.tcx,
-                                self.tcx.types.u8,
-                                interpret::Scalar::from_u8(0),
+                                self.tcx.types.usize,
+                                interpret::Scalar::from_target_usize(1, &self.tcx),
                                 self.span,
                             ),
                             mu_unit_ptr_ty,
