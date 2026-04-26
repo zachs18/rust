@@ -277,7 +277,7 @@ impl<'tcx> TypeErrCtxt<'_, 'tcx> {
             cause, exp_found
         );
         if let ty::Adt(expected_def, expected_args) = exp_found.expected.kind() {
-            if expected_def.is_enum() {
+            if expected_def.is_enum() || expected_def.is_unsized_type() {
                 return;
             }
 

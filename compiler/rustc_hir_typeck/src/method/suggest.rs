@@ -2712,7 +2712,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let tcx = self.tcx;
         let field_receiver =
             self.autoderef(span, rcvr_ty).silence_errors().find_map(|(ty, _)| match ty.kind() {
-                ty::Adt(def, args) if !def.is_enum() => {
+                ty::Adt(def, args) if !def.is_enum() && !def.is_unsized_type() => {
                     let variant = &def.non_enum_variant();
                     tcx.find_field_index(item_name, variant).map(|index| {
                         let field = &variant.fields[index];

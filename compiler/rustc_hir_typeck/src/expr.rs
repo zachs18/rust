@@ -3765,7 +3765,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         while let Some((deref_base_ty, _)) = autoderef.next() {
             debug!("deref_base_ty: {:?}", deref_base_ty);
             match deref_base_ty.kind() {
-                ty::Adt(base_def, args) if !base_def.is_enum() => {
+                ty::Adt(base_def, args) if !base_def.is_enum() || !base_def.is_unsized_type() => {
                     debug!("struct named {:?}", deref_base_ty);
                     // we don't care to report errors for a struct if the struct itself is tainted
                     if let Err(guar) = base_def.non_enum_variant().has_errors() {
@@ -4376,7 +4376,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             .into_iter()
             .filter_map(move |(base_t, _)| {
                 match base_t.kind() {
-                    ty::Adt(base_def, args) if !base_def.is_enum() => {
+                    ty::Adt(base_def, args)
+                        if !base_def.is_enum() && !base_def.is_unsized_type() =>
+                    {
                         let tcx = self.tcx;
                         let fields = &base_def.non_enum_variant().fields;
                         // Some struct, e.g. some that impl `Deref`, have all private fields
@@ -4947,8 +4949,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         continue;
                     }
                 }
-                ty::Adt(container_def, args) => {
-                    assert!(container_def.is_struct(), "enums and unions were already handled");
+                ty::Adt(container_def, args) if container_def.is_struct() => {
                     // If this struct has fields in declaration order, then all fields before
                     // the requested field must have a known size.
                     let repr = container_def.repr();
