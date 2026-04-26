@@ -666,6 +666,7 @@ fn layout_of_uncached<'tcx>(
         ty::Adt(def, _args) if def.is_unsized_type() => {
             let mut layout = LayoutData::unit(cx, /* sized */ false);
             layout.align_is_exact = false;
+            layout.fields = FieldsShape::Primitive;
             tcx.mk_layout(layout)
         }
 
