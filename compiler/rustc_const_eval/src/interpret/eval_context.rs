@@ -528,16 +528,26 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         // Now, handle unsized cases
         match layout.ty.kind() {
             ty::Adt(adt_def, ..) if adt_def.is_unsized_type() => {
-                let Some(this) = this.as_mut() else {
-                    throw_unsup_format!(
-                        "cannot compute layout of an `unsized type` in this context"
-                    );
+                // If we reach an `unsized type` in a context where we cannot call its `MetaSized` impl,
+                // we either return `None` or throw an unsupported operation.
+                let unsup_on_fail = match semantics.failure_semantics {
+                    LayoutComputeFailureSemantics::Normal => false,
+                    LayoutComputeFailureSemantics::Unsupported => true,
+                    LayoutComputeFailureSemantics::Unreachable => true,
                 };
-                if this.validation_in_progress() {
-                    throw_unsup_format!(
-                        "cannot compute layout of an `unsized type` in this context"
-                    );
-                }
+                let this = if let Some(this) = this.as_mut()
+                    && !this.validation_in_progress()
+                {
+                    this
+                } else {
+                    if unsup_on_fail {
+                        throw_unsup_format!(
+                            "cannot compute layout of an `unsized type` in this context"
+                        )
+                    } else {
+                        return interp_ok(None);
+                    }
+                };
 
                 if matches!(goal, LayoutComputeGoal::FieldOffset(_)) {
                     span_bug!(this.cur_span(), "`unsized type`s do not have fields: {}", layout.ty);
