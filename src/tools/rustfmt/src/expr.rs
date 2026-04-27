@@ -488,6 +488,8 @@ pub(crate) fn format_expr(
             Err(RewriteError::Unknown)
         }
         ast::ExprKind::Err(_) | ast::ExprKind::Dummy => Err(RewriteError::Unknown),
+        // FIXME: do init exprs
+        _ => Err(RewriteError::Unknown),
     };
 
     expr_rw
