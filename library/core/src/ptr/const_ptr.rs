@@ -874,6 +874,7 @@ impl<T: PointeeSized> *const T {
         }
 
         // SAFETY: delegated to caller
+        #[cfg(debug_assertions)]
         let size = unsafe { size_of_val_raw::<T>(self) };
 
         #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
