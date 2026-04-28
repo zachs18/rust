@@ -63,17 +63,15 @@ use crate::ptr::NonNull;
 /// Raw pointers may have any metadata value that can be constructed with [`build_metadata!`].
 ///
 /// Any metadata value which is used as the metadata for a reference must be "safe".
-/// For types which implement [`MetaSized`] (or [`MetaAligned`]), any "safe"
+/// For types which implement [`MetaSized`], any "safe"
 /// metadata value must have a valid size and alignment (or only alignment).
 //FIXME(ptr_metadata_v2): make these docs better.
 ///
-/// For types with builtin [`MetaSized`]/[`MetaAligned`] impls, a metadata value is "safe" if and only if
+/// For types with builtin [`MetaSized`] impls, a metadata value is "safe" if and only if
 /// it's computed layout (computed with infinite precision) has a size `<= isize::MAX`.
 ///
-/// For `unsized type`s with custom [`MetaSized`]/[`MetaAligned`] impls, the author of the `unsized type` should define what
+/// For `unsized type`s with custom [`MetaSized`] impls, the author of the `unsized type` should define what
 /// a "safe" metadata value is for their type. Note that if an `unsized type T` implements `Thin`, then the single value of `Metadata<T>` *must* be safe.
-///
-/// [`MetaAligned`]: core::marker::MetaAligned
 ///
 /// # FIXME: put this somewhere
 ///
@@ -140,7 +138,7 @@ pub macro build_metadata {
 /// Implementations of `Thin` are provided by the compiler for most types.
 ///
 /// Only `unsized type`s may have a manual implementation of `Thin`. If an `unsized type`
-/// implements both `Thin` and `MetaSized` (or `MetaAligned`), then the single possible value
+/// implements both `Thin` and `MetaSized`, then the single possible value
 /// of [`Metadata<Self>`] must be "safe" as described in `Metadata`'s documentation.
 #[unstable(feature = "ptr_metadata", issue = "81513")]
 #[fundamental]
