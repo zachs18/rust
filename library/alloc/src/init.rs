@@ -33,8 +33,8 @@ impl<T: ?Sized, E: core::fmt::Debug> core::fmt::Debug for BuildErrorKind<T, E> {
 }
 
 impl<T: ?Sized, E> BuildErrorKind<T, E> {
-    #[cfg(not(no_rc))]
-    pub(crate) fn map_metadata<U: ?Sized>(
+    /// Change the metadata of a [`BuildErrorKind::LayoutOverflow`].
+    pub fn map_metadata<U: ?Sized>(
         self,
         f: impl FnOnce(Metadata<T>) -> Metadata<U>,
     ) -> BuildErrorKind<U, E> {
@@ -45,8 +45,8 @@ impl<T: ?Sized, E> BuildErrorKind<T, E> {
         }
     }
 
-    #[cfg(not(no_rc))]
-    pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildErrorKind<T, E2> {
+    /// Change the error of a [`BuildErrorKind::InitError`].
+    pub fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildErrorKind<T, E2> {
         match self {
             BuildErrorKind::LayoutOverflow(metadata) => BuildErrorKind::LayoutOverflow(metadata),
             BuildErrorKind::AllocError(layout) => BuildErrorKind::AllocError(layout),
@@ -109,13 +109,13 @@ impl<T: ?Sized, E, A: Allocator> BuildError<T, E, A> {
         }
     }
 
-    #[cfg(not(no_rc))]
-    pub(crate) fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildError<T, E2, A> {
+    /// Change the error of a [`BuildErrorKind::InitError`].
+    pub fn map_err<E2>(self, f: impl FnOnce(E) -> E2) -> BuildError<T, E2, A> {
         BuildError { kind: self.kind.map_err(f), alloc: self.alloc }
     }
 
-    #[cfg(not(no_rc))]
-    pub(crate) fn map_metadata<U: ?Sized>(
+    /// Change the metadata of a [`BuildErrorKind::LayoutOverflow`].
+    pub fn map_metadata<U: ?Sized>(
         self,
         f: impl FnOnce(Metadata<T>) -> Metadata<U>,
     ) -> BuildError<U, E, A> {
