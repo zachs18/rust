@@ -214,7 +214,7 @@ fn own_existential_vtable_entries_iter(
         debug!("own_existential_vtable_entry: trait_method={:?}", trait_method);
         let def_id = trait_method.def_id;
 
-        // `MetaSized` methods should not be included in the vtable.
+        // `MetaSized` and `MetaAligned` methods should not be included in the vtable.
         if is_sizedness_trait {
             return None;
         }

@@ -262,7 +262,7 @@ pub enum InstanceKind<'tcx> {
         arg_ty: Ty<'tcx>,
     },
 
-    /// Compiler-generated implementation of a method from the `MetaSized` trait.
+    /// Compiler-generated implementation of a method from the `MetaSized` or `MetaAligned` traits.
     LayoutForMetaShim {
         method_def: DefId,
         self_ty: Ty<'tcx>,

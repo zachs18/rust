@@ -18,14 +18,16 @@ unsafe impl std::ptr::Thin for Foo {}
 
 const ALIGN_TWO: Alignment = Alignment::new(2).unwrap();
 
+unsafe impl std::marker::MetaAligned for Foo {
+    unsafe fn unchecked_align_for_meta(self: Metadata<Self>) -> Alignment { ALIGN_TWO }
+
+    fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment> { Some(ALIGN_TWO) }
+}
+
 unsafe impl std::marker::MetaSized for Foo {
     unsafe fn unchecked_size_for_meta(self: Metadata<Self>) -> usize { 2 }
 
     fn checked_size_for_meta(self: Metadata<Self>) -> Option<usize> { Some(2) }
-
-    unsafe fn unchecked_align_for_meta(self: Metadata<Self>) -> Alignment { ALIGN_TWO }
-
-    fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment> { Some(ALIGN_TWO) }
 
     unsafe fn unchecked_layout_for_meta(self: Metadata<Self>) -> (usize, Alignment) {
         (2, ALIGN_TWO)

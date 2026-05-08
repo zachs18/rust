@@ -45,7 +45,7 @@ pub enum InfringingFieldsReason<'tcx> {
 }
 
 /// Checks that the type is an `unsized type`, which is the only kind of type where
-/// manual implementations of `MetaSized` are allowed.
+/// manual implementations of `MetaSized`/`MetaAligned` are allowed.
 ///
 /// If it's not an `unsized type`, returns `Err(NotAnUnsizedType)`.
 pub fn type_allowed_to_implement_sizedness<'tcx>(

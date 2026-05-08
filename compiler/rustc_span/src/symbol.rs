@@ -1284,6 +1284,7 @@ symbols! {
         memtag,
         message,
         meta,
+        meta_aligned,
         meta_sized,
         mgca_type_const_syntax,
         min_adt_const_params,
