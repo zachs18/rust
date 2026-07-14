@@ -1146,6 +1146,7 @@ fn trait_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::TraitDef {
     );
 
     let deny_explicit_impl = find_attr!(attrs, RustcDenyExplicitImpl);
+    let force_dyn_compatible = find_attr!(attrs, RustcDynCompatibleTrait(span) => *span);
     let force_dyn_incompatible = find_attr!(attrs, RustcDynIncompatibleTrait(span) => *span);
 
     ty::TraitDef {
@@ -1162,6 +1163,7 @@ fn trait_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::TraitDef {
         skip_boxed_slice_during_method_dispatch,
         specialization_kind,
         must_implement_one_of,
+        force_dyn_compatible,
         force_dyn_incompatible,
         deny_explicit_impl,
     }

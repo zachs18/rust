@@ -351,6 +351,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             AttributeKind::RustcDumpVariances => (),
             AttributeKind::RustcDumpVariancesOfOpaques => (),
             AttributeKind::RustcDumpVtable(..) => (),
+            AttributeKind::RustcDynCompatibleTrait(..) => (),
             AttributeKind::RustcDynIncompatibleTrait(..) => (),
             AttributeKind::RustcEffectiveVisibility => (),
             AttributeKind::RustcEiiForeignItem => (),
