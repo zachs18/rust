@@ -25,6 +25,7 @@ trait Dispatchable {
 // This is currently not dyn-compatible
 
 #[rustc_dyn_compatible_trait]
+//~^ ERROR is not dyn compatible
 trait NewlyDispatchable {
     // TODO: make this compile
     fn dispatchable_non_method(this: &Self);

@@ -30,6 +30,7 @@ use rustc_middle::{bug, span_bug};
 use rustc_session::diagnostics::feature_err;
 use rustc_span::{DUMMY_SP, Span, sym};
 use rustc_trait_selection::error_reporting::InferCtxtErrorExt;
+use rustc_trait_selection::error_reporting::traits::report_dyn_incompatibility;
 use rustc_trait_selection::regions::{
     InferCtxtRegionExt, OutlivesEnvironmentBuildExt, region_known_to_outlive, ty_known_to_outlive,
 };
@@ -1114,8 +1115,19 @@ pub(crate) fn check_trait(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(), Err
                 )
                 .with_span_note(force_dyn_compatible_span, "trait was declared dyn-compatible here")
                 .emit();
+        } else {
+            let violations = tcx.dyn_compatibility_violations(trait_def.def_id);
+            if !violations.is_empty() {
+                report_dyn_incompatibility(
+                    tcx,
+                    force_dyn_compatible_span,
+                    None,
+                    trait_def.def_id,
+                    &violations,
+                )
+                .emit();
+            }
         }
-        //        tracing::warn!("implement the rest");
     }
 
     let res = enter_wf_checking_ctxt(tcx, def_id, |wfcx| {
