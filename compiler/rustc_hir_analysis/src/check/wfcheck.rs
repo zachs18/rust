@@ -1105,6 +1105,19 @@ pub(crate) fn check_trait(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(), Err
         }
     }
 
+    if let Some(force_dyn_compatible_span) = trait_def.force_dyn_compatible {
+        if let Some(force_dyn_incompatible_span) = trait_def.force_dyn_incompatible {
+            tcx.dcx()
+                .struct_span_err(
+                    force_dyn_incompatible_span,
+                    "trait cannot be both dyn-compatible and dyn-incompatible",
+                )
+                .with_span_note(force_dyn_compatible_span, "trait was declared dyn-compatible here")
+                .emit();
+        }
+        //        tracing::warn!("implement the rest");
+    }
+
     let res = enter_wf_checking_ctxt(tcx, def_id, |wfcx| {
         check_where_clauses(wfcx, def_id);
         Ok(())
