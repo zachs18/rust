@@ -77,6 +77,12 @@ pub struct TraitDef {
     /// satisfies the requirements to be dyn-compatible.
     pub force_dyn_incompatible: Option<Span>,
 
+    /// Whether the trait explicitly opted in to dyn-compatibility.
+    /// All functions must be either dispatchable or explicitly non-dispatchable.
+    /// Non-methods can be dispatchable if their only `Self`-mentioning argument
+    /// is dispatchable (TODO: expand on this).
+    pub force_dyn_compatible: Option<Span>,
+
     /// Whether a trait is fully built-in, and any implementation is disallowed.
     /// This only applies to built-in traits, and is marked via
     /// `#[rustc_deny_explicit_impl]`.

@@ -1,0 +1,27 @@
+error[E0038]: the trait `NewlyDispatchable` is not dyn compatible
+  --> $DIR/dyn-compatible-opt-in.rs:37:24
+   |
+LL |     let _: Option<&dyn NewlyDispatchable> = None;
+   |                        ^^^^^^^^^^^^^^^^^ `NewlyDispatchable` is not dyn compatible
+   |
+note: for a trait to be dyn compatible it needs to allow building a vtable
+      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
+  --> $DIR/dyn-compatible-opt-in.rs:30:8
+   |
+LL | trait NewlyDispatchable {
+   |       ----------------- this trait is not dyn compatible...
+LL |     // TODO: make this compile
+LL |     fn dispatchable_non_method(this: &Self);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^ ...because associated function `dispatchable_non_method` has no `self` parameter
+help: consider turning `dispatchable_non_method` into a method by giving it a `&self` argument
+   |
+LL |     fn dispatchable_non_method(&self, this: &Self);
+   |                                ++++++
+help: alternatively, consider constraining `dispatchable_non_method` so it does not apply to trait objects
+   |
+LL |     fn dispatchable_non_method(this: &Self) where Self: Sized;
+   |                                             +++++++++++++++++
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0038`.

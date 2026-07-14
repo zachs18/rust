@@ -318,6 +318,7 @@ attribute_parsers!(
         Single<WithoutArgs<RustcDumpVariancesOfOpaquesParser>>,
         Single<WithoutArgs<RustcDumpVariancesParser>>,
         Single<WithoutArgs<RustcDumpVtableParser>>,
+        Single<WithoutArgs<RustcDynCompatibleTraitParser>>,
         Single<WithoutArgs<RustcDynIncompatibleTraitParser>>,
         Single<WithoutArgs<RustcEffectiveVisibilityParser>>,
         Single<WithoutArgs<RustcEiiForeignItemParser>>,

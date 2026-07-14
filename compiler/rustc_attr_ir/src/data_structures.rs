@@ -1267,6 +1267,9 @@ pub enum AttributeKind {
     /// Represents the [`rustc_dump_vtable`](./attribute.rustc_dump_vtable.html) attribute.
     RustcDumpVtable(Span),
 
+    /// Represents `#[rustc_dyn_compatible_trait]`.
+    RustcDynCompatibleTrait(Span),
+
     /// Represents the [`rustc_dyn_incompatible_trait`](./attribute.rustc_dyn_incompatible_trait.html) attribute.
     RustcDynIncompatibleTrait(Span),
 

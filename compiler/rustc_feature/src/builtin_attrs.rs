@@ -357,6 +357,7 @@ pub static BUILTIN_ATTRIBUTES: &[Symbol] = &[
     sym::rustc_allow_incoherent_impl,
     sym::rustc_preserve_ub_checks,
     sym::rustc_deny_explicit_impl,
+    sym::rustc_dyn_compatible_trait,
     sym::rustc_dyn_incompatible_trait,
     sym::rustc_has_incoherent_inherent_impls,
     sym::rustc_non_const_trait_method,
