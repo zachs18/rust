@@ -1807,6 +1807,7 @@ symbols! {
         rustc_dump_variances,
         rustc_dump_variances_of_opaques,
         rustc_dump_vtable,
+        rustc_dyn_compatible_trait,
         rustc_dyn_incompatible_trait,
         rustc_effective_visibility,
         rustc_eii_foreign_item,

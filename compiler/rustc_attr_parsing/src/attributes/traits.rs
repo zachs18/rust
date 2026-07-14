@@ -80,6 +80,14 @@ impl NoArgsAttributeParser for RustcDenyExplicitImplParser {
     const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::RustcDenyExplicitImpl;
 }
 
+pub(crate) struct RustcDynCompatibleTraitParser;
+impl NoArgsAttributeParser for RustcDynCompatibleTraitParser {
+    const PATH: &[Symbol] = &[sym::rustc_dyn_compatible_trait];
+    const ALLOWED_TARGETS: AllowedTargets<'_> = AllowedTargets::AllowList(&[Allow(Target::Trait)]);
+    const STABILITY: AttributeStability = unstable!(rustc_attrs);
+    const CREATE: fn(Span) -> AttributeKind = AttributeKind::RustcDynCompatibleTrait;
+}
+
 pub(crate) struct RustcDynIncompatibleTraitParser;
 impl NoArgsAttributeParser for RustcDynIncompatibleTraitParser {
     const PATH: &[Symbol] = &[sym::rustc_dyn_incompatible_trait];
