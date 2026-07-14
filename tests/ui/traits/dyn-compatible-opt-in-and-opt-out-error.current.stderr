@@ -1,0 +1,14 @@
+error: trait cannot be both dyn-compatible and dyn-incompatible
+  --> $DIR/dyn-compatible-opt-in-and-opt-out-error.rs:10:1
+   |
+LL | #[rustc_dyn_incompatible_trait]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: trait was declared dyn-compatible here
+  --> $DIR/dyn-compatible-opt-in-and-opt-out-error.rs:8:1
+   |
+LL | #[rustc_dyn_compatible_trait]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
