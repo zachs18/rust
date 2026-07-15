@@ -1,12 +1,12 @@
 error[E0038]: the trait `SizedSupertrait` is not dyn compatible
-  --> $DIR/dyn-compatible-opt-in-error.rs:9:1
+  --> $DIR/dyn-compatible-opt-in-error.rs:8:1
    |
 LL | #[rustc_dyn_compatible_trait]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `SizedSupertrait` is not dyn compatible
    |
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $DIR/dyn-compatible-opt-in-error.rs:11:24
+  --> $DIR/dyn-compatible-opt-in-error.rs:10:24
    |
 LL | trait SizedSupertrait: Sized {}
    |       ---------------  ^^^^^ ...because it requires `Self: Sized`
@@ -14,14 +14,14 @@ LL | trait SizedSupertrait: Sized {}
    |       this trait is not dyn compatible...
 
 error[E0038]: the trait `DynIncompatible1` is not dyn compatible
-  --> $DIR/dyn-compatible-opt-in-error.rs:13:1
+  --> $DIR/dyn-compatible-opt-in-error.rs:12:1
    |
 LL | #[rustc_dyn_compatible_trait]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `DynIncompatible1` is not dyn compatible
    |
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $DIR/dyn-compatible-opt-in-error.rs:16:8
+  --> $DIR/dyn-compatible-opt-in-error.rs:15:8
    |
 LL | trait DynIncompatible1 {
    |       ---------------- this trait is not dyn compatible...
@@ -30,14 +30,14 @@ LL |     fn dyn_incompatible<T>(&self);
    = help: consider moving `dyn_incompatible` to another trait
 
 error[E0038]: the trait `DynIncompatible2` is not dyn compatible
-  --> $DIR/dyn-compatible-opt-in-error.rs:19:1
+  --> $DIR/dyn-compatible-opt-in-error.rs:18:1
    |
 LL | #[rustc_dyn_compatible_trait]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `DynIncompatible2` is not dyn compatible
    |
 note: for a trait to be dyn compatible it needs to allow building a vtable
       for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
-  --> $DIR/dyn-compatible-opt-in-error.rs:22:8
+  --> $DIR/dyn-compatible-opt-in-error.rs:21:8
    |
 LL | trait DynIncompatible2 {
    |       ---------------- this trait is not dyn compatible...

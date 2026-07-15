@@ -47,7 +47,7 @@ pub use self::coherence::{
 };
 pub use self::dyn_compatibility::{
     DynCompatibilityViolation, dyn_compatibility_violations_for_assoc_item,
-    hir_ty_lowering_dyn_compatibility_violations, is_vtable_safe_method,
+    hir_ty_lowering_dyn_compatibility_violations, is_vtable_safe_fn,
 };
 pub use self::engine::{FulfillmentEngine, ObligationCtxt};
 pub use self::fulfill::{FulfillmentContext, OldSolverError, PendingPredicateObligation};
