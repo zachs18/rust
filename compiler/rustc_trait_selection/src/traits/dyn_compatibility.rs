@@ -62,19 +62,19 @@ fn is_dyn_compatible(tcx: TyCtxt<'_>, trait_def_id: DefId) -> bool {
     tcx.dyn_compatibility_violations(trait_def_id).is_empty()
 }
 
-/// We say a method is *vtable safe* if it can be invoked on a trait
+/// We say a fn is *vtable safe* if it can be dispatched from a trait
 /// object. Note that dyn-compatible traits can have some
-/// non-vtable-safe methods, so long as they require `Self: Sized` or
+/// non-vtable-safe fns, so long as they require `Self: Sized` or
 /// otherwise ensure that they cannot be used when `Self = Trait`.
-pub fn is_vtable_safe_method(tcx: TyCtxt<'_>, trait_def_id: DefId, method: ty::AssocItem) -> bool {
+pub fn is_vtable_safe_fn(tcx: TyCtxt<'_>, trait_def_id: DefId, func: ty::AssocItem) -> bool {
     debug_assert!(tcx.generics_of(trait_def_id).has_self);
-    debug!("is_vtable_safe_method({:?}, {:?})", trait_def_id, method);
-    // Any method that has a `Self: Sized` bound cannot be called.
-    if tcx.generics_require_sized_self(method.def_id) {
+    debug!("is_vtable_safe_fn({:?}, {:?})", trait_def_id, func);
+    // Any fn that has a `Self: Sized` bound cannot be called.
+    if tcx.generics_require_sized_self(func.def_id) {
         return false;
     }
 
-    virtual_call_violations_for_method(tcx, trait_def_id, method).is_empty()
+    virtual_call_violations_for_fn(tcx, trait_def_id, func).is_empty()
 }
 
 #[instrument(level = "debug", skip(tcx), ret)]
@@ -395,7 +395,7 @@ pub fn dyn_compatibility_violations_for_assoc_item(
                 .collect()
         }
         ty::AssocKind::Fn { name, .. } => {
-            virtual_call_violations_for_method(tcx, trait_def_id, item)
+            virtual_call_violations_for_fn(tcx, trait_def_id, item)
                 .into_iter()
                 .map(|v| {
                     let node = tcx.hir_get_if_local(item.def_id);
@@ -429,19 +429,23 @@ pub fn dyn_compatibility_violations_for_assoc_item(
     }
 }
 
-/// Returns `Some(_)` if this method cannot be called on a trait
+/// Returns `Some(_)` if this fn cannot be dispatched on a trait
 /// object; this does not necessarily imply that the enclosing trait
-/// is dyn-incompatible, because the method might have a where clause
+/// is dyn-incompatible, because the fn might have a where clause
 /// `Self: Sized`.
-fn virtual_call_violations_for_method<'tcx>(
+fn virtual_call_violations_for_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
     trait_def_id: DefId,
     method: ty::AssocItem,
 ) -> Vec<MethodViolation> {
     let sig = tcx.fn_sig(method.def_id).instantiate_identity().skip_norm_wip();
 
-    // The method's first parameter must be named `self`
-    if !method.is_method() {
+    // The function must be a method (its first parameter must be named `self`),
+    // unless the trait is `#[rustc_force_dyn_compatible_trait]`
+    if !method.is_method()
+        && (!tcx.trait_def(trait_def_id).force_dyn_compatible.is_some()
+            || sig.skip_binder().inputs().is_empty())
+    {
         let sugg = if let Some(hir::Node::TraitItem(hir::TraitItem {
             generics,
             kind: hir::TraitItemKind::Fn(sig, _),
@@ -463,7 +467,7 @@ fn virtual_call_violations_for_method<'tcx>(
             None
         };
 
-        // Not having `self` parameter messes up the later checks,
+        // Not having `self`/dispatch parameter messes up the later checks,
         // so we need to return instead of pushing
         return vec![MethodViolation::StaticMethod(sugg)];
     }

@@ -79,8 +79,8 @@ pub struct TraitDef {
 
     /// Whether the trait explicitly opted in to dyn-compatibility.
     /// All functions must be either dispatchable or explicitly non-dispatchable.
-    /// Non-methods can be dispatchable if their only `Self`-mentioning argument
-    /// is dispatchable (TODO: expand on this).
+    /// Non-methods can be dispatchable if their first argument
+    /// is dispatchable (i.e. implements `DispatchFromDyn` appropriately).
     pub force_dyn_compatible: Option<Span>,
 
     /// Whether a trait is fully built-in, and any implementation is disallowed.

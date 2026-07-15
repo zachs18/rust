@@ -13,7 +13,7 @@ use rustc_span::DUMMY_SP;
 use smallvec::{SmallVec, smallvec};
 use tracing::debug;
 
-use crate::traits::is_vtable_safe_method;
+use crate::traits::is_vtable_safe_fn;
 
 #[derive(Clone, Debug)]
 pub enum VtblSegment<'tcx> {
@@ -43,10 +43,10 @@ fn prepare_vtable_segments_inner<'tcx, T>(
     // 1. The whole virtual table of the first direct super trait is included as the
     //    the prefix. If this trait doesn't have any super traits, then this step
     //    consists of the dsa metadata.
-    // 2. Then comes the proper pointer metadata(vptr) and all own methods for all
+    // 2. Then comes the proper pointer metadata(vptr) and all own dispatchable fns for all
     //    other super traits except those already included as part of the first
     //    direct super trait virtual table.
-    // 3. finally, the own methods of this trait.
+    // 3. finally, the own dispatchable fns of this trait.
 
     // This has the advantage that trait upcasting to the first direct super trait on each level
     // is zero cost, and to another trait includes only replacing the pointer with one level indirection,
@@ -156,8 +156,8 @@ fn prepare_vtable_segments_inner<'tcx, T>(
         // emit innermost item, move to next sibling and stop there if possible, otherwise jump to outer level.
         while let Some((inner_most_trait_ref, emit_vptr, mut siblings)) = stack.pop() {
             // We don't need to emit a vptr for "truly-empty" supertraits, but we *do* need to emit a
-            // vptr for supertraits that have no methods, but that themselves have supertraits
-            // with methods, so we check if any transitive supertrait has entries here (this includes
+            // vptr for supertraits that have no dispatchable fns, but that themselves have supertraits
+            // with dispatchable fns, so we check if any transitive supertrait has entries here (this includes
             // the trait itself).
             let has_entries = ty::elaborate::supertrait_def_ids(tcx, inner_most_trait_ref.def_id)
                 .any(|def_id| has_own_existential_vtable_entries(tcx, def_id));
@@ -217,7 +217,7 @@ fn own_existential_vtable_entries_iter(
         }
 
         // Some methods cannot be called on an object; skip those.
-        if !is_vtable_safe_method(tcx, trait_def_id, trait_method) {
+        if !is_vtable_safe_fn(tcx, trait_def_id, trait_method) {
             debug!("own_existential_vtable_entry: not vtable safe");
             return None;
         }
