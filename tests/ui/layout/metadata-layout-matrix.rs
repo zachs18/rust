@@ -57,7 +57,10 @@ where
 
 /// Checks failure coherence. It intentionally never invokes an unchecked
 /// query, because rejected metadata does not satisfy the unchecked precondition.
-fn assert_rejected<T, F>(make_meta: F)
+/// Note that `checked_align_for_meta` currently may return `Some` even if the layout is incomputable,
+/// if the type has a statically-known alignment regardless of the metadata.
+/// This behavior may change in the future.
+fn assert_rejected<T, F>(make_meta: F, maybe_alignment: Option<usize>)
 where
     T: ?Sized + MetaSized,
     F: Fn() -> Metadata<T>,
@@ -66,7 +69,7 @@ where
     assert_eq!(mem::checked_align_for_meta::<T>(make_meta()), None);
     assert_eq!(Layout::for_meta::<T>(make_meta()), None);
     assert_eq!(<T as MetaSized>::checked_size_for_meta(make_meta()), None);
-    assert_eq!(<T as MetaSized>::checked_align_for_meta(make_meta()), None);
+    assert_eq!(<T as MetaSized>::checked_align_for_meta(make_meta()).map(Alignment::as_usize), maybe_alignment);
     assert_eq!(<T as MetaSized>::checked_layout_for_meta(make_meta()), None);
 }
 
@@ -93,11 +96,13 @@ unsafe impl MetaSized for FixedTwo {
     }
 }
 
+#[allow(unused)]
 struct PairOfStrs {
     a: str,
     b: str,
 }
 
+#[allow(unused)]
 struct OffsetStruct<T: PointeeSized> {
     tag: u8,
     tail: T,
@@ -123,8 +128,8 @@ fn strings_and_slice_boundaries() {
 }
 
 fn overflow_is_rejected_without_calling_unchecked() {
-    assert_rejected::<str, _>(|| build_metadata!(len: usize::MAX, ..));
-    assert_rejected::<[u32], _>(|| build_metadata!(len: usize::MAX, ..));
+    assert_rejected::<str, _>(|| build_metadata!(len: usize::MAX, ..), Some(1));
+    assert_rejected::<[u32], _>(|| build_metadata!(len: usize::MAX, ..), Some(4));
 }
 
 fn recursively_nested_metadata() {

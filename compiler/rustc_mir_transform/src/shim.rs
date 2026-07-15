@@ -935,6 +935,216 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 return;
             }
         };
+
+        let mut array_like = |elem_ty: _| {
+            // The alignment of a slice or array is the alignment of the element,
+            // and the size is the element size times the length
+
+            let elem_meta_ty = Ty::new_ptr_metadata(tcx, elem_ty);
+            let (elem_meta, len) = 'elem_meta: {
+                let (elem_meta_idx, len) = match self_ty.kind() {
+                    ty::Str => {
+                        break 'elem_meta (
+                            Operand::Constant(Box::new(ConstOperand {
+                                span: self.span,
+                                user_ty: None,
+                                const_: Const::zero_sized(elem_meta_ty),
+                            })),
+                            Operand::Copy(meta.project_deeper(
+                                &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
+                                tcx,
+                            )),
+                        );
+                    }
+                    ty::Slice(_) => (
+                        FieldIdx::ONE,
+                        Operand::Copy(meta.project_deeper(
+                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
+                            tcx,
+                        )),
+                    ),
+                    ty::Array(_, len) => {
+                        let Some(len) = len.try_to_target_usize(tcx) else {
+                            tcx.dcx().delayed_bug(format!(
+                                "layout_for_meta shim for array with invalid length: {len:?}"
+                            ));
+                            self.block(vec![], TerminatorKind::Unreachable, false);
+                            return None;
+                        };
+                        (
+                            FieldIdx::ZERO,
+                            Operand::const_from_scalar(
+                                tcx,
+                                tcx.types.usize,
+                                interpret::Scalar::from_target_usize(len, &tcx),
+                                self.span,
+                            ),
+                        )
+                    }
+                    _ => unreachable!(),
+                };
+                let elem_meta =
+                    meta.project_deeper(&[PlaceElem::Field(elem_meta_idx, elem_meta_ty)], tcx);
+
+                (Operand::Copy(elem_meta), len)
+            };
+
+            let elem_result = self.make_place(ty::Mutability::Not, dest_ty);
+
+            self.block(
+                vec![],
+                TerminatorKind::Call {
+                    func: Operand::function_handle(
+                        self.tcx,
+                        method_def_id,
+                        [ty::GenericArg::from(elem_ty)],
+                        self.span,
+                    ),
+                    args: Box::new([Spanned { node: elem_meta, span: self.span }]),
+                    destination: elem_result,
+                    target: Some(self.block_index_offset(1)),
+                    // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
+                    // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
+                    unwind: UnwindAction::Continue,
+                    call_source: CallSource::Misc,
+                    fn_span: self.span,
+                },
+                false,
+            );
+
+            if checked {
+                // if elem_result.is_none() { return None }
+                // `elem_result` is the same type as this function's return type
+                let elem_result_tup = self.question_mark_blocks(
+                    elem_result,
+                    checked_dest_inner_ty,
+                    checked_dest_inner_ty,
+                );
+
+                let (elem_size, alignment) = if include_alignment {
+                    // `elem_result_tup: (usize, Alignment)`
+                    (
+                        Operand::Copy(elem_result_tup.project_deeper(
+                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
+                            tcx,
+                        )),
+                        Some(Operand::Copy(elem_result_tup.project_deeper(
+                            &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
+                            tcx,
+                        ))),
+                    )
+                } else {
+                    // `elem_result_tup: usize`
+                    (Operand::Copy(elem_result_tup), None)
+                };
+
+                // let size = elem_size.checked_mul(len)?;
+                // if size <= isize::MAX as usize {
+                //  Some(..)
+                // } else {
+                //  None
+                // }
+                let sum_tuple = self.make_place(
+                    ty::Mutability::Not,
+                    Ty::new_tup(tcx, &[tcx.types.usize, tcx.types.bool]),
+                );
+                let sum_value = sum_tuple
+                    .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx);
+                let sum_overflow = sum_tuple
+                    .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, tcx.types.bool)], tcx);
+
+                let sum_stmt = self.make_assign(
+                    sum_tuple,
+                    Rvalue::BinaryOp(BinOp::MulWithOverflow, Box::new((elem_size, len))),
+                );
+
+                // if overflow { return None }
+                self.block(
+                    vec![sum_stmt],
+                    TerminatorKind::SwitchInt {
+                        discr: Operand::Copy(sum_overflow),
+                        targets: SwitchTargets::static_if(
+                            1,
+                            self.block_index_offset(1),
+                            self.block_index_offset(2),
+                        ),
+                    },
+                    false,
+                );
+                self.return_none_block(checked_dest_inner_ty);
+
+                // if sum > max { return None }
+                let gt_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
+                let cmp_stmt = self.make_assign(
+                    gt_result,
+                    Rvalue::BinaryOp(
+                        BinOp::Gt,
+                        Box::new((Operand::Copy(sum_value), max_size.clone())),
+                    ),
+                );
+                self.block(
+                    vec![cmp_stmt],
+                    TerminatorKind::SwitchInt {
+                        discr: Operand::Copy(gt_result),
+                        targets: SwitchTargets::static_if(
+                            1,
+                            self.block_index_offset(1),
+                            self.block_index_offset(2),
+                        ),
+                    },
+                    false,
+                );
+                self.return_none_block(checked_dest_inner_ty);
+
+                Some((Operand::Copy(sum_value), alignment))
+            } else {
+                let (elem_size, alignment) = if include_alignment {
+                    // `elem_result: (usize, Alignment)`
+                    (
+                        Operand::Copy(elem_result.project_deeper(
+                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
+                            tcx,
+                        )),
+                        Some(Operand::Copy(elem_result.project_deeper(
+                            &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
+                            tcx,
+                        ))),
+                    )
+                } else {
+                    // `elem_result: usize`
+                    (Operand::Copy(elem_result), None)
+                };
+
+                let sum_value = self.make_place(ty::Mutability::Not, tcx.types.usize);
+                let sum_stmt = self.make_assign(
+                    sum_value,
+                    Rvalue::BinaryOp(BinOp::MulUnchecked, Box::new((elem_size, len))),
+                );
+
+                // assume(sum <= max)
+                let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
+                let cmp_stmt = self.make_assign(
+                    le_result,
+                    Rvalue::BinaryOp(
+                        BinOp::Le,
+                        Box::new((Operand::Copy(sum_value), max_size.clone())),
+                    ),
+                );
+
+                let assume_stmt = self.make_statement(StatementKind::Intrinsic(Box::new(
+                    NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
+                )));
+
+                self.block(
+                    vec![sum_stmt, cmp_stmt, assume_stmt],
+                    TerminatorKind::Goto { target: self.block_index_offset(1) },
+                    false,
+                );
+
+                Some((Operand::Copy(sum_value), alignment))
+            }
+        };
+
         let (size, alignment) = match self_ty.kind() {
             _ if self_ty.is_sized(tcx, typing_env) => {
                 // If `Self: Sized`, then `layout.size/align` are accurate, and we can just return them.
@@ -1237,204 +1447,17 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                 (size, Some(alignment))
             }
 
-            ty::Str => (
-                Operand::Copy(
-                    meta.project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx),
-                ),
-                Some(Operand::const_from_scalar(
-                    self.tcx,
-                    alignment_struct_ty,
-                    interpret::Scalar::from_target_usize(1, &tcx),
-                    self.span,
-                )),
-            ),
-            &ty::Slice(elem_ty) | &ty::Array(elem_ty, ..) => {
-                // The alignment of a slice or array is the alignment of the element,
-                // and the size is the element size times the length
-
-                let elem_meta_ty = Ty::new_ptr_metadata(tcx, elem_ty);
-                let (elem_meta_idx, len) = match self_ty.kind() {
-                    ty::Slice(_) => (
-                        FieldIdx::ONE,
-                        Operand::Copy(meta.project_deeper(
-                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                            tcx,
-                        )),
-                    ),
-                    ty::Array(_, len) => {
-                        let Some(len) = len.try_to_target_usize(tcx) else {
-                            tcx.dcx().delayed_bug(format!(
-                                "layout_for_meta shim for array with invalid length: {len:?}"
-                            ));
-                            self.block(vec![], TerminatorKind::Unreachable, false);
-                            return;
-                        };
-                        (
-                            FieldIdx::ZERO,
-                            Operand::const_from_scalar(
-                                tcx,
-                                tcx.types.usize,
-                                interpret::Scalar::from_target_usize(len, &tcx),
-                                self.span,
-                            ),
-                        )
-                    }
-                    _ => unreachable!(),
+            ty::Str => {
+                let Some(ret) = array_like(tcx.types.u8) else {
+                    return;
                 };
-                let elem_meta =
-                    meta.project_deeper(&[PlaceElem::Field(elem_meta_idx, elem_meta_ty)], tcx);
-
-                let elem_result = self.make_place(ty::Mutability::Not, dest_ty);
-
-                self.block(
-                    vec![],
-                    TerminatorKind::Call {
-                        func: Operand::function_handle(
-                            self.tcx,
-                            method_def_id,
-                            [ty::GenericArg::from(elem_ty)],
-                            self.span,
-                        ),
-                        args: Box::new([Spanned {
-                            node: Operand::Copy(elem_meta),
-                            span: self.span,
-                        }]),
-                        destination: elem_result,
-                        target: Some(self.block_index_offset(1)),
-                        // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
-                        // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
-                        unwind: UnwindAction::Continue,
-                        call_source: CallSource::Misc,
-                        fn_span: self.span,
-                    },
-                    false,
-                );
-
-                if checked {
-                    // if elem_result.is_none() { return None }
-                    // `elem_result` is the same type as this function's return type
-                    let elem_result_tup = self.question_mark_blocks(
-                        elem_result,
-                        checked_dest_inner_ty,
-                        checked_dest_inner_ty,
-                    );
-
-                    let (elem_size, alignment) = if include_alignment {
-                        // `elem_result_tup: (usize, Alignment)`
-                        (
-                            Operand::Copy(elem_result_tup.project_deeper(
-                                &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                                tcx,
-                            )),
-                            Some(Operand::Copy(elem_result_tup.project_deeper(
-                                &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
-                                tcx,
-                            ))),
-                        )
-                    } else {
-                        // `elem_result_tup: usize`
-                        (Operand::Copy(elem_result_tup), None)
-                    };
-
-                    // let size = elem_size.checked_mul(len)?;
-                    // if size <= isize::MAX as usize {
-                    //  Some(..)
-                    // } else {
-                    //  None
-                    // }
-                    let sum_tuple = self.make_place(
-                        ty::Mutability::Not,
-                        Ty::new_tup(tcx, &[tcx.types.usize, tcx.types.bool]),
-                    );
-                    let sum_value = sum_tuple
-                        .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx);
-                    let sum_overflow = sum_tuple
-                        .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, tcx.types.bool)], tcx);
-
-                    let sum_stmt = self.make_assign(
-                        sum_tuple,
-                        Rvalue::BinaryOp(BinOp::MulWithOverflow, Box::new((elem_size, len))),
-                    );
-
-                    // if overflow { return None }
-                    self.block(
-                        vec![sum_stmt],
-                        TerminatorKind::SwitchInt {
-                            discr: Operand::Copy(sum_overflow),
-                            targets: SwitchTargets::static_if(
-                                1,
-                                self.block_index_offset(1),
-                                self.block_index_offset(2),
-                            ),
-                        },
-                        false,
-                    );
-                    self.return_none_block(checked_dest_inner_ty);
-
-                    // if sum > max { return None }
-                    let gt_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-                    let cmp_stmt = self.make_assign(
-                        gt_result,
-                        Rvalue::BinaryOp(BinOp::Gt, Box::new((Operand::Copy(sum_value), max_size))),
-                    );
-                    self.block(
-                        vec![cmp_stmt],
-                        TerminatorKind::SwitchInt {
-                            discr: Operand::Copy(gt_result),
-                            targets: SwitchTargets::static_if(
-                                1,
-                                self.block_index_offset(1),
-                                self.block_index_offset(2),
-                            ),
-                        },
-                        false,
-                    );
-                    self.return_none_block(checked_dest_inner_ty);
-
-                    (Operand::Copy(sum_value), alignment)
-                } else {
-                    let (elem_size, alignment) = if include_alignment {
-                        // `elem_result: (usize, Alignment)`
-                        (
-                            Operand::Copy(elem_result.project_deeper(
-                                &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                                tcx,
-                            )),
-                            Some(Operand::Copy(elem_result.project_deeper(
-                                &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
-                                tcx,
-                            ))),
-                        )
-                    } else {
-                        // `elem_result: usize`
-                        (Operand::Copy(elem_result), None)
-                    };
-
-                    let sum_value = self.make_place(ty::Mutability::Not, tcx.types.usize);
-                    let sum_stmt = self.make_assign(
-                        sum_value,
-                        Rvalue::BinaryOp(BinOp::MulUnchecked, Box::new((elem_size, len))),
-                    );
-
-                    // assume(sum <= max)
-                    let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-                    let cmp_stmt = self.make_assign(
-                        le_result,
-                        Rvalue::BinaryOp(BinOp::Le, Box::new((Operand::Copy(sum_value), max_size))),
-                    );
-
-                    let assume_stmt = self.make_statement(StatementKind::Intrinsic(Box::new(
-                        NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
-                    )));
-
-                    self.block(
-                        vec![sum_stmt, cmp_stmt, assume_stmt],
-                        TerminatorKind::Goto { target: self.block_index_offset(1) },
-                        false,
-                    );
-
-                    (Operand::Copy(sum_value), alignment)
-                }
+                ret
+            }
+            &ty::Slice(elem_ty) | &ty::Array(elem_ty, ..) => {
+                let Some(ret) = array_like(elem_ty) else {
+                    return;
+                };
+                ret
             }
             ty::Dynamic(..) => {
                 // The `vtable_size/vtable_align` intrinsics take a `*const ()`.
