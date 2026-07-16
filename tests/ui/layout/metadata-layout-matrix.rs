@@ -14,7 +14,7 @@
 #![feature(unsized_type)]
 
 use std::alloc::Layout;
-use std::marker::{MetaSized, PointeeSized};
+use std::marker::{MetaAligned, MetaSized, PointeeSized};
 use std::mem::{self, Alignment};
 use std::ptr::{self, Metadata, Thin, build_metadata};
 
@@ -34,7 +34,7 @@ where
     assert_eq!(public_layout.align(), expected_align);
 
     let checked_size = <T as MetaSized>::checked_size_for_meta(make_meta());
-    let checked_align = <T as MetaSized>::checked_align_for_meta(make_meta());
+    let checked_align = <T as MetaAligned>::checked_align_for_meta(make_meta());
     let checked_layout = <T as MetaSized>::checked_layout_for_meta(make_meta());
     assert_eq!(checked_size, Some(expected_size));
     assert_eq!(checked_align.map(Alignment::as_usize), Some(expected_align));
@@ -45,7 +45,7 @@ where
 
     // Safe metadata establishes the precondition for all unchecked calls.
     let unchecked_size = unsafe { <T as MetaSized>::unchecked_size_for_meta(make_meta()) };
-    let unchecked_align = unsafe { <T as MetaSized>::unchecked_align_for_meta(make_meta()) };
+    let unchecked_align = unsafe { <T as MetaAligned>::unchecked_align_for_meta(make_meta()) };
     let unchecked_layout = unsafe { <T as MetaSized>::unchecked_layout_for_meta(make_meta()) };
     assert_eq!(unchecked_size, expected_size);
     assert_eq!(unchecked_align.as_usize(), expected_align);
@@ -66,7 +66,7 @@ where
     assert_eq!(mem::checked_align_for_meta::<T>(make_meta()), None);
     assert_eq!(Layout::for_meta::<T>(make_meta()), None);
     assert_eq!(<T as MetaSized>::checked_size_for_meta(make_meta()), None);
-    assert_eq!(<T as MetaSized>::checked_align_for_meta(make_meta()), None);
+    assert_eq!(<T as MetaAligned>::checked_align_for_meta(make_meta()), None);
     assert_eq!(<T as MetaSized>::checked_layout_for_meta(make_meta()), None);
 }
 
@@ -77,12 +77,14 @@ unsafe impl Thin for FixedTwo {}
 
 const ALIGN_TWO: Alignment = Alignment::new(2).unwrap();
 
+unsafe impl MetaAligned for FixedTwo {
+    unsafe fn unchecked_align_for_meta(self: Metadata<Self>) -> Alignment { ALIGN_TWO }
+    fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment> { Some(ALIGN_TWO) }
+}
+
 unsafe impl MetaSized for FixedTwo {
     unsafe fn unchecked_size_for_meta(self: Metadata<Self>) -> usize { 2 }
     fn checked_size_for_meta(self: Metadata<Self>) -> Option<usize> { Some(2) }
-
-    unsafe fn unchecked_align_for_meta(self: Metadata<Self>) -> Alignment { ALIGN_TWO }
-    fn checked_align_for_meta(self: Metadata<Self>) -> Option<Alignment> { Some(ALIGN_TWO) }
 
     unsafe fn unchecked_layout_for_meta(self: Metadata<Self>) -> (usize, Alignment) {
         (2, ALIGN_TWO)
@@ -94,11 +96,14 @@ unsafe impl MetaSized for FixedTwo {
 }
 
 struct PairOfStrs {
+    #[allow(unused)]
     a: str,
+    #[allow(unused)]
     b: str,
 }
 
 struct OffsetStruct<T: PointeeSized> {
+    #[allow(unused)]
     tag: u8,
     tail: T,
 }
