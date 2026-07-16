@@ -166,6 +166,10 @@ language_item_table! {
     AlignmentMin,            sym::alignment_min_method, alignment_min_method,      Target::Method(MethodKind::Inherent), GenericRequirement::None;
     VtableSize,              sym::vtable_size,         vtable_size_fn,             Target::Fn,             GenericRequirement::Exact(0);
     VtableAlign,             sym::vtable_align,        vtable_align_fn,            Target::Fn,             GenericRequirement::Exact(0);
+    CheckedSizeForMeta,      sym::checked_size_for_meta, checked_size_for_meta,    Target::Fn,             GenericRequirement::Exact(1);
+    UncheckedSizeForMeta,    sym::unchecked_size_for_meta, unchecked_size_for_meta, Target::Fn,            GenericRequirement::Exact(1);
+    CheckedAlignForMeta,     sym::checked_align_for_meta, checked_align_for_meta,  Target::Fn,             GenericRequirement::Exact(1);
+    UncheckedAlignForMeta,   sym::unchecked_align_for_meta, unchecked_align_for_meta, Target::Fn,          GenericRequirement::Exact(1);
     /// Trait injected by `#[derive(PartialEq)]`, (i.e. "Partial EQ").
     StructuralPeq,           sym::structural_peq,      structural_peq_trait,       Target::Trait,          GenericRequirement::None;
     Copy,                    sym::copy,                copy_trait,                 Target::Trait,          GenericRequirement::Exact(0);

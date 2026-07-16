@@ -2909,6 +2909,7 @@ pub const unsafe fn align_of_val<T: ?Sized>(ptr: *const T) -> usize;
 /// The to-be-stabilized version of this intrinsic is [`core::mem::checked_size_for_meta`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "checked_size_for_meta"]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const fn checked_size_for_meta<T: MetaSized>(meta: ptr::Metadata<T>) -> (bool, usize);
@@ -2925,6 +2926,7 @@ pub const fn checked_size_for_meta<T: MetaSized>(meta: ptr::Metadata<T>) -> (boo
 /// The to-be-stabilized version of this intrinsic is [`core::mem::checked_align_for_meta`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "checked_align_for_meta"]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const fn checked_align_for_meta<T: MetaSized>(meta: ptr::Metadata<T>) -> (bool, usize);
@@ -2937,6 +2939,7 @@ pub const fn checked_align_for_meta<T: MetaSized>(meta: ptr::Metadata<T>) -> (bo
 /// The to-be-stabilized version of this intrinsic is [`core::mem::checked_size_for_meta`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "unchecked_size_for_meta"]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> usize;
@@ -2949,6 +2952,7 @@ pub const unsafe fn unchecked_size_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -
 /// The to-be-stabilized version of this intrinsic is [`core::mem::unchecked_align_for_meta`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "unchecked_align_for_meta"]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn unchecked_align_for_meta<T: ?Sized>(meta: ptr::Metadata<T>) -> usize;

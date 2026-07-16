@@ -1,9 +1,7 @@
 // ignore-tidy-filelength
 use std::{assert_matches, fmt, iter};
 
-use either::Either;
-use rustc_abi::{Align, ExternAbi, FIRST_VARIANT, FieldIdx, FieldsShape, VariantIdx};
-use rustc_const_eval::interpret::PointerArithmetic;
+use rustc_abi::{ExternAbi, FIRST_VARIANT, FieldIdx, VariantIdx};
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::lang_items::LangItem;
@@ -848,19 +846,15 @@ fn build_layout_for_meta_shim<'tcx>(
     let mut builder =
         LayoutForMetaShimBuilder::new(tcx, instance, method_def, checked, layout_part, self_ty);
 
-    match layout_part {
-        ty::LayoutPart::Alignment => builder.only_alignment_shim(),
-        ty::LayoutPart::Size | ty::LayoutPart::Layout => builder.layout_shim(),
-    }
+    builder.layout_shim();
 
     builder.into_mir()
 }
 
 struct LayoutForMetaShimExtra<'tcx> {
-    method_def_id: DefId,
-    self_ty: Ty<'tcx>,
     checked: bool,
     layout_part: ty::LayoutPart,
+    self_ty: Ty<'tcx>,
 }
 type LayoutForMetaShimBuilder<'tcx> = ShimBuilder<'tcx, LayoutForMetaShimExtra<'tcx>>;
 
@@ -884,678 +878,211 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             span,
             sig,
             instance,
-            extra: LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part },
+            extra: LayoutForMetaShimExtra { checked, layout_part, self_ty },
         }
     }
 
     fn layout_shim(&mut self) {
-        let LayoutForMetaShimExtra { method_def_id, self_ty, checked, layout_part } = self.extra;
+        let LayoutForMetaShimExtra { checked, layout_part, self_ty } = self.extra;
         let tcx = self.tcx;
-        let typing_env = ty::TypingEnv::fully_monomorphized();
 
         let dest = Place::return_place();
-        let dest_ty = dest.ty(&self.local_decls, tcx).ty;
         let meta = Place::from(Local::new(1 + 0));
         let option_did = tcx.require_lang_item(LangItem::Option, self.span);
         let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
-        let max_size = Operand::const_from_scalar(
-            tcx,
-            tcx.types.usize,
-            interpret::Scalar::from_target_usize(tcx.max_size_of_val().bytes(), &tcx),
-            self.span,
-        );
         let size_align_tup_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
-        let include_alignment = matches!(layout_part, ty::LayoutPart::Layout);
         // only used if `checked`
-        let checked_dest_inner_ty =
-            if include_alignment { size_align_tup_ty } else { tcx.types.usize };
+        let checked_dest_inner_ty = match layout_part {
+            ty::LayoutPart::Size => tcx.types.usize,
+            ty::LayoutPart::Alignment => alignment_struct_ty,
+            ty::LayoutPart::Layout => size_align_tup_ty,
+        };
 
-        let alignment_max_fn = Operand::function_handle(
-            tcx,
-            tcx.require_lang_item(LangItem::AlignmentMax, self.span),
-            [],
-            self.span,
-        );
-        let alignment_min_fn = Operand::function_handle(
-            tcx,
-            tcx.require_lang_item(LangItem::AlignmentMin, self.span),
-            [],
-            self.span,
-        );
+        // return type of the checked intrinsics
+        let bool_usize_tup_ty = Ty::new_tup(tcx, &[tcx.types.bool, tcx.types.usize]);
 
-        let layout = match tcx.layout_of(typing_env.as_query_input(self_ty)) {
-            Ok(layout) => layout,
-            Err(err) => {
-                // If `self_ty` doesn't have a valid layout, then there should already have been an error,
-                // but we still need to emit some MIR.
-                tcx.dcx().delayed_bug(format!(
-                    "layout_for_meta shim for type with invalid layout: {err:?}"
-                ));
-                self.block(vec![], TerminatorKind::Unreachable, false);
-                return;
+        // Just call the intrinsics to get the size and alignment,
+        // and fixup the return value to fit the signature.
+        let (size_valid, size) = match layout_part {
+            ty::LayoutPart::Alignment => (None, None),
+            ty::LayoutPart::Size | ty::LayoutPart::Layout => {
+                if checked {
+                    let checked_size = self.make_place(Mutability::Not, bool_usize_tup_ty);
+                    self.block(
+                        vec![],
+                        TerminatorKind::Call {
+                            func: Operand::function_handle(
+                                tcx,
+                                tcx.require_lang_item(LangItem::CheckedSizeForMeta, self.span),
+                                [self_ty.into()],
+                                self.span,
+                            ),
+                            args: Box::new([Spanned {
+                                node: Operand::Copy(meta),
+                                span: self.span,
+                            }]),
+                            destination: checked_size,
+                            target: Some(self.block_index_offset(1)),
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
+                    let size_valid = checked_size
+                        .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.bool)], tcx);
+                    let size = checked_size
+                        .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, tcx.types.usize)], tcx);
+                    (Some(Operand::Copy(size_valid)), Some(Operand::Copy(size)))
+                } else {
+                    let size = self.make_place(Mutability::Not, tcx.types.usize);
+                    self.block(
+                        vec![],
+                        TerminatorKind::Call {
+                            func: Operand::function_handle(
+                                tcx,
+                                tcx.require_lang_item(LangItem::UncheckedSizeForMeta, self.span),
+                                [self_ty.into()],
+                                self.span,
+                            ),
+                            args: Box::new([Spanned {
+                                node: Operand::Copy(meta),
+                                span: self.span,
+                            }]),
+                            destination: size,
+                            target: Some(self.block_index_offset(1)),
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
+                    (None, Some(Operand::Copy(size)))
+                }
+            }
+        };
+        let (align_valid, align) = match layout_part {
+            ty::LayoutPart::Size => (None, None),
+            ty::LayoutPart::Alignment | ty::LayoutPart::Layout => {
+                if checked {
+                    let checked_align = self.make_place(Mutability::Not, bool_usize_tup_ty);
+                    self.block(
+                        vec![],
+                        TerminatorKind::Call {
+                            func: Operand::function_handle(
+                                tcx,
+                                tcx.require_lang_item(LangItem::CheckedAlignForMeta, self.span),
+                                [self_ty.into()],
+                                self.span,
+                            ),
+                            args: Box::new([Spanned {
+                                node: Operand::Copy(meta),
+                                span: self.span,
+                            }]),
+                            destination: checked_align,
+                            target: Some(self.block_index_offset(1)),
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
+                    let align_valid = checked_align
+                        .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.bool)], tcx);
+                    let align = checked_align
+                        .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, tcx.types.usize)], tcx);
+                    (Some(Operand::Copy(align_valid)), Some(Operand::Copy(align)))
+                } else {
+                    let align = self.make_place(Mutability::Not, tcx.types.usize);
+                    self.block(
+                        vec![],
+                        TerminatorKind::Call {
+                            func: Operand::function_handle(
+                                tcx,
+                                tcx.require_lang_item(LangItem::UncheckedAlignForMeta, self.span),
+                                [self_ty.into()],
+                                self.span,
+                            ),
+                            args: Box::new([Spanned {
+                                node: Operand::Copy(meta),
+                                span: self.span,
+                            }]),
+                            destination: align,
+                            target: Some(self.block_index_offset(1)),
+                            unwind: UnwindAction::Continue,
+                            call_source: CallSource::Misc,
+                            fn_span: self.span,
+                        },
+                        false,
+                    );
+                    (None, Some(Operand::Copy(align)))
+                }
             }
         };
 
-        let mut array_like = |elem_ty: _| {
-            // The alignment of a slice or array is the alignment of the element,
-            // and the size is the element size times the length
+        let valid_and_opt_stmt = match (size_valid, align_valid) {
+            // unchecked, valid doesn't exist
+            (None, None) => None,
+            // checked_size or checked_align: valid is either size_valid or align_valid,
+            // whichever is being computed
+            (Some(valid), None) | (None, Some(valid)) => Some((valid, None)),
+            // checked_layout: valid = size_valid && align_valid, which needs to be computed
+            (Some(size_valid), Some(align_valid)) => {
+                let valid = self.make_place(Mutability::Not, tcx.types.bool);
+                let assign_valid_stmt = self.make_assign(
+                    valid,
+                    Rvalue::BinaryOp(BinOp::BitAnd, Box::new((size_valid, align_valid))),
+                );
+                Some((Operand::Copy(valid), Some(assign_valid_stmt)))
+            }
+        };
 
-            let elem_meta_ty = Ty::new_ptr_metadata(tcx, elem_ty);
-            let (elem_meta, len) = 'elem_meta: {
-                let (elem_meta_idx, len) = match self_ty.kind() {
-                    ty::Str => {
-                        break 'elem_meta (
-                            Operand::Constant(Box::new(ConstOperand {
-                                span: self.span,
-                                user_ty: None,
-                                const_: Const::zero_sized(elem_meta_ty),
-                            })),
-                            Operand::Copy(meta.project_deeper(
-                                &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                                tcx,
-                            )),
-                        );
-                    }
-                    ty::Slice(_) => (
-                        FieldIdx::ONE,
-                        Operand::Copy(meta.project_deeper(
-                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                            tcx,
-                        )),
-                    ),
-                    ty::Array(_, len) => {
-                        let Some(len) = len.try_to_target_usize(tcx) else {
-                            tcx.dcx().delayed_bug(format!(
-                                "layout_for_meta shim for array with invalid length: {len:?}"
-                            ));
-                            self.block(vec![], TerminatorKind::Unreachable, false);
-                            return None;
-                        };
-                        (
-                            FieldIdx::ZERO,
-                            Operand::const_from_scalar(
-                                tcx,
-                                tcx.types.usize,
-                                interpret::Scalar::from_target_usize(len, &tcx),
-                                self.span,
-                            ),
-                        )
-                    }
-                    _ => unreachable!(),
-                };
-                let elem_meta =
-                    meta.project_deeper(&[PlaceElem::Field(elem_meta_idx, elem_meta_ty)], tcx);
+        if let Some((valid, opt_stmt)) = valid_and_opt_stmt {
+            debug_assert!(checked);
+            // bbN:
+            //  valid = size_valid && align_valid; // if computing full layout
+            //  switchInt(valid) [false -> bbN+1, true -> bbN+2];
+            //
+            // bbN+1:
+            //  _0 = Option::<_>::None;
+            //  return;
+            //
+            // bbN+2:
+            //  _0 = Option::<_>::Some(..);
+            //  return;
+            //
 
-                (Operand::Copy(elem_meta), len)
-            };
-
-            let elem_result = self.make_place(ty::Mutability::Not, dest_ty);
-
+            let none_block = self.block_index_offset(1);
+            let some_block = self.block_index_offset(2);
             self.block(
-                vec![],
-                TerminatorKind::Call {
-                    func: Operand::function_handle(
-                        self.tcx,
-                        method_def_id,
-                        [ty::GenericArg::from(elem_ty)],
-                        self.span,
-                    ),
-                    args: Box::new([Spanned { node: elem_meta, span: self.span }]),
-                    destination: elem_result,
-                    target: Some(self.block_index_offset(1)),
-                    // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
-                    // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
-                    unwind: UnwindAction::Continue,
-                    call_source: CallSource::Misc,
-                    fn_span: self.span,
+                Vec::from_iter(opt_stmt),
+                TerminatorKind::SwitchInt {
+                    discr: valid,
+                    targets: SwitchTargets::static_if(0, none_block, some_block),
                 },
                 false,
             );
-
-            if checked {
-                // if elem_result.is_none() { return None }
-                // `elem_result` is the same type as this function's return type
-                let elem_result_tup = self.question_mark_blocks(
-                    elem_result,
-                    checked_dest_inner_ty,
-                    checked_dest_inner_ty,
-                );
-
-                let (elem_size, alignment) = if include_alignment {
-                    // `elem_result_tup: (usize, Alignment)`
-                    (
-                        Operand::Copy(elem_result_tup.project_deeper(
-                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                            tcx,
-                        )),
-                        Some(Operand::Copy(elem_result_tup.project_deeper(
-                            &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
-                            tcx,
-                        ))),
-                    )
-                } else {
-                    // `elem_result_tup: usize`
-                    (Operand::Copy(elem_result_tup), None)
-                };
-
-                // let size = elem_size.checked_mul(len)?;
-                // if size <= isize::MAX as usize {
-                //  Some(..)
-                // } else {
-                //  None
-                // }
-                let sum_tuple = self.make_place(
-                    ty::Mutability::Not,
-                    Ty::new_tup(tcx, &[tcx.types.usize, tcx.types.bool]),
-                );
-                let sum_value = sum_tuple
-                    .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx);
-                let sum_overflow = sum_tuple
-                    .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, tcx.types.bool)], tcx);
-
-                let sum_stmt = self.make_assign(
-                    sum_tuple,
-                    Rvalue::BinaryOp(BinOp::MulWithOverflow, Box::new((elem_size, len))),
-                );
-
-                // if overflow { return None }
-                self.block(
-                    vec![sum_stmt],
-                    TerminatorKind::SwitchInt {
-                        discr: Operand::Copy(sum_overflow),
-                        targets: SwitchTargets::static_if(
-                            1,
-                            self.block_index_offset(1),
-                            self.block_index_offset(2),
-                        ),
-                    },
-                    false,
-                );
-                self.return_none_block(checked_dest_inner_ty);
-
-                // if sum > max { return None }
-                let gt_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-                let cmp_stmt = self.make_assign(
-                    gt_result,
-                    Rvalue::BinaryOp(
-                        BinOp::Gt,
-                        Box::new((Operand::Copy(sum_value), max_size.clone())),
-                    ),
-                );
-                self.block(
-                    vec![cmp_stmt],
-                    TerminatorKind::SwitchInt {
-                        discr: Operand::Copy(gt_result),
-                        targets: SwitchTargets::static_if(
-                            1,
-                            self.block_index_offset(1),
-                            self.block_index_offset(2),
-                        ),
-                    },
-                    false,
-                );
-                self.return_none_block(checked_dest_inner_ty);
-
-                Some((Operand::Copy(sum_value), alignment))
-            } else {
-                let (elem_size, alignment) = if include_alignment {
-                    // `elem_result: (usize, Alignment)`
-                    (
-                        Operand::Copy(elem_result.project_deeper(
-                            &[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)],
-                            tcx,
-                        )),
-                        Some(Operand::Copy(elem_result.project_deeper(
-                            &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
-                            tcx,
-                        ))),
-                    )
-                } else {
-                    // `elem_result: usize`
-                    (Operand::Copy(elem_result), None)
-                };
-
-                let sum_value = self.make_place(ty::Mutability::Not, tcx.types.usize);
-                let sum_stmt = self.make_assign(
-                    sum_value,
-                    Rvalue::BinaryOp(BinOp::MulUnchecked, Box::new((elem_size, len))),
-                );
-
-                // assume(sum <= max)
-                let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-                let cmp_stmt = self.make_assign(
-                    le_result,
-                    Rvalue::BinaryOp(
-                        BinOp::Le,
-                        Box::new((Operand::Copy(sum_value), max_size.clone())),
-                    ),
-                );
-
-                let assume_stmt = self.make_statement(StatementKind::Intrinsic(Box::new(
-                    NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
-                )));
-
-                self.block(
-                    vec![sum_stmt, cmp_stmt, assume_stmt],
-                    TerminatorKind::Goto { target: self.block_index_offset(1) },
-                    false,
-                );
-
-                Some((Operand::Copy(sum_value), alignment))
-            }
-        };
-
-        let (size, alignment) = match self_ty.kind() {
-            _ if self_ty.is_sized(tcx, typing_env) => {
-                // If `Self: Sized`, then `layout.size/align` are accurate, and we can just return them.
-                (
-                    Operand::const_from_scalar(
-                        tcx,
-                        tcx.types.usize,
-                        interpret::Scalar::from_target_usize(layout.size.bytes(), &tcx),
-                        self.span,
-                    ),
-                    Some(Operand::const_from_scalar(
-                        self.tcx,
-                        alignment_struct_ty,
-                        interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
-                        self.span,
-                    )),
-                )
-            }
-            ty::Bool
-            | ty::Char
-            | ty::Int(_)
-            | ty::Uint(_)
-            | ty::Float(_)
-            | ty::FnDef(..)
-            | ty::FnPtr(..)
-            | ty::Closure(..)
-            | ty::CoroutineClosure(..)
-            | ty::Coroutine(..)
-            | ty::CoroutineWitness(..)
-            | ty::Never
-            | ty::UntypedPtr { .. }
-            | ty::PtrMetadata(..)
-            | ty::RawPtr(..)
-            | ty::Ref(..)
-            | ty::InitAdt(..)
-            | ty::InitArray(..)
-            | ty::InitArrayRepeat(..)
-            | ty::InitSliceRepeat(..)
-            | ty::InitTuple(..)
-            | ty::Pat(..)
-            | ty::UnsafeBinder(..)
-            | ty::Error(_) => bug!("{} should be `Sized`", self_ty),
-            ty::Foreign(..) => bug!("{} should not be `MetaSized`", self_ty),
-
-            ty::Adt(def, ..) if def.is_unsized_type() => {
-                bug!("AdtKind::UnsizedType should have manual MetaSized impls, not builtin")
-            }
-            ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
-            ty::Adt(def, args) if def.is_union() => {
-                let size_acc = self.make_place(ty::Mutability::Mut, tcx.types.usize);
-                let align_acc = self.make_place(ty::Mutability::Mut, alignment_struct_ty);
-                // FIXME: keep track of statically-sized/aligned field separately to avoid bloat.
-
-                // We need to get the alignment of all the fields, since we need to get the alignment of the type
-                // to round the size up, so we use `(un)checked_layout_for_meta` for the field layout calls,
-                // even if this call itself is `*_size_for_meta`.
-                let meta_sized =
-                    tcx.associated_items(tcx.require_lang_item(LangItem::MetaSized, self.span));
-                let (field_method_sym, field_ret_ty) = if checked {
-                    ("checked_layout_for_meta", Ty::new_option(tcx, size_align_tup_ty))
-                } else {
-                    ("unchecked_layout_for_meta", size_align_tup_ty)
-                };
-                let field_method_def_id = meta_sized
-                    .filter_by_name_unhygienic(Symbol::intern(field_method_sym))
-                    .next()
-                    .unwrap()
-                    .def_id;
-
-                for (field_idx, field) in def.non_enum_variant().fields.iter_enumerated() {
-                    let field_ty = field.ty(tcx, args);
-                    let field_meta_ty = Ty::new_ptr_metadata(tcx, field_ty);
-                    let field_meta =
-                        meta.project_deeper(&[PlaceElem::Field(field_idx, field_meta_ty)], tcx);
-
-                    let field_layout_ret = self.make_place(ty::Mutability::Not, field_ret_ty);
-
-                    // bb:
-                    //  field_ret = <T as MetaSized>::(un)checked_layout_for_meta(Copy meta) [return -> nextbb, unwind continue]
-                    // nextbb: ...
-                    self.block(
-                        vec![],
-                        TerminatorKind::Call {
-                            func: Operand::function_handle(
-                                self.tcx,
-                                field_method_def_id,
-                                [ty::GenericArg::from(field_ty)],
-                                self.span,
-                            ),
-                            args: Box::new([Spanned {
-                                node: Operand::Copy(field_meta),
-                                span: self.span,
-                            }]),
-                            destination: field_layout_ret,
-                            target: Some(self.block_index_offset(1)),
-                            // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
-                            // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
-                            unwind: UnwindAction::Continue,
-                            call_source: CallSource::Misc,
-                            fn_span: self.span,
-                        },
-                        false,
-                    );
-
-                    let field_layout = if checked {
-                        self.question_mark_blocks(
-                            field_layout_ret,
-                            size_align_tup_ty,
-                            checked_dest_inner_ty,
-                        )
-                    } else {
-                        field_layout_ret
-                    };
-
-                    let field_size = field_layout
-                        .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx);
-                    let field_align = field_layout.project_deeper(
-                        &[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)],
-                        tcx,
-                    );
-
-                    if field_idx.as_usize() == 0 {
-                        // First field, just set the accumulators to the field layout.
-                        // Don't need to do any checking or rounding.
-                        self.block(
-                            vec![
-                                self.make_assign(size_acc, Rvalue::Use(Operand::Copy(field_size))),
-                                self.make_assign(
-                                    align_acc,
-                                    Rvalue::Use(Operand::Copy(field_align)),
-                                ),
-                            ],
-                            TerminatorKind::Goto { target: self.block_index_offset(1) },
-                            false,
-                        );
-                    } else {
-                        // sizecmpbb:
-                        //  _size_gt_result = field_size > size_acc;
-                        //  switchInt(_size_gt_result) [1 => setbb, 2 => alignbb];
-                        // sizesetbb:
-                        //  size_acc = field_size;
-                        //  goto -> nextbb;
-                        // alignbb:
-                        //  align_acc = Alignment::max(align_acc, field_align) [return -> nextbb, unwind continue];
-                        // nextbb: ...
-
-                        // sizecmpbb:
-                        let size_gt_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-                        self.block(
-                            vec![self.make_assign(
-                                size_gt_result,
-                                Rvalue::BinaryOp(
-                                    BinOp::Gt,
-                                    Box::new((Operand::Copy(field_size), Operand::Copy(size_acc))),
-                                ),
-                            )],
-                            TerminatorKind::SwitchInt {
-                                discr: Operand::Copy(size_gt_result),
-                                targets: SwitchTargets::static_if(
-                                    1,
-                                    self.block_index_offset(1),
-                                    self.block_index_offset(2),
-                                ),
-                            },
-                            false,
-                        );
-
-                        // sizesetbb:
-                        self.block(
-                            vec![
-                                self.make_assign(size_acc, Rvalue::Use(Operand::Copy(field_size))),
-                            ],
-                            TerminatorKind::Goto { target: self.block_index_offset(1) },
-                            false,
-                        );
-
-                        // alignbb:
-                        self.block(
-                            vec![],
-                            TerminatorKind::Call {
-                                func: alignment_max_fn.clone(),
-                                args: Box::new([
-                                    Spanned { node: Operand::Copy(align_acc), span: self.span },
-                                    Spanned { node: Operand::Copy(field_align), span: self.span },
-                                ]),
-                                destination: align_acc,
-                                target: Some(self.block_index_offset(1)),
-                                unwind: UnwindAction::Continue,
-                                call_source: CallSource::Misc,
-                                fn_span: self.span,
-                            },
-                            false,
-                        );
-                    }
-                }
-
-                // Clamp alignment to `repr(packed)`
-                if let Some(pack) = def.repr().pack {
-                    // alignbb:
-                    self.block(
-                        vec![],
-                        TerminatorKind::Call {
-                            func: alignment_min_fn.clone(),
-                            args: Box::new([
-                                Spanned { node: Operand::Copy(align_acc), span: self.span },
-                                Spanned {
-                                    node: Operand::const_from_scalar(
-                                        self.tcx,
-                                        alignment_struct_ty,
-                                        interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
-                                        self.span,
-                                    ),
-                                    span: self.span,
-                                },
-                            ]),
-                            destination: align_acc,
-                            target: Some(self.block_index_offset(1)),
-                            unwind: UnwindAction::Continue,
-                            call_source: CallSource::Misc,
-                            fn_span: self.span,
-                        },
-                        false,
-                    );
-                }
-
-                // Raise alignment to `repr(align)`
-                if let Some(overalign) = def.repr().align {
-                    // alignbb:
-                    self.block(
-                        vec![],
-                        TerminatorKind::Call {
-                            func: alignment_max_fn.clone(),
-                            args: Box::new([
-                                Spanned { node: Operand::Copy(align_acc), span: self.span },
-                                Spanned {
-                                    node: Operand::const_from_scalar(
-                                        self.tcx,
-                                        alignment_struct_ty,
-                                        interpret::Scalar::from_target_usize(
-                                            overalign.bytes(),
-                                            &tcx,
-                                        ),
-                                        self.span,
-                                    ),
-                                    span: self.span,
-                                },
-                            ]),
-                            destination: align_acc,
-                            target: Some(self.block_index_offset(1)),
-                            unwind: UnwindAction::Continue,
-                            call_source: CallSource::Misc,
-                            fn_span: self.span,
-                        },
-                        false,
-                    );
-                }
-
-                let full_size = self.round_size_up_to_alignment(
-                    size_acc,
-                    Operand::Copy(align_acc),
-                    checked_dest_inner_ty,
-                );
-                (Operand::Copy(full_size), Some(Operand::Copy(align_acc)))
-            }
-            ty::Adt(def, args) => {
-                let FieldsShape::Arbitrary { offsets: _, ref in_memory_order } = layout.fields
-                else {
-                    bug!("struct had non-Arbitrary FieldsShape")
-                };
-                let variant = def.non_enum_variant();
-                let in_order_fields = in_memory_order.iter().map(|&field_idx| {
-                    let field_ty = variant.fields[field_idx].ty(tcx, args);
-                    (field_idx, field_ty)
-                });
-                let (size, alignment) = self.struct_like_layout(
-                    in_order_fields,
-                    meta,
-                    def.repr().pack,
-                    def.repr().align,
-                    checked_dest_inner_ty,
-                );
-                (size, Some(alignment))
-            }
-            ty::Tuple(tys) => {
-                let FieldsShape::Arbitrary { offsets: _, ref in_memory_order } = layout.fields
-                else {
-                    bug!("tuple had non-Arbitrary FieldsShape")
-                };
-                let in_order_fields = in_memory_order.iter().map(|&field_idx| {
-                    let field_ty = tys[field_idx.as_usize()];
-                    (field_idx, field_ty)
-                });
-                let (size, alignment) = self.struct_like_layout(
-                    in_order_fields,
-                    meta,
-                    None,
-                    None,
-                    checked_dest_inner_ty,
-                );
-                (size, Some(alignment))
-            }
-
-            ty::Str => {
-                let Some(ret) = array_like(tcx.types.u8) else {
-                    return;
-                };
-                ret
-            }
-            &ty::Slice(elem_ty) | &ty::Array(elem_ty, ..) => {
-                let Some(ret) = array_like(elem_ty) else {
-                    return;
-                };
-                ret
-            }
-            ty::Dynamic(..) => {
-                // The `vtable_size/vtable_align` intrinsics take a `*const ()`.
-                let vtable_ptr_ty = Ty::new_ptr(tcx, tcx.types.unit, ty::Mutability::Not);
-                let vtable_ptr = self.make_place(ty::Mutability::Not, vtable_ptr_ty);
-
-                let vtable_size = self.make_place(ty::Mutability::Not, tcx.types.usize);
-                self.block(
-                    vec![self.make_assign(
-                        vtable_ptr,
-                        // `Metadata<dyn Trait>` is essentially just a vtable ptr.
-                        Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
-                    )],
-                    TerminatorKind::Call {
-                        func: Operand::function_handle(
-                            tcx,
-                            tcx.require_lang_item(LangItem::VtableSize, self.span),
-                            [],
-                            self.span,
-                        ),
-                        args: Box::new([Spanned {
-                            node: Operand::Copy(vtable_ptr),
-                            span: self.span,
-                        }]),
-                        destination: vtable_size,
-                        target: Some(self.block_index_offset(1)),
-                        unwind: UnwindAction::Continue,
-                        call_source: CallSource::Misc,
-                        fn_span: self.span,
-                    },
-                    false,
-                );
-
-                let size = Operand::Copy(vtable_size);
-
-                let align = include_alignment.then(|| {
-                    let vtable_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
-                    self.block(
-                        vec![self.make_assign(
-                            vtable_ptr,
-                            // `Metadata<dyn Trait>` is essentially just a vtable ptr.
-                            Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
-                        )],
-                        TerminatorKind::Call {
-                            func: Operand::function_handle(
-                                tcx,
-                                tcx.require_lang_item(LangItem::VtableAlign, self.span),
-                                [],
-                                self.span,
-                            ),
-                            args: Box::new([Spanned {
-                                node: Operand::Copy(vtable_ptr),
-                                span: self.span,
-                            }]),
-                            destination: vtable_align,
-                            target: Some(self.block_index_offset(1)),
-                            unwind: UnwindAction::Continue,
-                            call_source: CallSource::Misc,
-                            fn_span: self.span,
-                        },
-                        false,
-                    );
-
-                    // `Alignment` is a newtype around a `repr(usize)` enum,
-                    // so we can `transmute` a power-of-two `usize` into it.
-                    let align = self.make_place(ty::Mutability::Not, alignment_struct_ty);
-
-                    self.block(
-                        vec![self.make_assign(
-                            align,
-                            Rvalue::Cast(
-                                CastKind::Transmute,
-                                Operand::Copy(vtable_align),
-                                alignment_struct_ty,
-                            ),
-                        )],
-                        TerminatorKind::Goto { target: self.block_index_offset(1) },
-                        false,
-                    );
-
-                    Operand::Copy(align)
-                });
-
-                (size, align)
-            }
-
-            ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
-                bug!("{} should not occur here", self_ty)
-            }
-        };
+            self.return_none_block(checked_dest_inner_ty);
+        }
 
         let mut stmts = vec![];
-        match (checked, layout_part, alignment) {
-            (false, ty::LayoutPart::Size, _) => {
+
+        // If we're computing alignment, need to transmute it from `usize` to `Alignment`
+        let alignment = align.map(|align_usize| {
+            let alignment = self.make_place(Mutability::Not, alignment_struct_ty);
+            stmts.push(self.make_assign(
+                alignment,
+                Rvalue::Cast(CastKind::Transmute, align_usize, alignment_struct_ty),
+            ));
+            Operand::Copy(alignment)
+        });
+
+        match (checked, layout_part, size, alignment) {
+            (false, ty::LayoutPart::Size, Some(size), _) => {
                 // Return type is `usize` of just the size
                 stmts.push(self.make_assign(dest, Rvalue::Use(size)));
             }
-            (true, ty::LayoutPart::Size, _) => {
+            (true, ty::LayoutPart::Size, Some(size), _) => {
                 // Return type is `Option<usize>` of just the size
                 stmts.push(self.make_assign(
                     dest,
@@ -1563,7 +1090,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                         Box::new(AggregateKind::Adt(
                             option_did,
                             VariantIdx::from_usize(1),
-                            tcx.mk_args(&[tcx.types.usize.into()]),
+                            tcx.mk_args(&[checked_dest_inner_ty.into()]),
                             None,
                             None,
                         )),
@@ -1571,17 +1098,36 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     ),
                 ));
             }
-            (false, ty::LayoutPart::Layout, Some(alignment)) => {
-                // Return type is `(usize, Alignment)`
+            (false, ty::LayoutPart::Alignment, _, Some(alignment)) => {
+                // Return type is `Alignment` of just the alignment
+                stmts.push(self.make_assign(dest, Rvalue::Use(alignment)));
+            }
+            (true, ty::LayoutPart::Alignment, _, Some(alignment)) => {
+                // Return type is `Option<Alignment>` of just the alignment
+                stmts.push(self.make_assign(
+                    dest,
+                    Rvalue::Aggregate(
+                        Box::new(AggregateKind::Adt(
+                            option_did,
+                            VariantIdx::from_usize(1),
+                            tcx.mk_args(&[checked_dest_inner_ty.into()]),
+                            None,
+                            None,
+                        )),
+                        [alignment].into(),
+                    ),
+                ));
+            }
+            (false, ty::LayoutPart::Layout, Some(size), Some(alignment)) => {
+                // Return type is `(usize, Alignment)`.
                 stmts.push(self.make_assign(
                     dest,
                     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), [size, alignment].into()),
                 ));
             }
-            (true, ty::LayoutPart::Layout, Some(alignment)) => {
+            (true, ty::LayoutPart::Layout, Some(size), Some(alignment)) => {
                 // Return type is `Option<(usize, Alignment)>`, so we need a temp for the tuple.
-                let tuple_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
-                let tuple = self.make_place(ty::Mutability::Not, tuple_ty);
+                let tuple = self.make_place(ty::Mutability::Not, size_align_tup_ty);
                 stmts.extend([
                     self.make_assign(
                         tuple,
@@ -1593,7 +1139,7 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                             Box::new(AggregateKind::Adt(
                                 option_did,
                                 VariantIdx::from_usize(1),
-                                tcx.mk_args(&[tuple_ty.into()]),
+                                tcx.mk_args(&[checked_dest_inner_ty.into()]),
                                 None,
                                 None,
                             )),
@@ -1602,837 +1148,11 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
                     ),
                 ]);
             }
-            (_, ty::LayoutPart::Alignment, _) | (_, ty::LayoutPart::Layout, None) => unreachable!(),
+            (_, ty::LayoutPart::Size, None, _)
+            | (_, ty::LayoutPart::Alignment, _, None)
+            | (_, ty::LayoutPart::Layout, _, _) => unreachable!(),
         }
         self.block(stmts, TerminatorKind::Return, false);
-    }
-
-    fn struct_like_layout(
-        &mut self,
-        in_order_fields: impl Iterator<Item = (FieldIdx, Ty<'tcx>)>,
-        meta: Place<'tcx>,
-        pack: Option<Align>,
-        overalign: Option<Align>,
-        checked_dest_inner_ty: Ty<'tcx>,
-    ) -> (Operand<'tcx>, Operand<'tcx>) {
-        let tcx = self.tcx;
-        let checked = self.extra.checked;
-        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
-        let size_align_tup_ty = Ty::new_tup(tcx, &[tcx.types.usize, alignment_struct_ty]);
-
-        let alignment_max_fn = Operand::function_handle(
-            tcx,
-            tcx.require_lang_item(LangItem::AlignmentMax, self.span),
-            [],
-            self.span,
-        );
-        let alignment_min_fn = Operand::function_handle(
-            tcx,
-            tcx.require_lang_item(LangItem::AlignmentMin, self.span),
-            [],
-            self.span,
-        );
-
-        let size_acc = self.make_place(ty::Mutability::Mut, tcx.types.usize);
-        let align_acc = self.make_place(ty::Mutability::Mut, alignment_struct_ty);
-        // FIXME: keep track of statically-sized/aligned fields separately to avoid bloat.
-
-        // We need to get the alignment of all the fields, since we need to get the alignment of the type
-        // to round the size up, so we use `(un)checked_layout_for_meta` for the field layout calls,
-        // even if this call itself is `*_size_for_meta`.
-        let meta_sized =
-            tcx.associated_items(tcx.require_lang_item(LangItem::MetaSized, self.span));
-        let (field_method_sym, field_ret_ty) = if checked {
-            ("checked_layout_for_meta", Ty::new_option(tcx, size_align_tup_ty))
-        } else {
-            ("unchecked_layout_for_meta", size_align_tup_ty)
-        };
-        let field_method_def_id = meta_sized
-            .filter_by_name_unhygienic(Symbol::intern(field_method_sym))
-            .next()
-            .unwrap()
-            .def_id;
-
-        let mut is_first_field = true;
-        for (field_idx, field_ty) in in_order_fields {
-            let field_meta_ty = Ty::new_ptr_metadata(tcx, field_ty);
-            let field_meta =
-                meta.project_deeper(&[PlaceElem::Field(field_idx, field_meta_ty)], tcx);
-
-            let field_layout_ret = self.make_place(ty::Mutability::Not, field_ret_ty);
-
-            // bb:
-            //  field_layout_ret = <FIELDTY as MetaSized>::(un)checked_layout_for_meta(Copy meta.FIELDIDX) [return -> nextbb, unwind continue]
-            // nextbb: ...
-            self.block(
-                vec![],
-                TerminatorKind::Call {
-                    func: Operand::function_handle(
-                        self.tcx,
-                        field_method_def_id,
-                        [ty::GenericArg::from(field_ty)],
-                        self.span,
-                    ),
-                    args: Box::new([Spanned { node: Operand::Copy(field_meta), span: self.span }]),
-                    destination: field_layout_ret,
-                    target: Some(self.block_index_offset(1)),
-                    // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
-                    // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
-                    unwind: UnwindAction::Continue,
-                    call_source: CallSource::Misc,
-                    fn_span: self.span,
-                },
-                false,
-            );
-
-            let field_layout = if checked {
-                self.question_mark_blocks(
-                    field_layout_ret,
-                    size_align_tup_ty,
-                    checked_dest_inner_ty,
-                )
-            } else {
-                field_layout_ret
-            };
-
-            let field_size = field_layout
-                .project_deeper(&[PlaceElem::Field(FieldIdx::ZERO, tcx.types.usize)], tcx);
-            let field_align = field_layout
-                .project_deeper(&[PlaceElem::Field(FieldIdx::ONE, alignment_struct_ty)], tcx);
-
-            if is_first_field {
-                is_first_field = false;
-                // First field, just set the accumulators to the field layout.
-                // Don't need to do any checking or rounding.
-                self.block(
-                    vec![
-                        self.make_assign(size_acc, Rvalue::Use(Operand::Copy(field_size))),
-                        self.make_assign(align_acc, Rvalue::Use(Operand::Copy(field_align))),
-                    ],
-                    TerminatorKind::Goto { target: self.block_index_offset(1) },
-                    false,
-                );
-            } else {
-                // Round the current size up to the field's effective alignment,
-                // then add the field's size.
-                //
-                // sizecmpbb:
-                //  _size_gt_result = field_size > size_acc;
-                //  switchInt(_size_gt_result) [1 => setbb, 2 => alignbb];
-                // sizesetbb:
-                //  size_acc = field_size;
-                //  goto -> nextbb;
-                // alignbb:
-                //  align_acc = Alignment::max(align_acc, field_align) [return -> nextbb, unwind continue];
-                // nextbb: ...
-
-                let effective_field_align = if let Some(pack) = pack {
-                    if pack.bytes() == 1 {
-                        Operand::const_from_scalar(
-                            self.tcx,
-                            self.tcx.types.usize,
-                            interpret::Scalar::from_target_usize(1, &tcx),
-                            self.span,
-                        )
-                    } else {
-                        let clamped_field_align =
-                            self.make_place(ty::Mutability::Not, alignment_struct_ty);
-                        self.block(
-                            vec![],
-                            TerminatorKind::Call {
-                                func: alignment_min_fn.clone(),
-                                args: Box::new([
-                                    Spanned { node: Operand::Copy(field_align), span: self.span },
-                                    Spanned {
-                                        node: Operand::const_from_scalar(
-                                            self.tcx,
-                                            alignment_struct_ty,
-                                            interpret::Scalar::from_target_usize(
-                                                pack.bytes(),
-                                                &tcx,
-                                            ),
-                                            self.span,
-                                        ),
-                                        span: self.span,
-                                    },
-                                ]),
-                                destination: clamped_field_align,
-                                target: Some(self.block_index_offset(1)),
-                                unwind: UnwindAction::Continue,
-                                call_source: CallSource::Misc,
-                                fn_span: self.span,
-                            },
-                            false,
-                        );
-                        Operand::Copy(clamped_field_align)
-                    }
-                } else {
-                    Operand::Copy(field_align)
-                };
-
-                let field_offset = self.round_size_up_to_alignment(
-                    size_acc,
-                    effective_field_align,
-                    checked_dest_inner_ty,
-                );
-
-                let field_end_offset = self.add_sizes(
-                    Operand::Copy(field_offset),
-                    Operand::Copy(field_size),
-                    checked_dest_inner_ty,
-                );
-                self.block(
-                    vec![self.make_assign(size_acc, Rvalue::Use(Operand::Copy(field_end_offset)))],
-                    TerminatorKind::Goto { target: self.block_index_offset(1) },
-                    false,
-                );
-
-                // alignbb:
-                self.block(
-                    vec![],
-                    TerminatorKind::Call {
-                        func: alignment_max_fn.clone(),
-                        args: Box::new([
-                            Spanned { node: Operand::Copy(align_acc), span: self.span },
-                            Spanned { node: Operand::Copy(field_align), span: self.span },
-                        ]),
-                        destination: align_acc,
-                        target: Some(self.block_index_offset(1)),
-                        unwind: UnwindAction::Continue,
-                        call_source: CallSource::Misc,
-                        fn_span: self.span,
-                    },
-                    false,
-                );
-            }
-        }
-
-        // Clamp alignment to `repr(packed)`
-        if let Some(pack) = pack {
-            // alignbb:
-            self.block(
-                vec![],
-                TerminatorKind::Call {
-                    func: alignment_min_fn.clone(),
-                    args: Box::new([
-                        Spanned { node: Operand::Copy(align_acc), span: self.span },
-                        Spanned {
-                            node: Operand::const_from_scalar(
-                                self.tcx,
-                                alignment_struct_ty,
-                                interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
-                                self.span,
-                            ),
-                            span: self.span,
-                        },
-                    ]),
-                    destination: align_acc,
-                    target: Some(self.block_index_offset(1)),
-                    unwind: UnwindAction::Continue,
-                    call_source: CallSource::Misc,
-                    fn_span: self.span,
-                },
-                false,
-            );
-        }
-
-        // Raise alignment to `repr(align)`
-        if let Some(overalign) = overalign {
-            // alignbb:
-            self.block(
-                vec![],
-                TerminatorKind::Call {
-                    func: alignment_max_fn.clone(),
-                    args: Box::new([
-                        Spanned { node: Operand::Copy(align_acc), span: self.span },
-                        Spanned {
-                            node: Operand::const_from_scalar(
-                                self.tcx,
-                                alignment_struct_ty,
-                                interpret::Scalar::from_target_usize(overalign.bytes(), &tcx),
-                                self.span,
-                            ),
-                            span: self.span,
-                        },
-                    ]),
-                    destination: align_acc,
-                    target: Some(self.block_index_offset(1)),
-                    unwind: UnwindAction::Continue,
-                    call_source: CallSource::Misc,
-                    fn_span: self.span,
-                },
-                false,
-            );
-        }
-
-        let full_size = self.round_size_up_to_alignment(
-            size_acc,
-            Operand::Copy(align_acc),
-            checked_dest_inner_ty,
-        );
-        (Operand::Copy(full_size), Operand::Copy(align_acc))
-    }
-
-    /// Returns an `Rvalue` that represents the alignment of the struct/union/tuple with `meta`,
-    /// with optional `repr(packed)` and `repr(align)` values.
-    ///
-    /// If this is a `checked` operation, also handles the `?`.
-    ///
-    /// Should only be used in `only_alignment_shim`.
-    fn struct_or_union_like_alignment(
-        &mut self,
-        fields: impl Iterator<Item = (FieldIdx, Ty<'tcx>)>,
-        meta: Place<'tcx>,
-        pack: Option<Align>,
-        overalign: Option<Align>,
-        dest_ty: Ty<'tcx>,
-    ) -> Rvalue<'tcx> {
-        let tcx = self.tcx;
-        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
-
-        // Alignment of a struct/union/tuple is the max of the fields' alignments, clamped if `repr(packed)`,
-        // raised if `repr(aligned)`.
-        // There will always be at least one field with dynamic alignment, as otherwise the whole type
-        // would be `Aligned`.
-
-        if pack == Some(Align::ONE) {
-            // The alignment of a `repr(packed(1))` ADT is always 1, so we can just return that.
-            // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
-            // or `Option<Alignment>` (which is niche-optimized), so a nonzero-`usize`-valued
-            // scalar constant is valid
-            return Rvalue::Use(Operand::const_from_scalar(
-                self.tcx,
-                dest_ty,
-                interpret::Scalar::from_target_usize(1, &tcx),
-                self.span,
-            ));
-        }
-
-        let alignment_max_fn = Operand::function_handle(
-            tcx,
-            tcx.require_lang_item(LangItem::AlignmentMax, self.span),
-            [],
-            self.span,
-        );
-        let alignment_min_fn = Operand::function_handle(
-            tcx,
-            tcx.require_lang_item(LangItem::AlignmentMin, self.span),
-            [],
-            self.span,
-        );
-
-        let dyn_acc = self.make_place(ty::Mutability::Not, alignment_struct_ty);
-        let mut first_dyn = true;
-        let mut static_acc = overalign.unwrap_or(Align::ONE);
-
-        for (field_idx, field_ty) in fields {
-            let field_dynamic_alignment = match self.field_align(
-                field_ty,
-                meta.project_deeper(
-                    &[PlaceElem::Field(field_idx, Ty::new_ptr_metadata(tcx, field_ty))],
-                    tcx,
-                ),
-            ) {
-                Either::Left(dynamic_alignment) => dynamic_alignment,
-                Either::Right(static_alignment) => {
-                    static_acc = Align::max(static_acc, static_alignment);
-                    continue;
-                }
-            };
-            if first_dyn {
-                // For the first dynamically-aligned field, just do
-                // _dyn_acc = field_dynamic_alignment;
-                first_dyn = false;
-                self.block(
-                    vec![self.make_assign(dyn_acc, Rvalue::Use(field_dynamic_alignment))],
-                    TerminatorKind::Goto { target: self.block_index_offset(1) },
-                    false,
-                );
-            } else {
-                // For later fields, do
-                // _dyn_acc = Alignment::max(_dyn_acc, field_dynamic_alignment) [return -> next, unwind continue]
-                self.block(
-                    vec![],
-                    TerminatorKind::Call {
-                        func: alignment_max_fn.clone(),
-                        args: Box::new([
-                            Spanned { node: Operand::Copy(dyn_acc), span: self.span },
-                            Spanned { node: field_dynamic_alignment, span: self.span },
-                        ]),
-                        target: Some(self.block_index_offset(1)),
-                        destination: dyn_acc,
-                        unwind: UnwindAction::Continue,
-                        call_source: CallSource::Misc,
-                        fn_span: self.span,
-                    },
-                    false,
-                );
-            }
-        }
-        debug_assert!(
-            !first_dyn,
-            "non-`Aligned` struct/union should have at least one non-`Aligned` field"
-        );
-
-        // Raise to `max(repr(align), max(field_aligns))`
-        if static_acc > Align::ONE {
-            // _dyn_acc = Alignment::max(_dyn_acc, max_static_field_alignment_or_repr_align) [return -> next, unwind continue]
-            self.block(
-                vec![],
-                TerminatorKind::Call {
-                    func: alignment_max_fn,
-                    args: Box::new([
-                        Spanned { node: Operand::Copy(dyn_acc), span: self.span },
-                        Spanned {
-                            node: Operand::const_from_scalar(
-                                self.tcx,
-                                alignment_struct_ty,
-                                interpret::Scalar::from_target_usize(static_acc.bytes(), &tcx),
-                                self.span,
-                            ),
-                            span: self.span,
-                        },
-                    ]),
-                    target: Some(self.block_index_offset(1)),
-                    destination: dyn_acc,
-                    unwind: UnwindAction::Continue,
-                    call_source: CallSource::Misc,
-                    fn_span: self.span,
-                },
-                false,
-            );
-        }
-
-        if let Some(pack) = pack {
-            // _dyn_acc = Alignment::min(_dyn_acc, pack_alignment) [return -> next, unwind continue]
-            self.block(
-                vec![],
-                TerminatorKind::Call {
-                    func: alignment_min_fn,
-                    args: Box::new([
-                        Spanned { node: Operand::Copy(dyn_acc), span: self.span },
-                        Spanned {
-                            node: Operand::const_from_scalar(
-                                self.tcx,
-                                alignment_struct_ty,
-                                interpret::Scalar::from_target_usize(pack.bytes(), &tcx),
-                                self.span,
-                            ),
-                            span: self.span,
-                        },
-                    ]),
-                    target: Some(self.block_index_offset(1)),
-                    destination: dyn_acc,
-                    unwind: UnwindAction::Continue,
-                    call_source: CallSource::Misc,
-                    fn_span: self.span,
-                },
-                false,
-            );
-        }
-
-        // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
-        // or `Option<Alignment>` (which is niche-optimized), so we can `transmute` an `Alignment`
-        // into it.
-        Rvalue::Cast(CastKind::Transmute, Operand::Copy(dyn_acc), dest_ty)
-    }
-
-    /// `size` must be `<= isize::MAX`, and `alignment` must be a `mem::Alignment`.
-    /// If the rounded-up value is `> isize::MAX` in `checked` mode, `None::<dest_inner_ty>` will be returned.
-    /// In unchecked mode, there will be an `assume(value <= isize::MAX)`.
-    fn round_size_up_to_alignment(
-        &mut self,
-        unrounded_size: Place<'tcx>,
-        alignment: Operand<'tcx>,
-        checked_dest_inner_ty: Ty<'tcx>,
-    ) -> Place<'tcx> {
-        let tcx = self.tcx;
-        let checked = self.extra.checked;
-
-        // Round size up to alignment, and check if that caused it to go over `isize::MAX`.
-        // `align_minus_one = align - 1;`
-        // `align_mask = !align_minus_one;`
-        // `size = (size + align_minus_one) & align_mask;`
-        // This can't cause unsigned overflow even intermediately
-        // * since the alignment is at least 1, the subtraction can't overflow.
-        // * the sum is at most `isize::MAX` (highest alignment - 1) + isize::MAX (highest size) < usize::MAX.
-        // * bitops cannot overflow.
-        // We still need to check that the result is `<= isize::MAX`, since it could have become `isize::MAX + 1` (at most)
-
-        let mut stmts = vec![];
-
-        let align_usize = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        stmts.push(self.make_assign(
-            align_usize,
-            Rvalue::Cast(CastKind::Transmute, alignment, tcx.types.usize),
-        ));
-
-        let align_minus_one = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        stmts.push(self.make_assign(
-            align_minus_one,
-            Rvalue::BinaryOp(
-                BinOp::SubUnchecked,
-                Box::new((
-                    Operand::Copy(align_usize),
-                    Operand::const_from_scalar(
-                        tcx,
-                        tcx.types.usize,
-                        interpret::Scalar::from_target_usize(1, &tcx),
-                        self.span,
-                    ),
-                )),
-            ),
-        ));
-
-        let align_mask = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        stmts.push(
-            self.make_assign(
-                align_mask,
-                Rvalue::UnaryOp(UnOp::Not, Operand::Copy(align_minus_one)),
-            ),
-        );
-
-        let size_plus_align_minus_one = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        stmts.push(self.make_assign(
-            size_plus_align_minus_one,
-            Rvalue::BinaryOp(
-                BinOp::AddUnchecked,
-                Box::new((Operand::Copy(unrounded_size), Operand::Copy(align_minus_one))),
-            ),
-        ));
-
-        let full_size = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        stmts.push(self.make_assign(
-            full_size,
-            Rvalue::BinaryOp(
-                BinOp::BitAnd,
-                Box::new((Operand::Copy(size_plus_align_minus_one), Operand::Copy(align_mask))),
-            ),
-        ));
-
-        let max_size = Operand::const_from_scalar(
-            tcx,
-            tcx.types.usize,
-            interpret::Scalar::from_target_usize(tcx.max_size_of_val().bytes(), &tcx),
-            self.span,
-        );
-        // le_result = full_size <= max;
-        let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-        stmts.push(self.make_assign(
-            le_result,
-            Rvalue::BinaryOp(BinOp::Le, Box::new((Operand::Copy(full_size), max_size))),
-        ));
-
-        if checked {
-            // if !(full_size <= max) { return None }
-            self.block(
-                stmts,
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(le_result),
-                    targets: SwitchTargets::static_if(
-                        0,
-                        self.block_index_offset(1),
-                        self.block_index_offset(2),
-                    ),
-                },
-                false,
-            );
-            self.return_none_block(checked_dest_inner_ty);
-        } else {
-            // assume(full_size <= max);
-            stmts.push(self.make_statement(StatementKind::Intrinsic(Box::new(
-                NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
-            ))));
-            self.block(stmts, TerminatorKind::Goto { target: self.block_index_offset(1) }, false);
-        }
-
-        full_size
-    }
-
-    /// Both inputs must be `<= isize::MAX`, so there can never be any unsigned overflow.
-    /// If the sum is `> isize::MAX` in `checked` mode, `None::<dest_inner_ty>` will be returned.
-    /// In unchecked mode, there will be an `assume(full_sum <= isize::MAX)`.
-    fn add_sizes(
-        &mut self,
-        lhs: Operand<'tcx>,
-        rhs: Operand<'tcx>,
-        checked_dest_inner_ty: Ty<'tcx>,
-    ) -> Place<'tcx> {
-        let tcx = self.tcx;
-        let checked = self.extra.checked;
-
-        let mut stmts = vec![];
-
-        let sum = self.make_place(ty::Mutability::Not, tcx.types.usize);
-        stmts.push(
-            self.make_assign(sum, Rvalue::BinaryOp(BinOp::AddUnchecked, Box::new((lhs, rhs)))),
-        );
-
-        let max_size = Operand::const_from_scalar(
-            tcx,
-            tcx.types.usize,
-            interpret::Scalar::from_target_usize(tcx.max_size_of_val().bytes(), &tcx),
-            self.span,
-        );
-        // le_result = full_size <= max;
-        let le_result = self.make_place(ty::Mutability::Not, tcx.types.bool);
-        stmts.push(self.make_assign(
-            le_result,
-            Rvalue::BinaryOp(BinOp::Le, Box::new((Operand::Copy(sum), max_size))),
-        ));
-
-        if checked {
-            // if !(full_size <= max) { return None }
-            self.block(
-                stmts,
-                TerminatorKind::SwitchInt {
-                    discr: Operand::Copy(le_result),
-                    targets: SwitchTargets::static_if(
-                        0,
-                        self.block_index_offset(1),
-                        self.block_index_offset(2),
-                    ),
-                },
-                false,
-            );
-            self.return_none_block(checked_dest_inner_ty);
-        } else {
-            // assume(full_size <= max);
-            stmts.push(self.make_statement(StatementKind::Intrinsic(Box::new(
-                NonDivergingIntrinsic::Assume(Operand::Copy(le_result)),
-            ))));
-            self.block(stmts, TerminatorKind::Goto { target: self.block_index_offset(1) }, false);
-        }
-
-        sum
-    }
-
-    fn only_alignment_shim(&mut self) {
-        let LayoutForMetaShimExtra { method_def_id, self_ty, .. } = self.extra;
-        let tcx = self.tcx;
-        let typing_env = ty::TypingEnv::fully_monomorphized();
-
-        let dest = Place::return_place();
-        let dest_ty = dest.ty(&self.local_decls, tcx).ty;
-        let meta = Place::from(Local::new(1 + 0));
-
-        let layout = match tcx.layout_of(typing_env.as_query_input(self_ty)) {
-            Ok(layout) => layout,
-            Err(err) => {
-                // If `self_ty` doesn't have a valid layout, then there should already have been an error,
-                // but we still need to emit some MIR.
-                tcx.dcx().delayed_bug(format!(
-                    "layout_for_meta shim for type with invalid layout: {err:?}"
-                ));
-                self.block(vec![], TerminatorKind::Unreachable, false);
-                return;
-            }
-        };
-
-        if self_ty.is_aligned(tcx, typing_env) {
-            // If `Self: Aligned`, then `layout.align` is accurate, and we can just return it.
-            // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
-            // or `Option<Alignment>` (which is niche-optimized), so a nonzero-`usize`-valued
-            // scalar constant is valid
-            let alignment = Operand::const_from_scalar(
-                self.tcx,
-                dest_ty,
-                interpret::Scalar::from_target_usize(layout.align.abi.bytes(), &tcx),
-                self.span,
-            );
-            let stmt = self.make_assign(dest, Rvalue::Use(alignment));
-            self.block(vec![stmt], TerminatorKind::Return, false);
-            return;
-        }
-
-        let alignment = match self_ty.kind() {
-            ty::Bool
-            | ty::Char
-            | ty::Int(_)
-            | ty::Uint(_)
-            | ty::Float(_)
-            | ty::FnDef(..)
-            | ty::FnPtr(..)
-            | ty::Closure(..)
-            | ty::CoroutineClosure(..)
-            | ty::Coroutine(..)
-            | ty::CoroutineWitness(..)
-            | ty::Never
-            | ty::UntypedPtr { .. }
-            | ty::PtrMetadata(..)
-            | ty::RawPtr(..)
-            | ty::Ref(..)
-            | ty::InitAdt(..)
-            | ty::InitArray(..)
-            | ty::InitArrayRepeat(..)
-            | ty::InitSliceRepeat(..)
-            | ty::InitTuple(..)
-            | ty::Pat(..)
-            | ty::UnsafeBinder(..)
-            | ty::Error(_) => bug!("{} should be `Sized` (thus `Aligned`)", self_ty),
-            ty::Str => bug!("{} should be `Aligned`", self_ty),
-            ty::Foreign(..) => bug!("{} should not be `MetaSized`", self_ty),
-
-            ty::Adt(def, ..) if def.is_unsized_type() => {
-                bug!("AdtKind::UnsizedType should have manual MetaSized impls, not builtin")
-            }
-            ty::Adt(def, ..) if def.is_enum() => todo!("unsized enums"),
-            ty::Adt(def, args) => {
-                let fields =
-                    def.non_enum_variant().fields.iter_enumerated().map(|(field_idx, field)| {
-                        let field_ty = field.ty(tcx, args);
-                        (field_idx, field_ty)
-                    });
-                self.struct_or_union_like_alignment(
-                    fields,
-                    meta,
-                    def.repr().pack,
-                    def.repr().align,
-                    dest_ty,
-                )
-            }
-            ty::Tuple(tys) => {
-                let fields = tys
-                    .iter()
-                    .enumerate()
-                    .map(|(field_idx, field_ty)| (FieldIdx::from_usize(field_idx), field_ty));
-                self.struct_or_union_like_alignment(fields, meta, None, None, dest_ty)
-            }
-
-            &ty::Slice(elem_ty) | &ty::Array(elem_ty, _) => {
-                // The alignment of a slice or array is the alignment of the element, so just do
-                // (effectively) a tail call.
-
-                let elem_meta_ty = Ty::new_ptr_metadata(tcx, elem_ty);
-                let elem_meta_idx = match self_ty.kind() {
-                    ty::Slice(..) => FieldIdx::ONE,
-                    ty::Array(..) => FieldIdx::ZERO,
-                    _ => unreachable!(),
-                };
-                let elem_meta =
-                    meta.project_deeper(&[PlaceElem::Field(elem_meta_idx, elem_meta_ty)], tcx);
-
-                self.block(
-                    vec![],
-                    TerminatorKind::Call {
-                        func: Operand::function_handle(
-                            self.tcx,
-                            method_def_id,
-                            [ty::GenericArg::from(elem_ty)],
-                            self.span,
-                        ),
-                        args: Box::new([Spanned {
-                            node: Operand::Copy(elem_meta),
-                            span: self.span,
-                        }]),
-                        destination: Place::return_place(),
-                        target: Some(self.block_index_offset(1)),
-                        // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
-                        // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
-                        unwind: UnwindAction::Continue,
-                        call_source: CallSource::Misc,
-                        fn_span: self.span,
-                    },
-                    false,
-                );
-                self.block(vec![], TerminatorKind::Return, false);
-                return;
-            }
-            ty::Dynamic(..) => {
-                let vtable_align = self.make_place(ty::Mutability::Not, tcx.types.usize);
-                // The `vtable_size` intrinsic takes a `*const ()`.
-                let vtable_ptr_ty = Ty::new_ptr(tcx, tcx.types.unit, ty::Mutability::Not);
-                let vtable_ptr = self.make_place(ty::Mutability::Not, vtable_ptr_ty);
-                self.block(
-                    vec![self.make_assign(
-                        vtable_ptr,
-                        // `Metadata<dyn Trait>` is essentially just a vtable ptr.
-                        Rvalue::Cast(CastKind::Transmute, Operand::Copy(meta), vtable_ptr_ty),
-                    )],
-                    TerminatorKind::Call {
-                        func: Operand::function_handle(
-                            tcx,
-                            tcx.require_lang_item(LangItem::VtableAlign, self.span),
-                            [],
-                            self.span,
-                        ),
-                        args: Box::new([Spanned {
-                            node: Operand::Copy(vtable_ptr),
-                            span: self.span,
-                        }]),
-                        destination: vtable_align,
-                        target: Some(self.block_index_offset(1)),
-                        unwind: UnwindAction::Continue,
-                        call_source: CallSource::Misc,
-                        fn_span: self.span,
-                    },
-                    false,
-                );
-
-                // The return type is either `Alignment` (which is a newtype around a `repr(usize)` enum),
-                // or `Option<Alignment>` (which is niche-optimized), so we can `transmute` a power-of-two
-                // `usize` into it.
-                Rvalue::Cast(CastKind::Transmute, Operand::Copy(vtable_align), dest_ty)
-            }
-
-            ty::Alias(..) | ty::Param(..) | ty::Bound(..) | ty::Placeholder(..) | ty::Infer(..) => {
-                bug!("{} should not occur here", self_ty)
-            }
-        };
-        let stmt = self.make_assign(dest, alignment);
-        self.block(vec![stmt], TerminatorKind::Return, false);
-    }
-
-    /// Given a `Place` of type `Option<scrutinee_inner_ty>`, perform `?` on it
-    /// in a function returning `Option<dest_inner_ty>`, and return the projected
-    /// `Some.0` place.
-    ///
-    /// ```text
-    /// bb:
-    ///  _discr = discriminant(scrutinee);
-    ///  switchInt(_discr) [0 -> returnbb, otherwise -> nextbb]
-    /// returnbb:
-    ///  _0 = None::<dest_inner_ty>;
-    ///  return
-    /// nextbb: ... (not added)
-    /// ```
-    ///
-    fn question_mark_blocks(
-        &mut self,
-        scrutinee: Place<'tcx>,
-        scrutinee_inner_ty: Ty<'tcx>,
-        dest_inner_ty: Ty<'tcx>,
-    ) -> Place<'tcx> {
-        let tcx = self.tcx;
-        let scrutinee_ty = scrutinee.ty(&self.local_decls, tcx).ty;
-
-        let discr_place = self.make_place(ty::Mutability::Not, scrutinee_ty.discriminant_ty(tcx));
-
-        let discr_stmt = self.make_assign(discr_place, Rvalue::Discriminant(scrutinee));
-        self.block(
-            vec![discr_stmt],
-            TerminatorKind::SwitchInt {
-                discr: Operand::Copy(discr_place),
-                targets: SwitchTargets::static_if(
-                    // 0 -> None -> returnbb
-                    // 1 -> Some -> nextbb
-                    0,
-                    self.block_index_offset(1),
-                    self.block_index_offset(2),
-                ),
-            },
-            false,
-        );
-
-        self.return_none_block(dest_inner_ty);
-
-        scrutinee.project_deeper(
-            &[
-                PlaceElem::Downcast(None, VariantIdx::from_usize(1)),
-                PlaceElem::Field(FieldIdx::ZERO, scrutinee_inner_ty),
-            ],
-            tcx,
-        )
     }
 
     fn return_none_block(&mut self, none_inner_ty: Ty<'tcx>) {
@@ -2452,191 +1172,6 @@ impl<'tcx> LayoutForMetaShimBuilder<'tcx> {
             ),
         );
         self.block(vec![assign_none_stmt], TerminatorKind::Return, false);
-    }
-
-    /// Returns an `Operand` that represents the alignment of `ty` with `meta`,
-    /// adding a new block calling `MetaSized::(un)checked_align_for_meta` if necessary.
-    ///
-    /// If this is a `checked` operation, also handles the `?`.
-    ///
-    /// Should only be used in `only_alignment_shim`.
-    fn field_align(&mut self, ty: Ty<'tcx>, meta: Place<'tcx>) -> Either<Operand<'tcx>, Align> {
-        let LayoutForMetaShimExtra { method_def_id, checked, .. } = self.extra;
-        let tcx = self.tcx;
-        let typing_env = ty::TypingEnv::fully_monomorphized();
-        let alignment_struct_ty = tcx.ty_alignment_struct(self.span);
-
-        if ty.is_aligned(tcx, typing_env) {
-            // If `T: Aligned`, then `layout.align` is accurate, and we can just return it
-            // as `Alignment` (which is a newtype around a `repr(usize)` enum),
-            // so a `usize`-valued scalar constant is valid.
-            let layout = tcx
-                .layout_of(typing_env.as_query_input(ty))
-                .expect("type is as a field of a type with a valid layout");
-            return Either::Right(layout.align.abi);
-        }
-
-        let ret_ty =
-            if checked { Ty::new_option(tcx, alignment_struct_ty) } else { alignment_struct_ty };
-
-        let field_align_ret = self.make_place(ty::Mutability::Not, ret_ty);
-
-        // bb:
-        //  field_align_ret = <T as MetaSized>::(un)checked_align_for_meta(Copy meta) [return -> nextbb, unwind continue]
-        // nextbb: ...
-        self.block(
-            vec![],
-            TerminatorKind::Call {
-                func: Operand::function_handle(
-                    self.tcx,
-                    method_def_id,
-                    [ty::GenericArg::from(ty)],
-                    self.span,
-                ),
-                args: Box::new([Spanned { node: Operand::Copy(meta), span: self.span }]),
-                destination: field_align_ret,
-                target: Some(self.block_index_offset(1)),
-                // `UnwindAction::Continue` is fine since layout computation shims never have any locals with drop glue,
-                // only `ptr::Metadata<_>`, `Alignment`, `usize`, and tuple or `Option`.
-                unwind: UnwindAction::Continue,
-                call_source: CallSource::Misc,
-                fn_span: self.span,
-            },
-            false,
-        );
-
-        if checked {
-            // bb:
-            //  _discr = discriminant(field_align_ret);
-            //  switchInt _discr [None -> returnbb, Some(_) -> nextbb]
-            // returnbb:
-            //  _0 = None
-            //  return
-            // nextbb: ...
-            //
-            // and return (field_align_ret as Some).0: Alignment
-
-            let field_align_ret = self.question_mark_blocks(
-                field_align_ret,
-                alignment_struct_ty,
-                alignment_struct_ty,
-            );
-
-            Either::Left(Operand::Copy(field_align_ret))
-        } else {
-            Either::Left(Operand::Copy(field_align_ret))
-        }
-    }
-
-    #[cfg(false)]
-    fn clone_fields<I>(
-        &mut self,
-        dest: Place<'tcx>,
-        src: Place<'tcx>,
-        target: BasicBlock,
-        mut unwind: BasicBlock,
-        tys: I,
-    ) -> BasicBlock
-    where
-        I: IntoIterator<Item = Ty<'tcx>>,
-    {
-        // For an iterator of length n, create 2*n + 1 blocks.
-        for (i, ity) in tys.into_iter().enumerate() {
-            // Each iteration creates two blocks, referred to here as block 2*i and block 2*i + 1.
-            //
-            // Block 2*i attempts to clone the field. If successful it branches to 2*i + 2 (the
-            // next clone block). If unsuccessful it branches to the previous unwind block, which
-            // is initially the `unwind` argument passed to this function.
-            //
-            // Block 2*i + 1 is the unwind block for this iteration. It drops the cloned value
-            // created by block 2*i. We store this block in `unwind` so that the next clone block
-            // will unwind to it if cloning fails.
-
-            let field = FieldIdx::new(i);
-            let src_field = self.tcx.mk_place_field(src, field, ity);
-
-            let dest_field = self.tcx.mk_place_field(dest, field, ity);
-
-            let next_unwind = self.block_index_offset(1);
-            let next_block = self.block_index_offset(2);
-            self.make_clone_call(dest_field, src_field, ity, next_block, unwind);
-            self.block(
-                vec![],
-                TerminatorKind::Drop {
-                    place: dest_field,
-                    target: unwind,
-                    unwind: UnwindAction::Terminate(UnwindTerminateReason::InCleanup),
-                    replace: false,
-                    drop: None,
-                    async_fut: None,
-                },
-                /* is_cleanup */ true,
-            );
-            unwind = next_unwind;
-        }
-        // If all clones succeed then we end up here.
-        self.block(vec![], TerminatorKind::Goto { target }, false);
-        unwind
-    }
-
-    #[cfg(false)]
-    fn tuple_like_shim<I>(&mut self, dest: Place<'tcx>, src: Place<'tcx>, tys: I)
-    where
-        I: IntoIterator<Item = Ty<'tcx>>,
-    {
-        self.block(vec![], TerminatorKind::Goto { target: self.block_index_offset(3) }, false);
-        let unwind = self.block(vec![], TerminatorKind::UnwindResume, true);
-        let target = self.block(vec![], TerminatorKind::Return, false);
-
-        let _final_cleanup_block = self.clone_fields(dest, src, target, unwind, tys);
-    }
-
-    #[cfg(false)]
-    fn coroutine_shim(
-        &mut self,
-        dest: Place<'tcx>,
-        src: Place<'tcx>,
-        coroutine_def_id: DefId,
-        args: CoroutineArgs<TyCtxt<'tcx>>,
-    ) {
-        self.block(vec![], TerminatorKind::Goto { target: self.block_index_offset(3) }, false);
-        let unwind = self.block(vec![], TerminatorKind::UnwindResume, true);
-        // This will get overwritten with a switch once we know the target blocks
-        let switch = self.block(vec![], TerminatorKind::Unreachable, false);
-        let unwind = self.clone_fields(dest, src, switch, unwind, args.upvar_tys());
-        let target = self.block(vec![], TerminatorKind::Return, false);
-        let unreachable = self.block(vec![], TerminatorKind::Unreachable, false);
-        let mut cases = Vec::with_capacity(args.state_tys(coroutine_def_id, self.tcx).count());
-        for (index, state_tys) in args.state_tys(coroutine_def_id, self.tcx).enumerate() {
-            let variant_index = VariantIdx::new(index);
-            let dest = self.tcx.mk_place_downcast_unnamed(dest, variant_index);
-            let src = self.tcx.mk_place_downcast_unnamed(src, variant_index);
-            let clone_block = self.block_index_offset(1);
-            let start_block = self.block(
-                vec![self.make_statement(StatementKind::SetDiscriminant {
-                    place: Box::new(Place::return_place()),
-                    variant_index,
-                })],
-                TerminatorKind::Goto { target: clone_block },
-                false,
-            );
-            cases.push((index as u128, start_block));
-            let _final_cleanup_block = self.clone_fields(dest, src, target, unwind, state_tys);
-        }
-        let discr_ty = args.discr_ty(self.tcx);
-        let temp = self.make_place(Mutability::Mut, discr_ty);
-        let rvalue = Rvalue::Discriminant(src);
-        let statement = self.make_assign(temp, rvalue);
-        match &mut self.blocks[switch] {
-            BasicBlockData { statements, terminator: Some(Terminator { kind, .. }), .. } => {
-                statements.push(statement);
-                *kind = TerminatorKind::SwitchInt {
-                    discr: Operand::Move(temp),
-                    targets: SwitchTargets::new(cases.into_iter(), unreachable),
-                };
-            }
-            BasicBlockData { terminator: None, .. } => unreachable!(),
-        }
     }
 }
 
