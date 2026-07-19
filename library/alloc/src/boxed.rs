@@ -1953,6 +1953,7 @@ where
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "rust1", since = "1.0.0")]
+#[diagnostic::do_not_recommend]
 impl<T: CloneToUninit + ?Sized, A: Allocator + Clone> Clone for Box<T, A> {
     /// Returns a new box with a `clone()` of this box's contents.
     ///

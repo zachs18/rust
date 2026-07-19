@@ -9,7 +9,7 @@ use std::ops::Deref;
 trait UnsafeCopy {
     type Copy<T>: Copy = Box<T>;
     //~^ ERROR the trait bound `Box<T>: Copy` is not satisfied
-    //~^^ ERROR the trait bound `T: Clone` is not satisfied
+    //[current]~^^ ERROR the trait bound `Box<T>: Clone` is not satisfied
     fn copy<T>(x: &Self::Copy<T>) -> Self::Copy<T> {
         *x
     }
