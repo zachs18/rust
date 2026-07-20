@@ -19,7 +19,7 @@
 //! function is called. In the worst case, multiple threads may all end up
 //! importing the same function unnecessarily.
 
-use crate::ffi::{CStr, c_void};
+use crate::ffi::{CStr, FromBytesWithNulError, c_void};
 use crate::ptr::NonNull;
 use crate::sys::c;
 
@@ -70,8 +70,8 @@ unsafe extern "C" fn init() {
 
 /// Helper macro for creating CStrs from literals and symbol names.
 macro_rules! ansi_str {
-    (sym $ident:ident) => {{ crate::sys::compat::const_cstr_from_bytes(concat!(stringify!($ident), "\0").as_bytes()) }};
-    ($lit:literal) => {{ crate::sys::compat::const_cstr_from_bytes(concat!($lit, "\0").as_bytes()) }};
+    (sym $ident:ident) => {const { crate::sys::compat::const_cstr_from_bytes(concat!(stringify!($ident), "\0").as_bytes()) }};
+    ($lit:literal) => {const { crate::sys::compat::const_cstr_from_bytes(concat!($lit, "\0").as_bytes()) }};
 }
 
 /// Creates a C string wrapper from a byte slice, in a constant context.
@@ -82,19 +82,13 @@ macro_rules! ansi_str {
 ///
 /// Panics if the slice is not null terminated or contains nulls, except as the last item
 pub(crate) const fn const_cstr_from_bytes(bytes: &'static [u8]) -> &'static CStr {
-    if !matches!(bytes.last(), Some(&0)) {
-        panic!("A CStr must be null terminated");
-    }
-    let mut i = 0;
-    // At this point `len()` is at least 1.
-    while i < bytes.len() - 1 {
-        if bytes[i] == 0 {
+    match CStr::from_bytes_with_nul(bytes) {
+        Ok(cstr) => cstr,
+        Err(FromBytesWithNulError::NotNulTerminated) => panic!("A CStr must be null terminated"),
+        Err(FromBytesWithNulError::InteriorNul { .. }) => {
             panic!("A CStr must not have interior nulls")
         }
-        i += 1;
     }
-    // SAFETY: The safety is ensured by the above checks.
-    unsafe { crate::ffi::CStr::from_bytes_with_nul_unchecked(bytes) }
 }
 
 /// Represents a loaded module.
