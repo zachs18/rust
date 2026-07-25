@@ -21,7 +21,7 @@ use super::error::*;
 use crate::diagnostics::{LongRunning, LongRunningWarn};
 use crate::interpret::{
     self, AllocId, AllocInit, AllocRange, ConstAllocation, CtfeProvenance, FnArg, Frame,
-    GlobalAlloc, ImmTy, InterpCx, InterpResult, OpTy, PlaceTy, Pointer, RangeSet, RetagMode,
+    GlobalAlloc, Immediate, ImmTy, InterpCx, InterpResult, OpTy, PlaceTy, Pointer, RangeSet, RetagMode,
     Scalar, compile_time_machine, ensure_monomorphic_enough, err_inval, interp_ok, throw_exhaust,
     throw_inval, throw_ub, throw_ub_format, throw_unsup, throw_unsup_format,
     type_implements_dyn_trait,
@@ -385,6 +385,38 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
             }
         })
     }
+
+    /// See documentation on the `ptr_guaranteed_misalignment` intrinsic.
+    /// Returns `None` if the result is unknown.
+    /// Returns `Some(misalignment)` if the pointer is misaligned from `align` by `misalignment`.
+    fn guaranteed_misalignment(&mut self, ptr: Scalar, align: Scalar) -> InterpResult<'tcx, Option<u64>> {
+        let Scalar::Int(align) = align else {
+            todo!("ub")
+        };
+        let align = align.to_target_usize(*self.tcx);
+        if !align.is_power_of_two() {
+            todo!("ub")
+        }
+
+        interp_ok(match ptr {
+            // Comparisons between integers are always known.
+            Scalar::Int(addr) => Some(addr.to_target_usize(*self.tcx) % align),
+            // If the pointer's allocation is at least as aligned as the request,
+            // then we can find the answer. Otherwise, we cannot.
+            Scalar::Ptr(ptr, _) => {
+                let (prov, offset) = ptr.prov_and_relative_offset();
+                let allocid = prov.alloc_id();
+                let info = self.get_alloc_info(allocid);
+
+                if info.align.bytes() >= align {
+                    let misalignment = offset.bytes() % align;
+                    Some(misalignment)
+                } else {
+                    None
+                }
+            }
+        })
+    }
 }
 
 impl<'tcx> CompileTimeMachine<'tcx> {
@@ -485,6 +517,20 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
                 let b = ecx.read_scalar(&args[1])?;
                 let cmp = ecx.guaranteed_cmp(a, b)?;
                 ecx.write_scalar(Scalar::from_u8(cmp), dest)?;
+            }
+            sym::ptr_guaranteed_misalignment => {
+                let ptr = ecx.read_scalar(&args[0])?;
+                let align = ecx.read_scalar(&args[1])?;
+                let result = ecx.guaranteed_misalignment(ptr, align)?;
+                // TODO: `Option<usize>` is currently represented as `ScalarPair(tag, value)`
+                // with `None.tag = 0`, `Some.tag = 1`, but this is not stable
+                let target_usize = |val| Scalar::from_target_usize(val, ecx);
+                let zero = target_usize(0);
+                let imm = match result {
+                    None => Immediate::ScalarPair(zero, zero),
+                    Some(misalignment) => Immediate::ScalarPair(target_usize(1), target_usize(misalignment)),
+                };
+                ecx.write_immediate(imm, dest)?;
             }
             sym::const_allocate => {
                 let size = ecx.read_scalar(&args[0])?.to_target_usize(ecx)?;

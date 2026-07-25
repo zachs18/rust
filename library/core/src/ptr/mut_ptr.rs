@@ -712,6 +712,34 @@ impl<T: PointeeSized> *mut T {
         (self as *const T).guaranteed_ne(other as _)
     }
 
+    /// Returns a pointer's guaranteed misalignment if possible.
+    ///
+    /// At runtime this function behaves like `Some(self.addr() % align)`.
+    /// However, in some contexts (e.g., compile-time evaluation),
+    /// it is not always possible to determine the address of a pointer, so this function may
+    /// spuriously return `None`.
+    /// But when it returns `Some`, the pointers' misalignment is guaranteed to be known.
+    ///
+    /// The return value may change from `Some` to `None` and vice versa depending on the compiler
+    /// version and unsafe code must not
+    /// rely on the result of this function for soundness. It is suggested to only use this function
+    /// for performance optimizations where spurious `None` return values by this function do not
+    /// affect the outcome, but just the performance.
+    /// The consequences of using this method to make runtime and compile-time code behave
+    /// differently have not been explored. This method should not be used to introduce such
+    /// differences, and it should also not be stabilized before we have a better understanding
+    /// of this issue.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `align` is not a power of two.
+    #[unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
+    #[rustc_const_unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
+    #[inline]
+    pub const fn guaranteed_misalignment(self, align: usize) -> Option<usize> {
+        (self as *const T).guaranteed_misalignment(align)
+    }
+
     /// Calculates the distance between two pointers within the same allocation. The returned value is in
     /// units of T: the distance in bytes divided by `size_of::<T>()`.
     ///
@@ -1626,6 +1654,73 @@ impl<T: PointeeSized> *mut T {
         }
 
         self.addr() & (align - 1) == 0
+    }
+
+    /// FIXME: docs Returns whether the pointer is properly aligned for `T`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // On some platforms, the alignment of i32 is less than 4.
+    /// #[repr(align(4))]
+    /// struct AlignedI32(i32);
+    ///
+    /// let mut data = AlignedI32(42);
+    /// let ptr = &mut data as *mut AlignedI32;
+    ///
+    /// assert!(ptr.is_aligned());
+    /// assert!(!ptr.wrapping_byte_add(1).is_aligned());
+    /// ```
+    #[must_use]
+    #[inline]
+    #[unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
+    #[rustc_const_unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
+    pub const fn is_guaranteed_aligned(self) -> Option<bool>
+    where
+        T: Sized,
+    {
+        self.is_guaranteed_aligned_to(align_of::<T>())
+    }
+
+    /// FIXME: docs Returns whether the pointer is aligned to `align`.
+    ///
+    /// For non-`Sized` pointees this operation considers only the data pointer,
+    /// ignoring the metadata.
+    ///
+    /// # Panics
+    ///
+    /// The function panics if `align` is not a power-of-two (this includes 0).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(pointer_is_aligned_to)]
+    ///
+    /// // On some platforms, the alignment of i32 is less than 4.
+    /// #[repr(align(4))]
+    /// struct AlignedI32(i32);
+    ///
+    /// let mut data = AlignedI32(42);
+    /// let ptr = &mut data as *mut AlignedI32;
+    ///
+    /// assert!(ptr.is_aligned_to(1));
+    /// assert!(ptr.is_aligned_to(2));
+    /// assert!(ptr.is_aligned_to(4));
+    ///
+    /// assert!(ptr.wrapping_byte_add(2).is_aligned_to(2));
+    /// assert!(!ptr.wrapping_byte_add(2).is_aligned_to(4));
+    ///
+    /// assert_ne!(ptr.is_aligned_to(8), ptr.wrapping_add(1).is_aligned_to(8));
+    /// ```
+    #[must_use]
+    #[inline]
+    #[unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
+    #[rustc_const_unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
+    pub const fn is_guaranteed_aligned_to(self, align: usize) -> Option<bool> {
+        match self.guaranteed_misalignment(align) {
+            None => None,
+            Some(misalignment) => Some(misalignment == 0),
+        }
     }
 }
 

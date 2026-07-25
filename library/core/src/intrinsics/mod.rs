@@ -2457,6 +2457,27 @@ pub const fn ptr_guaranteed_cmp<T>(ptr: *const T, other: *const T) -> u8 {
     (ptr == other) as u8
 }
 
+/// See documentation of `<*const T>::guaranteed_aligned_to` for details.
+/// Returns `None` if the result is unknown.
+/// Returns `Some(misalignment)` if the pointer is guaranteed misaligned from `align` by `misalignment`.
+///
+/// # Safety
+///
+/// `align` must be a power of two.
+#[rustc_intrinsic]
+#[rustc_nounwind]
+#[rustc_do_not_const_check]
+#[inline]
+#[miri::intrinsic_fallback_is_spec]
+pub const unsafe fn ptr_guaranteed_misalignment<T>(ptr: *const T, align: usize) -> Option<usize> {
+    crate::ub_checks::assert_unsafe_precondition!(
+        check_language_ub,
+        "alignment passed to `ptr_guaranteed_misalignment` was not a power of two",
+        (align: usize = align) => align.is_power_of_two(),
+    );
+    Some(ptr.addr() % align)
+}
+
 /// Determines whether the raw bytes of the two values are equal.
 ///
 /// This is particularly handy for arrays, since it allows things like just

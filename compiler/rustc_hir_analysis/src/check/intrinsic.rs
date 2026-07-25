@@ -547,6 +547,13 @@ pub(crate) fn check_intrinsic_type(
             tcx.types.u8,
         ),
 
+        sym::ptr_guaranteed_misalignment => (
+            1,
+            0,
+            vec![Ty::new_imm_ptr(tcx, param(0)), tcx.types.usize],
+            Ty::new_option(tcx, tcx.types.usize),
+        ),
+
         sym::const_allocate => {
             (0, 0, vec![tcx.types.usize, tcx.types.usize], Ty::new_mut_ptr(tcx, tcx.types.u8))
         }

@@ -1625,6 +1625,7 @@ symbols! {
         ptr_copy_nonoverlapping,
         ptr_from_ref,
         ptr_guaranteed_cmp,
+        ptr_guaranteed_misalignment,
         ptr_is_null,
         ptr_mask,
         ptr_metadata,
