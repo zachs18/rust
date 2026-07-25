@@ -21,9 +21,9 @@ use super::error::*;
 use crate::diagnostics::{LongRunning, LongRunningWarn};
 use crate::interpret::{
     self, AllocId, AllocInit, AllocRange, ConstAllocation, CtfeProvenance, FnArg, Frame,
-    GlobalAlloc, Immediate, ImmTy, InterpCx, InterpResult, OpTy, PlaceTy, Pointer, RangeSet, RetagMode,
-    Scalar, compile_time_machine, ensure_monomorphic_enough, err_inval, interp_ok, throw_exhaust,
-    throw_inval, throw_ub, throw_ub_format, throw_unsup, throw_unsup_format,
+    GlobalAlloc, ImmTy, Immediate, InterpCx, InterpResult, OpTy, PlaceTy, Pointer, RangeSet,
+    RetagMode, Scalar, compile_time_machine, ensure_monomorphic_enough, err_inval, interp_ok,
+    throw_exhaust, throw_inval, throw_ub, throw_ub_format, throw_unsup, throw_unsup_format,
     type_implements_dyn_trait,
 };
 
@@ -389,10 +389,12 @@ impl<'tcx> CompileTimeInterpCx<'tcx> {
     /// See documentation on the `ptr_guaranteed_misalignment` intrinsic.
     /// Returns `None` if the result is unknown.
     /// Returns `Some(misalignment)` if the pointer is misaligned from `align` by `misalignment`.
-    fn guaranteed_misalignment(&mut self, ptr: Scalar, align: Scalar) -> InterpResult<'tcx, Option<u64>> {
-        let Scalar::Int(align) = align else {
-            todo!("ub")
-        };
+    fn guaranteed_misalignment(
+        &mut self,
+        ptr: Scalar,
+        align: Scalar,
+    ) -> InterpResult<'tcx, Option<u64>> {
+        let Scalar::Int(align) = align else { todo!("ub") };
         let align = align.to_target_usize(*self.tcx);
         if !align.is_power_of_two() {
             todo!("ub")
@@ -528,7 +530,9 @@ impl<'tcx> interpret::Machine<'tcx> for CompileTimeMachine<'tcx> {
                 let zero = target_usize(0);
                 let imm = match result {
                     None => Immediate::ScalarPair(zero, zero),
-                    Some(misalignment) => Immediate::ScalarPair(target_usize(1), target_usize(misalignment)),
+                    Some(misalignment) => {
+                        Immediate::ScalarPair(target_usize(1), target_usize(misalignment))
+                    }
                 };
                 ecx.write_immediate(imm, dest)?;
             }

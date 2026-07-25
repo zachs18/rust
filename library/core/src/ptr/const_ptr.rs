@@ -812,7 +812,6 @@ impl<T: PointeeSized> *const T {
         }
     }
 
-
     /// Returns a pointer's guaranteed misalignment if possible.
     ///
     /// At runtime this function behaves like `Some(self.addr() % align)`.
@@ -845,7 +844,6 @@ impl<T: PointeeSized> *const T {
         // SAFETY: `align` is a power of two
         unsafe { intrinsics::ptr_guaranteed_misalignment(self.cast::<u8>(), align) }
     }
-
 
     #[doc = include_str!("./docs/add.md")]
     ///
