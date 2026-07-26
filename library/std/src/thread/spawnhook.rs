@@ -94,13 +94,16 @@ where
     F: 'static + Send + Sync + Fn(&Thread) -> G,
     G: 'static + Send + FnOnce(),
 {
+    // Allocate the `Arc` and `Box` here before calling `h.take()` so if
+    // allocating fails, we haven't removed the existing hooks.
+    let mut new_first =
+        Arc::new(SpawnHook { hook: Box::new(move |thread| Box::new(hook(thread))), next: None });
     SPAWN_HOOKS.with(|h| {
         let mut hooks = h.take();
         let next = hooks.first.take();
-        hooks.first = Some(Arc::new(SpawnHook {
-            hook: Box::new(move |thread| Box::new(hook(thread))),
-            next,
-        }));
+        // This unwrap can't fail since we just allocated the `Arc` and haven't shared it yet.
+        Arc::get_mut(&mut new_first).unwrap().next = next;
+        hooks.first = Some(new_first);
         h.set(hooks);
     });
 }
