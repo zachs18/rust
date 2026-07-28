@@ -1,10 +1,8 @@
 //! Regression test fot #159923
 #![feature(alloc_error_hook, thread_spawn_hook)]
 
-use std::{
-    alloc::{GlobalAlloc, System},
-    sync::atomic::{AtomicBool, AtomicU32, Ordering},
-};
+use std::alloc::{GlobalAlloc, System};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 static FAIL: AtomicBool = AtomicBool::new(false);
 struct FailingGlobalAlloc;
@@ -42,7 +40,7 @@ fn check() {
     });
 
     assert_eq!(COUNT.load(Ordering::Relaxed), 9);
-    
+
     // remove hooks by making the allocation fail
     FAIL.store(true, Ordering::Relaxed);
     std::panic::catch_unwind(|| {

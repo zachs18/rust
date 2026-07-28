@@ -21,16 +21,15 @@ struct SpawnHooks {
 impl Drop for SpawnHooks {
     fn drop(&mut self) {
         let mut next = self.first.take();
-        while let Some(SpawnHook { hook, next: n }) = next.and_then(|n| Arc::into_inner(n)) {
-            drop(hook);
-            next = n;
+        while let Some(current) = next.as_mut().and_then(Arc::get_mut) {
+            next = current.next.take();
         }
     }
 }
 
-struct SpawnHook {
-    hook: Box<dyn Send + Sync + Fn(&Thread) -> Box<dyn Send + FnOnce()>>,
+struct SpawnHook<H: ?Sized = dyn Send + Sync + Fn(&Thread) -> Box<dyn Send + FnOnce()>> {
     next: Option<Arc<SpawnHook>>,
+    hook: H,
 }
 
 /// Registers a function to run for every newly thread spawned.
@@ -96,8 +95,10 @@ where
 {
     // Allocate the `Arc` and `Box` here before calling `h.take()` so if
     // allocating fails, we haven't removed the existing hooks.
-    let mut new_first =
-        Arc::new(SpawnHook { hook: Box::new(move |thread| Box::new(hook(thread))), next: None });
+    let mut new_first = Arc::new(SpawnHook {
+        hook: move |thread: &_| Box::new(hook(thread)) as Box<dyn FnOnce() + Send>,
+        next: None,
+    });
     SPAWN_HOOKS.with(|h| {
         let mut hooks = h.take();
         let next = hooks.first.take();
