@@ -212,8 +212,6 @@ impl<'a, 'tcx> InlineAsmCtxt<'a, 'tcx> {
         }
 
         let asm_ty = match *ty.kind() {
-            // `!` is allowed for input but not for output (issue #87802)
-            ty::Never if is_input => return None,
             _ if ty.references_error() => return None,
             ty::Adt(adt, args) if self.tcx().is_lang_item(adt.did(), LangItem::MaybeUninit) => {
                 let ty = args.type_at(0);
