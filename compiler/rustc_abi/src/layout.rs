@@ -923,7 +923,7 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
         } else {
             // Try to use a ScalarPair for all tagged enums.
             // That's possible only if we can find a common primitive type for all variants.
-            let mut common_prim = None;
+            let mut common_scalar = None;
             let mut common_prim_initialized_in_all_variants = true;
             for (field_layouts, layout_variant) in iter::zip(variants, &layout_variants) {
                 // We skip *all* ZST here and later check if we are good in terms of alignment.
@@ -937,68 +937,99 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
                     }
                     (Some(pair), None) => pair,
                     _ => {
-                        common_prim = None;
+                        common_scalar = None;
                         break;
                     }
                 };
-                let prim = match field.backend_repr {
+                let scalar = match field.backend_repr {
                     BackendRepr::Scalar(scalar) => {
                         common_prim_initialized_in_all_variants &=
                             matches!(scalar, Scalar::Initialized { .. });
-                        scalar.primitive()
+                        scalar
                     }
                     _ => {
-                        common_prim = None;
+                        common_scalar = None;
                         break;
                     }
                 };
-                if let Some((old_prim, common_offset)) = common_prim {
+                if let Some((old_scalar, common_offset)) = common_scalar {
                     // All variants must be at the same offset
                     if offset != common_offset {
-                        common_prim = None;
+                        common_scalar = None;
                         break;
                     }
                     // This is pretty conservative. We could go fancier
                     // by realising that (u8, u8) could just cohabit with
                     // u16 or even u32.
-                    let new_prim = match (old_prim, prim) {
-                        // Allow all identical primitives.
-                        (x, y) if x == y => x,
-                        // Allow integers of the same size with differing signedness.
-                        // We arbitrarily choose the signedness of the first variant.
-                        (p @ Primitive::Int(x, _), Primitive::Int(y, _)) if x == y => p,
-                        // Allow integers mixed with pointers of the same layout.
-                        // We must represent this using a pointer, to avoid
-                        // roundtripping pointers through ptrtoint/inttoptr.
-                        (p @ Primitive::Pointer(_), i @ Primitive::Int(..))
-                        | (i @ Primitive::Int(..), p @ Primitive::Pointer(_))
-                            if p.size(dl) == i.size(dl)
+                    fn prim_and_range(scalar: &Scalar) -> (&Primitive, Option<&WrappingRange>) {
+                        match scalar {
+                            Scalar::Initialized { value, valid_range } => {
+                                (value, Some(valid_range))
+                            }
+                            Scalar::Union { value } => (value, None),
+                        }
+                    }
+                    let (&new_prim, new_range) =
+                        match (prim_and_range(&old_scalar), prim_and_range(&scalar)) {
+                            // Allow all identical primitives.
+                            ((x, Some(x_range)), (y, Some(y_range))) if x == y => {
+                                (x, Some(x_range.union_as(*y_range, x.size(dl))))
+                            }
+                            ((x, _), (y, _)) if x == y => (x, None),
+                            // Allow integers of the same size with differing signedness.
+                            // We arbitrarily choose the signedness of the first variant.
+                            (
+                                (p @ Primitive::Int(x, _), Some(x_range)),
+                                (Primitive::Int(y, _), Some(y_range)),
+                            ) if x == y => (p, Some(x_range.union_as(*y_range, x.size()))),
+                            ((p @ Primitive::Int(x, _), _), (Primitive::Int(y, _), _))
+                                if x == y =>
+                            {
+                                (p, None)
+                            }
+                            // Allow integers mixed with pointers of the same layout.
+                            // We must represent this using a pointer, to avoid
+                            // roundtripping pointers through ptrtoint/inttoptr.
+                            (
+                                (p @ Primitive::Pointer(_), p_range),
+                                (i @ Primitive::Int(..), i_range),
+                            )
+                            | (
+                                (i @ Primitive::Int(..), i_range),
+                                (p @ Primitive::Pointer(_), p_range),
+                            ) if p.size(dl) == i.size(dl)
                                 && p.default_align(dl) == i.default_align(dl) =>
-                        {
-                            p
-                        }
-                        _ => {
-                            common_prim = None;
-                            break;
-                        }
+                            {
+                                let range = match (p_range, i_range) {
+                                    (Some(p_range), Some(i_range)) => {
+                                        Some(p_range.union_as(*i_range, p.size(dl)))
+                                    }
+                                    _ => None,
+                                };
+                                (p, range)
+                            }
+                            _ => {
+                                common_scalar = None;
+                                break;
+                            }
+                        };
+                    let new_scalar = match new_range {
+                        Some(valid_range) => Scalar::Initialized { value: new_prim, valid_range },
+                        None => Scalar::Union { value: new_prim },
                     };
                     // We may be updating the primitive here, for example from int->ptr.
-                    common_prim = Some((new_prim, common_offset));
+                    common_scalar = Some((new_scalar, common_offset));
                 } else {
-                    common_prim = Some((prim, offset));
+                    common_scalar = Some((scalar, offset));
                 }
             }
-            if let Some((prim, offset)) = common_prim {
-                let prim_scalar = if common_prim_initialized_in_all_variants {
-                    let size = prim.size(dl);
-                    assert!(size.bits() <= 128);
-                    Scalar::Initialized { value: prim, valid_range: WrappingRange::full(size) }
-                } else {
-                    // Common prim might be uninit.
-                    Scalar::Union { value: prim }
-                };
-                let pair =
-                    LayoutData::<FieldIdx, VariantIdx>::scalar_pair(&self.cx, tag, prim_scalar);
+            if let Some((mut scalar, offset)) = common_scalar {
+                if !common_prim_initialized_in_all_variants
+                    && let Scalar::Initialized { value, .. } = scalar
+                {
+                    scalar = Scalar::Union { value };
+                }
+                let pair = LayoutData::<FieldIdx, VariantIdx>::scalar_pair(&self.cx, tag, scalar);
                 let pair_offsets = match pair.fields {
                     FieldsShape::Arbitrary { ref offsets, ref in_memory_order } => {
                         assert_eq!(in_memory_order.raw, [FieldIdx::new(0), FieldIdx::new(1)]);
@@ -1034,7 +1065,16 @@ impl<Cx: HasDataLayout> LayoutCalculator<Cx> {
             }
         }
 
-        let largest_niche = Niche::from_scalar(dl, Size::ZERO, tag);
+        let tag_niche = Niche::from_scalar(dl, Size::ZERO, tag);
+        let largest_niche = if let BackendRepr::ScalarPair { a: _, b, b_offset } = abi
+            && let Some(payload_niche) = Niche::from_scalar(dl, b_offset, b)
+            && tag_niche
+                .is_none_or(|tag_niche| tag_niche.available(dl) < payload_niche.available(dl))
+        {
+            Some(payload_niche)
+        } else {
+            tag_niche
+        };
 
         let tagged_layout = LayoutData {
             variants: Variants::Multiple {

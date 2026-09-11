@@ -36,7 +36,7 @@ enum ScalarPairPointerWithInt {
 #[rustc_dump_layout(backend_repr)]
 enum ScalarPairPointerWithNonZeroInt {
     //~^ ERROR: backend_repr: ScalarPair
-    //~| ERROR: pointer is 0..=
+    //~| ERROR: pointer is 1..=
     A(std::num::NonZeroUsize),
     B(Box<()>),
 }
@@ -59,7 +59,7 @@ enum OneUsize {
 #[rustc_dump_layout(backend_repr)]
 enum ScalarPairPointerWithOneInt {
     //~^ ERROR: backend_repr: ScalarPair
-    //~| ERROR: pointer is 0..=
+    //~| ERROR: pointer is 1..=
     A(OneUsize),
     B(Box<()>),
 }
@@ -73,7 +73,7 @@ enum ZeroUsize {
 #[rustc_dump_layout(backend_repr)]
 enum ScalarPairPointerWithZeroInt {
     //~^ ERROR: backend_repr: ScalarPair
-    //~| ERROR: pointer is 0..
+    //~| ERROR: pointer is (..=0) | (1..)
     A(ZeroUsize),
     B(Box<()>),
 }

@@ -48,6 +48,69 @@ impl WrappingRange {
         })
     }
 
+    /// Returns a minimal `WrappingRange` that contains every element of `self` and `other` for the given `size`.
+    ///
+    /// Note: this function is not commutative or associative . `x.union_as(y, size)` is not necessarily
+    /// the same as `y.union_as(x, size)`, and `x.union_as(y.union_as(z, size), size)` is not necessarily
+    /// the same as `x.union_as(y, size).union_as(z, size)`.
+    ///
+    /// For concrete examples: consider `A = 0..=0`, `B = 128..=128`, `C = 0..=128`, and `D = (..=0) | (128..)`.
+    /// Under the current implementation, `A.union_as(B, u8) == C` but `B.union_as(A, u8) == D` (non-commutative),
+    /// and `B.union_as(A, u8).union_as(C, u8) == D.union_as(C, u8) == full` but
+    /// `B.union_as((A.union_as(C, u8), u8) == B.union_as(C, u8) == C` (non-associative)
+    pub(crate) fn union_as(&self, other: Self, size: Size) -> Self {
+        if self.is_full_for(size) || other.is_full_for(size) {
+            return Self::full(size);
+        } else if *self == other {
+            return *self;
+        }
+
+        let trunc = |x| size.truncate(x);
+
+        // Make two prospective ranges: one starting at each input range's start and covering every value in both ranges.
+        // Choose the one with the most uncovered values (or full if both are full).
+
+        let prospective_range = |first: WrappingRange, second: WrappingRange| {
+            let delta = first.start;
+            let first_start = 0;
+            let first_end = trunc(first.end.wrapping_sub(delta));
+
+            let second_start = trunc(second.start.wrapping_sub(delta));
+            let second_end = trunc(second.end.wrapping_sub(delta));
+
+            if second_start <= second_end {
+                // Neither shifted range unsigned-wraps, so the shifted union's end is `max(first_end, second_end)`.
+                let max_end = u128::max(first_end, second_end);
+                let uncovered_values = max_end.wrapping_neg();
+                Some((
+                    WrappingRange {
+                        start: trunc(delta.wrapping_add(first_start)),
+                        end: trunc(delta.wrapping_add(max_end)),
+                    },
+                    uncovered_values,
+                ))
+            } else {
+                // The second shifted range unsigned-wraps, so the shifted union is full
+                None
+            }
+        };
+
+        match (prospective_range(*self, other), prospective_range(other, *self)) {
+            (Some((first, first_uncovered)), Some((second, second_uncovered))) => {
+                if first_uncovered == 0 && second_uncovered == 0 {
+                    // prefer canonical full range
+                    WrappingRange::full(size)
+                } else if first_uncovered >= second_uncovered {
+                    first
+                } else {
+                    second
+                }
+            }
+            (Some((range, _)), None) | (None, Some((range, _))) => range,
+            _ => WrappingRange::full(size),
+        }
+    }
+
     pub fn full(size: Size) -> Self {
         Self { start: 0, end: size.unsigned_int_max() }
     }

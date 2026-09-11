@@ -26,13 +26,13 @@ LL | enum ScalarPairPointerWithInt {
    |
    = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
 
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 1..=$PTR_MAX, b_offset: Size(? bytes) }
   --> $DIR/enum-scalar-pair-int-ptr.rs:37:1
    |
 LL | enum ScalarPairPointerWithNonZeroInt {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 1..=$PTR_MAX, b_offset: Size(? bytes) }
   --> $DIR/enum-scalar-pair-int-ptr.rs:37:1
    |
 LL | enum ScalarPairPointerWithNonZeroInt {
@@ -54,13 +54,13 @@ LL | enum ScalarPairOptPointerWithNonZeroInt {
    |
    = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
 
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 1..=$PTR_MAX, b_offset: Size(? bytes) }
   --> $DIR/enum-scalar-pair-int-ptr.rs:60:1
    |
 LL | enum ScalarPairPointerWithOneInt {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 1..=$PTR_MAX, b_offset: Size(? bytes) }
   --> $DIR/enum-scalar-pair-int-ptr.rs:60:1
    |
 LL | enum ScalarPairPointerWithOneInt {
@@ -68,13 +68,13 @@ LL | enum ScalarPairPointerWithOneInt {
    |
    = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
 
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is (..=0) | (1..), b_offset: Size(? bytes) }
   --> $DIR/enum-scalar-pair-int-ptr.rs:74:1
    |
 LL | enum ScalarPairPointerWithZeroInt {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is (..=0) | (1..), b_offset: Size(? bytes) }
   --> $DIR/enum-scalar-pair-int-ptr.rs:74:1
    |
 LL | enum ScalarPairPointerWithZeroInt {
