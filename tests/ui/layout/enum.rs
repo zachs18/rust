@@ -34,7 +34,7 @@ enum ScalarPairUnion {
 
 #[rustc_dump_layout(backend_repr)]
 enum ScalarPairNonZeroDifferingSign {
-    //~^ ERROR: backend_repr: ScalarPair { a: u8 is 0..=1, b: u8 is ..
+    //~^ ERROR: backend_repr: ScalarPair { a: u8 is 0..=1, b: u8 is 1..
     A(core::num::NonZero<u8>),
     B(core::num::NonZero<i8>),
 }
