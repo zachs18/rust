@@ -16,11 +16,23 @@ error: backend_repr: ScalarPair { a: u8 is 0..=1, b: u8 is .., b_offset: Size(1 
 LL | enum ScalarPairDifferingSign {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+error: backend_repr: ScalarPair { a: u8 is 0..=1, b: union u8, b_offset: Size(1 bytes) }
+  --> $DIR/enum.rs:29:1
+   |
+LL | enum ScalarPairUnion {
+   | ^^^^^^^^^^^^^^^^^^^^
+
+error: backend_repr: ScalarPair { a: u8 is 0..=1, b: u8 is .., b_offset: Size(1 bytes) }
+  --> $DIR/enum.rs:36:1
+   |
+LL | enum ScalarPairNonZeroDifferingSign {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 error: size: Size(4 bytes)
-  --> $DIR/enum.rs:33:1
+  --> $DIR/enum.rs:47:1
    |
 LL | enum DefinedLayoutAllUninhabited {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: aborting due to 4 previous errors
+error: aborting due to 6 previous errors
 
