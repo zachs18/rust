@@ -25,6 +25,20 @@ enum ScalarPairDifferingSign {
     B(i8),
 }
 
+#[rustc_dump_layout(backend_repr)]
+enum ScalarPairUnion {
+    //~^ ERROR: backend_repr: ScalarPair { a: u8 is 0..=1, b: union u8
+    A(u8),
+    B,
+}
+
+#[rustc_dump_layout(backend_repr)]
+enum ScalarPairNonZeroDifferingSign {
+    //~^ ERROR: backend_repr: ScalarPair { a: u8 is 0..=1, b: u8 is ..
+    A(core::num::NonZero<u8>),
+    B(core::num::NonZero<i8>),
+}
+
 enum Never {}
 
 // See https://github.com/rust-lang/rust/issues/146984

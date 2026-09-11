@@ -1,14 +1,92 @@
-error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is $VALID_RANGE, b_offset: Size(? bytes) }
-  --> $DIR/enum-scalar-pair-int-ptr.rs:12:1
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: union pointer, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:19:1
+   |
+LL | enum ScalarPairOptPointerUnion {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: union pointer, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:19:1
+   |
+LL | enum ScalarPairOptPointerUnion {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:28:1
    |
 LL | enum ScalarPairPointerWithInt {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:28:1
+   |
+LL | enum ScalarPairPointerWithInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:37:1
+   |
+LL | enum ScalarPairPointerWithNonZeroInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:37:1
+   |
+LL | enum ScalarPairPointerWithNonZeroInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:46:1
+   |
+LL | enum ScalarPairOptPointerWithNonZeroInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:46:1
+   |
+LL | enum ScalarPairOptPointerWithNonZeroInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:60:1
+   |
+LL | enum ScalarPairPointerWithOneInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:60:1
+   |
+LL | enum ScalarPairPointerWithOneInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:74:1
+   |
+LL | enum ScalarPairPointerWithZeroInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: backend_repr: ScalarPair { a: u?? is 0..=1, b: pointer is 0..=$PTR_MAX, b_offset: Size(? bytes) }
+  --> $DIR/enum-scalar-pair-int-ptr.rs:74:1
+   |
+LL | enum ScalarPairPointerWithZeroInt {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: duplicate diagnostic emitted due to `-Z deduplicate-diagnostics=no`
+
 error: backend_repr: Memory { sized: true }
-  --> $DIR/enum-scalar-pair-int-ptr.rs:21:1
+  --> $DIR/enum-scalar-pair-int-ptr.rs:85:1
    |
 LL | enum NotScalarPairPointerWithSmallerInt {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: aborting due to 2 previous errors
+error: aborting due to 13 previous errors
 
