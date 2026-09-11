@@ -1,5 +1,5 @@
 // Checks that range metadata gets emitted on functions result and arguments
-// with scalar value.
+// with scalar value, and arguments with scalarpair value.
 
 // 32-bit systems will return 128bit values using a return area pointer.
 //@ revisions: bit32 bit64
@@ -61,7 +61,7 @@ pub enum Enum2 {
     C(Enum0),
 }
 
-// CHECK: { i8, i8 } @enum2_value(i8 noundef range(i8 0, 3) %x.0, i8 noundef %x.1)
+// CHECK: { i8, i8 } @enum2_value(i8 noundef range(i8 0, 3) %x.0, i8 noundef range(i8 0, 4) %x.1)
 #[no_mangle]
 pub fn enum2_value(x: Enum2) -> Enum2 {
     x

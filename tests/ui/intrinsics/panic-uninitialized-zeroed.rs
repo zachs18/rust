@@ -56,10 +56,20 @@ enum LR {
     Left(i64),
     Right(i64),
 }
+// An enum with ScalarPair layout,
+// where the second scalar can't be 0 at all.
 #[allow(dead_code, non_camel_case_types)]
 enum LR_NonZero {
     Left(num::NonZero<i64>),
     Right(num::NonZero<i64>),
+}
+// An enum with ScalarPair layout,
+// where the two scalars can't both be 0.
+#[allow(dead_code, non_camel_case_types)]
+#[repr(i64)]
+enum LNonZero_R {
+    Left(num::NonZero<i64>) = 0,
+    Right(i64) = 1,
 }
 
 struct ZeroSized;
@@ -270,6 +280,27 @@ fn main() {
             "attempted to leave type `OneVariant_Ref` uninitialized, which is invalid",
         );
 
+        // Types where both are invalid but we allow the zeroed form since it is not LLVM UB.
+        test_panic_msg(
+            || mem::zeroed::<LR_NonZero>(),
+            "attempted to zero-initialize type `LR_NonZero`, which is invalid",
+        );
+        test_panic_msg(
+            || mem::uninitialized::<LR_NonZero>(),
+            "attempted to leave type `LR_NonZero` uninitialized, which is invalid",
+        );
+
+        test_panic_msg(
+            || mem::zeroed::<ManuallyDrop<LR_NonZero>>(),
+            "attempted to zero-initialize type `core::mem::manually_drop::ManuallyDrop<LR_NonZero>`, \
+             which is invalid",
+        );
+        test_panic_msg(
+            || mem::uninitialized::<ManuallyDrop<LR_NonZero>>(),
+            "attempted to leave type `core::mem::manually_drop::ManuallyDrop<LR_NonZero>` uninitialized, \
+             which is invalid",
+        );
+
         // Types where both are invalid, but we allow uninit since the 0x01-filling is not LLVM UB.
         test_panic_msg(
             || mem::zeroed::<fn()>(),
@@ -329,22 +360,22 @@ fn main() {
 
         // Types where both are invalid but we allow the zeroed form since it is not LLVM UB.
         test_panic_msg_only_if_strict(
-            || mem::zeroed::<LR_NonZero>(),
-            "attempted to zero-initialize type `LR_NonZero`, which is invalid",
+            || mem::zeroed::<LNonZero_R>(),
+            "attempted to zero-initialize type `LNonZero_R`, which is invalid",
         );
         test_panic_msg(
-            || mem::uninitialized::<LR_NonZero>(),
-            "attempted to leave type `LR_NonZero` uninitialized, which is invalid",
+            || mem::uninitialized::<LNonZero_R>(),
+            "attempted to leave type `LNonZero_R` uninitialized, which is invalid",
         );
 
         test_panic_msg_only_if_strict(
-            || mem::zeroed::<ManuallyDrop<LR_NonZero>>(),
-            "attempted to zero-initialize type `core::mem::manually_drop::ManuallyDrop<LR_NonZero>`, \
+            || mem::zeroed::<ManuallyDrop<LNonZero_R>>(),
+            "attempted to zero-initialize type `core::mem::manually_drop::ManuallyDrop<LNonZero_R>`, \
              which is invalid",
         );
         test_panic_msg(
-            || mem::uninitialized::<ManuallyDrop<LR_NonZero>>(),
-            "attempted to leave type `core::mem::manually_drop::ManuallyDrop<LR_NonZero>` uninitialized, \
+            || mem::uninitialized::<ManuallyDrop<LNonZero_R>>(),
+            "attempted to leave type `core::mem::manually_drop::ManuallyDrop<LNonZero_R>` uninitialized, \
              which is invalid",
         );
 
