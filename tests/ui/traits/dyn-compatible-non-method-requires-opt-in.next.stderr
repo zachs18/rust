@@ -1,0 +1,26 @@
+error[E0038]: the trait `NonDispatchable` is not dyn compatible
+  --> $DIR/dyn-compatible-non-method-requires-opt-in.rs:19:24
+   |
+LL |     let _: Option<&dyn NonDispatchable> = None;
+   |                        ^^^^^^^^^^^^^^^ `NonDispatchable` is not dyn compatible
+   |
+note: for a trait to be dyn compatible it needs to allow building a vtable
+      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>
+  --> $DIR/dyn-compatible-non-method-requires-opt-in.rs:7:8
+   |
+LL | trait NonDispatchable {
+   |       --------------- this trait is not dyn compatible...
+LL |     fn non_method(this: &Self) -> usize;
+   |        ^^^^^^^^^^ ...because associated function `non_method` has no `self` parameter
+help: consider turning `non_method` into a method by giving it a `&self` argument, so that it is accessible through the trait object's vtable
+   |
+LL |     fn non_method(&self, this: &Self) -> usize;
+   |                   ++++++
+help: alternatively, consider constraining `non_method` so it is explicitly marked as not applying to trait objects
+   |
+LL |     fn non_method(this: &Self) -> usize where Self: Sized;
+   |                                         +++++++++++++++++
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0038`.
