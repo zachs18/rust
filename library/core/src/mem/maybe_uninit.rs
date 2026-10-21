@@ -577,6 +577,68 @@ impl<T> MaybeUninit<T> {
         unsafe { self.assume_init_mut() }
     }
 
+    /// Copies the value of the `MaybeUninit<T>`. This copies the raw bytes of the value,
+    /// and does not call `T`'s `Clone` implementation or similar, aod does not perform any
+    /// synchronization, so care must be taken if `T` contains interior mutability.
+    ///
+    /// # Examples
+    ///
+    /// Correct usage of this method:
+    ///
+    /// ```rust
+    /// #![feature(maybe_uninit_copy)]
+    /// use std::mem::MaybeUninit;
+    ///
+    /// let x = MaybeUninit::<u32>::new(13);
+    /// let x1 = unsafe { x.assume_init_read() };
+    /// // `u32` is `Copy`, so we may read multiple times.
+    /// let x2 = unsafe { x.assume_init_read() };
+    /// assert_eq!(x1, x2);
+    ///
+    /// let x = MaybeUninit::<Option<Vec<u32>>>::new(None);
+    /// let y = x.copy();
+    /// let x = unsafe { x.assume_init() };
+    /// // Duplicating a `None` value is okay, so we may extract the same value multiple times.
+    /// let y = unsafe { y.assume_init() };
+    /// assert_eq!(x, y);
+    /// ```
+    ///
+    /// *Incorrect* usages of this method:
+    ///
+    /// ```rust,no_run
+    /// #![feature(maybe_uninit_copy)]
+    /// use std::mem::MaybeUninit;
+    ///
+    /// let x = MaybeUninit::<Option<Vec<u32>>>::new(Some(vec![0, 1, 2]));
+    /// let y = x.copy();
+    /// let x = unsafe { x.assume_init() };
+    /// let y = unsafe { y.assume_init() };
+    /// // We now created two copies of the same vector, leading to a double-free ⚠️ when
+    /// // they both get dropped!
+    /// ```
+    ///
+    /// ```rust,no_run
+    /// #![feature(maybe_uninit_copy)]
+    /// use std::mem::MaybeUninit;
+    /// use std::sync::atomic::{AtomicU32, Ordering};
+    ///
+    /// let x = MaybeUninit::<AtomicU32>::new(AtomicU32::new(42));
+    /// let x1 = unsafe { x.assume_init_ref() };
+    /// std::thread::scope(|scope| {
+    ///     // There is a data race ⚠️ between these two threads!
+    ///     // Thread A does a non-atomic read, and thread B does an atomic write.
+    ///     scope.spawn(|| x.copy()); // A
+    ///     scope.spawn(|| x1.store(43, Ordering::Relaxed)); // B
+    /// });
+    /// ```
+    #[inline(always)]
+    #[unstable(feature = "maybe_uninit_copy", issue = "none")]
+    pub const fn copy(&self) -> Self {
+        // SAFETY: Copying a `MaybeUninit` is always safe;
+        // the caller must make sure to use the (possibly-initialized) value safely.
+        unsafe { ptr::read(self) }
+    }
+
     /// Gets a pointer to the contained value. Reading from this pointer or turning it
     /// into a reference is undefined behavior unless the `MaybeUninit<T>` is initialized.
     /// Writing to memory that this pointer (non-transitively) points to is undefined behavior
