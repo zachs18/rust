@@ -431,7 +431,7 @@ impl<'tcx> Terminator<'tcx> {
     pub fn none() -> Terminator<'tcx> {
         Terminator {
             source_info: SourceInfo::outermost(DUMMY_SP),
-            kind: TerminatorKind::Goto { target: BasicBlock::MAX, loop_hint_attrs: ThinVec::new() },
+            kind: TerminatorKind::BikeshedNoTerminator,
         }
     }
 
@@ -440,7 +440,7 @@ impl<'tcx> Terminator<'tcx> {
     }
 
     pub fn is_none(&self) -> bool {
-        matches!(self.kind, TerminatorKind::Goto { target: BasicBlock::MAX, .. })
+        matches!(self.kind, TerminatorKind::BikeshedNoTerminator)
     }
     pub fn is_some(&self) -> bool {
         !self.is_none()
@@ -482,6 +482,7 @@ impl<'tcx> TerminatorKind<'tcx> {
     /// values it might hold (e.g. `TerminatorKind::Call` always returns `"Call"`).
     pub const fn name(&self) -> &'static str {
         match self {
+            TerminatorKind::BikeshedNoTerminator => "BikeshedNoTerminator",
             TerminatorKind::Goto { .. } => "Goto",
             TerminatorKind::SwitchInt { .. } => "SwitchInt",
             TerminatorKind::UnwindResume => "UnwindResume",
@@ -543,6 +544,7 @@ mod helper {
         pub fn successors(&self) -> Successors<'_> {
             use self::TerminatorKind::*;
             match *self {
+                BikeshedNoTerminator => unreachable!(),
                 // 3-successors for async drop: target, unwind, dropline (parent coroutine drop)
                 Drop { target: ref t, unwind: UnwindAction::Cleanup(u), drop: Some(d), .. } => {
                     mk_successors(slice::from_ref(t), Some(u), Some(d))
@@ -591,6 +593,7 @@ mod helper {
         pub fn successors_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut BasicBlock)) {
             use self::TerminatorKind::*;
             match self {
+                BikeshedNoTerminator => unreachable!(),
                 Drop { target, unwind, drop, .. } => {
                     f(target);
                     if let UnwindAction::Cleanup(u) = unwind {
@@ -655,6 +658,7 @@ impl<'tcx> TerminatorKind<'tcx> {
     #[inline]
     pub fn unwind(&self) -> Option<&UnwindAction> {
         match *self {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Goto { .. }
             | TerminatorKind::UnwindResume
             | TerminatorKind::UnwindTerminate(_)
@@ -676,6 +680,7 @@ impl<'tcx> TerminatorKind<'tcx> {
     #[inline]
     pub fn unwind_mut(&mut self) -> Option<&mut UnwindAction> {
         match *self {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Goto { .. }
             | TerminatorKind::UnwindResume
             | TerminatorKind::UnwindTerminate(_)
@@ -768,6 +773,7 @@ impl<'tcx> TerminatorKind<'tcx> {
     pub fn edges(&self) -> TerminatorEdges<'_, 'tcx> {
         use TerminatorKind::*;
         match *self {
+            BikeshedNoTerminator => unreachable!(),
             Return
             | TailCall { .. }
             | UnwindResume

@@ -202,6 +202,7 @@ pub type Successors = Vec<BasicBlockIdx>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum TerminatorKind {
+    BikeshedNoTerminator,
     Goto {
         target: BasicBlockIdx,
     },
@@ -246,6 +247,7 @@ impl TerminatorKind {
     pub fn successors(&self) -> Successors {
         use self::TerminatorKind::*;
         match *self {
+            BikeshedNoTerminator => unreachable!(),
             Call { target: Some(t), unwind: UnwindAction::Cleanup(u), .. }
             | Drop { target: t, unwind: UnwindAction::Cleanup(u), .. }
             | Assert { target: t, unwind: UnwindAction::Cleanup(u), .. }
@@ -276,6 +278,7 @@ impl TerminatorKind {
 
     pub fn unwind(&self) -> Option<&UnwindAction> {
         match *self {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Goto { .. }
             | TerminatorKind::Return
             | TerminatorKind::Unreachable

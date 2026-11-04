@@ -891,6 +891,7 @@ impl<'a, 'tcx> ResultsVisitor<'tcx, Borrowck<'a, 'tcx>> for MirBorrowckCtxt<'a, 
         self.check_activations(loc, span, state);
 
         match &term.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::SwitchInt { discr, targets: _ } => {
                 self.consume_operand(loc, (discr, span), state);
             }
@@ -1000,6 +1001,7 @@ impl<'a, 'tcx> ResultsVisitor<'tcx, Borrowck<'a, 'tcx>> for MirBorrowckCtxt<'a, 
         let span = term.source_info.span;
 
         match term.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Yield { value: _, resume: _, resume_arg: _, drop: _ } => {
                 if self.movable_coroutine {
                     // Look for any active borrows to locals

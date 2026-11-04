@@ -171,6 +171,7 @@ fn pretty_terminator_head<W: Write>(writer: &mut W, terminator: &TerminatorKind)
     use self::TerminatorKind::*;
     const INDENT: &str = "        ";
     match terminator {
+        TerminatorKind::BikeshedNoTerminator => unreachable!(),
         Goto { .. } => write!(writer, "{INDENT}goto"),
         SwitchInt { discr, .. } => {
             write!(writer, "{INDENT}switchInt({})", pretty_operand(discr))
@@ -203,6 +204,7 @@ fn pretty_terminator_head<W: Write>(writer: &mut W, terminator: &TerminatorKind)
 fn pretty_successor_labels(terminator: &TerminatorKind) -> Vec<String> {
     use self::TerminatorKind::*;
     match terminator {
+        TerminatorKind::BikeshedNoTerminator => unreachable!(),
         Call { target: None, unwind: UnwindAction::Cleanup(_), .. }
         | InlineAsm { destination: None, .. } => vec!["unwind".into()],
         Resume | Abort | Return | Unreachable | Call { target: None, unwind: _, .. } => vec![],

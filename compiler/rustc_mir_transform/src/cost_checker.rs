@@ -102,6 +102,7 @@ impl<'tcx> Visitor<'tcx> for CostChecker<'_, 'tcx> {
 
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, loc: Location) {
         match &terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Drop { place, unwind, .. } => {
                 // If the place doesn't actually need dropping, treat it like a regular goto.
                 let ty = self.instantiate_ty(place.ty(self.callee_body, self.tcx).ty);
@@ -189,6 +190,8 @@ impl<'tcx> Visitor<'tcx> for CostChecker<'_, 'tcx> {
 pub(super) fn is_call_like(terminator: &Terminator<'_>) -> bool {
     use TerminatorKind::*;
     match terminator.kind {
+        BikeshedNoTerminator => unreachable!(),
+
         Call { .. } | TailCall { .. } | Drop { .. } | Assert { .. } | InlineAsm { .. } => true,
 
         Goto { .. }

@@ -202,6 +202,7 @@ macro_rules! make_mir_visitor {
                 let Terminator { kind, source_info } = term;
                 self.visit_span(&$($mutability)? source_info.span);
                 match kind {
+                    TerminatorKind::BikeshedNoTerminator => unreachable!(),
                     TerminatorKind::Goto { .. }
                     | TerminatorKind::Resume
                     | TerminatorKind::Abort

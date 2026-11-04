@@ -147,6 +147,7 @@ impl<'tcx> Visitor<'tcx> for CostChecker<'_, 'tcx> {
         self.statements += 1;
         let tcx = self.tcx;
         match &terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Drop { place, unwind, .. } => {
                 let ty = place.ty(self.callee_body, tcx).ty;
                 if !ty.is_trivially_pure_clone_copy() {

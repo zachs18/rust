@@ -201,6 +201,7 @@ impl<'mir, 'tcx, C: TerminatorClassifier<'tcx>> TriColorVisitor<BasicBlocks<'tcx
         }
 
         match self.body[bb].terminator().kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             // These terminators return control flow to the caller.
             TerminatorKind::UnwindTerminate(_)
             | TerminatorKind::CoroutineDrop

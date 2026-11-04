@@ -520,6 +520,7 @@ macro_rules! make_mir_visitor {
 
                 self.visit_source_info(source_info);
                 match kind {
+                    TerminatorKind::BikeshedNoTerminator => unreachable!(),
                     TerminatorKind::Goto { .. }
                     | TerminatorKind::UnwindResume
                     | TerminatorKind::UnwindTerminate(_)

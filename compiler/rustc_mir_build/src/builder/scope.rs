@@ -2148,6 +2148,7 @@ impl<'tcx> DropTreeBuilder<'tcx> for Unwind {
     fn link_entry_point(cfg: &mut CFG<'tcx>, from: BasicBlock, to: BasicBlock) {
         let term = &mut cfg.block_data_mut(from).terminator_mut();
         match &mut term.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Drop { unwind, .. } => {
                 if let UnwindAction::Cleanup(unwind) = *unwind {
                     let source_info = term.source_info;

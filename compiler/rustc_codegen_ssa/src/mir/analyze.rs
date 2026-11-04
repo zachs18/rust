@@ -303,6 +303,7 @@ pub(crate) fn cleanup_kinds(
     ) {
         for (bb, data) in mir.basic_blocks.iter_enumerated() {
             match data.terminator().kind {
+                TerminatorKind::BikeshedNoTerminator => unreachable!(),
                 TerminatorKind::Goto { .. }
                 | TerminatorKind::UnwindResume
                 | TerminatorKind::UnwindTerminate(_)

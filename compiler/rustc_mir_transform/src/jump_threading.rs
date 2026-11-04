@@ -642,6 +642,7 @@ impl<'a, 'tcx> TOFinder<'a, 'tcx> {
     fn process_terminator(&mut self, bb: BasicBlock, state: &mut ConditionSet) {
         let term = self.body.basic_blocks[bb].terminator();
         let place_to_flood = match term.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             // Disallowed during optimizations.
             TerminatorKind::FalseEdge { .. }
             | TerminatorKind::FalseUnwind { .. }

@@ -192,6 +192,7 @@ impl<'tcx> Analysis<'tcx> for ConstAnalysis<'_, 'tcx> {
     ) {
         if state.is_reachable() {
             match &terminator.kind {
+                TerminatorKind::BikeshedNoTerminator => unreachable!(),
                 TerminatorKind::Call { .. } | TerminatorKind::InlineAsm { .. } => {
                     // Effect is applied by `apply_call_return_effect`.
                 }

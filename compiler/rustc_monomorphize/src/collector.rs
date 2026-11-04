@@ -832,6 +832,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
         };
 
         match terminator.kind {
+            mir::TerminatorKind::BikeshedNoTerminator => unreachable!(),
             mir::TerminatorKind::Call { ref func, ref args, .. }
             | mir::TerminatorKind::TailCall { ref func, ref args, .. } => {
                 let callee_ty = func.ty(self.body, tcx);

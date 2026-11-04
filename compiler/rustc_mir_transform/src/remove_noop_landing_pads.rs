@@ -114,6 +114,7 @@ impl RemoveNoopLandingPads {
 
         let terminator = bbdata.terminator();
         match terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Goto { .. }
             | TerminatorKind::UnwindResume
             | TerminatorKind::SwitchInt { .. }

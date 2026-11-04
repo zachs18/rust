@@ -71,6 +71,8 @@ impl<'tcx> Visitor<'tcx> for CheckLiveDrops<'_, 'tcx> {
         trace!("visit_terminator: terminator={:?} location={:?}", terminator, location);
 
         match &terminator.kind {
+            mir::TerminatorKind::BikeshedNoTerminator => unreachable!(),
+
             mir::TerminatorKind::Drop { place: dropped_place, .. } => {
                 self.checker.check_drop_terminator(
                     *dropped_place,

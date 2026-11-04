@@ -583,6 +583,7 @@ pub(crate) fn mir_operand_get_const_val<'tcx>(
                     }
                 }
                 match &bb_data.terminator().kind {
+                    TerminatorKind::BikeshedNoTerminator => unreachable!(),
                     TerminatorKind::Goto { .. }
                     | TerminatorKind::SwitchInt { .. }
                     | TerminatorKind::UnwindResume

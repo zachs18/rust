@@ -990,6 +990,7 @@ impl<'tcx> TerminatorKind<'tcx> {
     pub fn fmt_head<W: fmt::Write>(&self, fmt: &mut W) -> fmt::Result {
         use self::TerminatorKind::*;
         match self {
+            BikeshedNoTerminator => write!(fmt, "no_terminator"),
             Goto { .. } => write!(fmt, "goto"),
             SwitchInt { discr, .. } => write!(fmt, "switchInt({discr:?})"),
             Return => write!(fmt, "return"),
@@ -1089,6 +1090,7 @@ impl<'tcx> TerminatorKind<'tcx> {
     pub fn fmt_successor_labels(&self) -> Vec<Cow<'static, str>> {
         use self::TerminatorKind::*;
         match *self {
+            BikeshedNoTerminator => unreachable!(),
             Return
             | TailCall { .. }
             | UnwindResume

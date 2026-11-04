@@ -741,6 +741,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
         let tcx = self.tcx();
         debug!("terminator kind: {:?}", term.kind);
         match &term.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Goto { .. }
             | TerminatorKind::UnwindResume
             | TerminatorKind::UnwindTerminate(_)
@@ -2081,6 +2082,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
     fn check_iscleanup(&mut self, block_data: &BasicBlockData<'tcx>) {
         let is_cleanup = block_data.is_cleanup;
         match block_data.terminator().kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Goto { target, .. } => {
                 self.assert_iscleanup(block_data, target, is_cleanup)
             }

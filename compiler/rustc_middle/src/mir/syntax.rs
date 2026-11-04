@@ -683,6 +683,10 @@ pub enum InlineAsmMacro {
 ///     tree, that is each vertex may have at most one successor and there may be no cycles.
 #[derive(Clone, TyEncodable, TyDecodable, StableHash, PartialEq, TypeFoldable, TypeVisitable)]
 pub enum TerminatorKind<'tcx> {
+    /// Block is still being built in MIR building, or being changed in a MIR opt.
+    /// This should not occur in valid MIR.
+    BikeshedNoTerminator,
+
     /// Block has one successor; we continue execution there.
     Goto { target: BasicBlock, loop_hint_attrs: ThinVec<UnrollAttr> },
 

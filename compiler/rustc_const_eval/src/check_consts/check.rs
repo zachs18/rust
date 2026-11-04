@@ -724,6 +724,7 @@ impl<'tcx> Visitor<'tcx> for Checker<'_, 'tcx> {
         self.super_terminator(terminator, location);
 
         match &terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
             TerminatorKind::Call { func, args, fn_span, .. }
             | TerminatorKind::TailCall { func, args, fn_span, .. } => {
                 let call_source = match terminator.kind {

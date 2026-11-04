@@ -546,6 +546,8 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
 
         use rustc_middle::mir::TerminatorKind::*;
         match terminator.kind {
+            BikeshedNoTerminator => unreachable!(),
+
             Return => {
                 self.return_from_current_stack_frame(/* unwinding */ false)?
             }

@@ -365,6 +365,8 @@ fn bcb_filtered_successors<'a, 'tcx>(terminator: &'a Terminator<'tcx>) -> Covera
     use TerminatorKind::*;
     let mut is_yield = false;
     let targets = match &terminator.kind {
+        TerminatorKind::BikeshedNoTerminator => unreachable!(),
+
         // A switch terminator can have many coverage-relevant successors.
         SwitchInt { targets, .. } => targets.all_targets(),
 

@@ -1341,6 +1341,8 @@ impl<'tcx> Visitor<'tcx> for EnsureCoroutineFieldAssignmentsNeverAlias<'_> {
         // Checking for aliasing in terminators is probably overkill, but until we have actual
         // semantics, we should be conservative here.
         match &terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
+
             TerminatorKind::Call {
                 func,
                 args,

@@ -1690,6 +1690,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         self.set_debug_loc(bx, terminator.source_info);
         match terminator.kind {
+            mir::TerminatorKind::BikeshedNoTerminator => unreachable!(),
             mir::TerminatorKind::UnwindResume => {
                 self.codegen_resume_terminator(helper, bx);
                 MergingSucc::False

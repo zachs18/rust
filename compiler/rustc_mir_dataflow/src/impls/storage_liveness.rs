@@ -250,6 +250,8 @@ impl<'tcx> Analysis<'tcx> for MaybeRequiresStorage {
         MaybeBorrowedLocals::gen_terminator(state, terminator);
 
         match &terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
+
             TerminatorKind::Call { destination, .. } => {
                 state.gen_(destination.local);
             }
@@ -302,6 +304,8 @@ impl<'tcx> Analysis<'tcx> for MaybeRequiresStorage {
         loc: Location,
     ) {
         match terminator.kind {
+            TerminatorKind::BikeshedNoTerminator => unreachable!(),
+
             // For call terminators the destination requires storage for the call
             // and after the call returns successfully, but not after a panic.
             // Since `propagate_call_unwind` doesn't exist, we have to kill the
